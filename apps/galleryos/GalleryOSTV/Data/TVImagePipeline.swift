@@ -312,13 +312,8 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
                 CatalogPaths.original(hash: resource.hash, ext: resource.ext),
                 timeout: 180
             ) else { return nil }
-            let animated = resource.ext.lowercased() == "gif" || PhotoTraits(rawValue: asset.traits).contains(.animated)
-            let image: UIImage?
-            if animated {
-                image = AnimatedFrames.image(data: data, maxSide: 1280, maxFrames: 90)
-            } else {
-                image = Self.decode(data, maxSide: maxSide)
-            }
+            // The viewer draws a still: decoding 90 GIF frames cost hundreds of MB for nothing.
+            let image = Self.decode(data, maxSide: maxSide)
             guard let image else { return nil }
             let cost = Int(image.size.width * image.size.height * 4)
             fulls.setObject(image, forKey: asset.hash as NSString, cost: cost)
@@ -511,14 +506,16 @@ final class TVImagePipeline: ObservableObject, @unchecked Sendable {
         kick(hash)
     }
 
-    private func kick(_ hash: String) {
+    /// Retries a missing file a few times with growing pauses, then leaves it to the next refresh.
+    private func kick(_ hash: String, attempt: Int = 0) {
+        guard attempt < 6 else { return }
         Task { [weak self] in
-            try? await Task.sleep(for: .seconds(25))
+            try? await Task.sleep(for: .seconds(25 * (attempt + 1)))
             guard let self, self.isWithheld(hash) else { return }
             if await self.thumbnail(hash: hash) != nil {
                 self.release(hash)
             } else if self.isWithheld(hash) {
-                self.kick(hash)
+                self.kick(hash, attempt: attempt + 1)
             }
         }
     }

@@ -16,7 +16,7 @@
 	</array>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)pl.galleryos.app.tv</string>
+		<string>$(AppIdentifierPrefix)pl.galleryos.app</string>
 		<string>$(AppIdentifierPrefix)pl.galleryos.shared</string>
 	</array>
 </dict>

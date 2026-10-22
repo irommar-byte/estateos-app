@@ -7,13 +7,40 @@ extension Notification.Name {
     static let galleryMapLocate = Notification.Name("galleryos.map.locate")
 }
 
+/// Opens Apple Maps with a route to where a photo was taken.
+enum PhotoDirections {
+    static func open(to coordinate: CLLocationCoordinate2D, name: String?, mode: String) {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+        item.name = name ?? L("Miejsce zdjęcia")
+        item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: mode])
+    }
+
+    /// The same three choices everywhere a place can be navigated to.
+    @ViewBuilder
+    static func menuItems(to coordinate: CLLocationCoordinate2D, name: String?) -> some View {
+        Button(L("Prowadź samochodem"), systemImage: "car.fill") {
+            open(to: coordinate, name: name, mode: MKLaunchOptionsDirectionsModeDriving)
+        }
+        Button(L("Prowadź pieszo"), systemImage: "figure.walk") {
+            open(to: coordinate, name: name, mode: MKLaunchOptionsDirectionsModeWalking)
+        }
+        Button(L("Komunikacją"), systemImage: "tram.fill") {
+            open(to: coordinate, name: name, mode: MKLaunchOptionsDirectionsModeTransit)
+        }
+    }
+}
+
 struct LibraryMapScreen: View {
     @EnvironmentObject private var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
     var focus: CLLocationCoordinate2D?
+    /// Shown from the iPad sidebar: no back button, the sidebar is the way out.
+    var embedded = false
     @AppStorage("galleryos.map.satellite") private var satellite = false
     @State private var placeAlbum: MapPlaceAlbum?
     @State private var visible = MapVisible.empty
+    /// Off → follow → follow with heading (the arrow), like the button in Apple Maps.
+    @State private var tracking = MKUserTrackingMode.none
 
     var body: some View {
         PhotoMapView(
@@ -28,10 +55,14 @@ struct LibraryMapScreen: View {
             onVisible: { next in
                 guard next != visible else { return }
                 withAnimation(GalleryTheme.snappy) { visible = next }
+            },
+            onTracking: { mode in
+                if tracking != mode { tracking = mode }
             }
         )
         .ignoresSafeArea()
         .overlay(alignment: .topLeading) {
+            if !embedded {
             Button { dismiss() } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 17, weight: .semibold))
@@ -41,30 +72,33 @@ struct LibraryMapScreen: View {
             .galleryGlass(in: Circle(), interactive: true)
             .padding(.leading, 16)
             .padding(.top, 6)
-            .accessibilityLabel("Wstecz")
+            .accessibilityLabel(L("Wstecz"))
+            }
         }
         .overlay(alignment: .topTrailing) {
             VStack(spacing: 0) {
                 Menu {
-                    Picker("Widok mapy", selection: $satellite) {
-                        Label("Mapa", systemImage: "map").tag(false)
-                        Label("Satelita", systemImage: "globe.europe.africa").tag(true)
+                    Picker(L("Widok mapy"), selection: $satellite) {
+                        Label(L("Mapa"), systemImage: "map").tag(false)
+                        Label(L("Satelita"), systemImage: "globe.europe.africa").tag(true)
                     }
                 } label: {
                     Image(systemName: satellite ? "globe.europe.africa.fill" : "map.fill")
                         .contentTransition(.symbolEffect(.replace))
                         .frame(width: 44, height: 44)
                 }
-                .accessibilityLabel("Widok mapy")
+                .accessibilityLabel(L("Widok mapy"))
                 Divider().frame(width: 26)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    NotificationCenter.default.post(name: .galleryMapLocate, object: nil)
+                    let next: MKUserTrackingMode = tracking == .follow ? .followWithHeading : .follow
+                    NotificationCenter.default.post(name: .galleryMapLocate, object: next.rawValue)
                 } label: {
-                    Image(systemName: "location")
+                    Image(systemName: locateSymbol)
+                        .contentTransition(.symbolEffect(.replace))
                         .frame(width: 44, height: 44)
                 }
-                .accessibilityLabel("Moja lokalizacja")
+                .accessibilityLabel(tracking == .followWithHeading ? L("Kierunek patrzenia") : L("Moja lokalizacja"))
             }
             .font(.system(size: 17, weight: .medium))
             .foregroundStyle(.primary)
@@ -97,9 +131,20 @@ struct LibraryMapScreen: View {
             }
         }
         .animation(GalleryTheme.snappy, value: satellite)
+        .animation(GalleryTheme.snappy, value: tracking)
         .fullScreenCover(item: $placeAlbum) { album in
             MapPlaceAlbumScreen(album: album)
                 .environmentObject(library)
+        }
+    }
+}
+
+extension LibraryMapScreen {
+    var locateSymbol: String {
+        switch tracking {
+        case .follow: return "location.fill"
+        case .followWithHeading: return "location.north.line.fill"
+        default: return "location"
         }
     }
 }
@@ -122,69 +167,35 @@ private struct MapPlaceAlbum: Identifiable {
     let coordinate: CLLocationCoordinate2D
 }
 
+/// The photos behind a pin open in the Library screen itself, so they can be selected, shared,
+/// favourited, hidden, added to an album or deleted, exactly like any album.
 private struct MapPlaceAlbumScreen: View {
     @EnvironmentObject private var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
     let album: MapPlaceAlbum
-    @State private var title = "Miejsca"
-    @State private var viewer: ViewerRequest?
-
-    private var model: GridModel {
-        let wanted = Set(album.ids)
-        return GridModel(photos: library.grid.all.filter { wanted.contains($0.id) })
-    }
+    @State private var title: String?
 
     var body: some View {
-        let model = model
         NavigationStack {
-            PhotoGrid(
-                model: model,
-                generation: library.generation,
-                zoom: .all,
-                selection: [],
-                selecting: false,
-                placeNames: library.placeNames,
-                anchor: nil,
-                asset: { library.asset(id: $0) },
-                thumb: { library.thumbnail(id: $0) },
-                loadThumb: { await LibraryEngine.shared.cloudThumb(id: $0) },
-                onOpen: { request in
-                    let ids = model.all.map(\.id)
-                    let index = ids.firstIndex(of: request.id) ?? 0
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        viewer = ViewerRequest(ids: ids, index: index, origin: request.frame, image: request.image, source: request.source)
+            LibraryScreen(placeIDs: album.ids, placeTitle: title)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { dismiss() } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .accessibilityLabel(L("Wróć do mapy"))
                     }
-                },
-                onSelect: { _ in },
-                onFavorite: { id in
-                    let current = library.photo(id: id)?.isFavorite ?? false
-                    library.setFavorite(!current, ids: [id])
-                },
-                onConceal: { library.setConcealed(true, ids: [$0]) },
-                onZoom: { _, _ in },
-                onVisiblePlaces: { _ in }
-            )
-            .ignoresSafeArea(edges: .bottom)
-            .navigationTitle(title)
-            .galleryNavigationSubtitle(PhotoFormat.things(model.all.count))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left")
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            PhotoDirections.menuItems(to: album.coordinate, name: title)
+                        } label: {
+                            Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                        }
+                        .accessibilityLabel(L("Prowadź do tego miejsca"))
                     }
-                    .accessibilityLabel("Wstecz")
                 }
-            }
         }
         .task { await resolveTitle() }
-        .fullScreenCover(item: $viewer) { request in
-            PhotoViewerHost(request: request)
-                .environmentObject(library)
-                .presentationBackground(.clear)
-        }
     }
 
     private func resolveTitle() async {
@@ -192,7 +203,7 @@ private struct MapPlaceAlbumScreen: View {
         guard let marks = try? await CLGeocoder().reverseGeocodeLocation(location),
               let mark = marks.first else { return }
         let name = mark.name.flatMap { $0.contains("+") ? nil : $0 }
-        title = mark.locality ?? name ?? mark.subLocality ?? mark.ocean ?? "Miejsca"
+        title = mark.locality ?? name ?? mark.subLocality ?? mark.ocean
     }
 }
 
@@ -204,6 +215,7 @@ private struct PhotoMapView: UIViewRepresentable {
     var thumb: (String) -> UIImage?
     var onOpen: ([String], CLLocationCoordinate2D) -> Void
     var onVisible: (MapVisible) -> Void
+    var onTracking: (MKUserTrackingMode) -> Void = { _ in }
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -221,6 +233,7 @@ private struct PhotoMapView: UIViewRepresentable {
             compass.topAnchor.constraint(equalTo: map.safeAreaLayoutGuide.topAnchor, constant: 112)
         ])
         context.coordinator.map = map
+        context.coordinator.askForLocation()
         context.coordinator.reload(photos: photos, focus: focus, force: true)
         return map
     }
@@ -231,6 +244,7 @@ private struct PhotoMapView: UIViewRepresentable {
         context.coordinator.thumb = thumb
         context.coordinator.onOpen = onOpen
         context.coordinator.onVisible = onVisible
+        context.coordinator.onTracking = onTracking
         context.coordinator.reload(photos: photos, focus: focus, force: false)
     }
 
@@ -244,6 +258,8 @@ private struct PhotoMapView: UIViewRepresentable {
         var thumb: (String) -> UIImage?
         var onOpen: ([String], CLLocationCoordinate2D) -> Void
         var onVisible: (MapVisible) -> Void
+        var onTracking: (MKUserTrackingMode) -> Void = { _ in }
+        private let locations = CLLocationManager()
         private var photos: [PhotoRef] = []
         private var photoSignature = ""
         private var focused = false
@@ -261,13 +277,27 @@ private struct PhotoMapView: UIViewRepresentable {
             self.onOpen = onOpen
             self.onVisible = onVisible
             super.init()
-            observer = NotificationCenter.default.addObserver(forName: .galleryMapLocate, object: nil, queue: .main) { [weak self] _ in
-                self?.map?.setUserTrackingMode(.follow, animated: true)
+            observer = NotificationCenter.default.addObserver(forName: .galleryMapLocate, object: nil, queue: .main) { [weak self] note in
+                guard let self else { return }
+                self.askForLocation()
+                let raw = note.object as? Int ?? MKUserTrackingMode.follow.rawValue
+                self.map?.setUserTrackingMode(MKUserTrackingMode(rawValue: raw) ?? .follow, animated: true)
             }
         }
 
         deinit {
             if let observer { NotificationCenter.default.removeObserver(observer) }
+        }
+
+        /// Without this request iOS never shows where you are, the map stayed without the blue dot.
+        func askForLocation() {
+            if locations.authorizationStatus == .notDetermined {
+                locations.requestWhenInUseAuthorization()
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, didChange mode: MKUserTrackingMode, animated: Bool) {
+            onTracking(mode)
         }
 
         func reload(photos: [PhotoRef], focus: CLLocationCoordinate2D?, force: Bool) {

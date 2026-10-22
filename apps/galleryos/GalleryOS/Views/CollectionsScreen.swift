@@ -2,6 +2,8 @@ import LocalAuthentication
 import MapKit
 import SwiftUI
 
+private let utilitiesTitle = L("Narzędzia")
+
 struct CollectionsScreen: View {
     @EnvironmentObject private var library: PhotoLibrary
     @AppStorage("galleryos.album-sort") private var sort = "newest"
@@ -13,117 +15,194 @@ struct CollectionsScreen: View {
     @State private var deleting: AlbumRecord?
     @State private var albumNote = ""
     @State private var showMap = false
-    @State private var open: Set<String> = ["Przypięte", "Ukryte", "Albumy"]
+    @State private var open: Set<String> = [L("Przypięte"), utilitiesTitle, L("Albumy")]
+    /// The user's own pinned collections, in their order. Empty: Photos' defaults (Ulubione, Ostatnio dodane).
+    @AppStorage("galleryos.pinned.v1") private var pinnedRaw = ""
+    @State private var arrangingPinned = false
 
-    private var pinned: [AlbumRecord] {
+    private var defaultPinned: [AlbumRecord] {
         library.albums.filter { album in
             guard album.system, album.count > 0 else { return false }
             return Self.pinnedTitles.contains(album.title) || Self.pinnedHints(album)
         }
     }
 
-    private var hiddenAlbum: AlbumRecord? {
-        library.albums.first { $0.id == "galleryos.hidden" }
+    private var pinnedIDs: [String] {
+        if pinnedRaw.isEmpty { return defaultPinned.map(\.id) }
+        if pinnedRaw == "-" { return [] }
+        return pinnedRaw.split(separator: "|").map(String.init)
+    }
+
+    private var pinned: [AlbumRecord] {
+        let byID = Dictionary(library.albums.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return pinnedIDs.compactMap { byID[$0] }
+    }
+
+    private func setPinned(_ ids: [String]) {
+        pinnedRaw = ids.isEmpty ? "-" : ids.joined(separator: "|")
+    }
+
+    private func togglePin(_ album: AlbumRecord) {
+        var ids = pinnedIDs
+        if let index = ids.firstIndex(of: album.id) {
+            ids.remove(at: index)
+        } else {
+            ids.append(album.id)
+        }
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { setPinned(ids) }
+    }
+
+    private func movePinned(_ album: AlbumRecord, by step: Int) {
+        var ids = pinned.map(\.id)
+        guard let index = ids.firstIndex(of: album.id) else { return }
+        let target = min(max(index + step, 0), ids.count - 1)
+        guard target != index else { return }
+        ids.swapAt(index, target)
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { setPinned(ids) }
+    }
+
+    /// Hidden and Recently Deleted, together and always visible, as in Photos.
+    private var utilities: [AlbumRecord] {
+        let hidden = library.albums.filter { $0.id == "galleryos.hidden" }
+        let trash = library.albums.filter { $0.id == "galleryos.trash" }
+        return hidden + trash
     }
 
     private var media: [AlbumRecord] {
-        library.albums.filter { $0.system && $0.id != "galleryos.hidden" && !pinned.contains($0) && $0.count > 0 }
+        library.albums.filter {
+            $0.system && $0.id != "galleryos.hidden" && $0.id != "galleryos.trash" && !pinned.contains($0) && $0.count > 0
+        }
     }
 
+    /// Albums from this iPhone and albums that exist only in the server library.
     private var userAlbums: [AlbumRecord] {
-        library.albums.filter { !$0.system && !$0.id.hasPrefix("galleryos.") }
+        library.albums.filter { !$0.system }
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                tape("Przypięte", albums: pinned, map: true)
-                if let hiddenAlbum {
-                    tape("Ukryte", albums: [hiddenAlbum], map: false)
-                }
+                tape(L("Przypięte"), albums: pinned, map: true)
+                MemoriesShelf()
+                PeopleShelf()
+                CleanupCard()
+                    .padding(.vertical, 4)
                 if !media.isEmpty {
-                    tape("Typy multimediów", albums: media, map: false)
+                    tape(L("Typy multimediów"), albums: media, map: false)
                 }
-                tape("Albumy", albums: arranged(userAlbums), map: false, editable: true)
+                tape(L("Albumy"), albums: arranged(userAlbums), map: false, editable: true)
+                // Hidden and Recently Deleted: tools, at the very bottom, as in Photos.
+                if !utilities.isEmpty {
+                    tape(utilitiesTitle, albums: utilities, map: false)
+                }
             }
             .padding(.vertical, 8)
         }
-        .navigationTitle("Kolekcje")
+        .navigationTitle(L("Kolekcje"))
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Menu("Sortuj", systemImage: "arrow.up.arrow.down") {
-                    Button("Najnowsze") { sort = "newest" }
-                    Button("Najstarsze") { sort = "oldest" }
-                    Button("Nazwa") { sort = "name" }
-                    Button("Ułóż ręcznie") { arranging = true }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker(L("Sortuj albumy"), selection: $sort) {
+                        Text(L("Najnowsze")).tag("newest")
+                        Text(L("Najstarsze")).tag("oldest")
+                        Text(L("Nazwa")).tag("name")
+                        if !orderRaw.isEmpty {
+                            Text(L("Własna kolejność")).tag("manual")
+                        }
+                    }
+                    Button(L("Ułóż ręcznie…"), systemImage: "line.3.horizontal") { arranging = true }
+                    Button(L("Ułóż przypięte…"), systemImage: "pin") { arrangingPinned = true }
+                    Section {
+                        Toggle(isOn: Binding(
+                            get: { !library.hideScreenshots },
+                            set: { library.hideScreenshots = !$0 }
+                        )) {
+                            Label(L("Zrzuty ekranu w albumach"), systemImage: "camera.viewfinder")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
                 }
+                .accessibilityLabel(L("Sortuj albumy"))
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Nowy album", systemImage: "plus") {
+                Button(L("Nowy album"), systemImage: "plus") {
                     draft = ""
                     creating = true
                 }
             }
         }
-        .alert("Nowy album", isPresented: $creating) {
-            TextField("Nazwa", text: $draft)
-            Button("Utwórz") {
+        .alert(L("Nowy album"), isPresented: $creating) {
+            TextField(L("Nazwa"), text: $draft)
+            Button(L("Utwórz")) {
                 let title = draft.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !title.isEmpty else { return }
                 Task {
                     if await AlbumLibrary.create(title) == nil {
-                        albumNote = "Nie udało się utworzyć albumu. Sprawdź dostęp do zdjęć."
+                        albumNote = L("Nie udało się utworzyć albumu. Sprawdź dostęp do zdjęć.")
                     } else {
                         library.reloadNow()
                     }
                 }
             }
-            Button("Anuluj", role: .cancel) {}
+            Button(L("Anuluj"), role: .cancel) {}
         }
-        .alert("Zmień nazwę", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
-            TextField("Nazwa", text: $draft)
-            Button("Zachowaj") {
+        .alert(L("Zmień nazwę"), isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField(L("Nazwa"), text: $draft)
+            Button(L("Zachowaj")) {
                 if let renaming {
                     Task {
-                        if await AlbumLibrary.rename(renaming.id, draft) {
+                        if await AlbumActions.rename(renaming.id, draft) {
                             library.reloadNow()
                         } else {
-                            albumNote = "Nie udało się zmienić nazwy."
+                            albumNote = L("Nie udało się zmienić nazwy.")
                         }
                     }
                 }
             }
-            Button("Anuluj", role: .cancel) {}
+            Button(L("Anuluj"), role: .cancel) {}
         }
         .confirmationDialog(
-            "Usunąć album „\(deleting?.title ?? "")”?",
+            L("Usunąć album „\(deleting?.title ?? "")”?"),
             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Usuń album", role: .destructive) {
+            Button(L("Usuń album"), role: .destructive) {
                 guard let deleting else { return }
                 let id = deleting.id
                 self.deleting = nil
                 Task {
-                    if await AlbumLibrary.delete(id) {
+                    if await AlbumActions.delete(id) {
                         library.reloadNow()
                     } else {
-                        albumNote = "Nie udało się usunąć albumu. Zdjęcia zostają w bibliotece."
+                        albumNote = L("Nie udało się usunąć albumu. Zdjęcia zostają w bibliotece.")
                     }
                 }
             }
-            Button("Anuluj", role: .cancel) { deleting = nil }
+            Button(L("Anuluj"), role: .cancel) { deleting = nil }
         } message: {
-            Text("Znika tylko album. Zdjęcia zostają na iPhonie.")
+            Text(L("Znika tylko album. Zdjęcia zostają w bibliotece i na serwerze."))
         }
-        .alert("Album", isPresented: Binding(get: { !albumNote.isEmpty }, set: { if !$0 { albumNote = "" } })) {
-            Button("Dobrze") { albumNote = "" }
+        .alert(L("Album"), isPresented: Binding(get: { !albumNote.isEmpty }, set: { if !$0 { albumNote = "" } })) {
+            Button(L("Dobrze")) { albumNote = "" }
         } message: {
             Text(albumNote)
+        }
+        .sheet(isPresented: $arrangingPinned) {
+            PinnedArrangeSheet(
+                pinned: pinned,
+                candidates: library.albums.filter { $0.count > 0 || !$0.system },
+                onSave: { ids in withAnimation { setPinned(ids) } }
+            )
         }
         .sheet(isPresented: $arranging) {
             AlbumArrangeSheet(albums: arranged(userAlbums), orderRaw: $orderRaw, sort: $sort)
         }
+        .peopleDestinations()
+        .cleanupDestinations()
+        .memoryDestinations()
         .navigationDestination(for: String.self) { id in
             if id == "galleryos.hidden" {
                 HiddenLibrary()
@@ -150,9 +229,9 @@ struct CollectionsScreen: View {
             case "name":
                 return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
             case "oldest":
-                return AlbumLibrary.date(lhs.id) < AlbumLibrary.date(rhs.id)
+                return (lhs.latest ?? .distantFuture) < (rhs.latest ?? .distantFuture)
             default:
-                return AlbumLibrary.date(lhs.id) > AlbumLibrary.date(rhs.id)
+                return (lhs.latest ?? .distantPast) > (rhs.latest ?? .distantPast)
             }
         }
     }
@@ -183,8 +262,15 @@ struct CollectionsScreen: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: 12) {
                         if map {
-                            Button { showMap = true } label: { MapTapeCard() }
-                                .buttonStyle(.plain)
+                            // The live map swallowed taps, so only the caption opened it.
+                            MapTapeCard()
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                                    showMap = true
+                                }
+                                .accessibilityAddTraits(.isButton)
+                                .accessibilityLabel(L("Mapa"))
                         }
                         ForEach(albums) { album in
                             NavigationLink(value: album.id) {
@@ -193,12 +279,22 @@ struct CollectionsScreen: View {
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
-                                if editable {
-                                    Button("Zmień nazwę") {
+                                let isPinned = pinnedIDs.contains(album.id)
+                                Button(isPinned ? L("Odepnij") : L("Przypnij na górze"), systemImage: isPinned ? "pin.slash" : "pin") {
+                                    togglePin(album)
+                                }
+                                if title == L("Przypięte"), pinned.count > 1 {
+                                    Button(L("Przesuń w lewo"), systemImage: "arrow.left") { movePinned(album, by: -1) }
+                                    Button(L("Przesuń w prawo"), systemImage: "arrow.right") { movePinned(album, by: 1) }
+                                    Button(L("Ułóż przypięte…"), systemImage: "line.3.horizontal") { arrangingPinned = true }
+                                }
+                                // Device albums change in Photos; server albums in the shared catalogue.
+                                if editable, AlbumActions.editable(album) {
+                                    Button(L("Zmień nazwę")) {
                                         draft = album.title
                                         renaming = album
                                     }
-                                    Button("Usuń album", role: .destructive) {
+                                    Button(L("Usuń album"), role: .destructive) {
                                         deleting = album
                                     }
                                 }
@@ -212,14 +308,15 @@ struct CollectionsScreen: View {
         }
     }
 
-    private static let pinnedTitles: Set<String> = ["Ulubione", "Ostatnio dodane", "Favorites", "Recents"]
+    // Photos' own album names, in whatever language the iPhone uses.
+    private static let pinnedTitles: Set<String> = ["Ulubione", "Ostatnio dodane", "Favorites", "Recents", "Улюблені", "Нещодавні"] // l10n:skip
 
     private static func pinnedHints(_ album: AlbumRecord) -> Bool {
         let title = album.title.lowercased()
-        if title.contains("ukry") || title.contains("hidden") || title.contains("usuni") || title.contains("deleted") {
-            return false
-        }
-        return title.contains("ulub") || title.contains("ostatnio dod") || title.contains("favorite") || title.contains("recent")
+        let skipped = ["ukry", "hidden", "usuni", "deleted", "прихов", "видал"] // l10n:skip
+        if skipped.contains(where: { title.contains($0) }) { return false }
+        let wanted = ["ulub", "ostatnio dod", "favorite", "recent", "улюблен", "нещодавн"] // l10n:skip
+        return wanted.contains { title.contains($0) }
     }
 }
 
@@ -240,9 +337,14 @@ private struct MapTapeCard: View {
             .frame(width: 148, height: 148)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .allowsHitTesting(false)
-            Text("Mapa")
+            .overlay {
+                // A nearly invisible layer above the map receives the tap instead of MapKit.
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.black.opacity(0.001))
+            }
+            Text(L("Mapa"))
                 .font(.subheadline.weight(.semibold))
-            Text("Miejsca")
+            Text(L("Miejsca"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -275,7 +377,7 @@ private struct AlbumCard: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
-            Text(album.count == 0 ? "Pusty" : PhotoFormat.count(album.count))
+            Text(album.count == 0 ? L("Pusty") : PhotoFormat.count(album.count))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -291,6 +393,11 @@ struct AlbumCover: View {
             .overlay {
                 if let assetID, let asset = library.asset(id: assetID) {
                     AssetImage(asset: asset)
+                } else if let assetID, let image = library.thumbnail(id: assetID) {
+                    // Covers of server albums are not on this iPhone; use the downloaded preview.
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
                 } else {
                     Image(systemName: "photo")
                         .font(.title2)
@@ -420,6 +527,46 @@ final class AssetImageView: UIView {
     }
 }
 
+/// One place for album changes, whether the album lives in Photos on this device or only in
+/// the server library ("galleryos.album.<name>").
+enum AlbumActions {
+    static let serverPrefix = "galleryos.album."
+
+    static func isServer(_ id: String) -> Bool { id.hasPrefix(serverPrefix) }
+
+    static func serverName(_ id: String) -> String { String(id.dropFirst(serverPrefix.count)) }
+
+    /// Your own albums: device albums and server albums. Smart albums and Hidden/Trash are not.
+    static func editable(_ album: AlbumRecord) -> Bool {
+        guard !album.system else { return false }
+        return isServer(album.id) || !album.id.hasPrefix("galleryos.")
+    }
+
+    @MainActor
+    static func rename(_ id: String, _ title: String) async -> Bool {
+        if isServer(id) { return LibraryEngine.shared.renameServerAlbum(serverName(id), to: title) }
+        return await AlbumLibrary.rename(id, title)
+    }
+
+    @MainActor
+    static func delete(_ id: String) async -> Bool {
+        if isServer(id) { return LibraryEngine.shared.removeServerAlbum(serverName(id)) }
+        return await AlbumLibrary.delete(id)
+    }
+
+    @MainActor
+    static func add(_ ids: [String], to id: String) async -> Bool {
+        if isServer(id) { return LibraryEngine.shared.addToServerAlbum(ids, name: serverName(id)) }
+        return await AlbumLibrary.add(ids, to: id)
+    }
+
+    @MainActor
+    static func remove(_ ids: [String], from id: String) async -> Bool {
+        if isServer(id) { return LibraryEngine.shared.removeFromServerAlbum(ids, name: serverName(id)) }
+        return await AlbumLibrary.remove(ids, from: id)
+    }
+}
+
 enum AlbumLibrary {
     private final class Holder: @unchecked Sendable {
         var value = ""
@@ -509,8 +656,65 @@ enum AlbumLibrary {
         return collection
     }
 
-    static func date(_ id: String) -> Date {
-        PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [id], options: nil).firstObject?.endDate ?? .distantPast
+}
+
+/// Pinned collections: drag to reorder, swipe to unpin, add any album from the list below.
+private struct PinnedArrangeSheet: View {
+    let candidates: [AlbumRecord]
+    let onSave: ([String]) -> Void
+    @State private var rows: [AlbumRecord]
+    @Environment(\.dismiss) private var dismiss
+
+    init(pinned: [AlbumRecord], candidates: [AlbumRecord], onSave: @escaping ([String]) -> Void) {
+        self.candidates = candidates
+        self.onSave = onSave
+        _rows = State(initialValue: pinned)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(rows) { album in
+                        Label(album.title, systemImage: "pin.fill")
+                    }
+                    .onMove { rows.move(fromOffsets: $0, toOffset: $1) }
+                    .onDelete { rows.remove(atOffsets: $0) }
+                } header: {
+                    Text(L("Przypięte"))
+                } footer: {
+                    Text(L("Przeciągnij, żeby zmienić kolejność. Przesuń w lewo, żeby odpiąć."))
+                }
+                let rest = candidates.filter { candidate in !rows.contains { $0.id == candidate.id } }
+                if !rest.isEmpty {
+                    Section(L("Dodaj")) {
+                        ForEach(rest) { album in
+                            Button {
+                                withAnimation { rows.append(album) }
+                                UISelectionFeedbackGenerator().selectionChanged()
+                            } label: {
+                                Label(album.title, systemImage: "plus.circle.fill")
+                            }
+                        }
+                    }
+                }
+            }
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle(L("Przypięte"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L("Anuluj")) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("Gotowe")) {
+                        onSave(rows.map(\.id))
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
     }
 }
 
@@ -537,10 +741,10 @@ private struct AlbumArrangeSheet: View {
                 .onMove { rows.move(fromOffsets: $0, toOffset: $1) }
             }
             .environment(\.editMode, .constant(.active))
-            .navigationTitle("Kolejność")
+            .navigationTitle(L("Kolejność"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                Button("Gotowe") {
+                Button(L("Gotowe")) {
                     orderRaw = rows.map(\.id).joined(separator: "|")
                     sort = "manual"
                     dismiss()
@@ -552,23 +756,34 @@ private struct AlbumArrangeSheet: View {
 
 /// The shared library never lists these photos. Opening the album asks for Face ID or the device code.
 struct HiddenLibrary: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var unlocked = false
 
     var body: some View {
         Group {
             if unlocked {
                 LibraryScreen(albumID: "galleryos.hidden")
+                    .safeAreaInset(edge: .top, spacing: 0) { VaultBanner() }
             } else {
                 ContentUnavailableView {
-                    Label("Ukryte", systemImage: "lock.fill")
+                    Label(L("Ukryte"), systemImage: "lock.shield.fill")
                 } description: {
-                    Text("Tych zdjęć nie ma w bibliotece na serwerze ani na Apple TV. Widać je tylko tutaj.")
+                    VStack(spacing: 10) {
+                        Text(L("Widzisz je tylko Ty – po Face ID na swoim urządzeniu."))
+                        Text(L("Na serwerze są zaszyfrowane kluczem z Twojego pęku kluczy iCloud. Inne osoby korzystające z tego samego serwera, Apple TV i ktoś przeglądający dysk NAS widzą tylko nieczytelne dane."))
+                            .font(.footnote)
+                    }
                 } actions: {
-                    Button("Potwierdź, że to Ty") { authenticate() }
+                    Button(L("Potwierdź, że to Ty")) { authenticate() }
+                        .buttonStyle(.borderedProminent)
                 }
             }
         }
-        .task { authenticate() }
+        // Ask once per visit, and lock again when the app goes to the background, like Photos.
+        .task { if !unlocked { authenticate() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { unlocked = false }
+        }
     }
 
     private func authenticate() {
@@ -578,9 +793,110 @@ struct HiddenLibrary: View {
             unlocked = true
             return
         }
-        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Pokaż ukryte zdjęcia") { ok, _ in
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: L("Pokaż ukryte zdjęcia")) { ok, _ in
             DispatchQueue.main.async {
                 unlocked = ok
+            }
+        }
+    }
+}
+
+
+/// The state of the encrypted vault, above the Hidden album: how much is already sealed.
+struct VaultBanner: View {
+    @EnvironmentObject private var library: PhotoLibrary
+    @State private var state = (hidden: 0, sealed: 0)
+    @State private var explain = false
+
+    private var done: Bool { state.hidden == 0 || state.sealed >= state.hidden }
+
+    var body: some View {
+        Button { explain = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: done ? "lock.shield.fill" : "lock.rotation")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(done ? Color.green : Color.orange)
+                    .symbolEffect(.pulse, options: .repeating, isActive: !done)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(done ? L("Zaszyfrowane end-to-end · tylko Ty") : L("Szyfruję na serwerze…"))
+                        .font(.footnote.weight(.semibold))
+                    Text(line)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "info.circle").foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(.bar)
+        .task {
+            while !Task.isCancelled {
+                state = LibraryEngine.shared.vaultState()
+                try? await Task.sleep(for: .seconds(done ? 10 : 2))
+            }
+        }
+        .sheet(isPresented: $explain) {
+            VaultExplainer { explain = false }
+                .presentationDetents([.medium, .large])
+        }
+    }
+
+    private var line: String {
+        if !library.destinationConnected { return L("Bez serwera ukryte zostają tylko na tym urządzeniu.") }
+        if state.hidden == 0 { return L("Klucz jest w Twoim pęku kluczy iCloud.") }
+        if done { return L("\(PhotoFormat.grouped(state.sealed)) na serwerze, klucz tylko w Twoim pęku kluczy iCloud.") }
+        return L("\(PhotoFormat.grouped(state.sealed)) z \(PhotoFormat.grouped(state.hidden)) gotowe. Reszta za chwilę.")
+    }
+}
+
+/// Plain words about what hiding does, shown the first time and from the vault banner.
+struct VaultExplainer: View {
+    let done: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 14) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 34, weight: .semibold))
+                            .foregroundStyle(.green)
+                        Text(L("Ukryte są naprawdę prywatne"))
+                            .font(.title2.bold())
+                    }
+                    point("person.fill.checkmark", L("Tylko Ty"), L("Ukryte zdjęcie widzi wyłącznie osoba, która je schowała – rozpoznaję ją po koncie iCloud. Inni użytkownicy tego samego serwera go nie zobaczą."))
+                    point("faceid", L("Face ID przy każdym otwarciu"), L("Album Ukryte otwiera się dopiero po Face ID lub kodzie i zamyka, gdy wyjdziesz z aplikacji."))
+                    point("key.fill", L("Szyfrowanie end-to-end"), L("Oryginał i miniatura na serwerze są szyfrowane (AES-256). Klucz powstaje na Twoim urządzeniu i jest tylko w Twoim pęku kluczy iCloud – nie ma go serwer, nie mamy go my."))
+                    point("externaldrive.badge.xmark", L("Nieczytelne na dysku"), L("Ktoś, kto zaloguje się do NAS-a albo przegląda folder, zobaczy tylko zaszyfrowane dane."))
+                    point("appletv", L("Poza Apple TV i albumami"), L("Ukryte nie pojawiają się na Apple TV ani w albumach udostępnionych znajomym."))
+                    point("iphone.and.arrow.forward", L("Na Twoich urządzeniach"), L("iPhone i iPad z tym samym Apple ID otworzą je same – klucz przychodzi przez pęk kluczy iCloud (musi być włączony)."))
+                    Text(L("Gdy pokażesz zdjęcie z powrotem, wraca na serwer w zwykłej postaci."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(22)
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(L("Rozumiem"), action: done)
+                }
+            }
+        }
+    }
+
+    private func point(_ symbol: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(GalleryTheme.accent)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
     }

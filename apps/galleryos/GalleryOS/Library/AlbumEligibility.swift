@@ -51,6 +51,7 @@ enum AlbumEligibility {
             "nie można wysłać", "unable to upload",
             "moje strumienie zdjęć", "my photo stream",
             "współdzielone", "shared album", "shared albums",
+            "приховані", "нещодавно видалені", "неможливо вивантажити", "мій фотопотік", "спільні альбоми",
         ]
         if blocked.contains(title) { return false }
         if title.hasPrefix("współdziel") { return false }

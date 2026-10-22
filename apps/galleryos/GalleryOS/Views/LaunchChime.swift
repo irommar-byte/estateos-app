@@ -392,6 +392,8 @@ final class LaunchChimePlayer {
         player = nil
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
+        // A film opened right after launch owns the session by now; resetting it muted the film.
+        guard session.category == .ambient else { return }
         try? session.setActive(false, options: .notifyOthersOnDeactivation)
         try? session.setCategory(.soloAmbient)
         #endif

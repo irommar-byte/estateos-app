@@ -23,7 +23,8 @@ final class GalleryNetwork: NSObject, URLSessionTaskDelegate, @unchecked Sendabl
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 25
-        config.timeoutIntervalForResource = 3 * 60
+        // Catalogue journals of a big library over a slow DDNS link need more than 3 minutes.
+        config.timeoutIntervalForResource = 15 * 60
         // A remote NAS that accepts the connection and then stays silent must hit the timeout.
         // Waiting for connectivity holds the request with no progress for many minutes.
         config.waitsForConnectivity = false
@@ -36,6 +37,18 @@ final class GalleryNetwork: NSObject, URLSessionTaskDelegate, @unchecked Sendabl
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 40
         config.timeoutIntervalForResource = 3 * 60 * 60
+        config.waitsForConnectivity = false
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    /// Originals going up. At home a film takes seconds; over DDNS from a phone the uplink can
+    /// be 5–10 Mbit/s and a 1 GB film takes half an hour. The old 3 minute cap on the shared
+    /// session cut every larger file mid-way, so away from home big files never arrived.
+    /// A link that stops moving still fails after the 90 s idle timeout.
+    private lazy var uploadSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 90
+        config.timeoutIntervalForResource = 6 * 60 * 60
         config.waitsForConnectivity = false
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
@@ -187,7 +200,7 @@ final class GalleryNetwork: NSObject, URLSessionTaskDelegate, @unchecked Sendabl
         // Stay on the in-process session. A background session hands the file to the system
         // and suspends this process within a few seconds, which kills the copy loop and
         // makes the next launch start the same photo from the first byte.
-        return try await session.upload(for: copy, fromFile: source)
+        return try await uploadSession.upload(for: copy, fromFile: source)
     }
 
     private lazy var backgroundSession: URLSession = {
@@ -237,7 +250,7 @@ final class GalleryNetwork: NSObject, URLSessionTaskDelegate, @unchecked Sendabl
         totalBytesSent: Int64,
         totalBytesExpectedToSend: Int64
     ) {
-        guard session === self.session, totalBytesExpectedToSend > 0 else { return }
+        guard session === self.session || session === uploadSession, totalBytesExpectedToSend > 0 else { return }
         let fraction = Double(totalBytesSent) / Double(totalBytesExpectedToSend)
         uploads.onByteProgress?(fraction)
     }
@@ -447,13 +460,23 @@ private final class UploadOnce: @unchecked Sendable {
     }
 }
 
+extension FileHandle {
+    /// One piece of a file, released as soon as it is used. `read(upToCount:)` hands back an
+    /// autoreleased buffer; in a loop on a background thread with no pool those buffers were
+    /// only freed at the end, so hashing a multi-gigabyte film from an iPhone 17 Pro held the
+    /// whole film in memory and iOS killed the app — at the same film, on every launch.
+    func chunk(_ count: Int) throws -> Data {
+        try autoreleasepool { try read(upToCount: count) ?? Data() }
+    }
+}
+
 enum ContentHash {
     static func sha256(of file: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: file)
         defer { try? handle.close() }
         var hasher = SHA256()
         while true {
-            let chunk = try handle.read(upToCount: 1024 * 1024) ?? Data()
+            let chunk = try handle.chunk(1024 * 1024)
             if chunk.isEmpty { break }
             hasher.update(data: chunk)
         }
@@ -465,7 +488,7 @@ enum ContentHash {
         defer { try? handle.close() }
         var hasher = Insecure.SHA1()
         while true {
-            let chunk = try handle.read(upToCount: 1024 * 1024) ?? Data()
+            let chunk = try handle.chunk(1024 * 1024)
             if chunk.isEmpty { break }
             hasher.update(data: chunk)
         }

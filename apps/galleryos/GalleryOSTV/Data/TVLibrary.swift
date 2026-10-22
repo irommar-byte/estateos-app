@@ -67,9 +67,9 @@ final class TVLibrary: ObservableObject {
     func loadPreview() {
         let calendar = Calendar.current
         let spots: [(String, Double, Double)] = [
-            ("Warszawa, Mazowieckie", 52.23, 21.01), ("Kraków, Małopolskie", 50.06, 19.94),
-            ("Gdańsk, Pomorskie", 54.35, 18.65), ("Zakopane, Małopolskie", 49.30, 19.95),
-            ("Rzym, Lacjum", 41.90, 12.50), ("Barcelona, Katalonia", 41.39, 2.17)
+            ("Warszawa, Mazowieckie", 52.23, 21.01), ("Kraków, Małopolskie", 50.06, 19.94),  // l10n:skip
+            ("Gdańsk, Pomorskie", 54.35, 18.65), ("Zakopane, Małopolskie", 49.30, 19.95), // l10n:skip
+            ("Rzym, Lacjum", 41.90, 12.50), ("Barcelona, Katalonia", 41.39, 2.17) // l10n:skip
         ]
         var photos: [PhotoRef] = []
         for day in 0..<18 {
@@ -98,9 +98,9 @@ final class TVLibrary: ObservableObject {
         favorites = photos.filter(\.isFavorite).reversed()
         let newest = Array(model.all.reversed())
         albums = [
-            TVAlbum(name: "Wakacje", photos: Array(newest.prefix(12))),
-            TVAlbum(name: "Rodzina", photos: Array(newest.dropFirst(12).prefix(9))),
-            TVAlbum(name: "Dom", photos: Array(newest.suffix(8)))
+            TVAlbum(name: L("Wakacje"), photos: Array(newest.prefix(12))),
+            TVAlbum(name: L("Rodzina"), photos: Array(newest.dropFirst(12).prefix(9))),
+            TVAlbum(name: L("Dom"), photos: Array(newest.suffix(8)))
         ]
         mediaTypes = TVCatalog.mediaTypes(from: newest)
         let places = TVPlaces(folder: FileManager.default.temporaryDirectory.appendingPathComponent("tv-preview"))
@@ -200,7 +200,8 @@ final class TVLibrary: ObservableObject {
     private func cycle() async {
         while !Task.isCancelled {
             await pull()
-            let wait: UInt64 = phaseIsFailed ? 20 : 300
+            // Every two minutes: deletions and new photos from the iPhone arrive while you watch.
+            let wait: UInt64 = phaseIsFailed ? 20 : 120
             try? await Task.sleep(nanoseconds: wait * 1_000_000_000)
         }
     }

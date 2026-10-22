@@ -142,15 +142,19 @@ final class SetupGuideModel: ObservableObject {
     }
 
     func remember(folder url: URL) -> String? {
-        guard url.startAccessingSecurityScopedResource() else { return "Dysk jest odłączony. Podłącz go i spróbuj jeszcze raz." }
+        guard url.startAccessingSecurityScopedResource() else { return L("Dysk jest odłączony. Podłącz go i spróbuj jeszcze raz.") }
         defer { url.stopAccessingSecurityScopedResource() }
         do {
             let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+            // Remember the current setup first, so closing the guide puts the old library back.
+            if restore == nil {
+                restore = (DestinationSettings.load(), GalleryKeychain.string(account: "destination-password"))
+            }
             LibraryEngine.shared.saveBookmark(data, name: url.lastPathComponent)
             folderName = url.lastPathComponent
             return nil
         } catch {
-            return "Nie udało się zapamiętać tego folderu."
+            return L("Nie udało się zapamiętać tego folderu.")
         }
     }
 
@@ -208,17 +212,17 @@ final class SetupGuideModel: ObservableObject {
 
         var plan: [SetupStep] = []
         if nas, !local.isEmpty {
-            plan.append(SetupStep(id: "home", title: "Sieć domowa", detail: localName.isEmpty ? local : localName, symbol: "house.fill"))
+            plan.append(SetupStep(id: "home", title: L("Sieć domowa"), detail: localName.isEmpty ? local : localName, symbol: "house.fill"))
         }
         if nas, !remote.isEmpty {
-            plan.append(SetupStep(id: "remote", title: "Zdalnie · DDNS", detail: remote, symbol: "globe"))
+            plan.append(SetupStep(id: "remote", title: L("Zdalnie · DDNS"), detail: remote, symbol: "globe"))
         }
         if place == .disk {
-            plan.append(SetupStep(id: "disk", title: "Dysk", detail: folderName, symbol: "externaldrive.fill"))
+            plan.append(SetupStep(id: "disk", title: L("Dysk"), detail: folderName, symbol: "externaldrive.fill"))
         } else if !nas {
-            plan.append(SetupStep(id: "server", title: "Serwer", detail: settings.host, symbol: "server.rack"))
+            plan.append(SetupStep(id: "server", title: L("Serwer"), detail: settings.host, symbol: "server.rack"))
         }
-        plan.append(SetupStep(id: "library", title: "Biblioteka GalleryOS", detail: "Logowanie i katalog", symbol: "photo.stack"))
+        plan.append(SetupStep(id: "library", title: L("Biblioteka GalleryOS"), detail: L("Logowanie i katalog"), symbol: "photo.stack"))
         steps = plan
         withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { stage = .connecting }
 
@@ -234,26 +238,26 @@ final class SetupGuideModel: ObservableObject {
                 : WebDAVTransport.reach(host: homeHost, port: homePort, username: account, password: secret, timeout: 3)
             async let remoteProbe: (ok: Bool, auth: Bool, millis: Int)? = awayHost.isEmpty ? nil
                 : WebDAVTransport.reach(host: awayHost, port: probePort, username: account, password: secret, timeout: 10)
-            mark("home", home ? .running : .skipped("Poza domem"))
+            mark("home", home ? .running : .skipped(L("Poza domem")))
             mark("remote", .running)
             let homeResult = await homeProbe
             if Task.isCancelled { return }
             if let homeResult {
                 mark("home", homeResult.ok ? .done("\(homeResult.millis) ms")
-                    : homeResult.auth ? .failed("Błędny login lub hasło")
-                    : ServerLink.shared.network.isLocal ? .failed("Nie odpowiada") : .skipped("Poza domem"))
+                    : homeResult.auth ? .failed(L("Błędny login lub hasło"))
+                    : ServerLink.shared.network.isLocal ? .failed(L("Nie odpowiada")) : .skipped(L("Poza domem")))
             }
             let remoteResult = await remoteProbe
             if Task.isCancelled { return }
             if let remoteResult {
                 mark("remote", remoteResult.ok ? .done("\(remoteResult.millis) ms")
-                    : remoteResult.auth ? .failed("Błędny login lub hasło") : .failed("Nie odpowiada"))
+                    : remoteResult.auth ? .failed(L("Błędny login lub hasło")) : .failed(L("Nie odpowiada")))
             }
             let auth = (homeResult?.auth ?? false) || (remoteResult?.auth ?? false)
             let anyOK = (homeResult?.ok ?? false) || (remoteResult?.ok ?? false)
             if auth && !anyOK {
-                mark("library", .skipped("Popraw hasło"))
-                fail("Serwer odrzucił login lub hasło. Wróć i wpisz je jeszcze raz.")
+                mark("library", .skipped(L("Popraw hasło")))
+                fail(L("Serwer odrzucił login lub hasło. Wróć i wpisz je jeszcze raz."))
                 return
             }
         } else {
@@ -266,7 +270,7 @@ final class SetupGuideModel: ObservableObject {
             if Task.isCancelled { return }
             mark("server", .done(""))
             mark("disk", .done(""))
-            mark("library", .done("Gotowe"))
+            mark("library", .done(L("Gotowe")))
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             finish()
             withAnimation(.spring(response: 0.42, dampingFraction: 0.7)) { stage = .done }
@@ -353,6 +357,7 @@ struct SetupGuideView: View {
     @EnvironmentObject private var library: PhotoLibrary
     @StateObject private var model = SetupGuideModel()
     @State private var path: [GuidePage] = []
+    @State private var confirmPhoneOnly = false
 
     private var photosAsked: Bool { library.authorization != .notDetermined }
 
@@ -371,12 +376,21 @@ struct SetupGuideView: View {
         .environmentObject(model)
         .interactiveDismissDisabled()
         .onDisappear { model.abandon() }
+        .confirmationDialog(L("Odłączyć serwer?"), isPresented: $confirmPhoneOnly, titleVisibility: .visible) {
+            Button(L("Odłącz i zostaw na \(ThisDevice.locative)"), role: .destructive) {
+                model.keepOnPhone(library)
+                path.append(model.next(after: .place, photosAsked: photosAsked))
+            }
+            Button(L("Anuluj"), role: .cancel) {}
+        } message: {
+            Text(L("Kopia zapasowa przestanie działać. Zdjęcia, które są już na serwerze, zostają."))
+        }
     }
 
     @ToolbarContentBuilder
     private var closeItem: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            Button(firstRun ? "Później" : "Zamknij", action: close)
+            Button(firstRun ? L("Później") : L("Zamknij"), action: close)
                 .disabled(model.stage == .connecting)
         }
     }
@@ -393,8 +407,14 @@ struct SetupGuideView: View {
         case .disk: GuideDisk { advance(from: .disk) }
         case .connect:
             GuideConnect(onDone: { advance(from: .connect) }, onEdit: {
+                // A rejected password goes back to the login page, not to the page before "connect".
+                let wrongPassword = model.failure.contains(L("hasło"))
                 model.edit()
-                if !path.isEmpty { path.removeLast() }
+                if wrongPassword, let login = path.lastIndex(of: .account) {
+                    path.removeSubrange((login + 1)...)
+                } else if !path.isEmpty {
+                    path.removeLast()
+                }
             })
         case .done: GuideDone(onFinish: { dismiss() })
         }
@@ -402,6 +422,11 @@ struct SetupGuideView: View {
 
     private func advance(from page: GuidePage?) {
         if page == .place, model.place == .thisPhone {
+            // Opened from the menu with a working server: ask before dropping it.
+            if !firstRun, DestinationSettings.load().connected {
+                confirmPhoneOnly = true
+                return
+            }
             model.keepOnPhone(library)
         }
         path.append(model.next(after: page, photosAsked: photosAsked))
@@ -425,22 +450,22 @@ private struct GuideWelcome: View {
         GuideLayout(
             symbol: "photo.stack.fill",
             tint: GalleryTheme.accent,
-            title: firstRun ? "Witaj w GalleryOS" : "Kreator połączenia",
-            subtitle: "Przeprowadzę Cię krok po kroku przez połączenie z dyskiem lub serwerem. Zajmie to kilka minut."
+            title: firstRun ? L("Witaj w GalleryOS") : L("Kreator połączenia"),
+            subtitle: L("Przeprowadzę Cię krok po kroku przez połączenie z dyskiem lub serwerem. Zajmie to kilka minut.")
         ) {
             VStack(alignment: .leading, spacing: 22) {
-                GuideFeature(symbol: "lock.shield.fill", tint: .green, title: "Prywatnie",
-                             detail: "Zdjęcia trafiają tylko na Twój dysk albo serwer, bez cudzej chmury.")
-                GuideFeature(symbol: "house.and.flag.fill", tint: .orange, title: "W domu i w drodze",
-                             detail: "W domu GalleryOS łączy się bezpośrednio, a poza domem przez DDNS.")
-                GuideFeature(symbol: "appletv.fill", tint: .purple, title: "Na dużym ekranie",
-                             detail: "Ta sama biblioteka na Apple TV, w pełnej jakości, także HDR i Dolby Vision.")
+                GuideFeature(symbol: "lock.shield.fill", tint: .green, title: L("Prywatnie"),
+                             detail: L("Zdjęcia trafiają tylko na Twój dysk albo serwer, bez cudzej chmury."))
+                GuideFeature(symbol: "house.and.flag.fill", tint: .orange, title: L("W domu i w drodze"),
+                             detail: L("W domu GalleryOS łączy się bezpośrednio, a poza domem przez DDNS."))
+                GuideFeature(symbol: "appletv.fill", tint: .purple, title: L("Na dużym ekranie"),
+                             detail: L("Ta sama biblioteka na Apple TV, w pełnej jakości, także HDR i Dolby Vision."))
             }
             .padding(.top, 6)
         } footer: {
-            GuidePrimary(title: "Zaczynamy", action: onStart)
+            GuidePrimary(title: L("Zaczynamy"), action: onStart)
             if firstRun {
-                Button("Skonfiguruję później", action: onLater)
+                Button(L("Skonfiguruję później"), action: onLater)
                     .font(.body.weight(.medium))
             }
         }
@@ -455,16 +480,16 @@ private struct GuidePhotos: View {
         GuideLayout(
             symbol: "photo.on.rectangle.angled",
             tint: .orange,
-            title: "Dostęp do zdjęć",
-            subtitle: "GalleryOS kopiuje zdjęcia i filmy z Rolki na Twój dysk lub serwer. Niczego nie usuwa bez Twojej zgody."
+            title: L("Dostęp do zdjęć"),
+            subtitle: L("GalleryOS kopiuje zdjęcia i filmy z Rolki na Twój dysk lub serwer. Niczego nie usuwa bez Twojej zgody.")
         ) {
-            GuideGroup(footer: "Wybierz „Zezwól na pełny dostęp”, żeby kopia obejmowała całą bibliotekę, także nowe zdjęcia.") {
+            GuideGroup(footer: L("Wybierz „Zezwól na pełny dostęp”, żeby kopia obejmowała całą bibliotekę, także nowe zdjęcia.")) {
                 GuideNote(symbol: "checkmark.shield.fill", tint: .green,
-                          text: "Zdjęcia nie opuszczają Twojej sieci, dopóki sam nie dodasz dostępu zdalnego.")
+                          text: L("Zdjęcia nie opuszczają Twojej sieci, dopóki sam nie dodasz dostępu zdalnego."))
             }
         } footer: {
-            GuidePrimary(title: "Zezwól na dostęp") { library.requestAccess() }
-            Button("Nie teraz", action: onNext)
+            GuidePrimary(title: L("Zezwól na dostęp")) { library.requestAccess() }
+            Button(L("Nie teraz"), action: onNext)
                 .font(.body.weight(.medium))
         }
         .onChange(of: library.authorization) { _, status in
@@ -483,8 +508,8 @@ private struct GuidePlace: View {
         GuideLayout(
             symbol: "arrow.triangle.branch",
             tint: GalleryTheme.accent,
-            title: "Gdzie mają trafiać zdjęcia?",
-            subtitle: "Wybierz serwer na kopię biblioteki. Pendrive dodasz później, jednym przyciskiem w synchronizacji."
+            title: L("Gdzie mają trafiać zdjęcia?"),
+            subtitle: L("Wybierz serwer na kopię biblioteki. Pendrive dodasz później, jednym przyciskiem w synchronizacji.")
         ) {
             VStack(spacing: 10) {
                 ForEach(order) { item in
@@ -500,7 +525,7 @@ private struct GuidePlace: View {
                 }
             }
         } footer: {
-            GuidePrimary(title: model.place == .thisPhone ? "Zostaw na iPhonie" : "Dalej", action: onNext)
+            GuidePrimary(title: model.place == .thisPhone ? L("Zostaw na \(ThisDevice.locative)") : L("Dalej"), action: onNext)
         }
     }
 
@@ -526,21 +551,21 @@ private struct GuidePlace: View {
 
     static func title(_ place: LibraryPlace) -> String {
         switch place {
-        case .qnap: "Serwer NAS w domu"
-        case .disk: "Dysk przenośny lub udział SMB"
-        case .server: "Serwer GalleryOS"
-        case .otherServer: "Inny serwer"
-        case .thisPhone: "Tylko na tym iPhonie"
+        case .qnap: L("Serwer NAS w domu")
+        case .disk: L("Dysk przenośny lub udział SMB")
+        case .server: L("Serwer GalleryOS")
+        case .otherServer: L("Inny serwer")
+        case .thisPhone: L("Tylko na tym \(ThisDevice.locative)")
         }
     }
 
     static func detail(_ place: LibraryPlace) -> String {
         switch place {
-        case .qnap: "QNAP, Synology lub inny NAS z WebDAV. W domu i zdalnie."
-        case .disk: "Dysk USB‑C podłączony do \(ThisDevice.genitive) albo folder sieciowy w Plikach."
-        case .server: "Własny serwer GalleryOS. Wysyła w kawałkach, także poza domem."
-        case .otherServer: "WebDAV, SFTP albo Immich, który już działa."
-        case .thisPhone: "Bez kopii. Przeglądanie i porządkowanie Rolki."
+        case .qnap: L("QNAP, Synology lub inny NAS z WebDAV. W domu i zdalnie.")
+        case .disk: L("Dysk USB‑C podłączony do \(ThisDevice.genitive) albo folder sieciowy w Plikach.")
+        case .server: L("Własny serwer GalleryOS. Wysyła w kawałkach, także poza domem.")
+        case .otherServer: L("WebDAV, SFTP albo Immich, który już działa.")
+        case .thisPhone: L("Bez kopii. Przeglądanie i porządkowanie Rolki.")
         }
     }
 }
@@ -564,24 +589,24 @@ private struct GuideFind: View {
         GuideLayout(
             symbol: "wifi",
             tint: .green,
-            title: "Znajdź serwer w sieci",
-            subtitle: "\(ThisDevice.name) musi być w tym samym Wi‑Fi co serwer. Gdy iOS zapyta o dostęp do sieci lokalnej, wybierz „Zezwól”."
+            title: L("Znajdź serwer w sieci"),
+            subtitle: L("\(ThisDevice.name) musi być w tym samym Wi‑Fi co serwer. Gdy iOS zapyta o dostęp do sieci lokalnej, wybierz „Zezwól”.")
         ) {
             if !model.atHome {
                 GuideGroup {
                     GuideNote(symbol: "antenna.radiowaves.left.and.right", tint: .orange,
-                              text: "Nie jesteś teraz w Wi‑Fi. Możesz pominąć ten krok i w kolejnym wpisać adres DDNS.")
+                              text: L("Nie jesteś teraz w Wi‑Fi. Możesz pominąć ten krok i w kolejnym wpisać adres DDNS."))
                 }
             }
-            GuideGroup(title: "W tej sieci", busy: scanning) {
+            GuideGroup(title: L("W tej sieci"), busy: scanning) {
                 if candidates.isEmpty {
                     HStack(spacing: 12) {
                         if scanning {
                             ProgressView()
-                            Text("Szukam serwerów…").foregroundStyle(.secondary)
+                            Text(L("Szukam serwerów…")).foregroundStyle(.secondary)
                         } else {
                             Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
-                            Text("Nic nie znaleziono. Wpisz adres ręcznie poniżej.").foregroundStyle(.secondary)
+                            Text(L("Nic nie znaleziono. Wpisz adres ręcznie poniżej.")).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
@@ -606,8 +631,8 @@ private struct GuideFind: View {
                     }
                 }
             }
-            GuideGroup(title: "Albo wpisz adres", footer: "Adres IP serwera znajdziesz w aplikacji Qfinder lub w panelu routera.") {
-                GuideField(label: "Adres", prompt: "192.168.1.20", text: Binding(
+            GuideGroup(title: L("Albo wpisz adres"), footer: L("Adres IP serwera znajdziesz w aplikacji Qfinder lub w panelu routera.")) {
+                GuideField(label: L("Adres"), prompt: "192.168.1.20", text: Binding(
                     get: { model.localHost },
                     set: {
                         model.localHost = $0
@@ -617,15 +642,15 @@ private struct GuideFind: View {
                     }
                 ), keyboard: .URL)
             }
-            GuideTip(title: "Pierwszy raz z QNAP?", lines: [
-                "W QTS otwórz Panel sterowania → Usługi sieciowe → WebDAV i włącz WebDAV.",
-                "Nadaj swojemu kontu uprawnienia WebDAV do udziału Public.",
+            GuideTip(title: L("Pierwszy raz z QNAP?"), lines: [
+                L("W QTS otwórz Panel sterowania → Usługi sieciowe → WebDAV i włącz WebDAV."),
+                L("Nadaj swojemu kontu uprawnienia WebDAV do udziału Public."),
             ])
         } footer: {
-            GuidePrimary(title: "Dalej", action: onNext)
+            GuidePrimary(title: L("Dalej"), action: onNext)
                 .disabled(model.localHost.trimmingCharacters(in: .whitespaces).isEmpty)
             if model.localHost.trimmingCharacters(in: .whitespaces).isEmpty {
-                Button("Pomiń, nie jestem w domu", action: onNext)
+                Button(L("Pomiń, nie jestem w domu"), action: onNext)
                     .font(.body.weight(.medium))
             }
         }
@@ -656,16 +681,16 @@ private struct GuideAccount: View {
         GuideLayout(
             symbol: "person.badge.key.fill",
             tint: .indigo,
-            title: "Zaloguj się do serwera",
-            subtitle: "Użyj konta, którym logujesz się do QNAP lub NAS. Hasło trafi do pęku kluczy iCloud."
+            title: L("Zaloguj się do serwera"),
+            subtitle: L("Użyj konta, którym logujesz się do QNAP lub NAS. Hasło trafi do pęku kluczy iCloud.")
         ) {
             GuideGroup {
-                GuideField(label: "Login", prompt: "admin", text: $model.username, content: .username)
+                GuideField(label: L("Login"), prompt: "admin", text: $model.username, content: .username)
                     .focused($focus, equals: .user)
                     .submitLabel(.next)
                     .onSubmit { focus = .password }
                 Divider().padding(.leading, 16)
-                GuideField(label: "Hasło", prompt: "Wymagane", text: $model.password, secure: true, content: .password)
+                GuideField(label: L("Hasło"), prompt: L("Wymagane"), text: $model.password, secure: true, content: .password)
                     .focused($focus, equals: .password)
                     .submitLabel(.go)
                     .onSubmit { Task { await check() } }
@@ -673,9 +698,9 @@ private struct GuideAccount: View {
             .onChange(of: model.username) { model.homeCheck = .idle }
             .onChange(of: model.password) { model.homeCheck = .idle }
             GuideCheckRow(check: model.homeCheck, idle: nil)
-            GuideGroup(footer: "Biblioteka zapisuje się w udziale Public.") {
-                DisclosureGroup("Zaawansowane", isExpanded: $advanced) {
-                    GuideField(label: "Udział", prompt: "Public", text: $model.directory)
+            GuideGroup(footer: L("Biblioteka zapisuje się w udziale Public.")) {
+                DisclosureGroup(L("Zaawansowane"), isExpanded: $advanced) {
+                    GuideField(label: L("Udział"), prompt: "Public", text: $model.directory)
                         .padding(.horizontal, -16)
                 }
                 .padding(.horizontal, 16)
@@ -683,7 +708,7 @@ private struct GuideAccount: View {
             }
         } footer: {
             GuidePrimary(
-                title: model.homeCheck == .unreachable ? "Dalej mimo to" : "Dalej",
+                title: model.homeCheck == .unreachable ? L("Dalej mimo to") : L("Dalej"),
                 busy: checking
             ) {
                 if model.homeCheck == .unreachable {
@@ -726,38 +751,44 @@ private struct GuideRemote: View {
         GuideLayout(
             symbol: "globe",
             tint: .teal,
-            title: "Dostęp spoza domu",
-            subtitle: "Żeby zdjęcia wysyłały się też w drodze, serwer potrzebuje stałego adresu w internecie, czyli DDNS."
+            title: L("Dostęp spoza domu"),
+            subtitle: L("Żeby zdjęcia wysyłały się też w drodze, serwer potrzebuje stałego adresu w internecie, czyli DDNS.")
         ) {
             GuideGroup(footer: hasHome
-                       ? "Możesz to pominąć i dopisać później. W domu wszystko działa także bez DDNS."
-                       : "Bez adresu w sieci domowej potrzebny jest adres DDNS.") {
+                       ? L("Możesz to pominąć i dopisać później. W domu wszystko działa także bez DDNS.")
+                       : L("Bez adresu w sieci domowej potrzebny jest adres DDNS.")) {
                 GuideField(label: "DDNS", prompt: "nazwa.myqnapcloud.com", text: $model.remoteHost, keyboard: .URL)
                 Divider().padding(.leading, 16)
-                GuideField(label: "Port", prompt: "Automatycznie", text: $model.remotePort, keyboard: .numberPad)
+                GuideField(label: L("Port"), prompt: L("Automatycznie"), text: $model.remotePort, keyboard: .numberPad)
             }
             .onChange(of: model.remoteHost) { model.remoteCheck = .idle }
             .onChange(of: model.remotePort) { model.remoteCheck = .idle }
             if hasRemote {
-                GuideCheckRow(check: model.remoteCheck, idle: "Sprawdź, czy serwer odpowiada z internetu.")
+                GuideCheckRow(check: model.remoteCheck, idle: L("Sprawdź, czy serwer odpowiada z internetu."))
                 Button {
                     Task { await model.checkRemote() }
                 } label: {
-                    Label("Sprawdź połączenie", systemImage: "bolt.horizontal.circle")
+                    Label(L("Sprawdź połączenie"), systemImage: "bolt.horizontal.circle")
                         .frame(maxWidth: .infinity)
                 }
                 .galleryGlassButton()
                 .controlSize(.large)
                 .disabled(model.remoteCheck == .running)
             }
-            GuideTip(title: "Jak ustawić DDNS na QNAP", lines: [
-                "W QTS otwórz myQNAPcloud i zarejestruj nazwę urządzenia. Dostaniesz adres nazwa.myqnapcloud.com.",
-                "Włącz automatyczną konfigurację routera (UPnP) albo na routerze przekieruj port 5001 na adres serwera.",
-                "Synology: Panel sterowania → Dostęp zewnętrzny → DDNS, a WebDAV przez HTTPS działa na porcie 5006.",
+            GuideTip(title: L("Jak ustawić DDNS na QNAP"), lines: [
+                L("W QTS otwórz myQNAPcloud i zarejestruj nazwę urządzenia. Dostaniesz adres nazwa.myqnapcloud.com."),
+                L("Włącz automatyczną konfigurację routera (UPnP) albo na routerze przekieruj port 5001 na adres serwera."),
+                L("Synology: Panel sterowania → Dostęp zewnętrzny → DDNS, a WebDAV przez HTTPS działa na porcie 5006."),
             ])
         } footer: {
-            GuidePrimary(title: hasRemote ? "Połącz" : "Połącz tylko w domu", action: onNext)
-                .disabled(!hasHome && !hasRemote)
+            GuidePrimary(title: hasRemote ? L("Połącz") : L("Połącz tylko w domu"), action: onNext)
+                // Away from home a LAN address cannot answer; without DDNS the attempt always timed out.
+                .disabled(!hasRemote && (!hasHome || !model.atHome))
+            if hasHome, !hasRemote, !model.atHome {
+                Text(L("Poza domem potrzebny jest adres DDNS."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 }
@@ -773,13 +804,13 @@ private struct GuideServer: View {
         GuideLayout(
             symbol: other ? "network" : "server.rack",
             tint: other ? .teal : .indigo,
-            title: other ? "Twój serwer" : "Serwer GalleryOS",
+            title: other ? L("Twój serwer") : L("Serwer GalleryOS"),
             subtitle: other
-                ? "Podaj adres serwera i konto. Adres w internecie działa i w domu, i w drodze."
-                : "Podaj adres serwera GalleryOS i swoje konto. Zdjęcia wysyłają się w kawałkach, więc przerwy w sieci nie szkodzą."
+                ? L("Podaj adres serwera i konto. Adres w internecie działa i w domu, i w drodze.")
+                : L("Podaj adres serwera GalleryOS i swoje konto. Zdjęcia wysyłają się w kawałkach, więc przerwy w sieci nie szkodzą.")
         ) {
             if other {
-                Picker("Rodzaj", selection: $model.otherKind) {
+                Picker(L("Rodzaj"), selection: $model.otherKind) {
                     Text("WebDAV").tag(DestinationKind.webdav)
                     Text("SFTP").tag(DestinationKind.sftp)
                     Text("Immich").tag(DestinationKind.immich)
@@ -787,28 +818,28 @@ private struct GuideServer: View {
                 .pickerStyle(.segmented)
             }
             GuideGroup {
-                GuideField(label: "Adres", prompt: "serwer.example.com", text: $model.host, keyboard: .URL)
+                GuideField(label: L("Adres"), prompt: "serwer.example.com", text: $model.host, keyboard: .URL)
                 Divider().padding(.leading, 16)
-                GuideField(label: "Port", prompt: "Domyślny", text: $model.port, keyboard: .numberPad)
+                GuideField(label: L("Port"), prompt: L("Domyślny"), text: $model.port, keyboard: .numberPad)
             }
             if ConnectionURL.isCloudNAS(model.host) {
                 GuideNote(
                     symbol: "externaldrive.connected.to.line.below.fill",
                     tint: GalleryTheme.accent,
-                    text: "To adres QNAP albo Synology. Połączenie pójdzie przez WebDAV (HTTPS, port 5001). Login to konto z panelu serwera."
+                    text: L("To adres QNAP albo Synology. Połączenie pójdzie przez WebDAV (HTTPS, port 5001). Login to konto z panelu serwera.")
                 )
             }
-            GuideGroup(footer: "Hasło trafi do pęku kluczy iCloud. Na Twoich innych urządzeniach GalleryOS połączy się samo.") {
-                GuideField(label: immich ? "Konto" : "Login", prompt: immich ? "E-mail albo klucz API" : "Login", text: $model.username, content: .username)
+            GuideGroup(footer: L("Hasło trafi do pęku kluczy iCloud. Na Twoich innych urządzeniach GalleryOS połączy się samo.")) {
+                GuideField(label: immich ? L("Konto") : L("Login"), prompt: immich ? L("E-mail albo klucz API") : L("Login"), text: $model.username, content: .username)
                 Divider().padding(.leading, 16)
-                GuideField(label: "Hasło", prompt: "Wymagane", text: $model.password, secure: true, content: .password)
+                GuideField(label: L("Hasło"), prompt: L("Wymagane"), text: $model.password, secure: true, content: .password)
                 if other && !immich {
                     Divider().padding(.leading, 16)
-                    GuideField(label: "Folder", prompt: "Opcjonalnie", text: $model.directory)
+                    GuideField(label: L("Folder"), prompt: L("Opcjonalnie"), text: $model.directory)
                 }
             }
         } footer: {
-            GuidePrimary(title: "Połącz", action: onNext)
+            GuidePrimary(title: L("Połącz"), action: onNext)
                 .disabled(SetupGuideModel.clean(model.host).isEmpty)
         }
     }
@@ -824,17 +855,17 @@ private struct GuideDisk: View {
         GuideLayout(
             symbol: "externaldrive.fill",
             tint: .orange,
-            title: "Wybierz dysk",
-            subtitle: "GalleryOS założy na nim katalog biblioteki i nie ruszy pozostałych plików."
+            title: L("Wybierz dysk"),
+            subtitle: L("GalleryOS założy na nim katalog biblioteki i nie ruszy pozostałych plików.")
         ) {
-            GuideGroup(title: "Zanim wybierzesz") {
-                GuideStepLine(number: 1, text: "Podłącz dysk do \(ThisDevice.genitive) przez USB‑C albo dodaj udział SMB w Plikach: Przeglądaj → ⋯ → Połącz z serwerem.")
+            GuideGroup(title: L("Zanim wybierzesz")) {
+                GuideStepLine(number: 1, text: L("Podłącz dysk do \(ThisDevice.genitive) przez USB‑C albo dodaj udział SMB w Plikach: Przeglądaj → ⋯ → Połącz z serwerem."))
                 Divider().padding(.leading, 56)
-                GuideStepLine(number: 2, text: "Stuknij „Wybierz dysk lub folder” i wskaż dysk albo folder na zdjęcia.")
+                GuideStepLine(number: 2, text: L("Stuknij „Wybierz dysk lub folder” i wskaż dysk albo folder na zdjęcia."))
             }
             if !model.folderName.isEmpty {
                 GuideGroup {
-                    GuideRow(symbol: "folder.fill", tint: .orange, title: model.folderName, detail: "Wybrany folder", selected: true)
+                    GuideRow(symbol: "folder.fill", tint: .orange, title: model.folderName, detail: L("Wybrany folder"), selected: true)
                 }
                 .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
@@ -846,13 +877,13 @@ private struct GuideDisk: View {
             Button {
                 picking = true
             } label: {
-                Label(model.folderName.isEmpty ? "Wybierz dysk lub folder" : "Wybierz inny", systemImage: "folder.badge.plus")
+                Label(model.folderName.isEmpty ? L("Wybierz dysk lub folder") : L("Wybierz inny"), systemImage: "folder.badge.plus")
                     .frame(maxWidth: .infinity)
             }
             .galleryGlassButton()
             .controlSize(.large)
         } footer: {
-            GuidePrimary(title: "Połącz", action: onNext)
+            GuidePrimary(title: L("Połącz"), action: onNext)
                 .disabled(model.folderName.isEmpty)
         }
         .animation(GalleryTheme.snappy, value: model.folderName)
@@ -861,7 +892,7 @@ private struct GuideDisk: View {
             case .success(let url):
                 problem = model.remember(folder: url) ?? ""
             case .failure:
-                problem = "Nie wybrano folderu."
+                problem = L("Nie wybrano folderu.")
             }
         }
     }
@@ -912,8 +943,8 @@ private struct GuideConnect: View {
         .galleryBottomBar(edge: .bottom) {
             if model.stage == .failed {
                 VStack(spacing: 10) {
-                    GuidePrimary(title: "Popraw dane", action: onEdit)
-                    Button("Spróbuj ponownie") { attempt += 1 }
+                    GuidePrimary(title: L("Popraw dane"), action: onEdit)
+                    Button(L("Spróbuj ponownie")) { attempt += 1 }
                         .font(.body.weight(.medium))
                 }
                 .guideFooter()
@@ -933,9 +964,9 @@ private struct GuideConnect: View {
 
     private var title: String {
         switch model.stage {
-        case .editing, .connecting: "Łączę…"
-        case .done: "Połączono"
-        case .failed: "Nie udało się połączyć"
+        case .editing, .connecting: L("Łączę…")
+        case .done: L("Połączono")
+        case .failed: L("Nie udało się połączyć")
         }
     }
 }
@@ -951,32 +982,32 @@ private struct GuideDone: View {
         GuideLayout(
             symbol: phoneOnly ? "iphone" : "checkmark",
             tint: .green,
-            title: phoneOnly ? "Gotowe" : "Wszystko gotowe",
+            title: phoneOnly ? L("Gotowe") : L("Wszystko gotowe"),
             subtitle: phoneOnly
-                ? "Zdjęcia zostają w Rolce tego \(ThisDevice.genitive). Dysk albo serwer dodasz w każdej chwili w menu Biblioteki → Kreator połączenia."
-                : "GalleryOS jest połączony. Oto co dalej."
+                ? L("Zdjęcia zostają w Rolce tego \(ThisDevice.genitive). Dysk albo serwer dodasz w każdej chwili w menu Biblioteki → Kreator połączenia.")
+                : L("GalleryOS jest połączony. Oto co dalej.")
         ) {
             if !phoneOnly {
-                GuideGroup(title: "Połączenie") {
+                GuideGroup(title: L("Połączenie")) {
                     ForEach(Array(summary.enumerated()), id: \.offset) { offset, line in
                         if offset > 0 { Divider().padding(.leading, 64) }
                         GuideRow(symbol: line.symbol, tint: line.tint, title: line.title, detail: line.detail, selected: false)
                     }
                 }
                 VStack(alignment: .leading, spacing: 22) {
-                    GuideFeature(symbol: "arrow.triangle.2.circlepath", tint: GalleryTheme.accent, title: "Kopia rusza sama",
-                                 detail: "Postęp widać na pasku w Bibliotece. Pierwsza kopia idzie najszybciej w domowym Wi‑Fi i na ładowarce.")
-                    GuideFeature(symbol: "rectangle.on.rectangle", tint: .orange, title: "Zakładka Serwer",
-                                 detail: "Zdjęcia już skopiowane możesz bezpiecznie usunąć z \(ThisDevice.genitive), a zostaną na serwerze.")
-                    GuideFeature(symbol: "appletv.fill", tint: .purple, title: "Apple TV",
-                                 detail: "Otwórz GalleryOS na Apple TV i sparuj go z tym \(ThisDevice.instrumental).")
+                    GuideFeature(symbol: "arrow.triangle.2.circlepath", tint: GalleryTheme.accent, title: L("Kopia rusza sama"),
+                                 detail: L("Postęp widać na pasku w Bibliotece. Pierwsza kopia idzie najszybciej w domowym Wi‑Fi i na ładowarce."))
+                    GuideFeature(symbol: "rectangle.on.rectangle", tint: .orange, title: L("Zakładka Serwer"),
+                                 detail: L("Zdjęcia już skopiowane możesz bezpiecznie usunąć z \(ThisDevice.genitive), a zostaną na serwerze."))
+                    GuideFeature(symbol: "appletv.fill", tint: .purple, title: L("Apple TV"),
+                                 detail: L("Otwórz GalleryOS na Apple TV i sparuj go z tym \(ThisDevice.instrumental)."))
                 }
                 .padding(.top, 4)
             }
         } footer: {
-            GuidePrimary(title: "Zacznij korzystać", action: onFinish)
+            GuidePrimary(title: L("Zacznij korzystać"), action: onFinish)
             if !phoneOnly {
-                Button("Sparuj Apple TV") { showAppleTV = true }
+                Button(L("Sparuj Apple TV")) { showAppleTV = true }
                     .font(.body.weight(.medium))
             }
         }
@@ -993,20 +1024,20 @@ private struct GuideDone: View {
         switch model.place {
         case .qnap:
             if !local.isEmpty {
-                lines.append(("house.fill", Color.green, "W domu", model.localName.isEmpty ? local : "\(model.localName) · \(local)"))
+                lines.append(("house.fill", Color.green, L("W domu"), model.localName.isEmpty ? local : "\(model.localName) · \(local)"))
             }
             if remote.isEmpty {
-                lines.append(("globe", Color.gray, "Poza domem", "Bez DDNS. Dopiszesz go w kreatorze."))
+                lines.append(("globe", Color.gray, L("Poza domem"), L("Bez DDNS. Dopiszesz go w kreatorze.")))
             } else {
-                lines.append(("globe", Color.teal, "Poza domem", remote))
+                lines.append(("globe", Color.teal, L("Poza domem"), remote))
             }
         case .disk:
-            lines.append(("externaldrive.fill", Color.orange, "Dysk", model.folderName))
+            lines.append(("externaldrive.fill", Color.orange, L("Dysk"), model.folderName))
         default:
-            lines.append(("server.rack", Color.indigo, "Serwer", SetupGuideModel.clean(model.host)))
+            lines.append(("server.rack", Color.indigo, L("Serwer"), SetupGuideModel.clean(model.host)))
         }
         if !model.user.isEmpty, model.place != .disk {
-            lines.append(("person.crop.circle.fill", Color.indigo, "Konto", model.user))
+            lines.append(("person.crop.circle.fill", Color.indigo, L("Konto"), model.user))
         }
         return lines
     }
@@ -1314,15 +1345,15 @@ private struct GuideCheckRow: View {
             case .running:
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text("Sprawdzam połączenie…").foregroundStyle(.secondary)
+                    Text(L("Sprawdzam połączenie…")).foregroundStyle(.secondary)
                     Spacer()
                 }
             case .ok(let millis):
-                line("checkmark.circle.fill", .green, "Serwer odpowiada · \(millis) ms")
+                line("checkmark.circle.fill", .green, L("Serwer odpowiada · \(millis) ms"))
             case .auth:
-                line("xmark.circle.fill", .red, "Serwer odrzucił login lub hasło.")
+                line("xmark.circle.fill", .red, L("Serwer odrzucił login lub hasło."))
             case .unreachable:
-                line("exclamationmark.triangle.fill", .orange, "Serwer nie odpowiada. Sprawdź adres i czy WebDAV jest włączony.")
+                line("exclamationmark.triangle.fill", .orange, L("Serwer nie odpowiada. Sprawdź adres i czy WebDAV jest włączony."))
             }
         }
         .font(.subheadline)

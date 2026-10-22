@@ -22,7 +22,7 @@ enum TransferText {
         let totalSafe = max(total, 1)
         let doneSafe = min(max(done, 0), totalSafe)
         let percent = Int((Double(doneSafe) / Double(totalSafe) * 100).rounded())
-        let photos = "zostało \(grouped(totalSafe - doneSafe)) z \(grouped(totalSafe))"
+        let photos = L("zostało \(grouped(totalSafe - doneSafe)) z \(grouped(totalSafe))")
         guard bytesLeft >= 0 else { return "\(percent)% · \(photos)" }
         return "\(percent)% · \(photos) · \(ByteText.amount(bytesLeft))"
     }
@@ -30,8 +30,8 @@ enum TransferText {
     private static func grouped(_ value: Int) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.locale = Locale(identifier: "pl_PL")
-        formatter.groupingSeparator = " "
+        formatter.locale = Localization.locale
+        if !Localization.isEnglish { formatter.groupingSeparator = " " }
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 }

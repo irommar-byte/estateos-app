@@ -58,7 +58,7 @@ final class ShareAccount: ObservableObject {
     func enter(name: String, password: String) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 2, password.count >= 4 else {
-            message = "Nazwa ma mieć co najmniej 2 znaki, a hasło 4."
+            message = L("Nazwa ma mieć co najmniej 2 znaki, a hasło 4.")
             return
         }
         await session(path: "/v1/people/enter", name: trimmed, password: password)
@@ -68,7 +68,7 @@ final class ShareAccount: ObservableObject {
         do {
             let start: PasskeyStart = try await postAnonymous("/v1/people/passkey/login/start", body: Data("{}".utf8))
             guard let challenge = Base64URL.decode(start.challenge) else {
-                message = "Serwer nie przygotował Face ID."
+                message = L("Serwer nie przygotował Face ID.")
                 return
             }
             let assertion = try await PasskeyCeremony.shared.assert(challenge: challenge)
@@ -84,7 +84,7 @@ final class ShareAccount: ObservableObject {
             return
         } catch {
             let text = AccountFailure.message(for: error)
-            message = text.isEmpty ? "Nie udało się wejść przez Face ID." : text
+            message = text.isEmpty ? L("Nie udało się wejść przez Face ID.") : text
         }
     }
 
@@ -93,7 +93,7 @@ final class ShareAccount: ObservableObject {
             let start: PasskeyRegisterStart = try await post("/v1/people/passkey/register/start", body: Data("{}".utf8))
             guard let challenge = Base64URL.decode(start.challenge),
                   let userID = Base64URL.decode(start.userID) else {
-                message = "Nie udało się przygotować klucza."
+                message = L("Nie udało się przygotować klucza.")
                 return false
             }
             let made = try await PasskeyCeremony.shared.register(challenge: challenge, name: start.name, userID: userID)
@@ -164,7 +164,7 @@ final class ShareAccount: ObservableObject {
             message = ""
         } catch let failure as AccountHTTPError where failure.status == 401 {
             signOut()
-            message = "Zaloguj się ponownie."
+            message = L("Zaloguj się ponownie.")
         } catch {
             message = ""
         }
@@ -178,13 +178,13 @@ final class ShareAccount: ObservableObject {
     func accept(code: String) async {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            inviteNote = "Wpisz kod zaproszenia."
+            inviteNote = L("Wpisz kod zaproszenia.")
             return
         }
         do {
             let data = try await send("/v1/people/invites/accept", method: "POST", body: JSONEncoder().encode(["code": trimmed]))
             let friend = (try? JSONDecoder().decode(FriendBox.self, from: data).friend) ?? trimmed
-            inviteNote = "Dodano: \(friend)"
+            inviteNote = L("Dodano: \(friend)")
             await refresh()
         } catch {
             inviteNote = AccountFailure.message(for: error)
@@ -229,7 +229,7 @@ final class ShareAccount: ObservableObject {
         let data = try await send("/v1/people/pair/lookup", method: "POST", body: body, anonymous: true)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let key = object["publicKey"] as? String, !key.isEmpty else {
-            throw LibraryError(message: "Ten kod nie pasuje do żadnego Apple TV.")
+            throw LibraryError(message: L("Ten kod nie pasuje do żadnego Apple TV."))
         }
         return key
     }
@@ -295,7 +295,7 @@ final class ShareAccount: ObservableObject {
         let root = serviceRoot()
         let suffix = path.hasPrefix("/") ? path : "/\(path)"
         guard let url = URL(string: root + suffix), url.host != nil else {
-            throw LibraryError(message: "Serwis kont jest niedostępny.")
+            throw LibraryError(message: L("Serwis kont jest niedostępny."))
         }
         if let name = url.host { GalleryNetwork.shared.trust(name) }
         var request = URLRequest(url: url)
@@ -309,11 +309,11 @@ final class ShareAccount: ObservableObject {
 
     private func throwHTTP(_ response: URLResponse, data: Data, allowExists: Bool) throws {
         guard let http = response as? HTTPURLResponse else {
-            throw LibraryError(message: "Brak odpowiedzi.")
+            throw LibraryError(message: L("Brak odpowiedzi."))
         }
         if (200...299).contains(http.statusCode) { return }
         if allowExists, http.statusCode == 200 { return }
-        let message = (try? JSONDecoder().decode(ErrorBox.self, from: data).error) ?? "Nie udało się."
+        let message = (try? JSONDecoder().decode(ErrorBox.self, from: data).error) ?? L("Nie udało się.")
         throw AccountHTTPError(status: http.statusCode, message: message)
     }
 }
@@ -451,21 +451,21 @@ enum AccountFailure {
         let ns = error as NSError
         if ns.domain == ASAuthorizationError.errorDomain {
             if ns.code == ASAuthorizationError.canceled.rawValue { return "" }
-            return "Apple nie otworzyło logowania. Zbuduj aplikację jeszcze raz w Xcode, żeby włączyć Apple ID."
+            return L("Apple nie otworzyło logowania. Zbuduj aplikację jeszcze raz w Xcode, żeby włączyć Apple ID.")
         }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
-                return "Brak sieci."
+                return L("Brak sieci.")
             case .cannotFindHost, .cannotConnectToHost, .timedOut, .dnsLookupFailed, .secureConnectionFailed, .serverCertificateUntrusted:
-                return "Serwis kont nie odpowiada pod tym adresem."
+                return L("Serwis kont nie odpowiada pod tym adresem.")
             default:
                 break
             }
         }
         if let library = error as? LibraryError { return library.message }
         let text = error.localizedDescription
-        return text.isEmpty ? "Nie udało się zalogować." : text
+        return text.isEmpty ? L("Nie udało się zalogować.") : text
     }
 }
 

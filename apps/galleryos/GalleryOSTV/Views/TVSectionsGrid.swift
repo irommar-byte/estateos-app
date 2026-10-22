@@ -22,18 +22,30 @@ struct TVSectionsGrid<Header: View>: View {
 
     @State private var viewer: TVViewerContext?
     @State private var returnID: String?
+    @State private var compact = false
     @EnvironmentObject private var pipeline: TVImagePipeline
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            header()
-                .padding(.horizontal, TVTheme.margin)
-                .padding(.top, 8)
-            TVPhotoBrowser(sections: visible, pipeline: pipeline, returnID: returnID) { photo, slideshow in
-                open(photo, slideshow: slideshow)
+            if !compact {
+                header()
+                    .padding(.horizontal, TVTheme.margin)
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
+            TVPhotoBrowser(
+                sections: visible,
+                pipeline: pipeline,
+                returnID: returnID,
+                onOpen: { photo, slideshow in open(photo, slideshow: slideshow) },
+                onCompact: { value in
+                    guard Header.self != EmptyView.self else { return }
+                    compact = value
+                }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .animation(TVTheme.spring, value: compact)
         .fullScreenCover(item: $viewer) { context in
             TVViewer(context: context) { last in
                 returnID = last.id

@@ -19,21 +19,27 @@ struct TVViewer: View {
     @State private var loadNote = ""
     @State private var slideshow: Bool
     @State private var posterOnly = false
-    @State private var lastStep = Date.distantPast
-    @State private var lastDelta = 0
+    @State private var lastMove = Date.distantPast
+    @State private var autoplay: Bool
+    @State private var sharp = false
+    @State private var retryTick = 0
     @FocusState private var focused: Bool
 
     /// Native panel size: 3840 on a 4K TV, 1920 on HD. Nothing bigger is ever decoded.
     private static let fullSide: CGFloat = {
         let bounds = UIScreen.main.nativeBounds
-        return min(3000, max(1920, max(bounds.width, bounds.height)))
+        return min(3840, max(1920, max(bounds.width, bounds.height)))
     }()
 
     init(context: TVViewerContext, onClose: @escaping (PhotoRef) -> Void) {
         self.context = context
         self.onClose = onClose
         _index = State(initialValue: context.start)
-        _slideshow = State(initialValue: context.slideshow)
+        // ▶︎ on a film or a Live Photo plays it; on a photo it starts a slideshow.
+        let first = context.photos.indices.contains(context.start) ? context.photos[context.start] : nil
+        let moving = first.map { $0.traits.isVideo || $0.traits.contains(.live) } ?? false
+        _autoplay = State(initialValue: context.slideshow && moving)
+        _slideshow = State(initialValue: context.slideshow && !moving)
     }
 
     private var photo: PhotoRef { context.photos[index] }
@@ -52,12 +58,13 @@ struct TVViewer: View {
             }
             if !showInfo && chrome && !slideshow { hint.transition(.opacity) }
             if slideshow && chrome { slideshowBadge.transition(.opacity.combined(with: .scale(scale: 0.9))) }
+            if !sharp && shown != nil && shownIndex == index && !isMovie && !slideshow { sharpeningBadge.transition(.opacity) }
         }
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 0.28), value: chrome)
         .animation(TVTheme.spring, value: showInfo)
         .animation(TVTheme.spring, value: slideshow)
-        .task(id: index) { await load() }
+        .task(id: "\(index)#\(pipeline.epoch)#\(retryTick)") { await load() }
         .task(id: chromeTick) {
             try? await Task.sleep(nanoseconds: 4_500_000_000)
             if !Task.isCancelled && !showInfo { chrome = false }
@@ -76,7 +83,7 @@ struct TVViewer: View {
         Button(action: select) {
             ZStack {
                 if let shown {
-                    TVStill(image: shown, drift: slideshow && !isMovie)
+                    TVStill(image: shown, drift: slideshow && !isMovie, anchor: Self.driftAnchors[abs(shownIndex) % 4])
                         .id(shownIndex)
                         .transition(.opacity)
                 } else if isMovie && ((posterOnly && shownIndex == index) || loadFailed) {
@@ -92,9 +99,9 @@ struct TVViewer: View {
                         Image(systemName: "wifi.exclamationmark")
                             .font(.system(size: 64))
                             .foregroundStyle(.orange)
-                        Text("Nie wczytano podglądu")
+                        Text(L("Nie wczytano podglądu"))
                             .font(.title2.weight(.semibold))
-                        Text(loadNote.isEmpty ? "Naciśnij, aby spróbować ponownie." : loadNote)
+                        Text(loadNote.isEmpty ? L("Naciśnij, aby spróbować ponownie.") : loadNote)
                             .font(.title3)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -114,7 +121,7 @@ struct TVViewer: View {
         .buttonStyle(TVBareButtonStyle())
         .focusEffectDisabled()
         .focused($focused)
-        .background(RemoteSwipe { step($0) })
+        .background(RemoteSwipe(enabled: playback == nil) { delta, began in swiped(delta, began: began) })
         .onMoveCommand(perform: move)
         .onPlayPauseCommand(perform: play)
         .onExitCommand(perform: exit)
@@ -147,8 +154,8 @@ struct TVViewer: View {
                         .foregroundStyle(.white.opacity(0.7))
                 }
             }
-            .padding(.horizontal, 72)
-            .padding(.top, 54)
+            .padding(.horizontal, 90)
+            .padding(.top, 60)
             .padding(.bottom, 60)
             .background(LinearGradient(colors: [.black.opacity(0.6), .clear], startPoint: .top, endPoint: .bottom))
             Spacer()
@@ -162,13 +169,13 @@ struct TVViewer: View {
             Spacer()
             HStack(spacing: 26) {
                 if isMovie {
-                    Label("Naciśnij, aby odtworzyć film", systemImage: "play.fill")
+                    Label(L("Naciśnij, aby odtworzyć film"), systemImage: "play.fill")
                 } else if isLive {
-                    Label("▶︎ odtwarza Live Photo", systemImage: "livephoto")
+                    Label(L("▶︎ odtwarza Live Photo"), systemImage: "livephoto")
                 } else {
-                    Label("▶︎ pokaz slajdów", systemImage: "play.rectangle.on.rectangle")
+                    Label(L("▶︎ pokaz slajdów"), systemImage: "play.rectangle.on.rectangle")
                 }
-                Label("↑ informacje", systemImage: "info.circle")
+                Label(L("↑ informacje"), systemImage: "info.circle")
             }
             .font(.headline)
             .padding(.horizontal, 28)
@@ -179,10 +186,38 @@ struct TVViewer: View {
         .allowsHitTesting(false)
     }
 
+    /// The thumbnail is on screen while the original is still on its way.
+    private var sharpeningBadge: some View {
+        VStack {
+            HStack {
+                Spacer()
+                HStack(spacing: 12) {
+                    if loadFailed {
+                        Image(systemName: "arrow.clockwise")
+                        Text(L("Oryginał nie dotarł · naciśnij, aby ponowić"))
+                    } else {
+                        ProgressView().scaleEffect(0.7)
+                        Text(L("Wczytuję oryginał…"))
+                    }
+                }
+                .font(.callout.weight(.medium))
+                .padding(.horizontal, 22)
+                .padding(.vertical, 12)
+                .galleryGlass(in: Capsule())
+            }
+            Spacer()
+        }
+        .padding(.top, chrome ? 150 : 60)
+        .padding(.horizontal, 90)
+        .allowsHitTesting(false)
+    }
+
+    private static let driftAnchors: [UnitPoint] = [.center, .topLeading, .bottomTrailing, .topTrailing]
+
     private var slideshowBadge: some View {
         VStack {
             Spacer()
-            Label("Pokaz slajdów · ▶︎ zatrzymuje", systemImage: "play.rectangle.on.rectangle.fill")
+            Label(L("Pokaz slajdów · ▶︎ zatrzymuje"), systemImage: "play.rectangle.on.rectangle.fill")
                 .font(.headline)
                 .padding(.horizontal, 28)
                 .padding(.vertical, 14)
@@ -204,6 +239,7 @@ struct TVViewer: View {
                     infoLine("rectangle.stack", albums.joined(separator: ", "))
                 }
                 if isMovie { infoLine("play.fill", PhotoFormat.duration(photo.duration)) }
+                if let line = uploadLine { infoLine("icloud.and.arrow.up", line) }
             }
             .padding(36)
             .frame(maxWidth: 1000, alignment: .leading)
@@ -212,6 +248,22 @@ struct TVViewer: View {
         }
         .foregroundStyle(.white)
         .allowsHitTesting(false)
+    }
+
+    /// Who sent it, from which device and when: "Marian · iPhone 17 Pro · 22 października 2026, 17:49".
+    private var uploadLine: String? {
+        guard let asset else { return nil }
+        var parts: [String] = []
+        if GalleryOwner.isMe(asset.owner) {
+            parts.append(asset.ownerName ?? L("Ty"))
+        } else if let name = asset.ownerName, !name.isEmpty {
+            parts.append(name)
+        }
+        if let device = asset.device { parts.append(device) }
+        if let uploaded = asset.uploadedAt {
+            parts.append(uploaded.formatted(Date.FormatStyle(date: .long, time: .shortened).locale(Localization.locale)))
+        }
+        return parts.isEmpty ? nil : L("Wgrano: \(parts.joined(separator: " · "))")
     }
 
     private var sizeText: String {
@@ -230,6 +282,7 @@ struct TVViewer: View {
 
     private func move(_ direction: MoveCommandDirection) {
         slideshow = false
+        if direction == .left || direction == .right { lastMove = Date() }
         switch direction {
         case .right: step(1)
         case .left: step(-1)
@@ -242,12 +295,14 @@ struct TVViewer: View {
         }
     }
 
-    /// A swipe on the clickpad can arrive both as a pan and as a move command; one gesture is one photo.
+    /// A swipe on the clickpad can arrive both as a pan and as a move command; one gesture is
+    /// one photo. A pan that already produced a move command while the finger was down is ignored.
+    private func swiped(_ delta: Int, began: Date) {
+        guard lastMove < began else { return }
+        step(delta)
+    }
+
     private func step(_ delta: Int) {
-        let now = Date()
-        if delta == lastDelta, now.timeIntervalSince(lastStep) < 0.3 { return }
-        lastStep = now
-        lastDelta = delta
         slideshow = false
         let next = index + delta
         guard context.photos.indices.contains(next) else { return }
@@ -264,9 +319,15 @@ struct TVViewer: View {
         chrome = true
         chromeTick += 1
         while !Task.isCancelled {
+            // Each slide gets its full time on screen: wait for the picture before counting.
+            for _ in 0..<50 where shownIndex != index {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                if Task.isCancelled { return }
+            }
             try? await Task.sleep(nanoseconds: 5_500_000_000)
             guard !Task.isCancelled, slideshow else { return }
-            guard let next = context.photos.indices[(index + 1)...].first(where: { !context.photos[$0].traits.isVideo }) else {
+            let stills = context.photos.indices.filter { !context.photos[$0].traits.isVideo }
+            guard let next = stills.first(where: { $0 > index }) ?? stills.first, next != index else {
                 slideshow = false
                 return
             }
@@ -283,8 +344,9 @@ struct TVViewer: View {
             play()
             return
         }
-        if shown == nil {
-            Task { await load() }
+        if shown == nil || (loadFailed && !sharp) {
+            retryTick += 1
+            if shown == nil { return }
         }
         chrome.toggle()
         chromeTick += 1
@@ -297,21 +359,22 @@ struct TVViewer: View {
         }
         guard let current = library.asset(for: photo) else {
             loadFailed = true
-            loadNote = "Brak wpisu w katalogu. Odśwież bibliotekę w Ustawieniach."
+            loadNote = L("Brak wpisu w katalogu. Odśwież bibliotekę w Ustawieniach.")
             return
         }
         let resource = isMovie ? current.primary : (isLive ? current.paired : nil)
         guard let resource else {
             loadFailed = true
-            loadNote = "W katalogu nie ma pliku wideo dla tego wpisu."
+            loadNote = L("W katalogu nie ma pliku wideo dla tego wpisu.")
             return
         }
-        var clips: [LibraryResource] = context.photos.compactMap { item in
-            guard let asset = library.asset(for: item) else { return nil }
-            if item.traits.isVideo { return asset.primary }
-            if item.traits.contains(.live) { return asset.paired }
-            return nil
-        }
+        // A Live Photo plays only its own clip; a film plays among the films around it.
+        var clips: [LibraryResource] = isMovie
+            ? context.photos.compactMap { item in
+                guard item.traits.isVideo, let asset = library.asset(for: item) else { return nil }
+                return asset.primary
+            }
+            : [resource]
         if clips.isEmpty { clips = [resource] }
         let start = clips.firstIndex(where: { $0.hash == resource.hash && $0.ext == resource.ext }) ?? 0
         playback = TVPlayback(resources: clips, start: start)
@@ -337,13 +400,14 @@ struct TVViewer: View {
         let target = photo
         loadFailed = false
         loadNote = ""
+        if shownIndex != current { sharp = false }
         guard let hash = target.cloudHash else {
             loadFailed = true
-            loadNote = "Brak identyfikatora zdjęcia."
+            loadNote = L("Brak identyfikatora zdjęcia.")
             return
         }
         if !pipeline.isOnline {
-            loadNote = "Łączę z biblioteką…"
+            loadNote = L("Łączę z biblioteką…")
         }
         if let thumb = pipeline.cachedThumbnail(hash: hash) {
             present(thumb, at: current)
@@ -355,13 +419,17 @@ struct TVViewer: View {
             if shown == nil {
                 loadFailed = true
                 loadNote = pipeline.isOnline
-                    ? "Nie znaleziono pliku w katalogu."
-                    : "Brak połączenia z serwerem — katalog jest tylko lokalny."
+                    ? L("Nie znaleziono pliku w katalogu.")
+                    : L("Brak połączenia z serwerem — katalog jest tylko lokalny.")
             }
             return
         }
-        prefetchNeighbours(around: current)
+        if autoplay {
+            autoplay = false
+            play()
+        }
         if target.traits.isVideo {
+            prefetchNeighbours(around: current)
             // The thumbnail is the film's poster; the picture itself comes from the player.
             if shownIndex != current {
                 withAnimation(.easeInOut(duration: 0.32)) {
@@ -374,11 +442,15 @@ struct TVViewer: View {
         }
         if let full = await pipeline.full(asset: asset, maxSide: Self.fullSide), !Task.isCancelled {
             present(full, at: current)
-        } else if shown == nil, !Task.isCancelled {
+            sharp = true
+            // Neighbours only after this photo is sharp: they must not compete with it.
+            prefetchNeighbours(around: current)
+        } else if !Task.isCancelled {
             loadFailed = true
+            prefetchNeighbours(around: current)
             loadNote = pipeline.isOnline
-                ? "Serwer nie oddał oryginału. Sprawdź QNAP / sieć i spróbuj ponownie."
-                : "Apple TV nie jest połączone z biblioteką."
+                ? L("Serwer nie oddał oryginału. Sprawdź QNAP / sieć i spróbuj ponownie.")
+                : L("Apple TV nie jest połączone z biblioteką.")
         }
     }
 
@@ -422,10 +494,10 @@ private struct TVFilmPoster: View {
         VStack(spacing: 22) {
             Spacer()
             Color.clear.frame(height: 150)
-            Text("Film · \(PhotoFormat.duration(duration))")
+            Text(L("Film · \(PhotoFormat.duration(duration))"))
                 .font(.title2.weight(.semibold))
                 .monospacedDigit()
-            Text("Naciśnij, aby odtworzyć")
+            Text(L("Naciśnij, aby odtworzyć"))
                 .font(.title3)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -441,13 +513,14 @@ private struct TVFilmPoster: View {
 private struct TVStill: View {
     let image: UIImage
     let drift: Bool
+    var anchor: UnitPoint = .center
     @State private var grown = false
 
     var body: some View {
         Image(uiImage: image)
             .resizable()
             .scaledToFit()
-            .scaleEffect(grown ? 1.07 : 1)
+            .scaleEffect(grown ? 1.08 : 1, anchor: anchor)
             .onAppear { grow(drift) }
             .onChange(of: drift) { _, on in grow(on) }
     }
@@ -460,21 +533,26 @@ private struct TVStill: View {
 /// Finger on the Siri Remote touchpad. A sideways swipe moves to the previous or next photo,
 /// the same motion the system Photos app uses.
 struct RemoteSwipe: UIViewControllerRepresentable {
-    let onSwipe: (Int) -> Void
+    var enabled = true
+    let onSwipe: (Int, Date) -> Void
 
     func makeUIViewController(context: Context) -> RemoteSwipeScreen {
         let screen = RemoteSwipeScreen()
         screen.onSwipe = onSwipe
+        screen.enabled = enabled
         return screen
     }
 
     func updateUIViewController(_ screen: RemoteSwipeScreen, context: Context) {
         screen.onSwipe = onSwipe
+        screen.enabled = enabled
     }
 }
 
 final class RemoteSwipeScreen: UIViewController {
-    var onSwipe: ((Int) -> Void)?
+    var onSwipe: ((Int, Date) -> Void)?
+    var enabled = true
+    private var began = Date.distantPast
 
     private let pan = UIPanGestureRecognizer()
 
@@ -501,19 +579,12 @@ final class RemoteSwipeScreen: UIViewController {
     }
 
     @objc private func panned(_ pan: UIPanGestureRecognizer) {
-        guard pan.state == .ended else { return }
-        if playerIsShowing { return }
+        if pan.state == .began { began = Date() }
+        guard pan.state == .ended, enabled else { return }
         let travel = pan.translation(in: view).x
-        if travel > 70 { onSwipe?(-1) }
-        else if travel < -70 { onSwipe?(1) }
-    }
-
-    private var playerIsShowing: Bool {
-        var controller = view.window?.rootViewController
-        while let presented = controller?.presentedViewController {
-            if presented is HDRPlayerController || presented is FilmScreen { return true }
-            controller = presented
-        }
-        return false
+        let velocity = pan.velocity(in: view).x
+        // A deliberate swipe: far enough, or a quick flick. Resting a thumb does nothing.
+        if travel > 180 || (travel > 60 && velocity > 900) { onSwipe?(-1, began) }
+        else if travel < -180 || (travel < -60 && velocity < -900) { onSwipe?(1, began) }
     }
 }

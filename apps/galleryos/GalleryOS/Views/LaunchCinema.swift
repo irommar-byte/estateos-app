@@ -27,9 +27,9 @@ struct LaunchCinema: View {
     private static let exitLength: TimeInterval = 0.62
     private static let skipLength: TimeInterval = 0.4
     #if os(tvOS)
-    private static let skipCaption = "Naciśnij, aby pominąć"
+    private static let skipCaption = L("Naciśnij, aby pominąć")
     #else
-    private static let skipCaption = "Stuknij, aby pominąć"
+    private static let skipCaption = L("Stuknij, aby pominąć")
     #endif
 
     var body: some View {
@@ -46,7 +46,8 @@ struct LaunchCinema: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("GalleryOS™")
         .accessibilityHint(Self.skipCaption)
-        .preferredColorScheme(.dark)
+        // Dark only for the film itself; preferredColorScheme flipped the whole app under it.
+        .environment(\.colorScheme, .dark)
         .task { await play() }
     }
 
@@ -74,11 +75,16 @@ struct LaunchCinema: View {
                 Spacer()
                 wordmark(t, out: out)
                     .scaleEffect(scale)
+                #if os(tvOS)
+                // On the television the hint sat over the wordmark; the remote's click still skips.
+                Color.clear.frame(height: 34 * scale)
+                #else
                 Text(Self.skipCaption)
                     .font(scale > 1.2 ? .title3 : .footnote)
                     .foregroundStyle(.white.opacity(0.36))
                     .opacity(ease((t - 0.35) / 0.35) * (1 - out))
                     .padding(.bottom, 34 * scale)
+                #endif
             }
             .padding(.top, size.height * 0.5)
         }
@@ -353,7 +359,7 @@ struct LaunchCinema: View {
                 }
             }
             .shadow(color: Self.accent.opacity(0.45 * ease((t - 1.1) / 0.6)), radius: 22)
-            Text("Twoja biblioteka")
+            Text(L("Twoja biblioteka"))
                 .font(.subheadline.weight(.medium))
                 .tracking(3 * (1 - tag) + 0.6)
                 .foregroundStyle(.white.opacity(0.7))

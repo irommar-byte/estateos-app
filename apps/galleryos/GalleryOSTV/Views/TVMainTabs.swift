@@ -13,30 +13,41 @@ extension EnvironmentValues {
 }
 
 struct TVMainTabs: View {
-    @AppStorage("galleryos.tv.preview-tab") private var previewTab = ""
+    /// Always opens on Zdjęcia, like the system Photos app.
+    @State private var tab: String = {
+        #if DEBUG
+        let preview = UserDefaults.standard.string(forKey: "galleryos.tv.preview-tab") ?? ""
+        return preview.isEmpty ? "photos" : preview
+        #else
+        return "photos"
+        #endif
+    }()
     @State private var pinsEngaged = false
 
     var body: some View {
         TabView(selection: Binding(
-            get: { previewTab.isEmpty ? "photos" : previewTab },
-            set: { if !pinsEngaged { previewTab = $0 } }
+            get: { tab },
+            set: { if !pinsEngaged { tab = $0 } }
         )) {
-            Tab("Zdjęcia", systemImage: "photo.on.rectangle", value: "photos") {
+            Tab(L("Zdjęcia"), systemImage: "photo.on.rectangle", value: "photos") {
                 TVPhotosScreen()
             }
-            Tab("Albumy", systemImage: "rectangle.stack", value: "albums") {
+            Tab(L("Wspomnienia"), systemImage: "sparkles.rectangle.stack", value: "memories") {
+                TVMemoriesScreen()
+            }
+            Tab(L("Albumy"), systemImage: "rectangle.stack", value: "albums") {
                 TVAlbumsScreen()
             }
-            Tab("Mapa", systemImage: "map", value: "map") {
+            Tab(L("Mapa"), systemImage: "map", value: "map") {
                 TVMapScreen()
             }
-            Tab("Ulubione", systemImage: "heart", value: "favorites") {
+            Tab(L("Ulubione"), systemImage: "heart", value: "favorites") {
                 TVFavoritesScreen()
             }
-            Tab("Szukaj", systemImage: "magnifyingglass", value: "search", role: .search) {
+            Tab(L("Szukaj"), systemImage: "magnifyingglass", value: "search", role: .search) {
                 TVSearchScreen()
             }
-            Tab("Ustawienia", systemImage: "gearshape", value: "settings") {
+            Tab(L("Ustawienia"), systemImage: "gearshape", value: "settings") {
                 TVSettingsScreen()
             }
         }

@@ -32,20 +32,33 @@ enum AppleTVSharing {
 
     static func refreshIfEnabled() {
         guard CloudServerShare.isEnabled else { return }
-        guard let current = current(), current.server.isSupportedOnTV, !current.password.isEmpty else { return }
+        guard let current = current() else {
+            return note(L("Najpierw połącz \(ThisDevice.genitive) z serwerem"))
+        }
+        guard current.server.isSupportedOnTV else {
+            return note(L("Apple TV czyta z serwera GalleryOS albo QNAP-a"))
+        }
+        guard !current.password.isEmpty else {
+            return note(L("Brak hasła serwera – połącz serwer jeszcze raz"))
+        }
         CloudServerShare.publish(current.server, password: current.password)
+    }
+
+    private static func note(_ text: String) {
+        UserDefaults.standard.set(text, forKey: CloudServerShare.noteKey)
     }
 }
 
 struct AppleTVShareToggle: View {
     @AppStorage(CloudServerShare.enabledKey) private var cloud = true
+    @AppStorage(CloudServerShare.noteKey) private var note = ""
 
     var body: some View {
         Toggle(isOn: $cloud) {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Apple TV")
-                    Text(cloud ? "To samo Apple ID" : "Wyłączone")
+                    Text(L("Apple TV"))
+                    Text(cloud ? (note.isEmpty ? L("To samo Apple ID") : note) : L("Wyłączone"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -85,7 +98,7 @@ struct AppleTVForm: View {
             Section {
                 AppleTVShareToggle()
             } footer: {
-                Text("Apple TV z tym samym Apple ID pokaże bibliotekę sam. Hasło serwera trafia do pęku kluczy iCloud.")
+                Text(L("Apple TV z tym samym Apple ID pokaże bibliotekę sam. Hasło serwera jest zaszyfrowane i trafia tylko do Twojego iCloud."))
             }
 
             Section {
@@ -100,18 +113,18 @@ struct AppleTVForm: View {
                             .foregroundStyle(GalleryTheme.accent)
                     }
                 } else if current != nil {
-                    Text("Apple TV czyta zdjęcia z serwera GalleryOS albo z QNAP-a (WebDAV). Wybierz jedno z tych miejsc w ustawieniach biblioteki.")
+                    Text(L("Apple TV czyta zdjęcia z serwera GalleryOS albo z QNAP-a (WebDAV). Wybierz jedno z tych miejsc w ustawieniach biblioteki."))
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Najpierw połącz \(ThisDevice.genitive) z serwerem, a potem sparuj Apple TV.")
+                    Text(L("Najpierw połącz \(ThisDevice.genitive) z serwerem, a potem sparuj Apple TV."))
                         .foregroundStyle(.secondary)
                 }
             } header: {
-                Text("Serwer dla Apple TV")
+                Text(L("Serwer dla Apple TV"))
             }
 
             Section {
-                TextField("Kod z ekranu telewizora", text: $code)
+                TextField(L("Kod z ekranu telewizora"), text: $code)
                     .font(.system(.title3, design: .monospaced))
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
@@ -121,7 +134,7 @@ struct AppleTVForm: View {
                     Task { await pair() }
                 } label: {
                     HStack {
-                        Text("Połącz Apple TV")
+                        Text(L("Połącz Apple TV"))
                         Spacer()
                         if phase == .working { ProgressView() }
                     }
@@ -129,7 +142,7 @@ struct AppleTVForm: View {
                 .disabled(!canPair)
                 switch phase {
                 case .done:
-                    Label("Gotowe. Apple TV pokaże bibliotekę za chwilę.", systemImage: "checkmark.circle.fill")
+                    Label(L("Gotowe. Apple TV pokaże bibliotekę za chwilę."), systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 case .failed(let message):
                     Label(message, systemImage: "exclamationmark.triangle.fill")
@@ -138,13 +151,13 @@ struct AppleTVForm: View {
                     EmptyView()
                 }
             } header: {
-                Text("Parowanie kodem")
+                Text(L("Parowanie kodem"))
             } footer: {
-                Text("Otwórz GalleryOS na Apple TV. Ekran pokaże kod. Możesz też zeskanować kod QR aparatem iPhone’a.")
+                Text(L("Otwórz GalleryOS na Apple TV. Ekran pokaże kod. Możesz też zeskanować kod QR aparatem \(ThisDevice.genitive)."))
             }
 
         }
-        .navigationTitle("Apple TV")
+        .navigationTitle(L("Apple TV"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { takeInbox() }
         .onChange(of: inbox.code) { _, _ in takeInbox() }
@@ -193,7 +206,7 @@ struct AppleTVPairingSheet: View {
             AppleTVForm()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Zamknij") { dismiss() }
+                        Button(L("Zamknij")) { dismiss() }
                     }
                 }
         }

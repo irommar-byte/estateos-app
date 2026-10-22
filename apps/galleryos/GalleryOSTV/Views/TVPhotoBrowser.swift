@@ -9,6 +9,7 @@ struct TVPhotoBrowser: UIViewControllerRepresentable {
     let pipeline: TVImagePipeline
     let returnID: String?
     let onOpen: (PhotoRef, Bool) -> Void
+    var onCompact: (Bool) -> Void = { _ in }
 
     func makeUIViewController(context: Context) -> TVPhotoBrowserController {
         TVPhotoBrowserController()
@@ -17,6 +18,7 @@ struct TVPhotoBrowser: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: TVPhotoBrowserController, context: Context) {
         controller.pipeline = pipeline
         controller.onOpen = onOpen
+        controller.onCompact = onCompact
         controller.apply(sections)
         if controller.seenEpoch != pipeline.epoch {
             controller.seenEpoch = pipeline.epoch
@@ -32,6 +34,8 @@ struct TVPhotoBrowser: UIViewControllerRepresentable {
 final class TVPhotoBrowserController: UIViewController, UICollectionViewDataSource, UICollectionViewDelegate {
     var pipeline: TVImagePipeline?
     var onOpen: (PhotoRef, Bool) -> Void = { _, _ in }
+    var onCompact: (Bool) -> Void = { _ in }
+    private var compact = false
     var seenEpoch = -1
     var revealedID: String?
     private var sections: [TVSection] = []
@@ -68,9 +72,12 @@ final class TVPhotoBrowserController: UIViewController, UICollectionViewDataSour
     func apply(_ sections: [TVSection]) {
         let next = sections.filter { !$0.photos.isEmpty }
         let signature = next.map { section in
-            "\(section.id)#\(section.photos.count)#\(section.photos.first?.id ?? "")#\(section.photos.last?.id ?? "")"
+            let hearts = section.photos.reduce(0) { $0 + ($1.isFavorite ? 1 : 0) }
+            return "\(section.id)#\(section.photos.count)#\(hearts)#\(section.photos.first?.id ?? "")#\(section.photos.last?.id ?? "")"
         }.joined(separator: "|")
         guard signature != self.signature else { return }
+        // New photos arrive at the top: keep the remote on the same photo, not the same slot.
+        let keepID = focusedIndexPath.flatMap { photo(at: $0)?.id }
         self.sections = next
         self.signature = signature
         var index: [String: IndexPath] = [:]
@@ -82,6 +89,22 @@ final class TVPhotoBrowserController: UIViewController, UICollectionViewDataSour
         }
         indexByID = index
         collectionView.reloadData()
+        if let keepID, let path = index[keepID], path != focusedIndexPath {
+            collectionView.layoutIfNeeded()
+            collectionView.scrollToItem(at: path, at: .centeredVertically, animated: false)
+            pendingFocus = path
+            focusedIndexPath = path
+            setNeedsFocusUpdate()
+        }
+    }
+
+    /// The screen title folds away once the grid scrolls, so more than two rows fit on the TV.
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        let offset = scrollView.contentOffset.y
+        let next = compact ? offset > 20 : offset > 90
+        guard next != compact else { return }
+        compact = next
+        onCompact(next)
     }
 
     func reloadVisibleThumbs() {
@@ -183,10 +206,10 @@ final class TVPhotoBrowserController: UIViewController, UICollectionViewDataSour
         guard let indexPath = indexPaths.first, let photo = photo(at: indexPath) else { return nil }
         return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [onOpen] _ in
             UIMenu(children: [
-                UIAction(title: "Otwórz", image: UIImage(systemName: "arrow.up.left.and.arrow.down.right")) { _ in
+                UIAction(title: L("Otwórz"), image: UIImage(systemName: "arrow.up.left.and.arrow.down.right")) { _ in
                     onOpen(photo, false)
                 },
-                UIAction(title: "Pokaz slajdów od tego zdjęcia", image: UIImage(systemName: "play.rectangle.on.rectangle")) { _ in
+                UIAction(title: L("Pokaz slajdów od tego zdjęcia"), image: UIImage(systemName: "play.rectangle.on.rectangle")) { _ in
                     onOpen(photo, true)
                 },
             ])
@@ -242,7 +265,7 @@ final class TVPhotoCell: UICollectionViewCell {
         shade.isUserInteractionEnabled = false
         contentView.addSubview(shade)
 
-        caption.font = .systemFont(ofSize: 20, weight: .semibold)
+        caption.font = .systemFont(ofSize: 24, weight: .semibold)
         caption.textColor = .white
         contentView.addSubview(caption)
 
@@ -279,6 +302,11 @@ final class TVPhotoCell: UICollectionViewCell {
             self.contentView.layer.borderColor = UIColor.white.cgColor
             self.layer.shadowOpacity = on ? 0.45 : 0
         }
+    }
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { $0.type == .playPause }) { return }
+        super.pressesBegan(presses, with: event)
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {

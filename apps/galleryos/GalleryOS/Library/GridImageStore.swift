@@ -35,7 +35,12 @@ final class GridImageStore {
     func remember(_ id: String, _ image: UIImage) {
         guard PreviewCheck.isUsable(image) else { return }
         trimIfNeeded()
-        cache[id] = image
+        // Keep the sharpest frame known for this photo; a small late preview must not replace it.
+        if let old = cache[id], old.size.width * old.scale > image.size.width * image.scale * 1.05 {
+            touch(id)
+        } else {
+            cache[id] = image
+        }
         touch(id)
         inflight.remove(id)
         let callbacks = waiters.removeValue(forKey: id) ?? []
@@ -199,18 +204,29 @@ enum FilmPoster {
         return base
     }()
 
+    /// Decoded posters. The grid asks for each film tile on every pass, and reading plus
+    /// checking the file on the main thread each time made video-heavy libraries stutter.
+    private static let memory: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 600
+        return cache
+    }()
+
     static func image(for id: String) -> UIImage? {
+        if let hit = memory.object(forKey: id as NSString) { return hit }
         let url = file(id)
         guard let image = UIImage(contentsOfFile: url.path) else { return nil }
         guard let frame = usableFrame(image) else {
             try? FileManager.default.removeItem(at: url)
             return nil
         }
+        memory.setObject(frame, forKey: id as NSString)
         return frame
     }
 
     static func store(_ image: UIImage, id: String) {
         guard usableFrame(image) != nil, let data = image.jpegData(compressionQuality: 0.72) else { return }
+        memory.setObject(image, forKey: id as NSString)
         let url = file(id)
         queue.async { try? data.write(to: url, options: .atomic) }
     }
@@ -430,7 +446,7 @@ final class GalleryRepair: ObservableObject {
     func start(library: PhotoLibrary) {
         guard !running else { return }
         running = true
-        line = "Sprawdzam bibliotekę…"
+        line = L("Sprawdzam bibliotekę…")
         FilmPoster.resetFailures()
         Task { await run(library) }
     }
@@ -453,17 +469,17 @@ final class GalleryRepair: ObservableObject {
             let image = await FilmPoster.make(id: item.0, asset: item.1)
             if image != nil { filled += 1 } else { blank += 1 }
             if index % 4 == 0 || index + 1 == films.count {
-                line = "Uzupełniam kadry · \(index + 1) z \(films.count)"
+                line = L("Uzupełniam kadry · \(index + 1) z \(films.count)")
                 NotificationCenter.default.post(name: FilmPoster.filled, object: nil)
             }
         }
-        line = "Sprawdzam serwer…"
+        line = L("Sprawdzam serwer…")
         let server = await LibraryEngine.shared.repairServerPreviews()
         NotificationCenter.default.post(name: FilmPoster.filled, object: nil)
         if films.isEmpty {
             line = server
         } else {
-            line = "Filmy: \(filled) kadrów uzupełnione, \(blank) bez podglądu. \(server)"
+            line = L("Filmy: \(filled) kadrów uzupełnione, \(blank) bez podglądu. \(server)")
         }
     }
 }

@@ -9,7 +9,6 @@ struct GalleryOSApp: App {
     @StateObject private var library = PhotoLibrary()
     @StateObject private var tvInbox = AppleTVInbox.shared
     @State private var intro = false
-    @State private var guide = false
     /// Stays true until the first time a scene is actually on screen. A sync relaunch
     /// starts the process in the background, so this cannot be decided at init.
     @State private var introPending = true
@@ -19,14 +18,10 @@ struct GalleryOSApp: App {
             ZStack {
                 RootView()
                     .environmentObject(library)
+                    .environment(\.launchFinished, !intro && !introPending)
                     .tint(GalleryTheme.accent)
                     .sheet(isPresented: $tvInbox.presenting) {
                         AppleTVPairingSheet()
-                    }
-                    .fullScreenCover(isPresented: $guide) {
-                        SetupGuideView(firstRun: true)
-                            .environmentObject(library)
-                            .tint(GalleryTheme.accent)
                     }
                 if intro {
                     LaunchCinema {
@@ -54,6 +49,19 @@ struct GalleryOSApp: App {
     }
 }
 
+private struct LaunchFinishedKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// False while the launch film plays. Sheets that open on their own wait for it,
+    /// otherwise they slide up over the film and hide it.
+    var launchFinished: Bool {
+        get { self[LaunchFinishedKey.self] }
+        set { self[LaunchFinishedKey.self] = newValue }
+    }
+}
+
 final class GalleryAppDelegate: NSObject, UIApplicationDelegate {
     static var orientationLock: UIInterfaceOrientationMask = .portrait
 
@@ -62,16 +70,28 @@ final class GalleryAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         SyncScheduler.register()
+        PhotoIntelligence.register()
         GalleryNetwork.shared.prepareBackgroundUploads()
         SyncLiveActivity.shared.collapseExtras()
         return true
     }
 
     func application(_ application: UIApplication, userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata) {
-        let container = CKContainer(identifier: GalleryShareModel.containerID)
-        Task {
-            try? await container.accept(cloudKitShareMetadata)
+        Task { @MainActor in
+            await CloudShares.shared.accept(cloudKitShareMetadata)
         }
+    }
+
+    /// A SwiftUI app runs in scenes, so iOS hands opened iCloud invitations to the scene
+    /// delegate, not to this app delegate. Without it, opening an invitation did nothing.
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        configuration.delegateClass = GallerySceneDelegate.self
+        return configuration
     }
 
     func application(
@@ -124,6 +144,23 @@ enum GalleryOrientation {
             }
             guard forcePortrait, root?.presentedViewController == nil else { continue }
             scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
+        }
+    }
+}
+
+final class GallerySceneDelegate: NSObject, UIWindowSceneDelegate {
+    /// The app was launched by tapping an iCloud invitation.
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        guard let metadata = connectionOptions.cloudKitShareMetadata else { return }
+        Task { @MainActor in
+            await CloudShares.shared.accept(metadata)
+        }
+    }
+
+    /// An iCloud invitation was opened while the app was running.
+    func windowScene(_ windowScene: UIWindowScene, userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata) {
+        Task { @MainActor in
+            await CloudShares.shared.accept(cloudKitShareMetadata)
         }
     }
 }

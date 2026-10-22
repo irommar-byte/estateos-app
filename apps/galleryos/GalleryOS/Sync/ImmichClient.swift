@@ -26,9 +26,9 @@ final class ImmichClient {
 
     static func connect(host: String, port: Int, username: String, password: String) async throws -> ImmichClient {
         let roots = ConnectionURL.roots(host: host, port: port, defaultPort: 2283)
-        guard !roots.isEmpty else { throw LibraryError(message: "Nieprawidłowy adres Immich.") }
+        guard !roots.isEmpty else { throw LibraryError(message: L("Nieprawidłowy adres Immich.")) }
         GalleryNetwork.shared.trust(ConnectionURL.bare(host))
-        var last = LibraryError(message: "Nie udało się połączyć z Immich.")
+        var last = LibraryError(message: L("Nie udało się połączyć z Immich."))
         for root in roots {
             if let name = root.host { GalleryNetwork.shared.trust(name) }
             do {
@@ -36,7 +36,7 @@ final class ImmichClient {
             } catch {
                 last = error as? LibraryError ?? LibraryError(message: SyncPause.message(for: error))
                 let retry = last.message == SyncPause.needsHTTPS
-                    || last.message == "Pod tym adresem nie ma Immich."
+                    || last.message == L("Pod tym adresem nie ma Immich.")
                     || (error as? URLError)?.code == .secureConnectionFailed
                     || (error as? URLError)?.code == .cannotConnectToHost
                 guard retry, root != roots.last else { throw last }
@@ -60,7 +60,7 @@ final class ImmichClient {
         try validate(response, data: data)
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let token = object?["accessToken"] as? String else {
-            throw LibraryError(message: "Immich nie zwrócił sesji.")
+            throw LibraryError(message: L("Immich nie zwrócił sesji."))
         }
         return ImmichClient(baseURL: root, token: token)
     }
@@ -97,7 +97,7 @@ final class ImmichClient {
         let path = original ? "api/assets/\(id)/original" : "api/assets/\(id)/thumbnail"
         var parts = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         if !original { parts?.queryItems = [URLQueryItem(name: "size", value: "preview")] }
-        guard let url = parts?.url else { throw LibraryError(message: "Nieprawidłowy adres Immich.") }
+        guard let url = parts?.url else { throw LibraryError(message: L("Nieprawidłowy adres Immich.")) }
         var request = URLRequest(url: url)
         request.timeoutInterval = 60 * 20
         authorize(&request)
@@ -170,7 +170,7 @@ final class ImmichClient {
         let input = try FileHandle(forReadingFrom: file)
         defer { try? input.close() }
         while true {
-            let chunk = try input.read(upToCount: 1024 * 1024) ?? Data()
+            let chunk = try input.chunk(1024 * 1024)
             if chunk.isEmpty { break }
             try handle.write(contentsOf: chunk)
         }
@@ -188,15 +188,15 @@ final class ImmichClient {
 
     private static func validate(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
-            throw LibraryError(message: "Brak odpowiedzi.")
+            throw LibraryError(message: L("Brak odpowiedzi."))
         }
-        if http.statusCode == 401 { throw LibraryError(message: "Błędny login lub hasło.") }
+        if http.statusCode == 401 { throw LibraryError(message: L("Błędny login lub hasło.")) }
         if http.statusCode >= 400 {
             let explained = SyncPause.explainServer(status: http.statusCode, data: data)
             if explained == SyncPause.needsHTTPS || explained == SyncPause.notGalleryServer {
-                throw LibraryError(message: explained == SyncPause.needsHTTPS ? explained : "Pod tym adresem nie ma Immich.")
+                throw LibraryError(message: explained == SyncPause.needsHTTPS ? explained : L("Pod tym adresem nie ma Immich."))
             }
-            throw LibraryError(message: "Immich odrzucił połączenie (\(http.statusCode)).")
+            throw LibraryError(message: L("Immich odrzucił połączenie (\(http.statusCode))."))
         }
     }
 

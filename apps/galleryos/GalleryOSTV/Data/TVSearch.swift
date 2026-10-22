@@ -12,23 +12,27 @@ enum TVSearch {
         fold(text).split(whereSeparator: { $0.isWhitespace || $0 == "," }).map(String.init).filter { !$0.isEmpty }
     }
 
-    private static let monthsNominative: [String] = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
-        return formatter.standaloneMonthSymbols.map(fold)
-    }()
+    /// Polish month and weekday names, plus the app's own language when it is not Polish,
+    /// so "lipiec", "July" and "липень" all find July.
+    private static let locales: [Locale] = Localization.isPolish
+        ? [Locale(identifier: "pl_PL")]
+        : [Locale(identifier: "pl_PL"), Localization.locale]
 
-    private static let monthsGenitive: [String] = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
-        return formatter.monthSymbols.map(fold)
-    }()
+    private static func symbols(_ pick: (DateFormatter) -> [String]?) -> [String] {
+        var joined = [String](repeating: "", count: 12)
+        for locale in locales {
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            for (index, name) in (pick(formatter) ?? []).enumerated() where index < joined.count {
+                joined[index] += (joined[index].isEmpty ? "" : " ") + fold(name)
+            }
+        }
+        return joined
+    }
 
-    private static let weekdays: [String] = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
-        return formatter.weekdaySymbols.map(fold)
-    }()
+    private static let monthsNominative: [String] = symbols { $0.standaloneMonthSymbols }
+    private static let monthsGenitive: [String] = symbols { $0.monthSymbols }
+    private static let weekdays: [String] = Array(symbols { $0.weekdaySymbols }.prefix(7))
 
     /// Everything a person might type to find this photo, folded to lower case without diacritics.
     static func blob(for asset: LibraryAsset) -> String {
@@ -43,15 +47,15 @@ enum TVSearch {
         if let day = c.day { parts.append(String(day)) }
         if let weekday = c.weekday, weekday >= 1, weekday <= 7 { parts.append(weekdays[weekday - 1]) }
         let traits = PhotoTraits(rawValue: asset.traits)
-        if traits.isVideo { parts.append("wideo film filmy video") }
-        if traits.contains(.live) { parts.append("live zywe") }
-        if traits.contains(.screenshot) { parts.append("zrzut zrzuty ekranu screenshot") }
-        if traits.contains(.panorama) { parts.append("panorama") }
-        if traits.contains(.portrait) { parts.append("portret portrety") }
-        if traits.contains(.selfie) { parts.append("selfie") }
-        if traits.contains(.animated) { parts.append("gif animacja animowane") }
-        if asset.favorite { parts.append("ulubione ulubiony serce") }
+        if traits.isVideo { parts.append("wideo film filmy video videos відео фільм фільми") }
+        if traits.contains(.live) { parts.append("live zywe живі") }
+        if traits.contains(.screenshot) { parts.append("zrzut zrzuty ekranu screenshot screenshots знімок знімки екрана") }
+        if traits.contains(.panorama) { parts.append("panorama panoramy panoramiczne panoramas панорама панорами") }
+        if traits.contains(.portrait) { parts.append("portret portrety portrait portraits портрет портрети") }
+        if traits.contains(.selfie) { parts.append("selfie selfies селфі") }
+        if traits.contains(.animated) { parts.append("gif animacja animowane animated анімація анімовані") }
+        if asset.favorite { parts.append("ulubione ulubiony serce favorites favourites улюблені") }
         for name in asset.albumNames { parts.append(fold(name)) }
-        return parts.joined(separator: " ")
+        return fold(parts.joined(separator: " "))
     }
 }

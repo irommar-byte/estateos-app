@@ -41,17 +41,35 @@ enum ObjectSearch {
         "niemowle": ["baby"]
     ]
 
-    static func match(photos: [PhotoRef], labels: [String: [String]], query: String) -> [String] {
-        let tokens = query
-            .lowercased()
-            .folding(options: .diacriticInsensitive, locale: Locale(identifier: "pl_PL"))
+    /// Every word must match. Known words (things, kinds, years) use labels and traits;
+    /// any other word is looked up in the place names, so "Kraków" or "pies Kraków" work.
+    static func match(
+        photos: [PhotoRef],
+        labels: [String: [String]],
+        places: [String: String] = [:],
+        query: String
+    ) -> [String] {
+        let tokens = fold(query)
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .map(String.init)
-        let meaningful = tokens.filter { isKnown($0) }
-        guard !meaningful.isEmpty else { return [] }
+            .filter { $0.count >= 2 }
+        guard !tokens.isEmpty else { return [] }
+        let known = tokens.filter { isKnown($0) }
+        let placeWords = tokens.filter { !isKnown($0) }
+        let foldedPlaces = placeWords.isEmpty ? [:] : places.mapValues { fold($0) }
+        let calendar = Calendar.current
         return photos.compactMap { photo in
-            meaningful.allSatisfy { tokenMatches($0, photo: photo, labels: labels[photo.id] ?? []) } ? photo.id : nil
+            guard known.allSatisfy({ tokenMatches($0, photo: photo, labels: labels[photo.id] ?? []) }) else { return nil }
+            if !placeWords.isEmpty {
+                guard let place = foldedPlaces[PhotoGrouping.dayKey(photo.created, calendar: calendar)],
+                      placeWords.allSatisfy({ place.contains($0) }) else { return nil }
+            }
+            return photo.id
         }
+    }
+
+    private static func fold(_ text: String) -> String {
+        text.lowercased().folding(options: .diacriticInsensitive, locale: Locale(identifier: "pl_PL"))
     }
 
     static func isObjectQuery(_ query: String) -> Bool {

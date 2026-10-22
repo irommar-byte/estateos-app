@@ -47,7 +47,7 @@ final class SFTPTransport: CatalogTransport {
 
     func writeFile(_ relative: String, from local: URL) async throws {
         let expected = (try FileManager.default.attributesOfItem(atPath: local.path)[.size] as? NSNumber)?.intValue ?? 0
-        guard expected > 0 else { throw LibraryError(message: "Pusty plik nie został wysłany.") }
+        guard expected > 0 else { throw LibraryError(message: L("Pusty plik nie został wysłany.")) }
         let remote = try remotePath(relative)
         let partial = remote + ".part"
         try await ensureParents(remote)
@@ -58,7 +58,7 @@ final class SFTPTransport: CatalogTransport {
                 defer { try? handle.close() }
                 var offset: UInt64 = 0
                 while true {
-                    let chunk = try handle.read(upToCount: 256 * 1024) ?? Data()
+                    let chunk = try handle.chunk(256 * 1024)
                     if chunk.isEmpty { break }
                     try await file.write(ByteBuffer(bytes: chunk), at: offset)
                     offset += UInt64(chunk.count)
@@ -67,7 +67,7 @@ final class SFTPTransport: CatalogTransport {
             let stored = try await session.getAttributes(at: partial).size.map { Int($0) } ?? -1
             guard stored == expected else {
                 try? await session.remove(at: partial)
-                throw LibraryError(message: "Serwer zapisał niepełny plik.")
+                throw LibraryError(message: L("Serwer zapisał niepełny plik."))
             }
             if (try? await session.getAttributes(at: remote)) != nil {
                 try? await session.remove(at: remote)
@@ -121,13 +121,13 @@ final class SFTPTransport: CatalogTransport {
 
     private func ready() async throws -> SFTPClient {
         try await open()
-        guard let sftp else { throw LibraryError(message: "Nie udało się połączyć przez SFTP.") }
+        guard let sftp else { throw LibraryError(message: L("Nie udało się połączyć przez SFTP.")) }
         return sftp
     }
 
     private func remotePath(_ relative: String) throws -> String {
         guard let safe = CatalogPath.safe(relative) else {
-            throw LibraryError(message: "Nieprawidłowa ścieżka biblioteki.")
+            throw LibraryError(message: L("Nieprawidłowa ścieżka biblioteki."))
         }
         if directory.isEmpty { return safe }
         return directory + "/" + safe

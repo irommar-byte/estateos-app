@@ -9,7 +9,7 @@ struct SyncLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Text(context.state.finished ? "Gotowe" : "Wysyłanie")
+                    Text(context.state.finished ? L("Gotowe") : L("Wysyłanie"))
                         .font(.headline)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -36,7 +36,7 @@ struct SyncLiveActivityWidget: Widget {
     private func lockScreen(_ state: SyncActivityAttributes.ContentState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(state.finished ? "Wysłane" : "Wysyłanie na \(state.place)")
+                Text(state.finished ? L("Wysłane") : L("Wysyłanie na \(state.place)"))
                     .font(.headline)
                     .lineLimit(1)
                 Spacer()

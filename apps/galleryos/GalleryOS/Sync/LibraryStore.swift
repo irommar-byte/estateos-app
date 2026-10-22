@@ -256,13 +256,13 @@ final class LibraryStore {
         let url = root.appendingPathComponent(name)
         guard let data = try? Data(contentsOf: url) else { return nil }
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = FastDate.decoding
         return try? decoder.decode(type, from: data)
     }
 
     private static func write<T: Encodable>(_ value: T, name: String, root: URL) {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = FastDate.encoding
         guard let data = try? encoder.encode(value) else { return }
         try? data.write(to: root.appendingPathComponent(name), options: .atomic)
     }

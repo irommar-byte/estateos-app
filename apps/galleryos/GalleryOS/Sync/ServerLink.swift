@@ -9,9 +9,9 @@ enum LinkRoute: String, Equatable {
 
     var title: String {
         switch self {
-        case .home: "Sieć domowa"
-        case .remote: "Zdalnie"
-        case .none: "Szukam serwera"
+        case .home: L("Sieć domowa")
+        case .remote: L("Zdalnie")
+        case .none: L("Szukam serwera")
         }
     }
 
@@ -46,11 +46,11 @@ enum NetworkKind: String {
     var title: String {
         switch self {
         case .wifi: "Wi-Fi"
-        case .wired: "Ethernet"
-        case .cellular: "Sieć komórkowa"
-        case .none: "Brak sieci"
-        case .other: "Sieć"
-        case .unknown: "Sprawdzam sieć"
+        case .wired: L("Ethernet")
+        case .cellular: L("Sieć komórkowa")
+        case .none: L("Brak sieci")
+        case .other: L("Sieć")
+        case .unknown: L("Sprawdzam sieć")
         }
     }
 
@@ -158,6 +158,11 @@ final class ServerLink: ObservableObject {
                 phase = .idle
                 return
             }
+            // Keeps Apple TV's copy (iCloud record) current for libraries set up before it existed.
+            AppleTVSharing.refreshIfEnabled()
+            // Who owns hidden photos on this device; then seal anything still waiting.
+            await GalleryOwner.refresh()
+            LibraryEngine.shared.scheduleVault()
             if case .connected = phase { return }
             await LibraryEngine.shared.checkRoute()
         }
@@ -237,6 +242,11 @@ final class ServerLink: ObservableObject {
         if route == .remote { learnHomeIfNeeded() }
     }
 
+    /// The live connection broke mid-transfer: the next open picks the route again.
+    func linkLost() {
+        routeDirty = true
+    }
+
     func homeFailed() {
         if !gateway.isEmpty { away[gateway] = .now }
         let probe = LinkProbe(reachable: false, millis: nil)
@@ -260,8 +270,8 @@ final class ServerLink: ObservableObject {
 
     private func announce(_ route: LinkRoute, host: String) {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        let title = route == .home ? "Jesteś w domu" : "Połączenie zdalne"
-        let detail = route == .home ? "Sieć lokalna · \(host)" : "DDNS · \(host)"
+        let title = route == .home ? L("Jesteś w domu") : L("Połączenie zdalne")
+        let detail = route == .home ? L("Sieć lokalna · \(host)") : "DDNS · \(host)"
         withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) {
             announcement = LinkAnnouncement(route: route, title: title, detail: detail)
         }

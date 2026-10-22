@@ -1,6 +1,7 @@
 import CoreLocation
 import Foundation
 import MapKit
+import ImageIO
 import Photos
 import PhotosUI
 import UIKit
@@ -12,6 +13,27 @@ final class PhotoLibrary: NSObject, ObservableObject {
     @Published private(set) var grid = GridModel.empty
     @Published private(set) var phoneGrid = GridModel.empty
     @Published private(set) var serverGrid = GridModel.empty
+    /// Photos and films (Live Photos count as photos) on each side, for the shelf and the view menu.
+    @Published private(set) var phoneCounts = MediaCounts.zero
+    /// Where the photos of this device stand, for the filter chips on the device shelf.
+    @Published private(set) var deviceSplit = DeviceSplit()
+    /// Whose photos the server holds, for the filter chips on the server shelf.
+    @Published private(set) var serverSplit = ServerSplit()
+    private var filteredGrids: [String: GridModel] = [:]
+    @Published private(set) var serverCounts = MediaCounts.zero
+    /// One switch for Library, Collections and the map: screenshots stay in their own album only.
+    @Published var hideScreenshots = UserDefaults.standard.bool(forKey: "galleryos.hide-screenshots") {
+        didSet {
+            guard hideScreenshots != oldValue else { return }
+            UserDefaults.standard.set(hideScreenshots, forKey: "galleryos.hide-screenshots")
+            overlayCatalog()
+        }
+    }
+    /// Every photo, screenshots included: albums are looked up here, so "Zrzuty ekranu" still opens.
+    private var everything: [PhotoRef] = []
+    /// Lookup by id for the viewer and menus. Rebuilt lazily after any grid changes.
+    private var refIndex: [String: PhotoRef] = [:]
+    private var refIndexStale = true
     @Published private(set) var albums: [AlbumRecord] = []
     @Published private(set) var isLoading = false
     @Published private(set) var placeNames: [String: String] = [:]
@@ -84,14 +106,22 @@ final class PhotoLibrary: NSObject, ObservableObject {
     /// out the sync, and a busy library keeps postponing it.
     func reloadNow() {
         reloadTask?.cancel()
+        reloadPending = false
         reloadTask = Task { [weak self] in await self?.load() }
     }
 
     func photo(id: String) -> PhotoRef? {
-        phoneGrid.all.first { $0.id == id }
-            ?? serverGrid.all.first { $0.id == id }
-            ?? grid.all.first { $0.id == id }
-            ?? LibraryEngine.shared.hiddenRefs().first { $0.id == id }
+        // The viewer asks many times per frame while it is dragged; linear scans of the whole library stuttered.
+        if refIndexStale {
+            var index: [String: PhotoRef] = [:]
+            index.reserveCapacity(grid.all.count + serverGrid.all.count)
+            for photo in grid.all { index[photo.id] = photo }
+            for photo in serverGrid.all { index[photo.id] = photo }
+            for photo in phoneGrid.all { index[photo.id] = photo }
+            refIndex = index
+            refIndexStale = false
+        }
+        return refIndex[id] ?? LibraryEngine.shared.hiddenRefs().first { $0.id == id }
     }
 
     func isConcealed(_ id: String) -> Bool {
@@ -119,12 +149,26 @@ final class PhotoLibrary: NSObject, ObservableObject {
             return GridModel(photos: LibraryEngine.shared.albumRefs(name))
         }
         if let cached = albumGrids[albumID] { return cached }
-        let photos = (albumMembers[albumID] ?? []).compactMap { id in
-            grid.all.first { $0.id == id } ?? outsidePhotos[id]
+        // One dictionary instead of a linear search per member: big albums opened with a visible pause.
+        let byID = Dictionary((everything.isEmpty ? grid.all : everything).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var photos = (albumMembers[albumID] ?? []).compactMap { id in
+            byID[id] ?? outsidePhotos[id]
+        }
+        // With screenshots switched off they leave every album except their own.
+        if hideScreenshots,
+           PHAssetCollection.fetchAssetCollections(withLocalIdentifiers: [albumID], options: nil)
+               .firstObject?.assetCollectionSubtype != .smartAlbumScreenshots {
+            photos.removeAll { $0.traits.contains(.screenshot) }
         }
         let model = GridModel(photos: LibraryRules.keepingOneFilm(photos))
         albumGrids[albumID] = model
         return model
+    }
+
+    /// Photos behind one map pin. Filtered live, so deleted or hidden photos leave the place at once.
+    func grid(placeIDs: [String]) -> GridModel {
+        let wanted = Set(placeIDs)
+        return GridModel(photos: grid.all.filter { wanted.contains($0.id) })
     }
 
     func album(id: String) -> AlbumRecord? {
@@ -156,22 +200,131 @@ final class PhotoLibrary: NSObject, ObservableObject {
                 }
             }
         }
-        for index in localPhotos.indices where ids.contains(localPhotos[index].id) {
+        let wanted = Set(ids)
+        for index in localPhotos.indices where wanted.contains(localPhotos[index].id) {
             localPhotos[index].isFavorite = favorite
         }
         LibraryEngine.shared.updateFavorite(favorite, ids: ids)
         overlayCatalog()
     }
 
-    func delete(ids: [String]) {
-        let targets = ids.compactMap { assets[$0] }
+    /// iOS asks the user to confirm every delete. Photos leave GalleryOS only after that yes;
+    /// before, "Nie zezwalaj" left them hidden here although they were still in Photos.
+    /// Photos on this iPhone go to its Recently Deleted (iOS asks first).
+    /// Server copies ("cloud:" ids) go to Recently Deleted on the server for 30 days.
+    /// Before, deleting a server copy silently did nothing.
+    @discardableResult
+    func delete(ids: [String]) async -> Bool {
+        let serverIDs = ids.filter { $0.hasPrefix("cloud:") }
+        let phoneIDs = ids.filter { !$0.hasPrefix("cloud:") }
+        let targets = phoneIDs.compactMap { assets[$0] }
         if !targets.isEmpty {
-            PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.deleteAssets(targets as NSArray)
+            do {
+                try await PHPhotoLibrary.shared().performChanges {
+                    PHAssetChangeRequest.deleteAssets(targets as NSArray)
+                }
+            } catch {
+                return false
             }
         }
-        LibraryEngine.shared.releaseFromPhone(ids: ids)
+        if !phoneIDs.isEmpty { LibraryEngine.shared.releaseFromPhone(ids: phoneIDs) }
+        if !serverIDs.isEmpty { LibraryEngine.shared.markDeleted(ids: serverIDs) }
         overlayCatalog()
+        return true
+    }
+
+    func restoreFromTrash(ids: [String]) {
+        LibraryEngine.shared.restoreFromTrash(ids: ids)
+        albumGrids.removeAll()
+        overlayCatalog()
+    }
+
+    /// Recently Deleted on the server → gone for good, on every device. Cannot be undone.
+    func purge(ids: [String]) {
+        LibraryEngine.shared.purge(ids: ids)
+        albumGrids.removeAll()
+        overlayCatalog()
+    }
+
+    /// Deletes from this device and moves the server copy to Recently Deleted on the server.
+    @discardableResult
+    func deleteEverywhere(ids: [String]) async -> Bool {
+        let synced = ids.filter { !$0.hasPrefix("cloud:") && LibraryEngine.shared.isUploaded($0) }
+        let cloud = synced.compactMap { id in serverID(for: id) }
+        guard await delete(ids: ids) else { return false }
+        if !cloud.isEmpty {
+            LibraryEngine.shared.markDeleted(ids: cloud)
+            albumGrids.removeAll()
+            overlayCatalog()
+        }
+        return true
+    }
+
+    /// The server form ("cloud:<hash>") of a photo that is on this device and on the server.
+    func serverID(for id: String) -> String? {
+        if id.hasPrefix("cloud:") { return id }
+        return LibraryEngine.shared.cloudID(forLocal: id)
+    }
+
+    func isTrashed(_ id: String) -> Bool {
+        LibraryEngine.shared.isTrashed(id)
+    }
+
+    /// A purge request for these photos: your own go, other people's stay with their owner.
+    func purgeRequest(_ ids: [String]) -> PurgeRequest? {
+        let own = LibraryEngine.shared.purgeable(ids)
+        return PurgeRequest(ids: own, others: ids.count - own.count)
+    }
+
+    /// The device shelf narrowed to one state ("Na serwerze", "Czeka"…).
+    func phoneShelf(_ filter: DeviceFilter) -> GridModel {
+        guard filter != .all else { return phoneGrid }
+        let key = "phone." + filter.rawValue
+        if let cached = filteredGrids[key] { return cached }
+        let engine = LibraryEngine.shared
+        let wanted: LibraryEngine.DeviceState
+        switch filter {
+        case .all, .onServer: wanted = .onServer
+        case .waiting: wanted = .waiting
+        case .notSent: wanted = .notSent
+        case .deletedOnServer: wanted = .deletedOnServer
+        }
+        let model = GridModel(photos: phoneGrid.all.filter { engine.deviceState($0.id) == wanted })
+        filteredGrids[key] = model
+        return model
+    }
+
+    /// The server shelf narrowed to mine, other people's, or not on this device.
+    func serverShelf(_ filter: ServerFilter) -> GridModel {
+        guard filter != .all else { return serverGrid }
+        let key = "server." + filter.rawValue
+        if let cached = filteredGrids[key] { return cached }
+        let engine = LibraryEngine.shared
+        let model = GridModel(photos: serverGrid.all.filter { photo in
+            switch filter {
+            case .all: return true
+            case .mine: return engine.serverAsset(photo.id).map { engine.isMine($0) } == true
+            case .others: return engine.serverAsset(photo.id).map { engine.isMine($0) } != true
+            case .notHere: return !engine.hasLocalCopy(photo.id)
+            }
+        })
+        filteredGrids[key] = model
+        return model
+    }
+
+    func deviceState(_ id: String) -> LibraryEngine.DeviceState {
+        LibraryEngine.shared.deviceState(id)
+    }
+
+    func sendBatch(_ ids: [String]) -> SendBatch {
+        let batch = LibraryEngine.shared.sendBatch(ids)
+        overlayCatalog()
+        return batch
+    }
+
+    /// Ids in Recently Deleted (for "Usuń wszystkie" / "Przywróć wszystkie").
+    var trashedIDs: [String] {
+        LibraryEngine.shared.trashedRefs().map(\.id)
     }
 
     func userAlbumNames(for id: String) -> [String] {
@@ -184,6 +337,43 @@ final class PhotoLibrary: NSObject, ObservableObject {
 
     func people(for photo: PhotoRef) -> [String] {
         LibraryEngine.shared.people(for: photo.cloudHash.map { "cloud:\($0)" } ?? photo.id)
+    }
+
+    private let sharpCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 160
+        return cache
+    }()
+
+    /// A crisp frame for a server photo shown in a big tile. Uses the original when it is on the
+    /// device; at home it fetches the original first. Away from home it keeps the preview.
+    func sharpPreview(id: String, side: CGFloat) async -> UIImage? {
+        let bucket: CGFloat = side > 1300 ? 2048 : 1280
+        let key = "\(id)#\(Int(bucket))" as NSString
+        if let hit = sharpCache.object(forKey: key) { return hit }
+        var file = LibraryEngine.shared.localOriginal(id: id)
+        if file == nil, ServerLink.shared.route == .home {
+            await LibraryEngine.shared.pullOriginalQuietly(id: id)
+            file = LibraryEngine.shared.localOriginal(id: id)
+        }
+        guard let file else { return nil }
+        let image = await Task.detached(priority: .utility) {
+            Self.downsample(file, side: bucket)
+        }.value
+        if let image { sharpCache.setObject(image, forKey: key) }
+        return image
+    }
+
+    nonisolated private static func downsample(_ url: URL, side: CGFloat) -> UIImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: side
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: image)
     }
 
     func cloudMedia(id: String) -> CloudMedia? {
@@ -230,11 +420,18 @@ final class PhotoLibrary: NSObject, ObservableObject {
         serverGrid.all.filter { $0.id.hasPrefix("cloud:") }.count
     }
 
+    /// The small badge on a tile: on the server, waiting, not sent, deleted from the server; on the
+    /// server shelf, a photo that is not on this device.
     func syncMark(for id: String) -> PhotoSyncMark {
         guard destinationConnected else { return .hidden }
-        if id.hasPrefix("cloud:") { return .serverOnly }
-        if LibraryEngine.shared.isDuplicate(id) { return .duplicate }
-        return isUploaded(id) ? .sent : .waiting
+        let engine = LibraryEngine.shared
+        if id.hasPrefix("cloud:") { return engine.hasLocalCopy(id) ? .hidden : .serverOnly }
+        switch engine.deviceState(id) {
+        case .onServer: return .sent
+        case .waiting: return .waiting
+        case .notSent: return engine.isDuplicate(id) ? .duplicate : .notSent
+        case .deletedOnServer: return .deletedOnServer
+        }
     }
 
     func syncCounts() -> (sent: Int, waiting: Int) {
@@ -257,9 +454,38 @@ final class PhotoLibrary: NSObject, ObservableObject {
     }
 
     func overlayCatalog() {
-        let nextPhone = GridModel(photos: LibraryEngine.shared.phoneRefs(local: localPhotos))
-        let nextServer = GridModel(photos: LibraryEngine.shared.serverRefs())
-        let nextGrid = GridModel(photos: LibraryEngine.shared.merged(local: localPhotos))
+        let phoneAll = LibraryEngine.shared.phoneRefs(local: localPhotos)
+        let serverAll = LibraryEngine.shared.serverRefs()
+        let mergedAll = LibraryEngine.shared.merged(local: localPhotos)
+        everything = mergedAll
+        let shown: ([PhotoRef]) -> [PhotoRef] = { [hideScreenshots] refs in
+            hideScreenshots ? refs.filter { !$0.traits.contains(.screenshot) } : refs
+        }
+        let nextPhone = GridModel(photos: shown(phoneAll))
+        let nextServer = GridModel(photos: shown(serverAll))
+        let nextGrid = GridModel(photos: shown(mergedAll))
+        let phoneTally = MediaCounts(nextPhone.all)
+        let serverTally = MediaCounts(nextServer.all)
+        if phoneCounts != phoneTally { phoneCounts = phoneTally }
+        if serverCounts != serverTally { serverCounts = serverTally }
+        let engine = LibraryEngine.shared
+        var device = DeviceSplit()
+        for photo in nextPhone.all {
+            switch engine.deviceState(photo.id) {
+            case .onServer: device.onServer += 1
+            case .waiting: device.waiting += 1
+            case .notSent: device.notSent += 1
+            case .deletedOnServer: device.deletedOnServer += 1
+            }
+        }
+        var server = ServerSplit()
+        for photo in nextServer.all {
+            if engine.serverAsset(photo.id).map { engine.isMine($0) } == true { server.mine += 1 } else { server.others += 1 }
+            if !engine.hasLocalCopy(photo.id) { server.notHere += 1 }
+        }
+        if deviceSplit != device { deviceSplit = device }
+        if serverSplit != server { serverSplit = server }
+        filteredGrids.removeAll()
         let remote = LibraryEngine.shared.supplementalAlbums()
         let titles = Set(localAlbums.map { $0.title.lowercased() })
         let merged = localAlbums + remote.filter { record in
@@ -269,17 +495,21 @@ final class PhotoLibrary: NSObject, ObservableObject {
         let nextAlbums = merged.filter { seen.insert($0.id).inserted }
         let signature = (nextPhone.all + nextServer.all).map(\.id)
         let idsChanged = signature != lastSignature
-        let albumsChanged = nextAlbums.map(\.id) != albums.map(\.id)
-            || nextAlbums.map(\.count) != albums.map(\.count)
+        // Whole values, not only ids: a rename or a new cover must reach the screen too.
+        let albumsChanged = nextAlbums != albums
         // Skip no-op publishes so sync ticks do not rebuild every grid consumer.
-        if idsChanged || phoneGrid.all.map(\.id) != nextPhone.all.map(\.id) {
+        // Compare whole photos, not only ids: a favourite flip keeps the ids and must still show.
+        if idsChanged || phoneGrid.all != nextPhone.all {
             phoneGrid = nextPhone
+            refIndexStale = true
         }
-        if idsChanged || serverGrid.all.map(\.id) != nextServer.all.map(\.id) {
+        if idsChanged || serverGrid.all != nextServer.all {
             serverGrid = nextServer
+            refIndexStale = true
         }
-        if idsChanged || grid.all.map(\.id) != nextGrid.all.map(\.id) {
+        if idsChanged || grid.all != nextGrid.all {
             grid = nextGrid
+            refIndexStale = true
         }
         if albumsChanged {
             albums = nextAlbums
@@ -289,6 +519,8 @@ final class PhotoLibrary: NSObject, ObservableObject {
             lastSignature = signature
             generation += 1
             albumGrids.removeAll()
+            // New server photos get looked at too (from their previews).
+            PhotoIntelligence.shared.schedule(self)
         }
     }
 
@@ -298,12 +530,21 @@ final class PhotoLibrary: NSObject, ObservableObject {
         PHPhotoLibrary.shared().register(self)
     }
 
+    /// Set while a reload is already on its way.
+    private var reloadPending = false
+
+    /// A steady stream of changes (iCloud syncing, edits, a big import) used to push the reload
+    /// back on every change, so new photos could stay invisible until the app was restarted.
+    /// Now the first change sets the moment and later ones ride along with it.
     private func scheduleReload() {
-        reloadTask?.cancel()
+        guard !reloadPending else { return }
+        reloadPending = true
         let pause: UInt64 = LibraryEngine.shared.stillCopying() ? 8_000_000_000 : 1_500_000_000
         reloadTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: pause)
-            await self?.load()
+            guard let self else { return }
+            self.reloadPending = false
+            await self.load()
         }
     }
 
@@ -365,10 +606,18 @@ final class PhotoLibrary: NSObject, ObservableObject {
         placeNames = next
     }
 
+    /// A readable place for a point ("Zakopane", "Barcelona, Katalonia"), for trips and memories.
+    static func placeName(for location: CLLocation) async -> String? {
+        if #available(iOS 26.0, *) {
+            if let modern = await modernPlace(location) { return modern }
+        }
+        return await legacyPlace(location)
+    }
+
     @available(iOS 26.0, *)
     private static func modernPlace(_ location: CLLocation) async -> String? {
         guard let lookup = MKReverseGeocodingRequest(location: location) else { return nil }
-        lookup.preferredLocale = Locale(identifier: "pl_PL")
+        lookup.preferredLocale = Localization.locale
         guard let item = try? await lookup.mapItems.first else { return nil }
         return placeTitle(item)
     }
@@ -378,7 +627,7 @@ final class PhotoLibrary: NSObject, ObservableObject {
         let city = readable(mark.locality ?? mark.subAdministrativeArea)
         let region = readable(mark.administrativeArea)
         let country = readable(mark.country)
-        let home = Locale.current.localizedString(forRegionCode: "PL") ?? "Polska"
+        let home = Localization.locale.localizedString(forRegionCode: Locale.current.region?.identifier ?? "PL") ?? "Polska" // l10n:skip
         if let city, let region, region.caseInsensitiveCompare(home) != .orderedSame, region != city {
             return "\(city), \(region)"
         }
@@ -397,7 +646,7 @@ final class PhotoLibrary: NSObject, ObservableObject {
         }
         if let city, let context, context.hasPrefix(city), context.count > city.count + 1 {
             let rest = context.dropFirst(city.count).trimmingCharacters(in: CharacterSet(charactersIn: ", "))
-            let home = Locale.current.localizedString(forRegionCode: "PL") ?? "Polska"
+            let home = Localization.locale.localizedString(forRegionCode: Locale.current.region?.identifier ?? "PL") ?? "Polska" // l10n:skip
             if rest.caseInsensitiveCompare(home) == .orderedSame || rest.isEmpty {
                 return city
             }
@@ -424,7 +673,23 @@ final class PhotoLibrary: NSObject, ObservableObject {
         return text
     }
 
+    /// Every photo the library knows, screenshots included even when the grid hides them.
+    var allPhotos: [PhotoRef] { everything.isEmpty ? grid.all : everything }
+
+    /// Scene labels now come from PhotoIntelligence, which looks at each photo once for everything.
+    func adoptLabels(_ fresh: [String: [String]]) {
+        guard !fresh.isEmpty else { return }
+        var next = labels
+        for (id, value) in fresh { next[id] = value }
+        labels = next
+    }
+
     private func startIndexing() {
+        indexing = false
+        PhotoIntelligence.shared.schedule(self)
+    }
+
+    private func legacyIndexing() {
         if LibraryEngine.shared.stillCopying() {
             indexing = false
             return
@@ -471,23 +736,27 @@ final class PhotoLibrary: NSObject, ObservableObject {
         if save { LabelStore.save(labels) }
     }
 
-    private static func labels(for asset: PHAsset, manager: PHImageManager) async -> [String]? {
+    /// Off the main actor: Vision ran here for every photo and stalled scrolling for minutes after launch.
+    nonisolated private static func labels(for asset: PHAsset, manager: PHImageManager) async -> [String]? {
         guard let image = await thumbnail(for: asset, manager: manager), let cgImage = image.cgImage else { return nil }
-        let request = VNClassifyImageRequest()
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do {
-            try handler.perform([request])
-        } catch {
-            return nil
+        // Vision's buffers are autoreleased; drained per photo so thousands of them never pile up.
+        return autoreleasepool { () -> [String]? in
+            let request = VNClassifyImageRequest()
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            do {
+                try handler.perform([request])
+            } catch {
+                return nil
+            }
+            let found = (request.results ?? [])
+                .filter { $0.confidence >= 0.3 }
+                .prefix(6)
+                .map(\.identifier)
+            return Array(found)
         }
-        let found = (request.results ?? [])
-            .filter { $0.confidence >= 0.3 }
-            .prefix(6)
-            .map(\.identifier)
-        return Array(found)
     }
 
-    private static func thumbnail(for asset: PHAsset, manager: PHImageManager) async -> UIImage? {
+    nonisolated private static func thumbnail(for asset: PHAsset, manager: PHImageManager) async -> UIImage? {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .fastFormat
@@ -507,7 +776,9 @@ final class PhotoLibrary: NSObject, ObservableObject {
                     resumed.resume(continuation, with: nil)
                     return
                 }
-                if degraded { return }
+                // Fast format answers once and may mark that answer degraded; waiting for
+                // a second answer that never comes stalled indexing for good.
+                _ = degraded
                 resumed.resume(continuation, with: image)
             }
         }
@@ -575,4 +846,56 @@ enum LabelStore {
         guard let data = try? JSONEncoder().encode(labels) else { return }
         try? data.write(to: url, options: .atomic)
     }
+}
+
+struct MediaCounts: Equatable {
+    var photos: Int
+    var videos: Int
+
+    static let zero = MediaCounts(photos: 0, videos: 0)
+
+    init(photos: Int, videos: Int) {
+        self.photos = photos
+        self.videos = videos
+    }
+
+    /// Live Photos are photos; only real films count as video.
+    init(_ refs: [PhotoRef]) {
+        var films = 0
+        for ref in refs where ref.traits.isVideo { films += 1 }
+        self.init(photos: refs.count - films, videos: films)
+    }
+
+    var total: Int { photos + videos }
+
+    var line: String {
+        "\(PhotoFormat.grouped(photos)) \(PhotoFormat.noun(photos)) · \(PhotoFormat.grouped(videos)) \(MediaCounts.filmWord(videos))"
+    }
+
+    static func filmWord(_ value: Int) -> String {
+        Plural.pick(value, L("film"), L("filmy"), L("filmów"))
+    }
+}
+
+enum DeviceFilter: String, CaseIterable, Identifiable {
+    case all, onServer, waiting, notSent, deletedOnServer
+    var id: String { rawValue }
+}
+
+enum ServerFilter: String, CaseIterable, Identifiable {
+    case all, mine, others, notHere
+    var id: String { rawValue }
+}
+
+struct DeviceSplit: Equatable {
+    var onServer = 0
+    var waiting = 0
+    var notSent = 0
+    var deletedOnServer = 0
+}
+
+struct ServerSplit: Equatable {
+    var mine = 0
+    var others = 0
+    var notHere = 0
 }

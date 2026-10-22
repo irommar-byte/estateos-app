@@ -26,8 +26,12 @@ enum AnimatedCache {
 enum AnimatedFrames {
     static func image(data: Data, maxSide: CGFloat, maxFrames: Int) -> UIImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        let count = min(CGImageSourceGetCount(source), max(1, maxFrames))
-        if count <= 1 { return UIImage(data: data) }
+        let total = CGImageSourceGetCount(source)
+        if total <= 1 { return UIImage(data: data) }
+        // Long GIFs are thinned evenly (not cut off): every kept frame stays on screen for the
+        // frames it stands for, so the whole animation plays at its real speed.
+        let keep = min(total, max(2, maxFrames))
+        let step = Double(total) / Double(keep)
         var frames: [UIImage] = []
         var duration = 0.0
         let side = max(64, maxSide)
@@ -36,10 +40,12 @@ enum AnimatedFrames {
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true
         ]
-        for index in 0..<count {
-            guard let cg = CGImageSourceCreateThumbnailAtIndex(source, index, options as CFDictionary) else { continue }
+        for slot in 0..<keep {
+            let first = Int(Double(slot) * step)
+            let last = min(total, Int(Double(slot + 1) * step))
+            guard first < last, let cg = CGImageSourceCreateThumbnailAtIndex(source, first, options as CFDictionary) else { continue }
             frames.append(UIImage(cgImage: cg))
-            duration += delay(source, index: index)
+            for index in first..<last { duration += delay(source, index: index) }
         }
         guard !frames.isEmpty else { return nil }
         return UIImage.animatedImage(with: frames, duration: max(duration, 0.4))
@@ -131,8 +137,37 @@ struct GridModel: Equatable {
         )
     }
 
+    /// `GridModel(photos:)` always re-sorts by date, so a chosen order has to reshape the model here.
+    /// Date orders keep the day sections; any other order is one flat section in that order.
     func arranged(_ sort: LibrarySort) -> GridModel {
-        GridModel(photos: all.sorted { sort.places($0, before: $1) })
+        switch sort {
+        case .oldest:
+            return self
+        case .newest:
+            let flipped: [PhotoDay] = days.reversed().map { day in
+                var copy = day
+                copy.photos = Array(day.photos.reversed())
+                return copy
+            }
+            return GridModel(
+                days: flipped,
+                months: Array(months.reversed()),
+                years: Array(years.reversed()),
+                all: Array(all.reversed())
+            )
+        default:
+            let ordered = all.sorted { sort.places($0, before: $1) }
+            guard let first = ordered.first else { return self }
+            let section = PhotoDay(
+                key: "sort.\(sort.rawValue)",
+                date: first.created,
+                title: sort.title,
+                latitude: nil,
+                longitude: nil,
+                photos: ordered
+            )
+            return GridModel(days: [section], months: months, years: years, all: ordered)
+        }
     }
 }
 
@@ -143,10 +178,10 @@ enum PhotoZoom: Int, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .years: return "Lata"
-        case .months: return "Miesiące"
-        case .days: return "Dni"
-        case .all: return "Wszystkie zdjęcia"
+        case .years: return L("Lata")
+        case .months: return L("Miesiące")
+        case .days: return L("Dni")
+        case .all: return L("Wszystkie zdjęcia")
         }
     }
 
@@ -168,12 +203,12 @@ enum LibrarySort: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .oldest: return "Od najstarszych"
-        case .newest: return "Od najnowszych"
-        case .longest: return "Od najdłuższych"
-        case .favorites: return "Ulubione na górze"
-        case .videos: return "Najpierw filmy"
-        case .largest: return "Największe kadry"
+        case .oldest: return L("Od najstarszych")
+        case .newest: return L("Od najnowszych")
+        case .longest: return L("Od najdłuższych")
+        case .favorites: return L("Ulubione na górze")
+        case .videos: return L("Najpierw filmy")
+        case .largest: return L("Największe kadry")
         }
     }
 
@@ -270,10 +305,10 @@ enum PhotoGrouping {
     }
 
     static func dayTitle(for date: Date, now: Date = .now, calendar: Calendar = .current) -> String {
-        if calendar.isDate(date, inSameDayAs: now) { return "Dzisiaj" }
+        if calendar.isDate(date, inSameDayAs: now) { return L("Dzisiaj") }
         if let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: now)),
            calendar.isDate(date, inSameDayAs: yesterday) {
-            return "Wczoraj"
+            return L("Wczoraj")
         }
         let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
         return format(date, template: sameYear ? "d MMMM" : "d MMMM yyyy", calendar: calendar)
@@ -298,7 +333,7 @@ enum PhotoGrouping {
             formatter = cached
         } else {
             let created = DateFormatter()
-            created.locale = Locale(identifier: "pl_PL")
+            created.locale = Localization.locale
             created.calendar = calendar
             created.timeZone = calendar.timeZone
             created.setLocalizedDateFormatFromTemplate(template)
@@ -322,30 +357,24 @@ enum PhotoFormat {
     }
 
     static func onMap(_ value: Int) -> String {
-        if value == 1 { return "1 na mapie" }
-        return "\(grouped(value)) na mapie"
+        L("\(grouped(value)) na mapie")
     }
 
     /// Apple Photos place albums: „6 rzeczy”.
     static func things(_ value: Int) -> String {
         let number = grouped(value)
-        if value == 1 { return "\(number) rzecz" }
-        return "\(number) rzeczy"
+        return Plural.pick(value, L("\(number) rzecz"), L("\(number) rzeczy"), L("\(number) rzeczy"))
     }
 
     static func noun(_ value: Int) -> String {
-        if value == 1 { return "zdjęcie" }
-        let mod10 = value % 10
-        let mod100 = value % 100
-        if (2...4).contains(mod10), !(12...14).contains(mod100) { return "zdjęcia" }
-        return "zdjęć"
+        Plural.pick(value, L("zdjęcie"), L("zdjęcia"), L("zdjęć"))
     }
 
     private static let numbers: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
-        formatter.locale = Locale(identifier: "pl_PL")
-        formatter.groupingSeparator = "\u{00a0}"
+        formatter.locale = Localization.locale
+        if !Localization.isEnglish { formatter.groupingSeparator = "\u{00a0}" }
         return formatter
     }()
 
@@ -367,11 +396,11 @@ enum ThisDevice {
     private static var pad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     static var name: String { pad ? "iPad" : "iPhone" }
     /// iPada / iPhone’a
-    static var genitive: String { pad ? "iPada" : "iPhone’a" }
+    static var genitive: String { Localization.isPolish ? (pad ? "iPada" : "iPhone’a") : name }
     /// iPadzie / iPhonie
-    static var locative: String { pad ? "iPadzie" : "iPhonie" }
+    static var locative: String { Localization.isPolish ? (pad ? "iPadzie" : "iPhonie") : name }
     /// iPadem / iPhone’em
-    static var instrumental: String { pad ? "iPadem" : "iPhone’em" }
+    static var instrumental: String { Localization.isPolish ? (pad ? "iPadem" : "iPhone’em") : name }
     static var symbol: String { pad ? "ipad" : "iphone" }
     static var slashSymbol: String { pad ? "ipad.slash" : "iphone.slash" }
 }

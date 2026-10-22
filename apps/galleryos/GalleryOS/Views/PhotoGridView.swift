@@ -33,6 +33,8 @@ struct PhotoGrid: UIViewControllerRepresentable {
     var placeNames: [String: String]
     var density: CGFloat = 3
     var synced: (String) -> Bool = { _ in false }
+    /// The full state of a tile (on the server, waiting, not sent, deleted from the server).
+    var syncMarkFor: ((String) -> PhotoSyncMark)? = nil
     var showsSync = false
     var anchor: GridAnchor?
     var asset: (String) -> PHAsset?
@@ -51,6 +53,10 @@ struct PhotoGrid: UIViewControllerRepresentable {
     var onCaption: (String) -> Void = { _ in }
     var onPlace: (CLLocationCoordinate2D) -> Void = { _ in }
     var onVisiblePlaces: ([PlaceRequest]) -> Void
+    /// Newest-first and other custom orders put what matters at the top, so the grid opens there.
+    var startsAtTop = false
+    /// Sharp frames for server copies shown in big tiles.
+    var sharp: (String, CGFloat) async -> UIImage? = { _, _ in nil }
 
     func makeUIViewController(context: Context) -> PhotoGridController {
         let controller = PhotoGridController()
@@ -87,6 +93,8 @@ struct PhotoGrid: UIViewControllerRepresentable {
     }
 
     private func bind(_ controller: PhotoGridController) {
+        controller.startsAtTop = startsAtTop
+        controller.sharp = sharp
         controller.onOpen = onOpen
         controller.onSelect = onSelect
         controller.onFavorite = onFavorite
@@ -103,6 +111,7 @@ struct PhotoGrid: UIViewControllerRepresentable {
         controller.thumb = thumb
         controller.loadThumb = loadThumb
         controller.synced = synced
+        controller.syncMarkFor = syncMarkFor
         controller.showsSync = showsSync
     }
 }
@@ -124,6 +133,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     var thumb: (String) -> UIImage? = { _ in nil }
     var loadThumb: (String) async -> UIImage? = { _ in nil }
     var synced: (String) -> Bool = { _ in false }
+    var syncMarkFor: ((String) -> PhotoSyncMark)?
     var showsSync = false
 
     private let layout = LibraryLayout()
@@ -136,13 +146,35 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     private var placeNames: [String: String] = [:]
     private var pendingAnchor: GridAnchor?
     private var didInitialScroll = false
+    var startsAtTop = false
     private var pinchAnchorID: String?
     private var pinchFraction: CGFloat = 0
     private var pinchScreenY: CGFloat = 0
     private var pinching = false
+    /// Sharp frame for a server copy at a pixel size (from the original); nil keeps the preview.
+    var sharp: (String, CGFloat) async -> UIImage? = { _, _ in nil }
+    private var sharpAsked = Set<String>()
+    /// The previous layout, fading out above the new one while still following the fingers.
+    private var fadingSnapshot: UIView?
+    private var fadingStage: CGFloat = 3
+    /// Gesture scale at the moment the grid last changed its column count.
+    private var pinchBase: CGFloat = 1
+    /// Column count the grid is laid out in during the pinch.
+    private var pinchStage: CGFloat = 3
+    /// Many close steps instead of four far ones: each change of layout is small enough that the
+    /// dissolve between them is barely visible, from 2–3 photos on screen to well over a thousand.
+    private static let pinchStages: [CGFloat] = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 17, 20, 24, 27]
+    /// Total pinch scale since the gesture began, continued by momentum after the fingers lift.
+    private var pinchTotal: CGFloat = 1
+    private var pinchFinger: CGPoint = .zero
+    private var coastLink: CADisplayLink?
+    private var coastVelocity: CGFloat = 0
+    private var coastLast: CFTimeInterval = 0
     private var photoIDs: [String] = []
     private var sourceIDs: [String] = []
     private var deferredStructure = false
+    /// New data that arrived mid-scroll. It waits here so the cells and the layout never disagree.
+    private var pendingModel: (model: GridModel, zoom: PhotoZoom)?
     private var densityLink: CADisplayLink?
     private var densityFrom: CGFloat = 3
     private var densityTo: CGFloat = 3
@@ -294,10 +326,13 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         }
         if let asset, asset.mediaType != .video {
             // A retry must not cancel a poster that is still on its way. That left every film as an empty square.
-            if !cell.isLoadingThumb(for: id) {
+            // A bigger tile (after zooming in) asks again at its own size, so it is never an upscaled preview.
+            if !cell.isLoadingThumb(for: id, side: side) {
                 cell.cancelThumbRequest(on: imageManager)
                 let options = PHImageRequestOptions()
-                options.deliveryMode = .fastFormat
+                // Opportunistic: a quick preview at once, then the sharp frame at the tile's real pixel size.
+                // Fast format alone stopped at Photos' small cached thumbnail, which looked soft.
+                options.deliveryMode = .opportunistic
                 options.resizeMode = .fast
                 options.isNetworkAccessAllowed = true
                 options.isSynchronous = false
@@ -315,7 +350,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
                             if asset.mediaType == .video {
                                 FilmPoster.store(image, id: id)
                             }
-                            GridImageStore.shared.remember(id, image)
+                            if !degraded { GridImageStore.shared.remember(id, image) }
                             guard let self else { return }
                             if let cell, cell.displays(id: id) {
                                 cell.applyCloudThumb(image, id: id)
@@ -329,10 +364,23 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
                         DispatchQueue.main.async { cell?.stopLoadingThumb(id) }
                     }
                 }
-                cell.noteThumbRequest(token, id: id)
+                cell.noteThumbRequest(token, id: id, side: side)
             }
         } else if let asset, posterAsked.insert(id).inserted {
             localVideoPoster(id: id, asset: asset, cell: cell)
+        } else if asset == nil, side > 560, cell.shownPixelSide < side * 0.85 {
+            // Server copies come with a 480 px preview; big tiles get a sharp frame from the original.
+            let key = "\(id)#\(Int(side))"
+            if sharpAsked.insert(key).inserted {
+                Task { @MainActor [weak self, weak cell] in
+                    guard let self, let image = await self.sharp(id, side) else { return }
+                    if let cell, cell.displays(id: id) {
+                        cell.applyCloudThumb(image, id: id)
+                    } else {
+                        self.applyCached(id, image)
+                    }
+                }
+            }
         }
         thumbs.load(
             id: id,
@@ -389,6 +437,20 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         }
     }
 
+    /// After the grid settles at a new size, tiles that got bigger fetch a frame at their real size.
+    private func upgradeVisibleThumbs() {
+        guard let collection else { return }
+        let scale = max(collection.traitCollection.displayScale, 2)
+        for indexPath in collection.indexPathsForVisibleItems {
+            guard let id = photoID(at: indexPath),
+                  let cell = collection.cellForItem(at: indexPath) as? PhotoThumbCell else { continue }
+            let needed = max(cell.bounds.width, 120) * scale
+            if !cell.hasImage || cell.shownPixelSide < needed * 0.85 {
+                fillThumb(id: id, cell: cell)
+            }
+        }
+    }
+
     private func fillVisibleThumbs() {
         guard let collection else { return }
         for indexPath in collection.indexPathsForVisibleItems {
@@ -439,7 +501,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     }
 
     func setDensity(_ value: CGFloat, notify: Bool) {
-        let clamped = min(10, max(1, value))
+        let clamped = min(Self.pinchStages.last ?? 27, max(1, value))
         guard abs(layout.columns - clamped) > 0.02 else { return }
         layout.columns = clamped
         layout.markDirty()
@@ -460,6 +522,13 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     ) {
         let incomingIDs = model.all.map(\.id)
         if incomingIDs == sourceIDs, zoom == self.zoom {
+            // Same photos in the same order, but their details (favourite, sync) may have changed.
+            if deferredStructure {
+                pendingModel = (model, zoom)
+            } else {
+                self.model = model
+                layout.model = model
+            }
             self.selection = selection
             self.selecting = selecting
             self.placeNames = placeNames
@@ -473,6 +542,18 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         let ids = model.all.map(\.id)
         let structureChanged = zoom != self.zoom || ids != photoIDs
         let keep = didInitialScroll ? (anchor ?? centerAnchor()) : anchor
+        if structureChanged, collection?.isDragging == true || collection?.isDecelerating == true {
+            // Swapping the data under a moving list showed shifted photos and opened the wrong one.
+            pendingModel = (model, zoom)
+            self.selection = selection
+            self.selecting = selecting
+            self.placeNames = placeNames
+            layout.placeNames = placeNames
+            self.generation = generation
+            deferredStructure = true
+            return
+        }
+        pendingModel = nil
         self.model = model
         self.zoom = zoom
         self.selection = selection
@@ -488,10 +569,6 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
             return
         }
         self.generation = generation
-        if collection?.isDragging == true || collection?.isDecelerating == true {
-            deferredStructure = true
-            return
-        }
         commitStructure(anchor: keep, ids: ids)
     }
 
@@ -608,10 +685,12 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         switch zoom {
         case .years:
+            guard model.years.indices.contains(indexPath.item) else { return }
             let year = model.years[indexPath.item]
             let month = model.months.last { $0.id.hasPrefix(year.id) }
             onZoom(.months, month.map { GridAnchor(id: $0.id, atTop: false) })
         case .months:
+            guard model.months.indices.contains(indexPath.item) else { return }
             let month = model.months[indexPath.item]
             let day = model.days.first { $0.key.hasPrefix(month.id) }
             onZoom(.days, day?.photos.first.map { GridAnchor(id: $0.id, atTop: true) })
@@ -642,22 +721,22 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
             guard let self else { return nil }
             var top: [UIMenuElement] = []
             if asset != nil {
-                top.append(UIAction(title: "Kopiuj", image: UIImage(systemName: "doc.on.doc")) { _ in
+                top.append(UIAction(title: L("Kopiuj"), image: UIImage(systemName: "doc.on.doc")) { _ in
                     PhotoPeekController.copy(asset)
                 })
-                top.append(UIAction(title: "Udostępnij", image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
+                top.append(UIAction(title: L("Udostępnij"), image: UIImage(systemName: "square.and.arrow.up")) { [weak self] _ in
                     guard let self else { return }
                     PhotoSharing.present(ids: [photo.id], asset: self.assetLookup, from: self)
                 })
             }
             top.append(UIAction(
-                title: photo.isFavorite ? "Usuń z ulubionych" : "Ulubione",
+                title: photo.isFavorite ? L("Usuń z ulubionych") : L("Ulubione"),
                 image: UIImage(systemName: photo.isFavorite ? "heart.slash" : "heart")
             ) { [weak self] _ in
                 self?.onFavorite(photo.id)
             })
             top.append(UIAction(
-                title: concealedAlbum ? "Pokaż w bibliotece" : "Ukryj",
+                title: concealedAlbum ? L("Pokaż w bibliotece") : L("Ukryj"),
                 image: UIImage(systemName: concealedAlbum ? "eye" : "eye.slash")
             ) { [weak self] _ in
                 self?.onConceal(photo.id)
@@ -665,7 +744,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
             var sections: [UIMenuElement] = [UIMenu(options: .displayInline, children: top)]
             if let onDelete = self.onDelete {
                 sections.append(UIMenu(options: .displayInline, children: [
-                    UIAction(title: "Usuń", image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
+                    UIAction(title: L("Usuń"), image: UIImage(systemName: "trash"), attributes: .destructive) { _ in
                         onDelete(photo.id)
                     }
                 ]))
@@ -698,6 +777,9 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         if let thumbCell = cell as? PhotoThumbCell {
             thumbCell.contentView.alpha = id == hiddenID ? 0 : 1
             fillThumb(id: id, cell: thumbCell)
+            // A reused cell for a GIF that was already playing must start again: the set of
+            // playing ids does not change, so focusLoop alone would leave it still.
+            if looping.contains(id) { thumbCell.setLooping(true) }
         }
         focusLoop()
     }
@@ -737,42 +819,233 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
     private func finishDeferredStructure() {
         guard deferredStructure else { return }
-        commitStructure(anchor: centerAnchor(), ids: model.all.map(\.id))
+        let anchor = centerAnchor()
+        if let pending = pendingModel {
+            pendingModel = nil
+            model = pending.model
+            zoom = pending.zoom
+            layout.model = pending.model
+            layout.zoom = pending.zoom
+        }
+        commitStructure(anchor: anchor, ids: model.all.map(\.id))
     }
 
+    /// Pinch like Photos: the grid follows the fingers as a smooth scale, and when it passes
+    /// halfway to the next column count it cross-fades into that layout, still under the fingers.
+    /// A quick pinch keeps going after the fingers lift and eases out, like a flicked scroll view.
     @objc private func pinched(_ gesture: UIPinchGestureRecognizer) {
-        guard zoom == .days || zoom == .all else { return }
-        let finger = gesture.location(in: collection)
+        guard zoom == .days || zoom == .all, let collection, let host = collection.superview else { return }
         switch gesture.state {
         case .began:
+            stopCoast()
             densityLink?.invalidate()
+            densityLink = nil
             pinching = true
-            pinchAnchorID = collection.indexPathForItem(at: finger).map { photoID(at: $0) ?? groupID(at: $0) }
-            if let id = pinchAnchorID, let frame = layout.frame(for: id), frame.height > 1 {
-                pinchFraction = min(1, max(0, (finger.y - frame.minY) / frame.height))
-            } else {
-                pinchFraction = 0
+            pinchBase = 1
+            pinchTotal = 1
+            pinchFinger = gesture.location(in: host)
+            pinchStage = Self.nearestStage(to: layout.columns)
+            if abs(layout.columns - pinchStage) > 0.01 {
+                relayout(columns: pinchStage)
             }
-            pinchScreenY = finger.y - collection.contentOffset.y
+            anchorPinch(at: gesture.location(in: collection))
         case .changed:
-            let next = min(10, max(1, layout.columns / max(gesture.scale, 0.2)))
-            layout.columns = next
-            layout.markDirty()
-            collection.collectionViewLayout.invalidateLayout()
-            collection.layoutIfNeeded()
-            holdPinch(fingerScreenY: pinchScreenY)
-            placeCapsules()
-            publishCaption()
-            gesture.scale = 1
-        case .ended, .cancelled:
-            pinching = false
-            let stages: [CGFloat] = [1, 3, 5, 9]
-            let target = stages.min { abs($0 - layout.columns) < abs($1 - layout.columns) } ?? layout.columns
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.6)
-            springDensity(to: target)
-            pinchAnchorID = nil
+            pinchFinger = gesture.location(in: host)
+            pinchTotal = gesture.scale
+            pinchStep()
+        case .ended:
+            pinchFinger = gesture.location(in: host)
+            // Velocity is scale per second; only a real flick carries on.
+            let velocity = gesture.velocity / max(pinchTotal, 0.01)
+            if abs(velocity) > 0.9, velocity.isFinite {
+                startCoast(velocity: min(max(velocity, -9), 9))
+            } else {
+                settlePinch()
+            }
+        case .cancelled, .failed:
+            settlePinch()
         default:
             break
+        }
+    }
+
+    /// One frame of the pinch, from the total scale and the finger position.
+    private func pinchStep() {
+        let visual = pinchTotal / max(pinchBase, 0.01)
+        let effective = pinchStage / max(visual, 0.05)
+        if let next = neighbourStage(effective: effective) {
+            switchStage(to: next)
+        } else {
+            applyPinch(scale: rubberBand(visual))
+        }
+    }
+
+    private func startCoast(velocity: CGFloat) {
+        coastVelocity = velocity
+        coastLast = CACurrentMediaTime()
+        coastLink?.invalidate()
+        let link = CADisplayLink(target: self, selector: #selector(coastStep))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        coastLink = link
+    }
+
+    @objc private func coastStep() {
+        let now = CACurrentMediaTime()
+        let dt = CGFloat(min(0.05, now - coastLast))
+        coastLast = now
+        // Exponential friction, like UIScrollView's deceleration: about a third of a second of glide.
+        pinchTotal *= exp(coastVelocity * dt)
+        coastVelocity *= exp(-7.5 * dt)
+        pinchStep()
+        let atEdge = (pinchStage == Self.pinchStages.first && coastVelocity > 0)
+            || (pinchStage == Self.pinchStages.last && coastVelocity < 0)
+        if abs(coastVelocity) < 0.12 || atEdge {
+            stopCoast()
+            settlePinch()
+        }
+    }
+
+    private func stopCoast() {
+        coastLink?.invalidate()
+        coastLink = nil
+        coastVelocity = 0
+    }
+
+    /// Fingers up and glide over: spring the scale home to the layout it is in now.
+    private func settlePinch() {
+        guard let collection, pinching else { return }
+        stopCoast()
+        pinching = false
+        pinchAnchorID = nil
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.5)
+        UIView.animate(
+            withDuration: 0.5,
+            delay: 0,
+            usingSpringWithDamping: 0.82,
+            initialSpringVelocity: 0,
+            options: [.allowUserInteraction, .beginFromCurrentState]
+        ) { [weak self] in
+            collection.transform = .identity
+            if let self, let fading = self.fadingSnapshot {
+                fading.transform = CGAffineTransform(scaleX: self.fadingStage / max(self.pinchStage, 0.01), y: self.fadingStage / max(self.pinchStage, 0.01))
+            }
+        } completion: { [weak self] _ in
+            guard let self else { return }
+            self.placeCapsules()
+            self.publishCaption()
+            self.updatePinnedHeader()
+            self.upgradeVisibleThumbs()
+        }
+        onDensity(layout.columns)
+    }
+
+    private static func nearestStage(to columns: CGFloat) -> CGFloat {
+        pinchStages.min { abs($0 - columns) < abs($1 - columns) } ?? 3
+    }
+
+    /// The next layout once the grid looks closer to it than to the current one (geometric midpoint).
+    private func neighbourStage(effective: CGFloat) -> CGFloat? {
+        let stages = Self.pinchStages
+        guard let index = stages.firstIndex(of: pinchStage) else { return nil }
+        // A little past the midpoint, so a hand resting on the boundary does not flip back and forth.
+        if index > 0 {
+            let smaller = stages[index - 1]
+            if effective < (smaller * pinchStage).squareRoot() / 1.03 { return smaller }
+        }
+        if index < stages.count - 1 {
+            let larger = stages[index + 1]
+            if effective > (larger * pinchStage).squareRoot() * 1.03 { return larger }
+        }
+        return nil
+    }
+
+    /// Past the first and last layout the grid resists, like the edge of a scroll view.
+    private func rubberBand(_ scale: CGFloat) -> CGFloat {
+        let biggest = Self.pinchStages.first ?? 1
+        let smallest = Self.pinchStages.last ?? 27
+        if pinchStage == biggest, scale > 1 { return 1 + log(scale) * 0.35 }
+        if pinchStage == smallest, scale < 1 { return 1 / (1 + log(1 / scale) * 0.35) }
+        return scale
+    }
+
+    private func applyPinch(scale: CGFloat) {
+        guard let collection else { return }
+        let centre = collection.center
+        collection.transform = Self.pinchTransform(scale: scale, finger: pinchFinger, centre: centre)
+        if let fadingSnapshot {
+            // The old layout keeps the same apparent size as the new one until it has faded away.
+            let old = scale * fadingStage / max(pinchStage, 0.01)
+            fadingSnapshot.transform = Self.pinchTransform(scale: old, finger: pinchFinger, centre: centre)
+        }
+    }
+
+    private static func pinchTransform(scale: CGFloat, finger: CGPoint, centre: CGPoint) -> CGAffineTransform {
+        let dx = (finger.x - centre.x) * (1 - scale)
+        let dy = (finger.y - centre.y) * (1 - scale)
+        return CGAffineTransform(translationX: dx, y: dy).scaledBy(x: scale, y: scale)
+    }
+
+    private func anchorPinch(at point: CGPoint) {
+        guard let collection else { return }
+        pinchAnchorID = collection.indexPathForItem(at: point).map { photoID(at: $0) ?? groupID(at: $0) }
+        if let id = pinchAnchorID, let frame = layout.frame(for: id), frame.height > 1 {
+            pinchFraction = min(1, max(0, (point.y - frame.minY) / frame.height))
+        } else {
+            pinchFraction = 0
+        }
+        pinchScreenY = point.y - collection.contentOffset.y
+    }
+
+    private func relayout(columns: CGFloat) {
+        guard let collection else { return }
+        layout.columns = columns
+        layout.markDirty()
+        collection.collectionViewLayout.invalidateLayout()
+        collection.layoutIfNeeded()
+    }
+
+    private func switchStage(to next: CGFloat) {
+        guard let collection, let host = collection.superview else { return }
+        let visual = pinchTotal / max(pinchBase, 0.01)
+        // Freeze what is on screen, lay out the new column count underneath, then dissolve.
+        let snapshot = collection.snapshotView(afterScreenUpdates: false)
+        fadingSnapshot?.removeFromSuperview()
+        if let snapshot {
+            snapshot.bounds = collection.bounds
+            snapshot.center = collection.center
+            snapshot.transform = collection.transform
+            snapshot.isUserInteractionEnabled = false
+            host.insertSubview(snapshot, aboveSubview: collection)
+            fadingSnapshot = snapshot
+            fadingStage = pinchStage
+        }
+        collection.transform = .identity
+        anchorPinch(at: host.convert(pinchFinger, to: collection))
+        relayout(columns: next)
+        holdPinch(fingerScreenY: pinchScreenY)
+        // Continue from the same apparent size: the new layout starts scaled to match the old one.
+        let carried = visual * next / pinchStage
+        let growing = next < pinchStage
+        pinchStage = next
+        pinchBase = pinchTotal / max(carried, 0.01)
+        applyPinch(scale: carried)
+        // Sharper tiles only when the photos grow; zooming out keeps the frames it has (cheaper, smoother).
+        if growing { upgradeVisibleThumbs() }
+        placeCapsules()
+        publishCaption()
+        updatePinnedHeader()
+        UISelectionFeedbackGenerator().selectionChanged()
+        guard let snapshot else { return }
+        // Neighbouring layouts are close, so a short dissolve is enough; it starts one frame later,
+        // once the new tiles have painted, so nothing flashes grey.
+        DispatchQueue.main.async { [weak self] in
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.allowUserInteraction, .curveEaseInOut, .beginFromCurrentState]) {
+                snapshot.alpha = 0
+            } completion: { _ in
+                snapshot.removeFromSuperview()
+                if self?.fadingSnapshot === snapshot { self?.fadingSnapshot = nil }
+            }
         }
     }
 
@@ -808,6 +1081,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         densityLink?.invalidate()
         densityLink = nil
         onDensity(layout.columns)
+        upgradeVisibleThumbs()
     }
 
     private func publishCaption() {
@@ -884,6 +1158,7 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
 
     private func mark(for id: String) -> PhotoSyncMark {
         guard showsSync else { return .hidden }
+        if let syncMarkFor { return syncMarkFor(id) }
         if id.hasPrefix("cloud:") { return .serverOnly }
         return synced(id) ? .sent : .waiting
     }
@@ -1031,7 +1306,8 @@ final class PhotoGridController: UIViewController, UICollectionViewDataSource, U
         guard !didInitialScroll else { return }
         didInitialScroll = true
         let bottom = max(-collection.adjustedContentInset.top, collection.contentSize.height - collection.bounds.height + collection.adjustedContentInset.bottom)
-        collection.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+        let top = -collection.adjustedContentInset.top
+        collection.setContentOffset(CGPoint(x: 0, y: startsAtTop ? top : bottom), animated: false)
     }
 }
 
@@ -1365,7 +1641,7 @@ final class LibraryLayout: UICollectionViewLayout {
     }
 
     private func layoutDays(width: CGFloat) -> CGFloat {
-        let cols = min(max(columns, 1), 12)
+        let cols = min(max(columns, 1), 27)
         let mosaic = cols >= 7.5
         let large = cols < 1.7
         let gap: CGFloat = mosaic ? 1 : (large ? 4 : 2)
@@ -1387,7 +1663,7 @@ final class LibraryLayout: UICollectionViewLayout {
                     y += height + gap
                 }
             } else {
-                let side = max(28, (width - gap * (cols + 1)) / cols)
+                let side = max(8, (width - gap * (cols + 1)) / cols)
                 let perRow = max(1, Int(floor((width + 0.5) / (side + gap))))
                 let rowWidth = CGFloat(perRow) * side + CGFloat(perRow - 1) * gap
                 let extra = max(0, (width - rowWidth) / 2)
@@ -1447,7 +1723,24 @@ final class LibraryLayout: UICollectionViewLayout {
     }
 
     private func squareSection(photos: [PhotoRef], width: CGFloat, spacing: CGFloat) -> SectionBox {
-        let columns = max(3, Int(floor((width + spacing) / (74 + spacing))))
+        // Follows the pinch too, so "Wszystkie" zooms like the day view. The closest stage is one
+        // photo per row at its own shape; before, it fell back to five columns and the pinch
+        // jumped from two photos on screen to dozens.
+        if self.columns < 1.7 {
+            var frames: [CGRect] = []
+            frames.reserveCapacity(photos.count)
+            var y = spacing * 2
+            let inner = width - spacing * 4
+            for item in photos.indices {
+                let aspect = min(max(photos[item].aspect, 0.45), 1.9)
+                let height = min(max(inner / aspect, inner * 0.56), inner * 1.35)
+                frames.append(CGRect(x: spacing * 2, y: y, width: inner, height: height))
+                idIndex[photos[item].id] = IndexPath(item: item, section: 0)
+                y += height + spacing * 4
+            }
+            return SectionBox(header: nil, dayKey: nil, frames: frames, ids: photos.map(\.id), minY: 0, maxY: y)
+        }
+        let columns = max(2, Int(self.columns.rounded()))
         let side = (width - spacing * CGFloat(columns + 1)) / CGFloat(columns)
         var frames: [CGRect] = []
         frames.reserveCapacity(photos.count)
@@ -1630,7 +1923,7 @@ final class PhotoThumbCell: UICollectionViewCell {
         contentView.addSubview(syncMark)
         syncHit.addTarget(self, action: #selector(syncTapped), for: .touchUpInside)
         syncHit.isHidden = true
-        syncHit.accessibilityLabel = "Wyślij na serwer"
+        syncHit.accessibilityLabel = L("Wyślij na serwer")
         contentView.addSubview(syncHit)
         isAccessibilityElement = true
     }
@@ -1649,6 +1942,11 @@ final class PhotoThumbCell: UICollectionViewCell {
         check.frame = CGRect(x: contentView.bounds.width - 26, y: contentView.bounds.height - 26, width: 22, height: 22)
         syncMark.frame = CGRect(x: contentView.bounds.width - 16, y: 4, width: 12, height: 12)
         syncHit.frame = CGRect(x: contentView.bounds.width - 36, y: 0, width: 36, height: 36)
+        // Tiny tiles (hundreds on screen) show only the picture: labels would be noise.
+        let tiny = contentView.bounds.width < 34
+        badge.alpha = tiny ? 0 : 1
+        heart.alpha = tiny ? 0 : 1
+        syncMark.alpha = tiny ? 0 : 1
     }
 
     override func prepareForReuse() {
@@ -1674,14 +1972,23 @@ final class PhotoThumbCell: UICollectionViewCell {
 
     private var thumbRequest: PHImageRequestID = PHInvalidImageRequestID
     private var loadingThumbID: String?
+    /// Pixel size of the request already made for this photo. A bigger tile asks again.
+    private var requestedSide: CGFloat = 0
 
-    func isLoadingThumb(for id: String) -> Bool {
-        loadingThumbID == id && thumbRequest != PHInvalidImageRequestID
+    /// Longest side of the shown image in pixels.
+    var shownPixelSide: CGFloat {
+        guard let currentImage else { return 0 }
+        return max(currentImage.size.width, currentImage.size.height) * currentImage.scale
     }
 
-    func noteThumbRequest(_ token: PHImageRequestID, id: String) {
+    func isLoadingThumb(for id: String, side: CGFloat) -> Bool {
+        loadingThumbID == id && thumbRequest != PHInvalidImageRequestID && requestedSide >= side * 0.9
+    }
+
+    func noteThumbRequest(_ token: PHImageRequestID, id: String, side: CGFloat) {
         thumbRequest = token
         loadingThumbID = id
+        requestedSide = side
     }
 
     func stopLoadingThumb(_ id: String) {
@@ -1695,10 +2002,17 @@ final class PhotoThumbCell: UICollectionViewCell {
         manager.cancelImageRequest(thumbRequest)
         thumbRequest = PHInvalidImageRequestID
         loadingThumbID = nil
+        requestedSide = 0
+    }
+
+    private static func pixelSide(_ image: UIImage) -> CGFloat {
+        max(image.size.width, image.size.height) * image.scale
     }
 
     func applyCloudThumb(_ image: UIImage, id: String) {
         guard currentAssetID == id, PreviewCheck.isUsable(image) else { return }
+        // Never swap a sharp frame for a smaller one (a cached or quick preview arriving late).
+        if !traits.isVideo, shownPixelSide > Self.pixelSide(image) * 1.05 { return }
         imageView.image = image
         currentImage = image
         imageView.backgroundColor = .clear
@@ -1714,13 +2028,14 @@ final class PhotoThumbCell: UICollectionViewCell {
         image: UIImage? = nil
     ) {
         let same = currentAssetID == photo.id
+        if !same { requestedSide = 0 }
         currentAssetID = photo.id
         assetRef = asset
         traits = photo.traits
         if !same { loopingID = nil }
         setChrome(photo: photo, selecting: selecting, selected: selected, sync: sync)
-        accessibilityLabel = photo.traits.isVideo ? "Wideo" : "Zdjęcie"
-        if let image, PreviewCheck.isUsable(image) {
+        accessibilityLabel = photo.traits.isVideo ? L("Wideo") : L("Zdjęcie")
+        if let image, PreviewCheck.isUsable(image), !(same && shownPixelSide > Self.pixelSide(image) * 1.05) {
             imageView.image = image
             currentImage = image
             imageView.backgroundColor = .clear
@@ -1735,30 +2050,39 @@ final class PhotoThumbCell: UICollectionViewCell {
 
     func setLooping(_ on: Bool) {
         let gif = traits.contains(.animated) || assetRef?.playbackStyle == .imageAnimated
-        guard on, gif, !traits.isVideo, let asset = assetRef else {
+        guard on, gif, !traits.isVideo, let id = currentAssetID else {
             loopingID = nil
             if let currentImage { imageView.image = currentImage }
             return
         }
-        guard loopingID != asset.localIdentifier else { return }
-        loopingID = asset.localIdentifier
-        let key = asset.localIdentifier as NSString
+        // Already moving: nothing to do. Same id but a still frame (the cell was refreshed): start again.
+        if loopingID == id, imageView.image?.images != nil { return }
+        loopingID = id
+        let key = id as NSString
         if let cached = AnimatedCache.images.object(forKey: key) {
             imageView.image = cached
             return
         }
-        let options = PHImageRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.deliveryMode = .highQualityFormat
-        let id = asset.localIdentifier
-        PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { [weak self] data, _, _, _ in
-            let side = max(self?.bounds.width ?? 120, 120) * 2
-            guard let data, let animated = AnimatedFrames.image(data: data, maxSide: side, maxFrames: 12) else { return }
+        let side = max(bounds.width, 120) * 2
+        let show: (Data?) -> Void = { [weak self] data in
+            guard let data, let animated = AnimatedFrames.image(data: data, maxSide: side, maxFrames: 16) else { return }
             AnimatedCache.images.setObject(animated, forKey: key)
             DispatchQueue.main.async {
                 guard let self, self.currentAssetID == id, self.loopingID == id else { return }
                 self.imageView.image = animated
             }
+        }
+        if let asset = assetRef {
+            let options = PHImageRequestOptions()
+            options.isNetworkAccessAllowed = true
+            options.deliveryMode = .highQualityFormat
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, _ in
+                DispatchQueue.global(qos: .userInitiated).async { show(data) }
+            }
+        } else if id.hasPrefix("cloud:"), let file = LibraryEngine.shared.cloudMedia(id: id)?.still,
+                  file.pathExtension.lowercased() == "gif" {
+            // A GIF from the server plays once its original is on this device.
+            DispatchQueue.global(qos: .userInitiated).async { show(try? Data(contentsOf: file)) }
         }
     }
 
@@ -1787,6 +2111,8 @@ final class PhotoThumbCell: UICollectionViewCell {
         case .waiting: symbol = "icloud.and.arrow.up"
         case .serverOnly: symbol = "iphone.slash"
         case .duplicate: symbol = "square.on.square"
+        case .notSent: symbol = "exclamationmark.icloud.fill"
+        case .deletedOnServer: symbol = "xmark.icloud.fill"
         }
         guard let symbol, let image = UIImage(systemName: symbol) else {
             syncMark.isHidden = true
@@ -1796,9 +2122,10 @@ final class PhotoThumbCell: UICollectionViewCell {
             return
         }
         syncMark.isHidden = selecting
-        syncHit.isHidden = selecting || sync != .waiting
-        accessibilityCustomActions = sync == .waiting && !selecting
-            ? [UIAccessibilityCustomAction(name: "Wyślij na serwer") { [weak self] _ in
+        let sendable = sync == .waiting || sync == .notSent
+        syncHit.isHidden = selecting || !sendable
+        accessibilityCustomActions = sendable && !selecting
+            ? [UIAccessibilityCustomAction(name: L("Wyślij na serwer")) { [weak self] _ in
                 self?.syncTapped()
                 return true
             }]
@@ -1824,7 +2151,7 @@ final class PhotoThumbCell: UICollectionViewCell {
 }
 
 enum PhotoSyncMark {
-    case hidden, sent, waiting, serverOnly, duplicate
+    case hidden, sent, waiting, serverOnly, duplicate, notSent, deletedOnServer
 }
 
 final class HeroThumbCell: UICollectionViewCell {

@@ -4,16 +4,13 @@ struct TVAlbumsScreen: View {
     @EnvironmentObject private var library: TVLibrary
 
     private static func albumWord(_ count: Int) -> String {
-        if count == 1 { return "1 album" }
-        let tens = count % 100
-        if (2...4).contains(count % 10), !(12...14).contains(tens) { return "\(count) albumy" }
-        return "\(count) albumów"
+        Plural.pick(count, L("\(count) album"), L("\(count) albumy"), L("\(count) albumów"))
     }
 
     private var kinds: [TVAlbum] {
         var list: [TVAlbum] = []
         if !library.favorites.isEmpty {
-            list.append(TVAlbum(name: "Ulubione", photos: library.favorites, symbol: "heart.fill"))
+            list.append(TVAlbum(name: L("Ulubione"), photos: library.favorites, symbol: "heart.fill"))
         }
         return list + library.mediaTypes
     }
@@ -23,13 +20,13 @@ struct TVAlbumsScreen: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 52) {
                     TVScreenHeader(
-                        title: "Albumy",
+                        title: L("Albumy"),
                         subtitle: Self.albumWord(library.albums.count),
                         showsLink: true
                     )
-                    shelf("Moje albumy", note: library.albums.count > 1 ? "Ostatnio uzupełniane na początku" : "") {
+                    shelf(L("Moje albumy"), note: library.albums.count > 1 ? L("Ostatnio uzupełniane na początku") : "") {
                         if library.albums.isEmpty {
-                            Text("Albumy z iPhone'a pojawią się tutaj po następnej synchronizacji.")
+                            Text(L("Albumy z iPhone'a pojawią się tutaj po następnej synchronizacji."))
                                 .font(.title3)
                                 .foregroundStyle(.secondary)
                         } else {
@@ -50,7 +47,7 @@ struct TVAlbumsScreen: View {
                         }
                     }
                     if !kinds.isEmpty {
-                        shelf("Typy multimediów", note: "") {
+                        shelf(L("Typy multimediów"), note: "") {
                             LazyVGrid(columns: TVGridLayout.kindColumns, spacing: TVTheme.spacing) {
                                 ForEach(kinds) { kind in
                                     NavigationLink(value: kind) {
@@ -96,16 +93,16 @@ struct TVFavoritesScreen: View {
                     Image(systemName: "heart")
                         .font(.system(size: 90))
                         .foregroundStyle(.pink)
-                    Text("Brak ulubionych")
+                    Text(L("Brak ulubionych"))
                         .font(.title)
-                    Text("Oznacz zdjęcia sercem w GalleryOS na iPhonie, a pojawią się tutaj.")
+                    Text(L("Oznacz zdjęcia sercem w GalleryOS na iPhonie, a pojawią się tutaj."))
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 TVSectionsGrid(sections: [TVSection(id: "fav", title: "", subtitle: "", photos: library.favorites)]) {
-                    TVScreenHeader(title: "Ulubione", subtitle: PhotoFormat.count(library.favorites.count))
+                    TVScreenHeader(title: L("Ulubione"), subtitle: PhotoFormat.count(library.favorites.count))
                 }
             }
         }
@@ -126,15 +123,15 @@ struct TVSearchScreen: View {
                 } else if results.isEmpty && !searching {
                     VStack(spacing: 18) {
                         Image(systemName: "magnifyingglass").font(.system(size: 80)).foregroundStyle(.secondary)
-                        Text("Nic nie znaleziono").font(.title2)
-                        Text("Spróbuj miesiąca, roku, albumu, miejsca albo słowa „wideo”.")
+                        Text(L("Nic nie znaleziono")).font(.title2)
+                        Text(L("Spróbuj miesiąca, roku, albumu, miejsca albo słowa „wideo”."))
                             .font(.title3)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     TVSectionsGrid(sections: [TVSection(id: "results", title: "", subtitle: "", photos: results)]) {
-                        TVScreenHeader(title: "Wyniki", subtitle: PhotoFormat.count(results.count))
+                        TVScreenHeader(title: L("Wyniki"), subtitle: PhotoFormat.count(results.count))
                     }
                 }
             }
@@ -151,17 +148,17 @@ struct TVSearchScreen: View {
                 searching = false
             }
         }
-        .searchable(text: $query, prompt: "Szukaj po dacie, albumie, miejscu…")
+        .searchable(text: $query, prompt: L("Szukaj po dacie, albumie, miejscu…"))
     }
 
     private var suggestions: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 44) {
-                TVScreenHeader(title: "Szukaj", subtitle: "Wpisz albo podyktuj Siri")
-                chips("Rodzaj", ["Wideo", "Live", "Ulubione", "Zrzuty ekranu", "Panoramy", "Portrety"])
-                chips("Rok", years())
+                TVScreenHeader(title: L("Szukaj"), subtitle: L("Wpisz albo podyktuj Siri"))
+                chips(L("Rodzaj"), [L("Wideo"), L("Live"), L("Ulubione"), L("Zrzuty ekranu"), L("Panoramy"), L("Portrety")])
+                chips(L("Rok"), years())
                 if !library.albums.isEmpty {
-                    chips("Albumy", library.albums.prefix(8).map(\.name))
+                    chips(L("Albumy"), library.albums.prefix(8).map(\.name))
                 }
             }
             .padding(.horizontal, TVTheme.margin)
@@ -204,52 +201,57 @@ struct TVSettingsScreen: View {
                     .frame(width: 600)
                     .padding(.top, 60)
                 List {
-                    Section("Połączenie") {
-                        row("Serwer", session.server?.title ?? "-")
-                        row("Rodzaj", kindText)
-                        row("Droga", routeText)
+                    Section(L("Połączenie")) {
+                        row(L("Serwer"), session.server?.title ?? "-")
+                        row(L("Rodzaj"), kindText)
+                        row(L("Droga"), routeText)
                         if case .offline(let message) = link.kind {
                             Text(message)
                                 .font(.callout)
                                 .foregroundStyle(.orange)
                         }
                     }
-                    Section("Biblioteka") {
-                        row("Zdjęcia i filmy", PhotoFormat.grouped(library.photoCount))
-                        row("Albumy", PhotoFormat.grouped(library.albums.count))
-                        row("Ostatnia aktualizacja", TVFormat.updated(link.updatedAt))
+                    Section(L("Biblioteka")) {
+                        row(L("Zdjęcia i filmy"), PhotoFormat.grouped(library.photoCount))
+                        row(L("Albumy"), PhotoFormat.grouped(library.albums.count))
+                        row(L("Ostatnia aktualizacja"), TVFormat.updated(link.updatedAt))
                         Button {
                             library.refresh()
                         } label: {
-                            Label(link.refreshing ? "Aktualizuję…" : "Odśwież teraz", systemImage: "arrow.clockwise")
+                            Label(link.refreshing ? L("Aktualizuję…") : L("Odśwież teraz"), systemImage: "arrow.clockwise")
                         }
                         .disabled(link.refreshing)
                     }
-                    Section("Pamięć podręczna") {
-                        row("Zajmuje", usage > 0 ? ByteCountFormatter.string(fromByteCount: Int64(usage), countStyle: .file) : "0 MB")
+                    Section(L("Pamięć podręczna")) {
+                        row(L("Zajmuje"), usage > 0 ? ByteCountFormatter.string(fromByteCount: Int64(usage), countStyle: .file) : "0 MB")
                         Button {
                             library.clearCaches()
-                            usage = library.pipeline.diskUsage()
+                            let pipeline = library.pipeline
+                            Task { usage = await Task.detached { pipeline.diskUsage() }.value }
                         } label: {
-                            Label("Wyczyść pamięć podręczną", systemImage: "trash")
+                            Label(L("Wyczyść pamięć podręczną"), systemImage: "trash")
                         }
                     }
                     Section {
                         Button(role: .destructive) {
                             confirmForget = true
                         } label: {
-                            Label("Sparuj od nowa", systemImage: "link.badge.plus")
+                            Label(L("Sparuj od nowa"), systemImage: "link.badge.plus")
                         }
                     } footer: {
-                        Text("GalleryOS™ na Apple TV tylko pokazuje bibliotekę z serwera. Kopiowanie zdjęć odbywa się na iPhonie.")
+                        Text(L("GalleryOS™ na Apple TV tylko pokazuje bibliotekę z serwera. Kopiowanie zdjęć odbywa się na iPhonie."))
                     }
                 }
             }
             .padding(.horizontal, TVTheme.margin)
-            .task { usage = library.pipeline.diskUsage() }
-            .confirmationDialog("Odłączyć ten serwer od Apple TV?", isPresented: $confirmForget, titleVisibility: .visible) {
-                Button("Odłącz i sparuj od nowa", role: .destructive) { session.forget() }
-                Button("Anuluj", role: .cancel) {}
+            .task {
+                // Walking thousands of cache files must not freeze the remote.
+                let pipeline = library.pipeline
+                usage = await Task.detached { pipeline.diskUsage() }.value
+            }
+            .confirmationDialog(L("Odłączyć ten serwer od Apple TV?"), isPresented: $confirmForget, titleVisibility: .visible) {
+                Button(L("Odłącz i sparuj od nowa"), role: .destructive) { session.forget() }
+                Button(L("Anuluj"), role: .cancel) {}
             }
         }
     }
@@ -260,7 +262,7 @@ struct TVSettingsScreen: View {
             TVAvatar(name: session.server?.username ?? "", size: 210)
                 .shadow(color: TVTheme.accent.opacity(0.45), radius: 40, y: 12)
             VStack(spacing: 8) {
-                Text(session.server?.username.isEmpty == false ? session.server!.username : "Konto")
+                Text(session.server?.username.isEmpty == false ? session.server!.username : L("Konto"))
                     .font(.system(size: 46, weight: .bold, design: .rounded))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
@@ -276,7 +278,7 @@ struct TVSettingsScreen: View {
             .padding(.vertical, 12)
             .galleryGlass(in: Capsule())
             .animation(TVTheme.spring, value: link.kind)
-            Label("Konfiguracja z GalleryOS na iPhonie", systemImage: "iphone")
+            Label(L("Konfiguracja z GalleryOS na iPhonie"), systemImage: "iphone")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -289,8 +291,8 @@ struct TVSettingsScreen: View {
 
     private var kindText: String {
         switch session.server?.kind {
-        case DestinationKind.server: return "Serwer GalleryOS"
-        case DestinationKind.webdav: return "QNAP (WebDAV)"
+        case DestinationKind.server: return L("Serwer GalleryOS")
+        case DestinationKind.webdav: return L("QNAP (WebDAV)")
         default: return "-"
         }
     }
@@ -306,19 +308,19 @@ struct TVSettingsScreen: View {
 
     private var stateText: String {
         switch link.kind {
-        case .connecting: return "Łączę…"
-        case .online(.home): return "Połączono w domu"
-        case .online(.remote): return "Połączono przez internet"
-        case .offline: return "Bez połączenia"
+        case .connecting: return L("Łączę…")
+        case .online(.home): return L("Połączono w domu")
+        case .online(.remote): return L("Połączono przez internet")
+        case .offline: return L("Bez połączenia")
         }
     }
 
     private var routeText: String {
         switch link.kind {
-        case .online(.home(let host)): return "Sieć domowa · \(host)"
-        case .online(.remote(let host)): return "Internet · \(host)"
-        case .connecting: return "Szukam serwera…"
-        case .offline: return "Brak"
+        case .online(.home(let host)): return L("Sieć domowa · \(host)")
+        case .online(.remote(let host)): return L("Internet · \(host)")
+        case .connecting: return L("Szukam serwera…")
+        case .offline: return L("Brak")
         }
     }
 }

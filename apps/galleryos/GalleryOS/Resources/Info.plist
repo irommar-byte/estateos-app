@@ -6,11 +6,13 @@
 	<array>
 		<string>pl.galleryos.app.library-sync</string>
 		<string>pl.galleryos.app.sync.library</string>
+		<string>pl.galleryos.app.refresh</string>
+		<string>pl.galleryos.app.intelligence</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>pl</string>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>GalleryOS™</string>
 	<key>CFBundleExecutable</key>
@@ -65,6 +67,8 @@
 	<string>GalleryOS prosi o potwierdzenie, zanim pokaże album Ukryte.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>GalleryOS szuka QNAP-a i innych serwerów w domowej sieci, żeby synchronizować bibliotekę.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>GalleryOS pokazuje na mapie, gdzie jesteś, i prowadzi do miejsc, w których zrobiono zdjęcia.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>GalleryOS pokazuje bibliotekę zdjęć i filmów oraz przygotowuje ją do synchronizacji z wybranym miejscem.</string>
 	<key>NSSupportsLiveActivities</key>

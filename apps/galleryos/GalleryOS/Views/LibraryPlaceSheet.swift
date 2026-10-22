@@ -19,6 +19,8 @@ struct LibraryPlaceSheet: View {
     @State private var directory = ""
     @State private var otherKind = DestinationKind.webdav
     @State private var folderName = ""
+    /// The picked disk or SMB folder; saved as the library only when "Połącz" is tapped.
+    @State private var diskBookmark: Data?
     @State private var picking = false
     @State private var advanced = false
     @State private var message = ""
@@ -35,14 +37,14 @@ struct LibraryPlaceSheet: View {
                     savedSection
                 }
                 Section {
-                    Picker("Miejsce biblioteki", selection: safePlace) {
+                    Picker(L("Miejsce biblioteki"), selection: safePlace) {
                         ForEach(LibraryPlace.allCases) { item in
                             Label(item.title, systemImage: item.symbol).tag(item.rawValue)
                         }
                     }
                     .pickerStyle(.menu)
                 } header: {
-                    Text("Gdzie trzymać bibliotekę")
+                    Text(L("Gdzie trzymać bibliotekę"))
                 } footer: {
                     Text(footer)
                 }
@@ -67,14 +69,14 @@ struct LibraryPlaceSheet: View {
             .disabled(stage != .editing)
             .animation(GalleryTheme.snappy, value: place)
             .animation(GalleryTheme.snappy, value: localHost)
-            .navigationTitle("Serwer")
+            .navigationTitle(L("Serwer"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Anuluj") { cancel() }
+                    Button(L("Anuluj")) { cancel() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(place == LibraryPlace.thisPhone.rawValue ? "Gotowe" : "Połącz") {
+                    Button(place == LibraryPlace.thisPhone.rawValue ? L("Gotowe") : L("Połącz")) {
                         attempt?.cancel()
                         attempt = Task { await enable() }
                     }
@@ -94,23 +96,20 @@ struct LibraryPlaceSheet: View {
                 switch result {
                 case .success(let url):
                     guard url.startAccessingSecurityScopedResource() else {
-                        message = "Dysk odpięty"
+                        message = L("Dysk odpięty")
                         return
                     }
                     defer { url.stopAccessingSecurityScopedResource() }
                     do {
-                        let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
-                        if let problem = SpareDisks.shared.add(data: data, name: url.lastPathComponent) {
-                            message = problem
-                        } else {
-                            folderName = url.lastPathComponent
-                            message = ""
-                        }
+                        // This picks where the library lives, not a spare backup disk.
+                        diskBookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+                        folderName = url.lastPathComponent
+                        message = ""
                     } catch {
-                        message = "Nie udało się zapamiętać folderu."
+                        message = L("Nie udało się zapamiętać folderu.")
                     }
                 case .failure:
-                    message = "Nie wybrano folderu."
+                    message = L("Nie wybrano folderu.")
                 }
             }
         }
@@ -135,7 +134,7 @@ struct LibraryPlaceSheet: View {
     // MARK: Sections
 
     private var savedSection: some View {
-        Section("Zapisane serwery") {
+        Section(L("Zapisane serwery")) {
             ForEach(savedServers.servers) { server in
                 Button {
                     UISelectionFeedbackGenerator().selectionChanged()
@@ -145,7 +144,7 @@ struct LibraryPlaceSheet: View {
                 }
                 .buttonStyle(.plain)
                 .swipeActions {
-                    Button("Usuń", systemImage: "trash", role: .destructive) {
+                    Button(L("Usuń"), systemImage: "trash", role: .destructive) {
                         withAnimation(GalleryTheme.snappy) { savedServers.remove(server) }
                     }
                 }
@@ -180,7 +179,7 @@ struct LibraryPlaceSheet: View {
                 }
                 .buttonStyle(.plain)
             }
-            TextField("Adres w sieci, np. 192.168.1.20", text: Binding(
+            TextField(L("Adres w sieci, np. 192.168.1.20"), text: Binding(
                 get: { localHost },
                 set: {
                     localHost = $0
@@ -193,48 +192,48 @@ struct LibraryPlaceSheet: View {
             .keyboardType(.URL)
         } header: {
             HStack(spacing: 8) {
-                Text("Sieć domowa")
+                Text(L("Sieć domowa"))
                 if scanning {
                     ScanningDots()
                 }
             }
         } footer: {
-            Text("W domu GalleryOS łączy się bezpośrednio z serwerem: szybciej i bez internetu. Gdy wyjdziesz, sam przejdzie na DDNS.")
+            Text(L("W domu GalleryOS łączy się bezpośrednio z serwerem: szybciej i bez internetu. Gdy wyjdziesz, sam przejdzie na DDNS."))
         }
     }
 
     private var remoteSection: some View {
         Section {
-            TextField("np. nazwa.myqnapcloud.com", text: $remoteHost)
+            TextField(L("np. nazwa.myqnapcloud.com"), text: $remoteHost)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
         } header: {
-            Text("Dostęp zdalny · DDNS")
+            Text(L("Dostęp zdalny · DDNS"))
         } footer: {
-            Text("Adres wpisany raz służy poza domem. Po powrocie do domu połączenie samo wraca na sieć lokalną.")
+            Text(L("Adres wpisany raz służy poza domem. Po powrocie do domu połączenie samo wraca na sieć lokalną."))
         }
     }
 
     private var accountSection: some View {
         Section {
-            TextField("Login", text: $username)
+            TextField(L("Login"), text: $username)
                 .textContentType(.username)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            SecureField("Hasło", text: $password)
+            SecureField(L("Hasło"), text: $password)
                 .textContentType(.password)
-            DisclosureGroup("Zaawansowane", isExpanded: $advanced) {
-                TextField("Port zdalny (DDNS), jeśli znasz", text: $port)
+            DisclosureGroup(L("Zaawansowane"), isExpanded: $advanced) {
+                TextField(L("Port zdalny (DDNS), jeśli znasz"), text: $port)
                     .keyboardType(.numberPad)
-                TextField("Udział, na przykład Public", text: $directory)
+                TextField(L("Udział, na przykład Public"), text: $directory)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
         } header: {
-            Text("Konto na serwerze")
+            Text(L("Konto na serwerze"))
         } footer: {
-            Text("Hasło trafia do pęku kluczy iCloud. Na innych urządzeniach z tym samym kontem GalleryOS połączy się samo.")
+            Text(L("Hasło trafia do pęku kluczy iCloud. Na innych urządzeniach z tym samym kontem GalleryOS połączy się samo."))
         }
     }
 
@@ -242,43 +241,43 @@ struct LibraryPlaceSheet: View {
     private var connection: some View {
         Section {
             if place == LibraryPlace.otherServer.rawValue {
-                Picker("Rodzaj", selection: $otherKind) {
+                Picker(L("Rodzaj"), selection: $otherKind) {
                     Text("WebDAV").tag(DestinationKind.webdav)
                     Text("SFTP").tag(DestinationKind.sftp)
                     Text("Immich").tag(DestinationKind.immich)
                 }
             }
-            TextField("Adres", text: $host, prompt: Text("Adres serwera"))
+            TextField(L("Adres"), text: $host, prompt: Text(L("Adres serwera")))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.URL)
-            TextField("Port", text: $port)
+            TextField(L("Port"), text: $port)
                 .keyboardType(.numberPad)
-            TextField(otherKind == DestinationKind.immich && place == LibraryPlace.otherServer.rawValue ? "E-mail albo klucz API" : "Login", text: $username)
+            TextField(otherKind == DestinationKind.immich && place == LibraryPlace.otherServer.rawValue ? L("E-mail albo klucz API") : L("Login"), text: $username)
                 .textContentType(.username)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            SecureField("Hasło", text: $password)
+            SecureField(L("Hasło"), text: $password)
                 .textContentType(.password)
             if place != LibraryPlace.server.rawValue && otherKind != DestinationKind.immich {
-                TextField("Folder", text: $directory)
+                TextField(L("Folder"), text: $directory)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
             }
         } header: {
-            Text("Połączenie")
+            Text(L("Połączenie"))
         }
     }
 
     private var disk: some View {
         Section {
-            Button("Wybierz dysk, folder albo udział SMB") { picking = true }
+            Button(L("Wybierz dysk, folder albo udział SMB")) { picking = true }
             if !folderName.isEmpty {
                 Label(folderName, systemImage: "folder.fill")
                     .foregroundStyle(.secondary)
             }
         } footer: {
-            Text("Udział SMB wybiera się w Plikach. GalleryOS zapisuje w nim katalog biblioteki i nie rusza pozostałych plików.")
+            Text(L("Udział SMB wybiera się w Plikach. GalleryOS zapisuje w nim katalog biblioteki i nie rusza pozostałych plików."))
         }
     }
 
@@ -299,11 +298,11 @@ struct LibraryPlaceSheet: View {
 
     private var footer: String {
         switch LibraryPlace(rawValue: place) {
-        case .thisPhone: "Zdjęcia zostają w Rolce tego \(ThisDevice.genitive)."
-        case .server: "Ten sam katalog biblioteki, wysyłany w kawałkach, także poza domem."
-        case .qnap: "Wybierz serwer w sieci domowej, dopisz DDNS do pracy poza domem i zaloguj się raz."
-        case .otherServer: "WebDAV, SFTP albo Immich, jeśli taki serwer już działa."
-        case .disk: "Dysk, folder z Plików albo udział SMB podpięty w Plikach."
+        case .thisPhone: L("Zdjęcia zostają w Rolce tego \(ThisDevice.genitive).")
+        case .server: L("Ten sam katalog biblioteki, wysyłany w kawałkach, także poza domem.")
+        case .qnap: L("Wybierz serwer w sieci domowej, dopisz DDNS do pracy poza domem i zaloguj się raz.")
+        case .otherServer: L("WebDAV, SFTP albo Immich, jeśli taki serwer już działa.")
+        case .disk: L("Dysk, folder z Plików albo udział SMB podpięty w Plikach.")
         case nil: ""
         }
     }
@@ -374,12 +373,8 @@ struct LibraryPlaceSheet: View {
     // MARK: Connect
 
     private func enable() async {
-        if place == LibraryPlace.disk.rawValue {
-            if folderName.isEmpty {
-                message = "Wybierz dysk, folder albo udział SMB."
-                return
-            }
-            dismiss()
+        if place == LibraryPlace.disk.rawValue, diskBookmark == nil, DestinationSettings.load().kind != DestinationKind.folder {
+            message = L("Wybierz dysk, folder albo udział SMB.")
             return
         }
         message = ""
@@ -402,19 +397,19 @@ struct LibraryPlaceSheet: View {
             remote = ""
         }
         if webDAVForm, local.isEmpty, remote.isEmpty {
-            message = "Wybierz serwer w sieci domowej albo wpisz adres DDNS."
+            message = L("Wybierz serwer w sieci domowej albo wpisz adres DDNS.")
             return
         }
         if !webDAVForm, place != LibraryPlace.disk.rawValue, clean(host).isEmpty {
-            message = "Wpisz adres serwera."
+            message = L("Wpisz adres serwera.")
             return
         }
         if place == LibraryPlace.disk.rawValue, folderName.isEmpty {
-            message = "Wybierz dysk, folder albo udział SMB."
+            message = L("Wybierz dysk, folder albo udział SMB.")
             return
         }
         if webDAVForm, password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            message = "Wpisz hasło do konta na serwerze."
+            message = L("Wpisz hasło do konta na serwerze.")
             return
         }
 
@@ -452,6 +447,10 @@ struct LibraryPlaceSheet: View {
         if restore == nil {
             restore = (DestinationSettings.load(), GalleryKeychain.string(account: "destination-password"))
         }
+        if place == LibraryPlace.disk.rawValue, let diskBookmark {
+            // Before: the sheet closed here and nothing was connected.
+            LibraryEngine.shared.saveBookmark(diskBookmark, name: folderName)
+        }
         settings.save()
         if password.isEmpty {
             GalleryKeychain.remove(account: "destination-password")
@@ -461,12 +460,12 @@ struct LibraryPlaceSheet: View {
 
         var plan: [SetupStep] = []
         if webDAVForm, !local.isEmpty {
-            plan.append(SetupStep(id: "home", title: "Sieć domowa", detail: localName.isEmpty ? local : localName, symbol: "house.fill"))
+            plan.append(SetupStep(id: "home", title: L("Sieć domowa"), detail: localName.isEmpty ? local : localName, symbol: "house.fill"))
         }
         if webDAVForm, !remote.isEmpty {
-            plan.append(SetupStep(id: "remote", title: "Zdalnie · DDNS", detail: remote, symbol: "globe"))
+            plan.append(SetupStep(id: "remote", title: L("Zdalnie · DDNS"), detail: remote, symbol: "globe"))
         }
-        plan.append(SetupStep(id: "library", title: "Biblioteka GalleryOS", detail: "Logowanie i katalog", symbol: "photo.stack"))
+        plan.append(SetupStep(id: "library", title: L("Biblioteka GalleryOS"), detail: L("Logowanie i katalog"), symbol: "photo.stack"))
         steps = plan
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { stage = .connecting }
@@ -484,26 +483,26 @@ struct LibraryPlaceSheet: View {
                 : WebDAVTransport.reach(host: homeHost, port: homePort, username: user, password: secret, timeout: 2.5)
             async let remoteCheck: (ok: Bool, auth: Bool, millis: Int)? = awayHost.isEmpty ? nil
                 : WebDAVTransport.reach(host: awayHost, port: probePort, username: user, password: secret, timeout: 10)
-            mark("home", atHome ? .running : .skipped("Poza domem"))
+            mark("home", atHome ? .running : .skipped(L("Poza domem")))
             mark("remote", .running)
             let homeResult = await homeCheck
             if Task.isCancelled { return }
             if let homeResult {
                 mark("home", homeResult.ok ? .done("\(homeResult.millis) ms")
-                    : homeResult.auth ? .failed("Błędny login lub hasło")
-                    : link.network.isLocal ? .failed("Nie odpowiada") : .skipped("Poza domem"))
+                    : homeResult.auth ? .failed(L("Błędny login lub hasło"))
+                    : link.network.isLocal ? .failed(L("Nie odpowiada")) : .skipped(L("Poza domem")))
             }
             let remoteResult = await remoteCheck
             if Task.isCancelled { return }
             if let remoteResult {
                 mark("remote", remoteResult.ok ? .done("\(remoteResult.millis) ms")
-                    : remoteResult.auth ? .failed("Błędny login lub hasło") : .failed("Nie odpowiada"))
+                    : remoteResult.auth ? .failed(L("Błędny login lub hasło")) : .failed(L("Nie odpowiada")))
             }
             let auth = (homeResult?.auth ?? false) || (remoteResult?.auth ?? false)
             let anyOK = (homeResult?.ok ?? false) || (remoteResult?.ok ?? false)
             if auth && !anyOK {
-                mark("library", .skipped("Popraw hasło"))
-                fail("Błędny login lub hasło.")
+                mark("library", .skipped(L("Popraw hasło")))
+                fail(L("Błędny login lub hasło."))
                 return
             }
         }
@@ -512,7 +511,7 @@ struct LibraryPlaceSheet: View {
             _ = try await library.connectDestination()
             if Task.isCancelled { return }
             restore = nil
-            mark("library", .done("Gotowe"))
+            mark("library", .done(L("Gotowe")))
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             withAnimation(.spring(response: 0.42, dampingFraction: 0.7)) { stage = .done }
             try? await Task.sleep(for: .seconds(1.3))
@@ -623,7 +622,7 @@ private struct ConnectingOverlay: View {
                 .padding(.vertical, 6)
                 .galleryGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 if stage == .failed {
-                    Button("Popraw dane", action: onBack)
+                    Button(L("Popraw dane"), action: onBack)
                         .galleryGlassButton(prominent: true)
                         .controlSize(.large)
                         .transition(.scale.combined(with: .opacity))
@@ -637,9 +636,9 @@ private struct ConnectingOverlay: View {
 
     private var title: String {
         switch stage {
-        case .connecting: "Łączę z serwerem"
-        case .done: "Połączono"
-        case .failed: "Nie udało się połączyć"
+        case .connecting: L("Łączę z serwerem")
+        case .done: L("Połączono")
+        case .failed: L("Nie udało się połączyć")
         case .editing: ""
         }
     }
@@ -787,7 +786,7 @@ private struct SavedServerRow: View {
             }
             Spacer()
             if server.online {
-                Text("AKTYWNY")
+                Text(L("AKTYWNY"))
                     .font(.system(size: 10, weight: .heavy))
                     .foregroundStyle(LinkRoute.home.tint)
             }
@@ -801,7 +800,7 @@ private struct RouteChip: View {
     let active: Bool
 
     var body: some View {
-        Label(route == .home ? "Dom" : "DDNS", systemImage: route.symbol)
+        Label(route == .home ? L("Dom") : "DDNS", systemImage: route.symbol)
             .font(.system(size: 11, weight: .semibold))
             .labelStyle(.titleAndIcon)
             .padding(.horizontal, 7)
@@ -825,7 +824,7 @@ struct ScanningDots: View {
             }
         }
         .foregroundStyle(.secondary)
-        .accessibilityLabel("Szukam w sieci")
+        .accessibilityLabel(L("Szukam w sieci"))
     }
 }
 
@@ -840,11 +839,11 @@ enum LibraryPlace: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .thisPhone: return "Na tym iPhonie"
-        case .server: return "Serwer GalleryOS"
+        case .thisPhone: return L("Na tym \(ThisDevice.locative)")
+        case .server: return L("Serwer GalleryOS")
         case .qnap: return "QNAP"
-        case .otherServer: return "Inny serwer"
-        case .disk: return "Dysk lub udział SMB"
+        case .otherServer: return L("Inny serwer")
+        case .disk: return L("Dysk lub udział SMB")
         }
     }
 

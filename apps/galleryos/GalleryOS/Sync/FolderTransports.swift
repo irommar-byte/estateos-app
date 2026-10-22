@@ -39,7 +39,7 @@ final class FolderTransport: CatalogTransport {
         var stale = false
         let url = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &stale)
         guard url.startAccessingSecurityScopedResource() else {
-            throw LibraryError(message: "Dysk odpięty")
+            throw LibraryError(message: L("Dysk odpięty"))
         }
         let transport = FolderTransport(root: url)
         transport.accessing = true
@@ -72,7 +72,7 @@ final class FolderTransport: CatalogTransport {
         let stored = (try FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? NSNumber)?.intValue ?? -1
         guard expected > 0, stored == expected else {
             try? FileManager.default.removeItem(at: temporary)
-            throw LibraryError(message: "Zapis na dysku urwał się w połowie.")
+            throw LibraryError(message: L("Zapis na dysku urwał się w połowie."))
         }
         if FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.removeItem(at: destination)
@@ -109,7 +109,7 @@ final class FolderTransport: CatalogTransport {
 
     private func file(_ relative: String) throws -> URL {
         guard let safe = CatalogPath.safe(relative) else {
-            throw LibraryError(message: "Nieprawidłowa ścieżka biblioteki.")
+            throw LibraryError(message: L("Nieprawidłowa ścieżka biblioteki."))
         }
         return root.appendingPathComponent(safe)
     }
@@ -159,7 +159,7 @@ final class WebDAVTransport: CatalogTransport {
         let remote = Self.cleanHost(remoteHost)
         let local = Self.cleanHost(localHost)
         if remote.isEmpty && local.isEmpty {
-            throw LibraryError(message: "Wpisz adres serwera.")
+            throw LibraryError(message: L("Wpisz adres serwera."))
         }
         var sawAuth = false
         if !local.isEmpty {
@@ -181,24 +181,34 @@ final class WebDAVTransport: CatalogTransport {
                     port: found.port,
                     directory: placed.directory,
                     atHome: true,
-                    message: "Połączono w domu z \(title)."
+                    message: L("Połączono w domu z \(title).")
                 )
             }
         }
         guard !remote.isEmpty else {
-            if sawAuth { throw LibraryError(message: "Błędny login lub hasło.") }
-            throw LibraryError(message: "Na tym adresie nie ma WebDAV. W QNAP włącz WebDAV i przekierowanie portu 5001 w myQNAPcloud.")
+            if sawAuth { throw LibraryError(message: L("Błędny login lub hasło.")) }
+            throw LibraryError(message: L("Na tym adresie nie ma WebDAV. W QNAP włącz WebDAV i przekierowanie portu 5001 w myQNAPcloud."))
         }
         GalleryNetwork.shared.trust(remote)
         // The remembered port races alongside the usual QNAP ports instead of going first,
         // so a stale or unforwarded port never costs a full timeout.
-        let found = await race(
+        // Over the internet HTTPS goes first: the password must not travel in plain HTTP when
+        // the NAS also answers on 5000/8080. Plain ports are tried only when no secure one opens.
+        let all = Self.attempts(forced: forcedPort)
+        let secure = all.filter { $0.0 == "https" }
+        let plainForced = forcedPort > 0 && !ConnectionURL.securePorts.contains(forcedPort)
+        var found = await race(
             host: remote,
-            attempts: Self.attempts(forced: forcedPort),
+            attempts: plainForced ? all : secure,
             timeout: 10,
             username: username,
             password: password
         )
+        if found.transport == nil, !found.auth, !plainForced {
+            let plain = all.filter { $0.0 == "http" }
+            let second = await race(host: remote, attempts: plain, timeout: 8, username: username, password: password)
+            if second.transport != nil || second.auth { found = second }
+        }
         sawAuth = sawAuth || found.auth
         if let transport = found.transport {
             let placed = try await place(on: transport, directory: directory, username: username)
@@ -208,14 +218,14 @@ final class WebDAVTransport: CatalogTransport {
                 port: found.port,
                 directory: placed.directory,
                 atHome: false,
-                message: "Połączono zdalnie z \(remote)."
+                message: L("Połączono zdalnie z \(remote).")
             )
         }
         if sawAuth {
-            throw LibraryError(message: "Błędny login lub hasło.")
+            throw LibraryError(message: L("Błędny login lub hasło."))
         }
         let portText = forcedPort > 0 ? "\(forcedPort)" : "5001"
-        throw LibraryError(message: "Nie udało się otworzyć WebDAV na porcie \(portText). Zostaw ten port i udział Public, hasło wpisz w polu Hasło i stuknij Włącz jeszcze raz.")
+        throw LibraryError(message: L("Nie udało się otworzyć WebDAV na porcie \(portText). Zostaw ten port i udział Public, hasło wpisz w polu Hasło i stuknij Włącz jeszcze raz."))
     }
 
     private static func attempts(forced: Int) -> [(String, Int)] {
@@ -293,8 +303,8 @@ final class WebDAVTransport: CatalogTransport {
     private static func place(on root: WebDAVTransport, directory: String, username: String) async throws -> (transport: WebDAVTransport, directory: String) {
         _ = username
         let requested = directory.trimmingCharacters(in: .whitespacesAndNewlines)
-        let share = (requested.isEmpty || requested.caseInsensitiveCompare("Multimedia") == .orderedSame)
-            ? "Public"
+        let share = (requested.isEmpty || requested.caseInsensitiveCompare("Multimedia") == .orderedSame) // l10n:skip
+            ? "Public" // l10n:skip
             : requested
         let child = WebDAVTransport(
             baseURL: shareURL(root.baseURL, path: share),
@@ -304,7 +314,7 @@ final class WebDAVTransport: CatalogTransport {
         if await child.acceptsLibrary() {
             return (child, share)
         }
-        throw LibraryError(message: "Konto nie może zapisać folderu na QNAP. Nadaj mu prawo zapisu do \(share).")
+        throw LibraryError(message: L("Konto nie może zapisać folderu na QNAP. Nadaj mu prawo zapisu do \(share)."))
     }
 
     private static func shareURL(_ root: URL, path: String) -> URL {
@@ -315,7 +325,7 @@ final class WebDAVTransport: CatalogTransport {
 
     private static func probe(scheme: String, port: Int, name: String, username: String, password: String, timeout: TimeInterval) async throws -> WebDAVTransport {
         guard let url = URL(string: "\(scheme)://\(name):\(port)") else {
-            throw LibraryError(message: "Nie udało się połączyć z QNAP.")
+            throw LibraryError(message: L("Nie udało się połączyć z QNAP."))
         }
         let transport = WebDAVTransport(baseURL: url, username: username, password: password)
         _ = try await transport.propfind("", timeout: timeout, requireDAV: true)
@@ -324,14 +334,14 @@ final class WebDAVTransport: CatalogTransport {
 
     func writeFile(_ relative: String, from local: URL) async throws {
         let expected = (try FileManager.default.attributesOfItem(atPath: local.path)[.size] as? NSNumber)?.intValue ?? 0
-        guard expected > 0 else { throw LibraryError(message: "Pusty plik nie został wysłany.") }
+        guard expected > 0 else { throw LibraryError(message: L("Pusty plik nie został wysłany.")) }
         let partial = relative + ".part"
         do {
             try await put(partial, from: local)
             let stored = try await byteCount(partial)
             guard stored == expected else {
                 try? await removeFile(partial)
-                throw LibraryError(message: "Serwer zapisał niepełny plik.")
+                throw LibraryError(message: L("Serwer zapisał niepełny plik."))
             }
             try await replace(partial, with: relative, from: local, expected: expected)
         } catch {
@@ -344,7 +354,8 @@ final class WebDAVTransport: CatalogTransport {
         try await makeParents(relative)
         var request = URLRequest(url: try url(relative))
         request.httpMethod = "PUT"
-        request.timeoutInterval = 60 * 20
+        // Idle limit, not a total: a link that moves no bytes for 90 s is reopened.
+        request.timeoutInterval = 90
         request.setValue(authorization, forHTTPHeaderField: "Authorization")
         let (data, response) = try await GalleryNetwork.shared.upload(for: request, fromFile: local)
         try throwIfNeeded(response, data: data)
@@ -364,7 +375,7 @@ final class WebDAVTransport: CatalogTransport {
         try await put(relative, from: local)
         guard try await byteCount(relative) == expected else {
             try? await removeFile(relative)
-            throw LibraryError(message: "Serwer zapisał niepełny plik.")
+            throw LibraryError(message: L("Serwer zapisał niepełny plik."))
         }
     }
 
@@ -405,7 +416,13 @@ final class WebDAVTransport: CatalogTransport {
         GalleryNetwork.shared.trust(host)
         let encoded = username.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? username
         let secret = Data(password.utf8).base64EncodedString()
-        let doors = [("http", 8080), ("https", 443), ("https", 8443)]
+        // The admin service answers on 8080/443 by default, but often only the WebDAV port is
+        // forwarded or changed, so that port is asked first.
+        var doors: [(String, Int)] = []
+        if let scheme = baseURL.scheme, let port = baseURL.port { doors.append((scheme, port)) }
+        doors += [("http", 8080), ("https", 443), ("https", 8443), ("https", 5001), ("http", 5000)]
+        var seenDoors = Set<String>()
+        doors = doors.filter { seenDoors.insert("\($0.0):\($0.1)").inserted }
         for (scheme, port) in doors {
             guard let login = URL(string: "\(scheme)://\(host):\(port)/cgi-bin/authLogin.cgi") else { continue }
             var request = URLRequest(url: login)
@@ -419,6 +436,9 @@ final class WebDAVTransport: CatalogTransport {
                   xml.contains("<authPassed>1</authPassed>"),
                   let sid = Self.xmlValue("authSid", in: xml) else { continue }
             if let free = await qnapVolumeFree(scheme: scheme, host: host, port: port, sid: sid) {
+                return free
+            }
+            if let free = await qnapSystemFree(scheme: scheme, host: host, port: port, sid: sid) {
                 return free
             }
         }
@@ -437,6 +457,22 @@ final class WebDAVTransport: CatalogTransport {
             let raw = row["free_size"] ?? row["freeSize"] ?? row["freesize"]
             guard let number = Self.byteCount(raw) else { continue }
             total += number
+        }
+        return total > 0 ? total : nil
+    }
+
+    /// System information (the same source as QTS Storage & Snapshots): `<freesize>` per volume.
+    private func qnapSystemFree(scheme: String, host: String, port: Int, sid: String) async -> Int64? {
+        guard let url = URL(string: "\(scheme)://\(host):\(port)/cgi-bin/management/manaRequest.cgi?subfunc=sysinfo&hd=no&multicpu=1&sid=\(sid)") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 6
+        guard let (data, _) = try? await GalleryNetwork.shared.data(for: request),
+              let xml = String(data: data, encoding: .utf8),
+              let regex = try? NSRegularExpression(pattern: "<freesize>\\s*(?:<!\\[CDATA\\[)?\\s*([0-9]+)", options: .caseInsensitive) else { return nil }
+        var total: Int64 = 0
+        for match in regex.matches(in: xml, range: NSRange(xml.startIndex..., in: xml)) {
+            guard let span = Range(match.range(at: 1), in: xml), let value = Int64(xml[span]) else { continue }
+            total += value
         }
         return total > 0 ? total : nil
     }
@@ -496,9 +532,9 @@ final class WebDAVTransport: CatalogTransport {
         if requireDAV, let http = response as? HTTPURLResponse, http.statusCode == 401 {
             let port = request.url?.port ?? (request.url?.scheme == "https" ? 443 : 80)
             if Self.confirmsWebDAVPassword(http, port: port) {
-                throw LibraryError(message: "Błędny login lub hasło.")
+                throw LibraryError(message: L("Błędny login lub hasło."))
             }
-            throw LibraryError(message: "Ten port nie obsługuje WebDAV.")
+            throw LibraryError(message: L("Ten port nie obsługuje WebDAV."))
         }
         try throwIfNeeded(response, data: data, allowMissing: true)
         if requireDAV { try Self.requireWebDAV(response, data: data) }
@@ -513,12 +549,12 @@ final class WebDAVTransport: CatalogTransport {
 
     private static func requireWebDAV(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
-            throw LibraryError(message: "Brak odpowiedzi.")
+            throw LibraryError(message: L("Brak odpowiedzi."))
         }
         if http.statusCode == 207 { return }
         let body = String(decoding: data.prefix(900), as: UTF8.self).lowercased()
         if body.contains("multistatus") || body.contains("d:href") || body.contains(":href") { return }
-        throw LibraryError(message: "Ten port nie obsługuje WebDAV.")
+        throw LibraryError(message: L("Ten port nie obsługuje WebDAV."))
     }
 
     func exists(_ relative: String) async throws -> Bool {
@@ -601,7 +637,7 @@ final class WebDAVTransport: CatalogTransport {
     private func url(_ relative: String, directory: Bool = false) throws -> URL {
         guard !relative.isEmpty else { return baseURL }
         guard let safe = CatalogPath.safe(relative) else {
-            throw LibraryError(message: "Nieprawidłowa ścieżka biblioteki.")
+            throw LibraryError(message: L("Nieprawidłowa ścieżka biblioteki."))
         }
         return baseURL.appendingPathComponent(safe, isDirectory: directory)
     }
@@ -613,13 +649,13 @@ final class WebDAVTransport: CatalogTransport {
 
     private func throwIfNeeded(_ response: URLResponse, data: Data, allowMissing: Bool = false) throws {
         guard let http = response as? HTTPURLResponse else {
-            throw LibraryError(message: "Brak odpowiedzi.")
+            throw LibraryError(message: L("Brak odpowiedzi."))
         }
         if allowMissing, http.statusCode == 404 { return }
-        if http.statusCode == 401 { throw LibraryError(message: "Błędny login lub hasło.") }
-        if http.statusCode == 403 { throw LibraryError(message: "Brak dostępu do tego folderu.") }
+        if http.statusCode == 401 { throw LibraryError(message: L("Błędny login lub hasło.")) }
+        if http.statusCode == 403 { throw LibraryError(message: L("Brak dostępu do tego folderu.")) }
         if http.statusCode >= 400 {
-            throw LibraryError(message: "WebDAV błąd \(http.statusCode).")
+            throw LibraryError(message: L("WebDAV błąd \(http.statusCode)."))
         }
     }
 
@@ -697,7 +733,7 @@ private final class ProbeBox: @unchecked Sendable {
         let message = SyncPause.message(for: error)
         lock.lock()
         defer { lock.unlock() }
-        if message.contains("hasło") || message.contains("dostępu") { sawAuth = true }
+        if message.contains(L("hasło")) || message.contains(L("dostępu")) { sawAuth = true }
         if let url = error as? URLError, url.code == .timedOut { sawTimeout = true }
         last = LibraryError(message: message)
     }

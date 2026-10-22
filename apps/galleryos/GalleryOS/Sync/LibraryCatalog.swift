@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 enum DestinationKind {
@@ -173,6 +174,23 @@ struct LibraryAsset: Codable, Equatable, Sendable {
     var updatedAt: Date
     /// Kept on the server, but left out of every shared library. Only the Hidden album shows it.
     var hidden: Bool = false
+    /// Who hid it: a one-way fingerprint of the iCloud account. Only that person sees it in Ukryte.
+    var hiddenOwner: String? = nil
+    /// The original and preview on the server are encrypted (VaultCrypto). Only the owner's key opens them.
+    var sealed: Bool = false
+    /// Fingerprint of the key that sealed it, so a device without that key knows to wait for it.
+    var sealKey: String? = nil
+    /// Who sent it to the server: the iCloud fingerprint (`GalleryOwner`), or "device:<id>" for
+    /// photos sent before uploads were signed.
+    var owner: String? = nil
+    /// The sender's name as they chose it, and the device model it came from ("iPhone 17 Pro").
+    var ownerName: String? = nil
+    var device: String? = nil
+    /// When the server received it.
+    var uploadedAt: Date? = nil
+    /// Who moved it to Recently Deleted.
+    var deletedBy: String? = nil
+    var deletedByName: String? = nil
 
     func photoRef() -> PhotoRef {
         PhotoRef(
@@ -202,6 +220,8 @@ extension LibraryAsset {
     private enum CodingKeys: String, CodingKey {
         case hash, created, pixelWidth, pixelHeight, traits, favorite, latitude, longitude
         case duration, deletedAt, albumNames, resources, updatedAt, hidden
+        case hiddenOwner, sealed, sealKey
+        case owner, ownerName, device, uploadedAt, deletedBy, deletedByName
     }
 
     init(from decoder: Decoder) throws {
@@ -222,6 +242,15 @@ extension LibraryAsset {
             updatedAt: try c.decode(Date.self, forKey: .updatedAt),
             hidden: try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
         )
+        hiddenOwner = try c.decodeIfPresent(String.self, forKey: .hiddenOwner)
+        sealed = try c.decodeIfPresent(Bool.self, forKey: .sealed) ?? false
+        sealKey = try c.decodeIfPresent(String.self, forKey: .sealKey)
+        owner = try c.decodeIfPresent(String.self, forKey: .owner)
+        ownerName = try c.decodeIfPresent(String.self, forKey: .ownerName)
+        device = try c.decodeIfPresent(String.self, forKey: .device)
+        uploadedAt = try c.decodeIfPresent(Date.self, forKey: .uploadedAt)
+        deletedBy = try c.decodeIfPresent(String.self, forKey: .deletedBy)
+        deletedByName = try c.decodeIfPresent(String.self, forKey: .deletedByName)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -240,6 +269,138 @@ extension LibraryAsset {
         try c.encode(resources, forKey: .resources)
         try c.encode(updatedAt, forKey: .updatedAt)
         if hidden { try c.encode(true, forKey: .hidden) }
+        try c.encodeIfPresent(hiddenOwner, forKey: .hiddenOwner)
+        if sealed { try c.encode(true, forKey: .sealed) }
+        try c.encodeIfPresent(sealKey, forKey: .sealKey)
+        try c.encodeIfPresent(owner, forKey: .owner)
+        try c.encodeIfPresent(ownerName, forKey: .ownerName)
+        try c.encodeIfPresent(device, forKey: .device)
+        try c.encodeIfPresent(uploadedAt, forKey: .uploadedAt)
+        try c.encodeIfPresent(deletedBy, forKey: .deletedBy)
+        try c.encodeIfPresent(deletedByName, forKey: .deletedByName)
+    }
+}
+
+/// End-to-end encryption for hidden photos. The key is created on the owner's device and kept in
+/// the iCloud Keychain, so it reaches only the owner's own iPhone and iPad. The server, other
+/// people using the same NAS and anyone browsing the NAS see only unreadable bytes.
+///
+/// File format: "GOSV" + version 1, chunk size (UInt32), then AES-256-GCM boxes of up to 1 MiB,
+/// each prefixed by its length. Films of any size are sealed and opened without loading them whole.
+enum VaultCrypto {
+    private static let magic = Data("GOSV".utf8) + Data([1])
+    private static let chunk = 1 << 20
+    private static let account = "vault-key-v1"
+
+    static func isSealed(_ data: Data) -> Bool {
+        data.count >= magic.count && data.prefix(magic.count) == magic
+    }
+
+    /// The owner's key, if this device has it (created here or arrived through iCloud Keychain).
+    static var key: SymmetricKey? {
+        guard let stored = GalleryKeychain.data(account: account), stored.count == 32 else { return nil }
+        return SymmetricKey(data: stored)
+    }
+
+    static var fingerprint: String? {
+        guard let key else { return nil }
+        return fingerprint(of: key)
+    }
+
+    static func fingerprint(of key: SymmetricKey) -> String {
+        let digest = key.withUnsafeBytes { SHA256.hash(data: Data($0)) }
+        return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Creates the key once. Never replaces an existing one: photos sealed with it would be lost.
+    static func ensureKey() -> SymmetricKey? {
+        if let key { return key }
+        let fresh = SymmetricKey(size: .bits256)
+        let data = fresh.withUnsafeBytes { Data($0) }
+        GalleryKeychain.addSharedIfMissing(data, account: account)
+        return key
+    }
+
+    static func seal(_ plain: Data, key: SymmetricKey) throws -> Data {
+        var out = magic
+        out.append(contentsOf: withUnsafeBytes(of: UInt32(chunk).bigEndian, Array.init))
+        var offset = 0
+        repeat {
+            let end = min(plain.count, offset + chunk)
+            let box = try AES.GCM.seal(plain.subdata(in: offset..<end), using: key)
+            guard let combined = box.combined else { throw CocoaError(.coderInvalidValue) }
+            out.append(contentsOf: withUnsafeBytes(of: UInt32(combined.count).bigEndian, Array.init))
+            out.append(combined)
+            offset = end
+        } while offset < plain.count
+        return out
+    }
+
+    /// Plain data passes through; sealed data is opened with the key, or nil without it.
+    static func open(_ data: Data, key: SymmetricKey? = VaultCrypto.key) -> Data? {
+        guard isSealed(data) else { return data }
+        guard let key else { return nil }
+        var index = data.startIndex + magic.count + 4
+        var plain = Data()
+        while index < data.endIndex {
+            guard index + 4 <= data.endIndex else { return nil }
+            let length = data[index..<index + 4].reduce(0) { ($0 << 8) | Int($1) }
+            index += 4
+            guard length > 28, index + length <= data.endIndex,
+                  let box = try? AES.GCM.SealedBox(combined: data[index..<index + length]),
+                  let piece = try? AES.GCM.open(box, using: key) else { return nil }
+            plain.append(piece)
+            index += length
+        }
+        return plain
+    }
+
+    static func sealFile(_ source: URL, to destination: URL, key: SymmetricKey) throws {
+        FileManager.default.createFile(atPath: destination.path, contents: nil)
+        let input = try FileHandle(forReadingFrom: source)
+        let output = try FileHandle(forWritingTo: destination)
+        defer {
+            try? input.close()
+            try? output.close()
+        }
+        try output.write(contentsOf: magic)
+        try output.write(contentsOf: withUnsafeBytes(of: UInt32(chunk).bigEndian, Array.init))
+        var wroteOne = false
+        while true {
+            let piece = try input.chunk(chunk)
+            if piece.isEmpty, wroteOne { break }
+            try autoreleasepool {
+                let box = try AES.GCM.seal(piece, using: key)
+                guard let combined = box.combined else { throw CocoaError(.coderInvalidValue) }
+                try output.write(contentsOf: withUnsafeBytes(of: UInt32(combined.count).bigEndian, Array.init))
+                try output.write(contentsOf: combined)
+            }
+            wroteOne = true
+            if piece.count < chunk { break }
+        }
+    }
+
+    static func openFile(_ source: URL, to destination: URL, key: SymmetricKey) throws {
+        FileManager.default.createFile(atPath: destination.path, contents: nil)
+        let input = try FileHandle(forReadingFrom: source)
+        let output = try FileHandle(forWritingTo: destination)
+        defer {
+            try? input.close()
+            try? output.close()
+        }
+        let head = try input.chunk(magic.count + 4)
+        guard isSealed(head) else { throw CocoaError(.fileReadCorruptFile) }
+        while true {
+            let size = try input.chunk(4)
+            if size.isEmpty { break }
+            guard size.count == 4 else { throw CocoaError(.fileReadCorruptFile) }
+            let length = size.reduce(0) { ($0 << 8) | Int($1) }
+            let combined = try input.chunk(length)
+            try autoreleasepool {
+                let box = try AES.GCM.SealedBox(combined: combined)
+                try output.write(contentsOf: try AES.GCM.open(box, using: key))
+            }
+        }
     }
 }
 
@@ -252,6 +413,14 @@ struct JournalLine: Codable, Equatable, Sendable {
 
 enum LibraryRules {
     static let trashInterval: TimeInterval = 30 * 24 * 60 * 60
+    /// "Deleted for good": a delete date at the very start of 1970. Never in Recently Deleted,
+    /// never visible, never restored, on every device that reads the journal.
+    static let purgedMark = Date(timeIntervalSince1970: 1)
+
+    static func isPurged(_ asset: LibraryAsset) -> Bool {
+        guard let deleted = asset.deletedAt else { return false }
+        return deleted.timeIntervalSince1970 < 10
+    }
 
     static func merge(_ lines: [JournalLine]) -> [String: LibraryAsset] {
         let sorted = lines.sorted { lhs, rhs in
@@ -260,16 +429,35 @@ enum LibraryRules {
             return lhs.seq < rhs.seq
         }
         var result: [String: LibraryAsset] = [:]
+        var purgedAt: [String: Date] = [:]
+        var firstSeen: [String: (at: Date, device: String)] = [:]
         for line in sorted {
-            guard !line.asset.hash.isEmpty else { continue }
-            result[line.asset.hash] = line.asset
+            let hash = line.asset.hash
+            guard !hash.isEmpty else { continue }
+            if firstSeen[hash] == nil { firstSeen[hash] = (line.at, line.device) }
+            if let purged = purgedAt[hash], !isPurged(line.asset) {
+                // Deleted for good stays deleted: a later line from a device that had not heard of
+                // it yet (a favourite set on an old copy) must not bring it back. Only a new upload,
+                // made on purpose after the purge, does.
+                guard let uploaded = line.asset.uploadedAt, uploaded > purged else { continue }
+                purgedAt[hash] = nil
+            }
+            result[hash] = line.asset
+            if isPurged(line.asset) { purgedAt[hash] = line.at }
+        }
+        // Photos sent before uploads were signed: the first journal that named them, and when.
+        for (hash, first) in firstSeen {
+            guard var asset = result[hash], asset.uploadedAt == nil || asset.owner == nil else { continue }
+            if asset.uploadedAt == nil { asset.uploadedAt = first.at }
+            if asset.owner == nil { asset.owner = "device:" + first.device }
+            result[hash] = asset
         }
         return result
     }
 
+    /// In Recently Deleted until its owner deletes it for good (by hand or after the time they chose).
     static func isInTrash(_ asset: LibraryAsset, now: Date) -> Bool {
-        guard let deleted = asset.deletedAt else { return false }
-        return now.timeIntervalSince(deleted) < trashInterval
+        asset.deletedAt != nil && !isPurged(asset)
     }
 
     static func isVisible(_ asset: LibraryAsset) -> Bool {
@@ -381,10 +569,98 @@ enum LibraryRules {
     }
 }
 
+/// The same "2026-10-21T21:04:34Z" text as JSONEncoder's `.iso8601`, written and read by hand.
+/// `.iso8601` goes through ICU for every date; the catalogue has several dates per photo and is
+/// read and written thousands of times while copying, which kept a CPU core busy (iOS flagged
+/// GalleryOS for 90 s of CPU in 3 minutes). Anything unusual still falls back to ICU.
+enum FastDate {
+    private static let fallback: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        return formatter
+    }()
+
+    private static let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    static func string(_ date: Date) -> String {
+        var seconds = time_t(floor(date.timeIntervalSince1970))
+        var parts = tm()
+        gmtime_r(&seconds, &parts)
+        var bytes = [UInt8](repeating: 0, count: 20)
+        func put(_ value: Int32, _ at: Int, _ width: Int) {
+            var number = Int(value)
+            for index in stride(from: at + width - 1, through: at, by: -1) {
+                bytes[index] = UInt8(48 + number % 10)
+                number /= 10
+            }
+        }
+        put(parts.tm_year + 1900, 0, 4); bytes[4] = 45
+        put(parts.tm_mon + 1, 5, 2); bytes[7] = 45
+        put(parts.tm_mday, 8, 2); bytes[10] = 84
+        put(parts.tm_hour, 11, 2); bytes[13] = 58
+        put(parts.tm_min, 14, 2); bytes[16] = 58
+        put(parts.tm_sec, 17, 2); bytes[19] = 90
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    static func date(_ text: String) -> Date? {
+        if let quick = text.utf8.withContiguousStorageIfAvailable({ parse($0) }) ?? parse(Array(text.utf8)) {
+            return quick
+        }
+        return fallback.date(from: text) ?? fractional.date(from: text)
+    }
+
+    /// yyyy-MM-ddTHH:mm:ssZ only.
+    private static func parse<C: RandomAccessCollection>(_ b: C) -> Date? where C.Element == UInt8, C.Index == Int {
+        guard b.count == 20 else { return nil }
+        let s = b.startIndex
+        func n(_ at: Int, _ width: Int) -> Int? {
+            var value = 0
+            for index in (s + at)..<(s + at + width) {
+                let c = b[index]
+                guard c >= 48, c <= 57 else { return nil }
+                value = value * 10 + Int(c - 48)
+            }
+            return value
+        }
+        guard b[s + 4] == 45, b[s + 7] == 45, b[s + 10] == 84, b[s + 13] == 58, b[s + 16] == 58, b[s + 19] == 90,
+              let year = n(0, 4), let month = n(5, 2), let day = n(8, 2),
+              let hour = n(11, 2), let minute = n(14, 2), let second = n(17, 2),
+              (1...12).contains(month), (1...31).contains(day), hour < 24, minute < 60, second < 61 else { return nil }
+        // Days from 1970-01-01 (Howard Hinnant's civil calendar algorithm).
+        let y = month <= 2 ? year - 1 : year
+        let era = (y >= 0 ? y : y - 399) / 400
+        let yoe = y - era * 400
+        let mp = (month + 9) % 12
+        let doy = (153 * mp + 2) / 5 + day - 1
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+        let days = era * 146_097 + doe - 719_468
+        let total = days * 86_400 + hour * 3_600 + minute * 60 + second
+        return Date(timeIntervalSince1970: TimeInterval(total))
+    }
+
+    static let encoding: JSONEncoder.DateEncodingStrategy = .custom { date, encoder in
+        var container = encoder.singleValueContainer()
+        try container.encode(string(date))
+    }
+
+    static let decoding: JSONDecoder.DateDecodingStrategy = .custom { decoder in
+        let container = try decoder.singleValueContainer()
+        let text = try container.decode(String.self)
+        guard let date = date(text) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Expected ISO 8601 date")
+        }
+        return date
+    }
+}
+
 enum JournalCodec {
     static func encode(_ lines: [JournalLine]) -> Data {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = FastDate.encoding
         var data = Data()
         for line in lines {
             guard let row = try? encoder.encode(line) else { continue }
@@ -396,7 +672,7 @@ enum JournalCodec {
 
     static func decode(_ data: Data) -> [JournalLine] {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = FastDate.decoding
         let text = String(decoding: data, as: UTF8.self)
         return text.split(whereSeparator: \.isNewline).compactMap { row in
             guard let raw = row.data(using: .utf8) else { return nil }
@@ -411,19 +687,19 @@ struct LibraryError: LocalizedError {
 }
 
 enum SyncPause {
-    static let needsHTTPS = "Ten port wymaga połączenia szyfrowanego (HTTPS)."
-    static let notGalleryServer = "Pod tym adresem nie ma serwera GalleryOS."
+    static let needsHTTPS = L("Ten port wymaga połączenia szyfrowanego (HTTPS).")
+    static let notGalleryServer = L("Pod tym adresem nie ma serwera GalleryOS.")
 
     static func message(for error: Error) -> String {
         if let library = error as? LibraryError { return readable(library.message) }
         if let url = error as? URLError {
             switch url.code {
             case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed:
-                return "Brak sieci"
+                return L("Brak sieci")
             case .appTransportSecurityRequiresSecureConnection:
                 return needsHTTPS
             case .timedOut, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .secureConnectionFailed:
-                return "Serwer nie odpowiada. Sprawdź adres, port i czy jesteś w tej samej sieci."
+                return L("Serwer nie odpowiada. Sprawdź adres, port i czy jesteś w tej samej sieci.")
             default:
                 break
             }
@@ -436,27 +712,27 @@ enum SyncPause {
     static func explainServer(status: Int, data: Data) -> String {
         let raw = String(decoding: data.prefix(1500), as: UTF8.self)
         let lower = raw.lowercased()
-        if lower.contains("ssl-enabled") || lower.contains("speaking plain http") || lower.contains("use the https scheme") {
+        if lower.contains("ssl-enabled") || lower.contains("speaking plain http") || lower.contains("use the https scheme") { // l10n:skip
             return needsHTTPS
         }
         if lower.contains("<html") || lower.contains("<!doctype") || lower.contains("<head") {
             return notGalleryServer
         }
-        if status == 401 { return "Błędny login lub hasło." }
-        return "Serwer odrzucił połączenie (\(status)). Sprawdź adres i port."
+        if status == 401 { return L("Błędny login lub hasło.") }
+        return L("Serwer odrzucił połączenie (\(status)). Sprawdź adres i port.")
     }
 
     static func readable(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
-        if lower.contains("ssl-enabled") || lower.contains("speaking plain http") || lower.contains("use the https scheme") {
+        if lower.contains("ssl-enabled") || lower.contains("speaking plain http") || lower.contains("use the https scheme") { // l10n:skip
             return needsHTTPS
         }
         if lower.contains("<html") || lower.contains("<!doctype") || lower.contains("<head") {
-            return "Serwer odpowiedział stroną błędu. Sprawdź adres i port."
+            return L("Serwer odpowiedział stroną błędu. Sprawdź adres i port.")
         }
-        if trimmed.isEmpty { return "Nie udało się połączyć." }
-        if trimmed.count > 220 { return "Nie udało się połączyć. Sprawdź adres, port i hasło." }
+        if trimmed.isEmpty { return L("Nie udało się połączyć.") }
+        if trimmed.count > 220 { return L("Nie udało się połączyć. Sprawdź adres, port i hasło.") }
         return trimmed
     }
 }

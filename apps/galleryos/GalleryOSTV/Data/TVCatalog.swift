@@ -61,6 +61,10 @@ enum TVCatalog {
         for line in incoming where !line.asset.hash.isEmpty {
             let hash = line.asset.hash
             if let current = lines[hash], !isNewer(line, than: current) { continue }
+            // Deleted for good stays deleted, whatever an older copy says later. Only a new upload
+            // made after the purge brings the photo back.
+            if let current = lines[hash], LibraryRules.isPurged(current.asset), !LibraryRules.isPurged(line.asset),
+               (line.asset.uploadedAt ?? .distantPast) <= current.at { continue }
             lines[hash] = line
             changed = true
         }
@@ -125,13 +129,13 @@ enum TVCatalog {
     /// The „Typy multimediów” row from Photos. Empty kinds are left out.
     static func mediaTypes(from newestFirst: [PhotoRef]) -> [TVAlbum] {
         let kinds: [(String, String, PhotoTraits)] = [
-            ("Filmy", "video", .video),
-            ("Live Photos", "livephoto", .live),
-            ("Portrety", "cube", .portrait),
-            ("Selfie", "person.crop.square", .selfie),
-            ("Panoramy", "pano", .panorama),
-            ("Animowane", "square.stack.3d.forward.dottedline", .animated),
-            ("Zrzuty ekranu", "camera.viewfinder", .screenshot)
+            (L("Filmy"), "video", .video),
+            (L("Live Photos"), "livephoto", .live),
+            (L("Portrety"), "cube", .portrait),
+            (L("Selfie"), "person.crop.square", .selfie),
+            (L("Panoramy"), "pano", .panorama),
+            (L("Animowane"), "square.stack.3d.forward.dottedline", .animated),
+            (L("Zrzuty ekranu"), "camera.viewfinder", .screenshot)
         ]
         return kinds.compactMap { name, symbol, trait in
             let items = newestFirst.filter { $0.traits.contains(trait) }

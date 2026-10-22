@@ -37,7 +37,7 @@ struct TVBareButtonStyle: ButtonStyle {
 enum TVFormat {
     private static func formatter(_ template: String) -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = Localization.locale
         formatter.setLocalizedDateFormatFromTemplate(template)
         return formatter
     }
@@ -47,7 +47,7 @@ enum TVFormat {
     private static let monthFormatter = formatter("LLL yyyy")
     private static let relative: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = Localization.locale
         formatter.unitsStyle = .full
         return formatter
     }()
@@ -79,8 +79,8 @@ enum TVFormat {
     }
 
     static func updated(_ date: Date?) -> String {
-        guard let date else { return "jeszcze nie" }
-        if abs(date.timeIntervalSinceNow) < 45 { return "przed chwilą" }
+        guard let date else { return L("jeszcze nie") }
+        if abs(date.timeIntervalSinceNow) < 45 { return L("przed chwilą") }
         return relative.localizedString(for: date, relativeTo: .now)
     }
 }

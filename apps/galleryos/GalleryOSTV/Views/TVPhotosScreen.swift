@@ -57,7 +57,7 @@ struct TVPhotosScreen: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 18) {
             TVScreenHeader(
-                title: "Zdjęcia",
+                title: L("Zdjęcia"),
                 subtitle: PhotoFormat.count(library.photoCount),
                 showsLink: true
             )

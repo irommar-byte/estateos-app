@@ -14,9 +14,10 @@ struct ExportedResource {
 
 enum OriginalExport {
     static func export(_ asset: PHAsset, wait: TimeInterval? = nil) async throws -> (resources: [ExportedResource], thumb: URL?) {
+        _ = sweptOnce
         let available = PHAssetResource.assetResources(for: asset)
         guard let primary = first(available, [.photo, .fullSizePhoto, .video, .fullSizeVideo]) else {
-            throw LibraryError(message: "Brak oryginału w Rolce.")
+            throw LibraryError(message: L("Brak oryginału w Rolce."))
         }
         var written: [URL] = []
         do {
@@ -67,11 +68,28 @@ enum OriginalExport {
                 )
             }
             if missing(error) {
-                throw LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce. Stuknij chmurkę jeszcze raz za chwilę.")
+                throw LibraryError(message: L("Zdjęcie dopiero się zapisuje w Rolce. Stuknij chmurkę jeszcze raz za chwilę."))
             }
             throw error
         }
     }
+
+    /// Copies left behind when the app was killed mid-export. A few crashed films could fill
+    /// gigabytes of the phone. Runs once per launch, before the first export.
+    private static let sweptOnce: Void = {
+        let folder = FileManager.default.temporaryDirectory
+        let cutoff = Date().addingTimeInterval(-2 * 60 * 60)
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .isRegularFileKey]
+        guard let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys) else { return }
+        for file in files {
+            guard let values = try? file.resourceValues(forKeys: Set(keys)), values.isRegularFile == true,
+                  let changed = values.contentModificationDate, changed < cutoff else { continue }
+            // Only our own exports: a UUID name, as written by writeOnce and renderedStill.
+            let stem = file.deletingPathExtension().lastPathComponent
+            guard UUID(uuidString: stem) != nil else { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
+    }()
 
     private static func missing(_ error: Error) -> Bool {
         let cocoa = error as NSError
@@ -79,7 +97,7 @@ enum OriginalExport {
             return true
         }
         let text = error.localizedDescription.lowercased()
-        return text.contains("nie ma takiego pliku") || text.contains("no such file")
+        return text.contains("nie ma takiego pliku") || text.contains("no such file") // l10n:skip
     }
 
     /// A photo that was just taken often has no HEIC file yet. The rendered still is already in Photos.
@@ -92,7 +110,7 @@ enum OriginalExport {
             let gate = Once()
             let timeout = Task {
                 try? await Task.sleep(for: .seconds(20))
-                gate.finishData(continuation, LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce."))
+                gate.finishData(continuation, LibraryError(message: L("Zdjęcie dopiero się zapisuje w Rolce.")))
             }
             PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { data, _, _, info in
                 if (info?[PHImageResultIsDegradedKey] as? Bool) == true { return }
@@ -100,7 +118,7 @@ enum OriginalExport {
                 if let data, !data.isEmpty {
                     gate.finishData(continuation, data)
                 } else {
-                    let error = (info?[PHImageErrorKey] as? Error) ?? LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce.")
+                    let error = (info?[PHImageErrorKey] as? Error) ?? LibraryError(message: L("Zdjęcie dopiero się zapisuje w Rolce."))
                     gate.finishData(continuation, error)
                 }
             }
@@ -118,7 +136,7 @@ enum OriginalExport {
     }
 
     private static func write(_ resource: PHAssetResource, wait: TimeInterval?) async throws -> URL {
-        var last: Error = LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce.")
+        var last: Error = LibraryError(message: L("Zdjęcie dopiero się zapisuje w Rolce."))
         for attempt in 0..<3 {
             do {
                 return try await writeOnce(resource, wait: wait)
@@ -137,6 +155,8 @@ enum OriginalExport {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             let options = PHAssetResourceRequestOptions()
             options.isNetworkAccessAllowed = true
+            // A long iCloud download is progress too: the copy watchdog must not take it for a hang.
+            options.progressHandler = { _ in SyncMotion.shared.touch() }
             let gate = Once()
             let standard: TimeInterval = resource.type == .video || resource.type == .fullSizeVideo || resource.type == .pairedVideo
                 ? 8 * 60
@@ -144,7 +164,7 @@ enum OriginalExport {
             let limit = UInt64((wait ?? standard) * 1_000_000_000)
             let timeout = Task {
                 try? await Task.sleep(nanoseconds: limit)
-                gate.finish(continuation, LibraryError(message: "Zdjęcie dopiero się zapisuje w Rolce. Stuknij chmurkę jeszcze raz za chwilę."))
+                gate.finish(continuation, LibraryError(message: L("Zdjęcie dopiero się zapisuje w Rolce. Stuknij chmurkę jeszcze raz za chwilę.")))
             }
             PHAssetResourceManager.default().writeData(for: resource, toFile: url, options: options) { error in
                 timeout.cancel()
@@ -160,7 +180,7 @@ enum OriginalExport {
             let clip = AVURLAsset(url: primary)
             let generator = AVAssetImageGenerator(asset: clip)
             generator.appliesPreferredTrackTransform = true
-            generator.maximumSize = CGSize(width: 480, height: 480)
+            generator.maximumSize = CGSize(width: 960, height: 960)
             if #available(iOS 18.0, *) {
                 generator.dynamicRangePolicy = .forceSDR
             }
@@ -184,7 +204,8 @@ enum OriginalExport {
         }
         guard let source = CGImageSourceCreateWithURL(primary as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
-            kCGImageSourceThumbnailMaxPixelSize: 480,
+            // 960 px: sharp in a three-column grid on iPhone and iPad, still a small file.
+            kCGImageSourceThumbnailMaxPixelSize: 960,
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
         ]

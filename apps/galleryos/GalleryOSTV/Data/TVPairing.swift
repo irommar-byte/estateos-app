@@ -67,7 +67,7 @@ final class TVPairing: ObservableObject {
                   let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let id = object["id"] as? String,
                   let code = object["code"] as? String else {
-                state = .failed("Serwer parowania nie odpowiada. Spróbuję jeszcze raz.")
+                state = .failed(L("Serwer parowania nie odpowiada. Spróbuję jeszcze raz."))
                 return
             }
             let lifetime = object["expiresIn"] as? Double ?? 600
@@ -76,7 +76,7 @@ final class TVPairing: ObservableObject {
             expires = Date().addingTimeInterval(lifetime - 5)
             state = .waiting(code: code)
         } catch {
-            state = .failed("Brak połączenia z internetem. Spróbuję jeszcze raz.")
+            state = .failed(L("Brak połączenia z internetem. Spróbuję jeszcze raz."))
         }
     }
 
@@ -110,7 +110,7 @@ final class TVPairing: ObservableObject {
 
     private static func request(_ path: String, method: String) throws -> URLRequest {
         guard let url = URL(string: root + path), let host = url.host else {
-            throw LibraryError(message: "Serwis parowania jest niedostępny.")
+            throw LibraryError(message: L("Serwis parowania jest niedostępny."))
         }
         GalleryNetwork.shared.trust(host)
         var request = URLRequest(url: url)

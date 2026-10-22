@@ -24,11 +24,11 @@ struct ShareAlbumSheet: View {
                 }
             }
             .background(Color(uiColor: .systemGroupedBackground))
-            .navigationTitle("Udostępnij")
+            .navigationTitle(L("Udostępnij"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Anuluj") { dismiss() }
+                    Button(L("Anuluj")) { dismiss() }
                         .disabled(phase == .sending)
                 }
             }
@@ -45,10 +45,10 @@ struct ShareAlbumSheet: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 8)
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("ALBUM")
+                    Text(L("ALBUM"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    TextField("Nazwa albumu", text: $title)
+                    TextField(L("Nazwa albumu"), text: $title)
                         .font(.title3.weight(.semibold))
                         .focused($titleFocused)
                         .padding(.horizontal, 16)
@@ -57,12 +57,12 @@ struct ShareAlbumSheet: View {
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("ZNAJOMI")
+                        Text(L("ZNAJOMI"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Spacer()
                         if !account.friends.isEmpty {
-                            Button(members.count == account.friends.count ? "Odznacz" : "Wszyscy") {
+                            Button(members.count == account.friends.count ? L("Odznacz") : L("Wszyscy")) {
                                 UISelectionFeedbackGenerator().selectionChanged()
                                 withAnimation(GalleryTheme.snappy) {
                                     if members.count == account.friends.count {
@@ -76,7 +76,7 @@ struct ShareAlbumSheet: View {
                         }
                     }
                     if account.friends.isEmpty {
-                        Label("Najpierw dodaj znajomego kodem w zakładce Znajomi.", systemImage: "person.badge.plus")
+                        Label(L("Najpierw dodaj znajomego kodem w zakładce Znajomi."), systemImage: "person.badge.plus")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(16)
@@ -107,7 +107,7 @@ struct ShareAlbumSheet: View {
                 Button {
                     shareFiles()
                 } label: {
-                    Label("Wyślij jako pliki", systemImage: "square.and.arrow.up")
+                    Label(L("Wyślij jako pliki"), systemImage: "square.and.arrow.up")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
@@ -133,17 +133,17 @@ struct ShareAlbumSheet: View {
                 switch phase {
                 case .editing:
                     Image(systemName: "paperplane.fill")
-                    Text(members.isEmpty ? "Wybierz znajomych" : "Udostępnij \(PhotoFormat.things(ids.count))")
+                    Text(members.isEmpty ? L("Wybierz znajomych") : L("Udostępnij \(PhotoFormat.things(ids.count))"))
                 case .sending:
                     ProgressRing(fraction: ids.isEmpty ? 0 : Double(sent) / Double(ids.count))
                         .frame(width: 20, height: 20)
-                    Text("Wysyłam \(sent) z \(ids.count)")
+                    Text(L("Wysyłam \(sent) z \(ids.count)"))
                         .monospacedDigit()
                         .contentTransition(.numericText(value: Double(sent)))
                 case .done:
                     Image(systemName: "checkmark")
                         .transition(.scale.combined(with: .opacity))
-                    Text("Udostępniono")
+                    Text(L("Udostępniono"))
                 }
             }
             .font(.headline)
@@ -189,7 +189,7 @@ struct ShareAlbumSheet: View {
                 withAnimation(GalleryTheme.snappy) { sent += 1 }
             }
             guard !items.isEmpty else {
-                throw LibraryError(message: "Nie udało się przygotować zdjęć. Sprawdź połączenie z serwerem.")
+                throw LibraryError(message: L("Nie udało się przygotować zdjęć. Sprawdź połączenie z serwerem."))
             }
             try await account.createAlbum(title: title.trimmingCharacters(in: .whitespaces), members: Array(members), items: items)
             UINotificationFeedbackGenerator().notificationOccurred(.success)

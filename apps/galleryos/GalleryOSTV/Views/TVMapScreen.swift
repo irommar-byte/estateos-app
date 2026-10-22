@@ -71,7 +71,7 @@ struct TVMapScreen: View {
                 if mapLoading {
                     HStack(spacing: 12) {
                         ProgressView()
-                        Text("Wczytuję mapę…")
+                        Text(L("Wczytuję mapę…"))
                             .font(.system(size: 22, weight: .semibold))
                     }
                     .padding(.horizontal, 22)
@@ -117,11 +117,12 @@ struct TVMapScreen: View {
                 places = fresh
                 loaded = true
             }
-            let args = ProcessInfo.processInfo.arguments
-            if args.contains("-TVMapFocus"), fresh.count > 2 {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-TVMapFocus"), fresh.count > 2 {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 fly(to: fresh[2].id)
             }
+            #endif
         }
         .task(id: focused) {
             // Wait for the remote to settle so a fast swipe through the list is one flight, not ten.
@@ -252,10 +253,10 @@ struct TVMapScreen: View {
 
     private var panel: some View {
         VStack(alignment: .leading, spacing: 24) {
-            TVScreenHeader(title: "Mapa", subtitle: summary)
+            TVScreenHeader(title: L("Mapa"), subtitle: summary)
             if !places.isEmpty {
-                Label("Naciśnij Play, aby przejść na pinezki. Menu wraca do listy.", systemImage: "play.fill")
-                    .font(.system(size: 20, weight: .medium))
+                Label(L("Naciśnij Play, aby przejść na pinezki. Menu wraca do listy."), systemImage: "play.fill")
+                    .font(.system(size: 23, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.top, -12)
             }
@@ -265,9 +266,9 @@ struct TVMapScreen: View {
                         Image(systemName: "map")
                             .font(.system(size: 60))
                             .foregroundStyle(TVTheme.accent)
-                        Text("Brak zdjęć z lokalizacją")
+                        Text(L("Brak zdjęć z lokalizacją"))
                             .font(.title2.weight(.semibold))
-                        Text("Zdjęcia z włączonymi usługami lokalizacji w Aparacie pojawią się na mapie po synchronizacji.")
+                        Text(L("Zdjęcia z włączonymi usługami lokalizacji w Aparacie pojawią się na mapie po synchronizacji."))
                             .font(.title3)
                             .foregroundStyle(.secondary)
                     }
@@ -310,7 +311,7 @@ struct TVMapScreen: View {
     private var summary: String {
         guard !places.isEmpty else { return "" }
         let located = places.reduce(0) { $0 + $1.photos.count }
-        let word = places.count == 1 ? "miejsce" : ((2...4).contains(places.count % 10) && !(12...14).contains(places.count % 100) ? "miejsca" : "miejsc")
+        let word = Plural.pick(places.count, L("miejsce"), L("miejsca"), L("miejsc"))
         return "\(PhotoFormat.grouped(places.count)) \(word) · \(PhotoFormat.count(located))"
     }
 }
@@ -326,10 +327,10 @@ private struct TVOverviewRow: View {
                 .frame(width: 128, height: 96)
                 .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
-                Text("Wszystkie miejsca")
+                Text(L("Wszystkie miejsca"))
                     .font(.system(size: 28, weight: .bold, design: .rounded))
-                Text("Pokaż całą mapę")
-                    .font(.system(size: 20, weight: .medium))
+                Text(L("Pokaż całą mapę"))
+                    .font(.system(size: 23, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
@@ -354,11 +355,11 @@ private struct TVPlaceRow: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Text(PhotoFormat.count(place.photos.count))
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: 23, weight: .medium))
                     .foregroundStyle(.secondary)
                 if let newest = place.photos.first?.created, let oldest = place.photos.last?.created {
                     Text(TVFormat.span(oldest, newest))
-                        .font(.system(size: 18))
+                        .font(.system(size: 22))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -387,8 +388,8 @@ private struct TVPinCard: View {
                 Text(PhotoFormat.count(place.photos.count))
                     .font(.system(size: 22, weight: .medium))
                     .foregroundStyle(.secondary)
-                Label("Naciśnij, aby otworzyć", systemImage: "hand.tap.fill")
-                    .font(.system(size: 19, weight: .medium))
+                Label(L("Naciśnij, aby otworzyć"), systemImage: "hand.tap.fill")
+                    .font(.system(size: 23, weight: .medium))
                     .foregroundStyle(.tertiary)
             }
             .frame(maxWidth: 420, alignment: .leading)
@@ -472,12 +473,23 @@ struct TVMapView: UIViewRepresentable {
             guard next != signature else { return }
             let hadNone = pins.isEmpty
             signature = next
-            map.removeAnnotations(Array(pins.values))
-            pins = [:]
+            // Only changed places are swapped. Rebuilding every pin on each sync tick made the
+            // whole map blink while a library was still arriving.
+            var kept: [String: TVPinAnnotation] = [:]
+            var added: [TVPinAnnotation] = []
             for place in places {
-                pins[place.id] = TVPinAnnotation(place: place)
+                if let pin = pins[place.id], pin.place.photos.count == place.photos.count, pin.place.cover.cloudHash == place.cover.cloudHash {
+                    kept[place.id] = pin
+                } else {
+                    let pin = TVPinAnnotation(place: place)
+                    kept[place.id] = pin
+                    added.append(pin)
+                }
             }
-            map.addAnnotations(Array(pins.values))
+            let gone = pins.filter { kept[$0.key] !== $0.value }.map(\.value)
+            map.removeAnnotations(gone)
+            map.addAnnotations(added)
+            pins = kept
             if hadNone { needsFrame = true }
             DispatchQueue.main.async { [weak self, weak map] in
                 guard let self, let map else { return }
@@ -488,6 +500,8 @@ struct TVMapView: UIViewRepresentable {
         // MARK: Camera
 
         func frame(_ focus: String?, on map: MKMapView, animated: Bool) {
+            arcToken &+= 1
+            arcLanding = nil
             guard map.bounds.width > 0 else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self, weak map] in
                     guard let self, let map else { return }
@@ -527,12 +541,65 @@ struct TVMapView: UIViewRepresentable {
             let piled = visible > 0 && nearest / visible * openPoints < 130
             let overview = visible > 40_000 || map.camera.centerCoordinateDistance > 80_000
             let span = (piled || overview || visible <= 0) ? wanted : visible
-            aim(place, spanMeters: span, on: map)
+            arc(to: aimCamera(place, spanMeters: span, on: map), on: map)
+        }
+
+        /// Increments on every step, so a fast press cancels the second half of an older flight.
+        private var arcToken = 0
+        /// Second half of a flight, started when MapKit reports the first half has landed.
+        private var arcLanding: (token: Int, camera: MKMapCamera)?
+        /// When the rise began; an older animation ending right then must not trigger the landing.
+        private var arcStarted: CFTimeInterval = 0
+
+        /// Every step is a small flight: the camera rises to show where it comes from and where
+        /// it goes, drifts across, then descends onto the new pin. Both halves use MapKit's own
+        /// camera animation, which tvOS runs reliably and which loads tiles on the way.
+        private func arc(to target: MKMapCamera, on map: MKMapView) {
+            arcToken &+= 1
+            let token = arcToken
+            let start = map.camera
+            let from = MKMapPoint(start.centerCoordinate)
+            let to = MKMapPoint(target.centerCoordinate)
+            let latitude = (start.centerCoordinate.latitude + target.centerCoordinate.latitude) / 2
+            let scale = MKMapPointsPerMeterAtLatitude(latitude)
+            let apart = from.distance(to: to) / max(scale, .ulpOfOne)
+            let visibleNow = max(map.visibleMapRect.width / scale, 1)
+            let groundPerHeight = visibleNow / max(start.centerCoordinateDistance, 1)
+            let targetSpan = target.centerCoordinateDistance * groundPerHeight
+            let base = max(visibleNow, targetSpan)
+            // Always lift noticeably, more for longer trips; never beyond a continent.
+            let hopSpan = min(4_000_000, max(base * 2.2, apart * 2.4))
+            guard apart > 1 else {
+                arcLanding = nil
+                map.setCamera(target, animated: true)
+                return
+            }
+            let middle = MKMapPoint(x: (from.x + to.x) / 2, y: (from.y + to.y) / 2).coordinate
+            let hop = MKMapCamera(
+                lookingAtCenter: middle,
+                fromDistance: hopSpan / max(groundPerHeight, .ulpOfOne),
+                pitch: 0,
+                heading: 0
+            )
+            arcLanding = (token, target)
+            arcStarted = CACurrentMediaTime()
+            map.setCamera(hop, animated: true)
+            // If MapKit skips the callback (no visible change), still land.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self, weak map] in
+                guard let self, let map else { return }
+                self.land(token: token, on: map)
+            }
+        }
+
+        private func land(token: Int, on map: MKMapView) {
+            guard let landing = arcLanding, landing.token == token, arcToken == token else { return }
+            arcLanding = nil
+            map.setCamera(landing.camera, animated: true)
         }
 
         /// Looks at a point offset from the place so the pin lands in the middle of the open area,
         /// at a chosen visible width. `mapRectThatFits` would widen the view on every pan.
-        private func aim(_ place: TVPlace, spanMeters: Double, on map: MKMapView) {
+        private func aimCamera(_ place: TVPlace, spanMeters: Double, on map: MKMapView) -> MKMapCamera {
             let scale = MKMapPointsPerMeterAtLatitude(place.latitude)
             let open = map.bounds.inset(by: padding)
             let ppm = Double(map.bounds.width) / max(spanMeters, 1)
@@ -542,13 +609,12 @@ struct TVMapView: UIViewRepresentable {
             let lon = place.longitude - Double(dx) / ppm / (111_320 * max(0.2, cos(place.latitude * .pi / 180)))
             let visibleNow = max(map.visibleMapRect.width / scale, 1)
             let distance = map.camera.centerCoordinateDistance * (spanMeters / visibleNow)
-            let camera = MKMapCamera(
+            return MKMapCamera(
                 lookingAtCenter: CLLocationCoordinate2D(latitude: lat, longitude: lon),
                 fromDistance: max(400, distance),
                 pitch: 0,
                 heading: 0
             )
-            map.setCamera(camera, animated: true)
         }
 
         /// MapKit's own camera animation: it knows the destination, so tiles load during the
@@ -630,6 +696,13 @@ struct TVMapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             settlePins(on: mapView)
+            // The rise has finished: descend onto the pin.
+            if let landing = arcLanding, CACurrentMediaTime() - arcStarted > 0.35 {
+                DispatchQueue.main.async { [weak self, weak mapView] in
+                    guard let self, let mapView else { return }
+                    self.land(token: landing.token, on: mapView)
+                }
+            }
         }
 
         // MARK: Loading

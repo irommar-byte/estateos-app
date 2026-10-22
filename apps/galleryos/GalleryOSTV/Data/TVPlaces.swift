@@ -116,7 +116,7 @@ final class TVPlaces: @unchecked Sendable {
     @available(tvOS 26.0, *)
     private static func modernParts(_ location: CLLocation) async -> [String] {
         guard let request = MKReverseGeocodingRequest(location: location) else { return [] }
-        request.preferredLocale = Locale(identifier: "pl_PL")
+        request.preferredLocale = Localization.locale
         guard let item = try? await request.mapItems.first, let address = item.addressRepresentations else { return [] }
         return [address.cityName, address.regionName].compactMap { $0 }.filter { !$0.isEmpty }
     }

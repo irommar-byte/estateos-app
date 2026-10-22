@@ -100,12 +100,12 @@ struct TVPhotoBadges: View {
                     Image(systemName: "play.fill")
                     Text(PhotoFormat.duration(photo.duration)).monospacedDigit()
                 } else if photo.traits.contains(.live) {
-                    Text("LIVE").font(.system(size: 16, weight: .heavy))
+                    Text("LIVE").font(.system(size: 19, weight: .heavy))
                 }
                 Spacer(minLength: 0)
                 if photo.isFavorite { Image(systemName: "heart.fill") }
             }
-            .font(.system(size: 20, weight: .semibold))
+            .font(.system(size: 23, weight: .semibold))
             .foregroundStyle(.white)
             .padding(12)
             .opacity(photo.traits.isVideo || photo.traits.contains(.live) || photo.isFavorite ? 1 : 0)
@@ -133,9 +133,9 @@ struct TVPhotoTile: View {
         .buttonStyle(.card)
         .modifier(TVZoomSource(id: photo.id, namespace: zoom))
         .contextMenu {
-            Button("Otwórz", systemImage: "arrow.up.left.and.arrow.down.right", action: action)
+            Button(L("Otwórz"), systemImage: "arrow.up.left.and.arrow.down.right", action: action)
             if let onSlideshow {
-                Button("Pokaz slajdów od tego zdjęcia", systemImage: "play.rectangle.on.rectangle", action: onSlideshow)
+                Button(L("Pokaz slajdów od tego zdjęcia"), systemImage: "play.rectangle.on.rectangle", action: onSlideshow)
             }
         }
         .accessibilityLabel(TVFormat.dayTitle(photo.created))
@@ -182,7 +182,7 @@ struct TVCoverCard: View {
                                 Text(detail).lineLimit(1)
                             }
                         }
-                        .font(.system(size: 20, weight: .medium))
+                        .font(.system(size: 23, weight: .medium))
                         .foregroundStyle(.white.opacity(0.78))
                     }
                     .foregroundStyle(.white)
@@ -217,7 +217,7 @@ struct TVKindCard: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
                         Text(PhotoFormat.grouped(album.photos.count))
-                            .font(.system(size: 20, weight: .medium))
+                            .font(.system(size: 23, weight: .medium))
                             .foregroundStyle(.white.opacity(0.75))
                             .monospacedDigit()
                     }
@@ -239,11 +239,17 @@ struct TVZoomPicker: View {
         HStack(spacing: 16) {
             ForEach(PhotoZoom.allCases) { level in
                 let on = zoomRaw == level.rawValue
-                Button(level.title) { zoomRaw = level.rawValue }
-                    .buttonStyle(.bordered)
-                    .tint(on ? TVTheme.accent : Color.white.opacity(0.18))
+                Button { zoomRaw = level.rawValue } label: {
+                    HStack(spacing: 10) {
+                        if on { Image(systemName: "checkmark").font(.callout.weight(.bold)) }
+                        Text(level.title)
+                    }
+                }
+                .buttonStyle(.bordered)
+                .tint(on ? TVTheme.accent : Color.white.opacity(0.18))
             }
         }
+        .focusSection()
         .animation(TVTheme.spring, value: zoomRaw)
     }
 }
@@ -287,7 +293,7 @@ struct TVLinkPill: View {
             TVAvatar(name: session.server?.username ?? "")
             VStack(alignment: .leading, spacing: 3) {
                 Text(session.server?.username.isEmpty == false ? session.server!.username : "GalleryOS")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 25, weight: .semibold))
                     .lineLimit(1)
                 HStack(spacing: 8) {
                     indicator
@@ -297,7 +303,7 @@ struct TVLinkPill: View {
                             .contentTransition(.opacity)
                     }
                 }
-                .font(.system(size: 18, weight: .medium))
+                .font(.system(size: 23, weight: .medium))
                 .foregroundStyle(.secondary)
             }
         }
@@ -324,7 +330,7 @@ struct TVLinkPill: View {
         }
     }
 
-    private var server: String { session.server?.title ?? "serwer" }
+    private var server: String { session.server?.title ?? L("serwer") }
 
     private var tint: Color {
         switch link.kind {
@@ -338,14 +344,14 @@ struct TVLinkPill: View {
     private var line: String {
         switch link.kind {
         case .connecting:
-            return "Łączę z \(server)…"
+            return L("Łączę z \(server)…")
         case .online(let route):
-            var way = "przez internet"
-            if case .home = route { way = "w domu" }
-            if link.refreshing { return "\(server) · \(way) · sprawdzam nowe" }
+            var way = L("przez internet")
+            if case .home = route { way = L("w domu") }
+            if link.refreshing { return L("\(server) · \(way) · sprawdzam nowe") }
             return "\(server) · \(way) · \(TVFormat.updated(link.updatedAt))"
         case .offline:
-            return "Bez połączenia · pokazuję zapisaną bibliotekę"
+            return L("Bez połączenia · pokazuję zapisaną bibliotekę")
         }
     }
 }

@@ -11,21 +11,30 @@ struct TVPairingView: View {
             VStack(alignment: .leading, spacing: 36) {
                 TVWordmark(size: 64)
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Zdjęcia z serwera na wielkim ekranie")
+                    Text(L("Zdjęcia z serwera na wielkim ekranie"))
                         .font(.system(size: 52, weight: .bold, design: .rounded))
-                    Text("Sparuj Apple TV z GalleryOS na iPhonie. Zajmie to kilka sekund.")
+                    Text(L("Sparuj Apple TV z GalleryOS na iPhonie. Zajmie to kilka sekund."))
                         .font(.title3)
                         .foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 26) {
-                    step(1, "Otwórz GalleryOS na iPhonie")
-                    step(2, "W synchronizacji wybierz Apple TV")
-                    step(3, "Wpisz kod z tego ekranu albo zeskanuj kod QR")
+                    step(1, L("Otwórz GalleryOS na iPhonie"))
+                    step(2, L("W synchronizacji wybierz Apple TV"))
+                    step(3, L("Wpisz kod z tego ekranu albo zeskanuj kod QR"))
                 }
-                Label("Masz ten sam Apple ID? Włącz na iPhonie udostępnianie przez iCloud, a Apple TV połączy się sam.", systemImage: "icloud")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: 820, alignment: .leading)
+                VStack(alignment: .leading, spacing: 12) {
+                    Label(L("Ten sam Apple ID na iPhonie i Apple TV? Otwórz GalleryOS na iPhonie — Apple TV połączy się samo w kilkanaście sekund, bez kodu."), systemImage: "icloud")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    if !session.cloudNote.isEmpty {
+                        Label(session.cloudNote, systemImage: "antenna.radiowaves.left.and.right")
+                            .font(.caption)
+                            .foregroundStyle(TVTheme.accent)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: 820, alignment: .leading)
+                .animation(.easeInOut(duration: 0.4), value: session.cloudNote)
             }
             codeCard
         }
@@ -61,7 +70,7 @@ struct TVPairingView: View {
                 ProgressView().frame(width: 420, height: 420)
             case .waiting(let code):
                 VStack(spacing: 28) {
-                    Text("Kod parowania")
+                    Text(L("Kod parowania"))
                         .font(.headline)
                         .foregroundStyle(.secondary)
                     HStack(spacing: 14) {
@@ -80,7 +89,7 @@ struct TVPairingView: View {
                             .padding(14)
                             .background(RoundedRectangle(cornerRadius: 22).fill(.white))
                     }
-                    Text("Czekam na iPhone'a…")
+                    Text(L("Czekam na iPhone'a…"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

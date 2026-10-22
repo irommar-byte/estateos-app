@@ -8,6 +8,8 @@ struct AlbumRecord: Identifiable, Hashable {
     let count: Int
     let coverID: String?
     let system: Bool
+    /// Date of the newest photo, for sorting albums. User albums rarely have `endDate`.
+    var latest: Date? = nil
 }
 
 struct GallerySnapshot: @unchecked Sendable {
@@ -164,10 +166,11 @@ enum GalleryIndex {
             let title = collection.localizedTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
             let album = AlbumRecord(
                 id: collection.localIdentifier,
-                title: (title?.isEmpty == false ? title! : "Album"),
+                title: (title?.isEmpty == false ? title! : L("Album")),
                 count: ids.count,
                 coverID: cover,
-                system: smart
+                system: smart,
+                latest: assets.lastObject?.creationDate
             )
             records.append((album, ids))
         }

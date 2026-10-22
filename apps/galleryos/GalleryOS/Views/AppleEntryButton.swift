@@ -21,22 +21,22 @@ struct AccountEntryForm: View {
             } onFailure: { text in
                 account.message = text
             }
-            Text("Jedno stuknięcie. Nowe Apple ID zakłada konto, a znane od razu wchodzi.")
+            Text(L("Jedno stuknięcie. Nowe Apple ID zakłada konto, a znane od razu wchodzi."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Albo nazwa i hasło")
+                Text(L("Albo nazwa i hasło"))
                     .font(.subheadline.weight(.semibold))
-                TextField("Nazwa", text: $name)
+                TextField(L("Nazwa"), text: $name)
                     .textContentType(.username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.next)
                     .padding(14)
                     .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                SecureField("Hasło", text: $password)
+                SecureField(L("Hasło"), text: $password)
                     .textContentType(.password)
                     .submitLabel(.continue)
                     .padding(14)
@@ -50,7 +50,7 @@ struct AccountEntryForm: View {
                             ProgressView()
                                 .tint(.white)
                         } else {
-                            Text("Kontynuuj")
+                            Text(L("Kontynuuj"))
                                 .font(.body.weight(.semibold))
                         }
                     }
@@ -60,7 +60,7 @@ struct AccountEntryForm: View {
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.roundedRectangle(radius: 14))
                 .disabled(busy || name.trimmingCharacters(in: .whitespacesAndNewlines).count < 2 || password.count < 4)
-                Text("Jeśli konta nie ma, powstanie. Jeśli jest, wejdziesz tym hasłem.")
+                Text(L("Jeśli konta nie ma, powstanie. Jeśli jest, wejdziesz tym hasłem."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -72,7 +72,7 @@ struct AccountEntryForm: View {
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("Konto służy tylko do znajomych i albumów. Biblioteka zostaje na QNAP.")
+            Text(L("Konto służy tylko do znajomych i albumów. Biblioteka zostaje na QNAP."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -111,7 +111,7 @@ struct AppleEntryButton: View {
                     let tokenData = credential.identityToken,
                     let token = String(data: tokenData, encoding: .utf8)
                 else {
-                    onFailure("Apple nie potwierdziło tożsamości.")
+                    onFailure(L("Apple nie potwierdziło tożsamości."))
                     return
                 }
                 let person = credential.fullName
@@ -128,7 +128,7 @@ struct AppleEntryButton: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .disabled(busy)
         .opacity(busy ? 0.55 : 1)
-        .accessibilityLabel("Wejdź przez Apple ID")
+        .accessibilityLabel(L("Wejdź przez Apple ID"))
     }
 }
 
@@ -233,14 +233,14 @@ struct StartGate: View {
             VStack(spacing: 22) {
                 BrandWordmark(size: .largeTitle)
                     .padding(.top, 28)
-                Text("Najpierw konto. Jeśli serwer był już ustawiony, wróci sam. Potem dopiero połączenie.")
+                Text(L("Najpierw konto. Jeśli serwer był już ustawiony, wróci sam. Potem dopiero połączenie."))
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Button {
                     enterPasskey()
                 } label: {
-                    Label("Zaloguj się z Face ID", systemImage: "faceid")
+                    Label(L("Zaloguj się z Face ID"), systemImage: "faceid")
                         .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 52)
@@ -259,21 +259,21 @@ struct StartGate: View {
                     account.message = text
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Albo nazwa i hasło")
+                    Text(L("Albo nazwa i hasło"))
                         .font(.subheadline.weight(.semibold))
-                    TextField("Nazwa", text: $name)
+                    TextField(L("Nazwa"), text: $name)
                         .textContentType(.username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .padding(14)
                         .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    SecureField("Hasło", text: $password)
+                    SecureField(L("Hasło"), text: $password)
                         .textContentType(.password)
                         .padding(14)
                         .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .onSubmit { enterPassword() }
                     Button(action: enterPassword) {
-                        Text(busy ? "Chwila…" : "Kontynuuj")
+                        Text(busy ? L("Chwila…") : L("Kontynuuj"))
                             .font(.body.weight(.semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
@@ -288,7 +288,7 @@ struct StartGate: View {
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
                 }
-                Button("Później", action: onLater)
+                Button(L("Później"), action: onLater)
                     .font(.body.weight(.medium))
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 24)
@@ -297,19 +297,19 @@ struct StartGate: View {
             .frame(maxWidth: 480)
             .frame(maxWidth: .infinity)
         }
-        .alert("Zapisać klucz Face ID?", isPresented: $offerKey) {
-            Button("Zapisz") {
+        .alert(L("Zapisać klucz Face ID?"), isPresented: $offerKey) {
+            Button(L("Zapisz")) {
                 Task {
                     _ = await account.registerPasskey()
                     onEntered()
                 }
             }
-            Button("Nie teraz", role: .cancel) {
+            Button(L("Nie teraz"), role: .cancel) {
                 UserDefaults.standard.set(true, forKey: PasskeyCeremony.offeredKey)
                 onEntered()
             }
         } message: {
-            Text("Następnym razem wejdziesz tym iPhone’em, bez hasła.")
+            Text(L("Następnym razem wejdziesz tym \(ThisDevice.instrumental), bez hasła."))
         }
     }
 
@@ -344,24 +344,25 @@ struct StartGate: View {
 
 struct SyncChoicesSheet: View {
     var onDone: () -> Void
-    @State private var backup = true
-    @State private var outsideHome = false
-    @State private var charging = false
+    // Start from what is set now, so "Gotowe" never undoes a change made in the sync panel.
+    @State private var backup = SyncPolicy.uploadsEnabled
+    @State private var outsideHome = !SyncPolicy.wifiOnly
+    @State private var charging = SyncPolicy.chargingOnly
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Text("Kiedy zapisywać kopię")
+                    Text(L("Kiedy zapisywać kopię"))
                         .font(.title2.bold())
-                    Text("To samo ustawisz później w synchronizacji.")
+                    Text(L("To samo ustawisz później w synchronizacji."))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    choice("Kopia zapasowa", "Nowe zdjęcia i filmy idą same. Wyłączone — tylko to, co wskażesz chmurką.", on: $backup)
-                    choice("Także poza domem", "Włączone idzie przez komórkę i DDNS. Wyłączone zostaje w sieci lokalnej.", on: $outsideHome)
+                    choice(L("Kopia zapasowa"), L("Nowe zdjęcia i filmy idą same. Wyłączone — tylko to, co wskażesz chmurką."), on: $backup)
+                    choice(L("Także poza domem"), L("Włączone idzie przez komórkę i DDNS. Wyłączone zostaje w sieci lokalnej."), on: $outsideHome)
                         .disabled(!backup)
                         .opacity(backup ? 1 : 0.45)
-                    choice("Tylko podczas ładowania", "Kopia rusza, gdy \(ThisDevice.name) jest podłączony do prądu.", on: $charging)
+                    choice(L("Tylko podczas ładowania"), L("Kopia rusza, gdy \(ThisDevice.name) jest podłączony do prądu."), on: $charging)
                         .disabled(!backup)
                         .opacity(backup ? 1 : 0.45)
                 }
@@ -369,7 +370,7 @@ struct SyncChoicesSheet: View {
             }
             .background(Color(uiColor: .systemGroupedBackground))
             .galleryBottomBar(edge: .bottom) {
-                Button("Gotowe") {
+                Button(L("Gotowe")) {
                     SyncChoices.finish(backup: backup, outsideHome: outsideHome, charging: charging)
                     onDone()
                 }
@@ -381,6 +382,8 @@ struct SyncChoicesSheet: View {
             .navigationBarTitleDisplayMode(.inline)
         }
         .presentationDetents([.medium, .large])
+        // A swipe would bring it back on every visit to the Library; one tap on "Gotowe" settles it.
+        .interactiveDismissDisabled()
     }
 
     private func choice(_ title: String, _ detail: String, on: Binding<Bool>) -> some View {
@@ -405,19 +408,19 @@ struct ReviewPrompt: View {
                 .font(.system(size: 44))
                 .foregroundStyle(GalleryTheme.accent)
                 .padding(.top, 8)
-            Text("Podoba się GalleryOS?")
+            Text(L("Podoba się GalleryOS?"))
                 .font(.title2.bold())
-            Text("Gwiazdki zostawisz w App Store. Możesz też wrócić do tego później.")
+            Text(L("Gwiazdki zostawisz w App Store. Możesz też wrócić do tego później."))
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Tak, wystawię gwiazdki") {
+            Button(L("Tak, wystawię gwiazdki")) {
                 GalleryReview.accepted()
                 dismiss()
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            Button("Nie teraz") {
+            Button(L("Nie teraz")) {
                 GalleryReview.later()
                 dismiss()
             }
@@ -504,7 +507,7 @@ final class PasskeyCeremony: NSObject, ASAuthorizationControllerDelegate, ASAuth
         let request = provider.createCredentialAssertionRequest(challenge: challenge)
         let authorization = try await perform(request)
         guard let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialAssertion else {
-            throw PasskeyError.failed("Face ID nie zwróciło klucza.")
+            throw PasskeyError.failed(L("Face ID nie zwróciło klucza."))
         }
         return (
             Base64URL.encode(credential.credentialID),
@@ -523,7 +526,7 @@ final class PasskeyCeremony: NSObject, ASAuthorizationControllerDelegate, ASAuth
         let authorization = try await perform(request)
         guard let credential = authorization.credential as? ASAuthorizationPlatformPublicKeyCredentialRegistration,
               let attestation = credential.rawAttestationObject else {
-            throw PasskeyError.failed("Nie udało się zapisać klucza.")
+            throw PasskeyError.failed(L("Nie udało się zapisać klucza."))
         }
         return (
             Base64URL.encode(credential.credentialID),
@@ -570,18 +573,39 @@ enum GalleryProduct {
     static let yearly = "pl.galleryos.app.yearly"
     static let lifetime = "pl.galleryos.app.lifetime"
     static let all = [yearly, monthly, lifetime]
+
+    static func title(_ id: String) -> String {
+        switch id {
+        case lifetime: return L("GalleryOS™ Ultimate")
+        case yearly: return L("GalleryOS™ · rok")
+        default: return L("GalleryOS™ · miesiąc")
+        }
+    }
 }
 
 @MainActor
 final class GalleryMembership: ObservableObject {
     static let shared = GalleryMembership()
     @Published private(set) var unlocked: Bool
+    /// Set after a successful purchase; the root shows the full-screen welcome for this plan.
+    @Published var celebration: String?
     @Published private(set) var products: [Product] = []
     @Published var message = ""
+    private var updates: Task<Void, Never>?
 
     private init() {
         GalleryAccess.noteStartIfNeeded()
         unlocked = GalleryAccess.allowed()
+        // Purchases approved later (Ask to Buy), offer codes and renewals arrive here.
+        // Without listening they stayed unfinished until the next return to the app.
+        updates = Task { [weak self] in
+            for await result in Transaction.updates {
+                if case .verified(let transaction) = result {
+                    await transaction.finish()
+                }
+                await self?.refresh()
+            }
+        }
     }
 
     func refresh() async {
@@ -600,7 +624,10 @@ final class GalleryMembership: ObservableObject {
                 }
             }
         }
-        GalleryAccess.publish(lifetime: lifetime, until: until)
+        // Only widen what iCloud says: Apple TV may have bought the plan on its own record.
+        if lifetime || (until ?? .distantPast) > .now {
+            GalleryAccess.publish(lifetime: lifetime, until: until)
+        }
         unlocked = lifetime || (until ?? .distantPast) > .now || GalleryAccess.allowed()
         if products.isEmpty {
             products = (try? await Product.products(for: GalleryProduct.all)) ?? []
@@ -614,17 +641,27 @@ final class GalleryMembership: ObservableObject {
         message = ""
         if products.isEmpty { await refresh() }
         guard let product = products.first(where: { $0.id == id }) else {
-            message = "Plan nie jest jeszcze dostępny w App Store."
+            message = L("Plan nie jest jeszcze dostępny w App Store.")
             return
         }
         do {
             let result = try await product.purchase()
-            if case .success(let verification) = result, case .verified(let transaction) = verification {
+            switch result {
+            case .success(.verified(let transaction)):
                 await transaction.finish()
                 await refresh()
+                celebration = GalleryProduct.title(id)
+            case .success(.unverified):
+                message = L("App Store nie potwierdził zakupu. Spróbuj Przywróć zakupy.")
+            case .pending:
+                message = L("Zakup czeka na zatwierdzenie. GalleryOS odblokuje się sam, gdy przyjdzie zgoda.")
+            case .userCancelled:
+                break
+            @unknown default:
+                break
             }
         } catch {
-            message = "Nie udało się dokończyć zakupu."
+            message = L("Nie udało się dokończyć zakupu.")
         }
     }
 
@@ -633,7 +670,7 @@ final class GalleryMembership: ObservableObject {
         try? await AppStore.sync()
         await refresh()
         if !unlocked {
-            message = "Na tym Apple ID nie ma opłaconego GalleryOS."
+            message = L("Na tym Apple ID nie ma opłaconego GalleryOS.")
         }
     }
 
@@ -642,74 +679,460 @@ final class GalleryMembership: ObservableObject {
     }
 }
 
+/// The plan screen. Opens on its own when the free days end, and any time from the sync console.
+/// Lifetime is the hero: one purchase, no subscription, every device on the Apple ID.
 struct MembershipGate: View {
     @ObservedObject private var membership = GalleryMembership.shared
+    /// Opened from the sync console at any time (plans, status, restore), not only when the trial ends.
+    var closable = false
+    @Environment(\.dismiss) private var dismiss
+    @State private var chosen = GalleryProduct.lifetime
+    @State private var buying = false
+    @State private var storefront = ""
+    @State private var glow = false
+    @AppStorage(GalleryAccess.simulateKey) private var simulateEnded = false
+
+    private let gold = LinearGradient(
+        colors: [Color(red: 1.0, green: 0.86, blue: 0.52), Color(red: 0.86, green: 0.62, blue: 0.24), Color(red: 1.0, green: 0.84, blue: 0.5)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("GalleryOS")
-                        .font(.largeTitle.bold())
-                    Text("Trzy dni minęły. Zdjęcia zostają na telefonie i na serwerze. GalleryOS i Apple TV otwierają się z jednym z tych planów.")
-                        .foregroundStyle(.secondary)
-                    plan(
-                        id: GalleryProduct.yearly,
-                        title: "Rocznie",
-                        price: membership.price(for: GalleryProduct.yearly, fallback: "99 zł"),
-                        detail: "Dwa miesiące taniej niż płacenie co miesiąc. Apple TV w cenie.",
-                        prominent: true
-                    )
-                    plan(
-                        id: GalleryProduct.monthly,
-                        title: "Miesięcznie",
-                        price: membership.price(for: GalleryProduct.monthly, fallback: "9,99 zł"),
-                        detail: "Można zrezygnować, gdy GalleryOS nie jest już potrzebny.",
-                        prominent: false
-                    )
-                    plan(
-                        id: GalleryProduct.lifetime,
-                        title: "Na stałe",
-                        price: membership.price(for: GalleryProduct.lifetime, fallback: "299 zł"),
-                        detail: "Raz. Działa dalej na tym Apple ID, w Chmurze rodzinnej i na Apple TV.",
-                        prominent: false
-                    )
-                    Button("Przywróć zakupy") {
-                        Task { await membership.restore() }
+                VStack(spacing: 22) {
+                    header
+                    benefits
+                    VStack(spacing: 12) {
+                        planCard(
+                            id: GalleryProduct.lifetime,
+                            title: L("GalleryOS™ Ultimate"),
+                            badge: L("NA STAŁE"),
+                            line: lifetimeLine,
+                            price: membership.price(for: GalleryProduct.lifetime, fallback: "…"),
+                            period: L("jednorazowo")
+                        )
+                        planCard(
+                            id: GalleryProduct.yearly,
+                            title: L("Rocznie"),
+                            badge: savingBadge,
+                            line: yearlyLine,
+                            price: membership.price(for: GalleryProduct.yearly, fallback: "…"),
+                            period: L("na rok")
+                        )
+                        planCard(
+                            id: GalleryProduct.monthly,
+                            title: L("Miesięcznie"),
+                            badge: nil,
+                            line: L("Bez zobowiązań. Anulujesz w każdej chwili."),
+                            price: membership.price(for: GalleryProduct.monthly, fallback: "…"),
+                            period: L("na miesiąc")
+                        )
                     }
-                    .frame(maxWidth: .infinity)
+                    buyButton
                     if !membership.message.isEmpty {
                         Text(membership.message)
                             .font(.footnote)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.center)
+                    }
+                    footer
+                }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 30)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .background(backdrop.ignoresSafeArea())
+            .toolbar {
+                if closable {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(L("Gotowe")) { dismiss() }
                     }
                 }
-                .padding(24)
             }
-            .background(Color(uiColor: .systemGroupedBackground))
+            .task {
+                await membership.refresh()
+                if let code = await Storefront.current?.countryCode { storefront = code }
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) { glow = true }
+            }
+        }
+        .overlay {
+            // Opened as a sheet, the welcome plays here, above everything, then the sheet closes.
+            if closable, let plan = membership.celebration {
+                PurchaseCelebration(plan: plan) {
+                    membership.celebration = nil
+                    dismiss()
+                }
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.5), value: membership.celebration)
+        .environment(\.colorScheme, .dark)
+    }
+
+    // MARK: Pieces
+
+    private var backdrop: some View {
+        ZStack {
+            Color(red: 0.03, green: 0.03, blue: 0.05)
+            RadialGradient(colors: [Color(red: 0.86, green: 0.62, blue: 0.24).opacity(glow ? 0.28 : 0.16), .clear], center: .top, startRadius: 20, endRadius: 520)
+            RadialGradient(colors: [Color(red: 0.35, green: 0.3, blue: 0.9).opacity(0.18), .clear], center: .bottomTrailing, startRadius: 20, endRadius: 480)
         }
     }
 
-    private func plan(id: String, title: String, price: String, detail: String, prominent: Bool) -> some View {
-        Button {
-            Task { await membership.purchase(id) }
-        } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(title).font(.headline)
-                    Spacer()
-                    Text(price).font(.headline.monospacedDigit())
-                }
-                Text(detail)
-                    .font(.footnote)
-                    .foregroundStyle(prominent ? Color.white.opacity(0.85) : Color.secondary)
-                    .multilineTextAlignment(.leading)
+    private var header: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(gold)
+                    .frame(width: 78, height: 78)
+                    .shadow(color: Color(red: 0.95, green: 0.72, blue: 0.3).opacity(glow ? 0.7 : 0.35), radius: glow ? 26 : 14)
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(Color(red: 0.25, green: 0.16, blue: 0.04))
+                    .symbolEffect(.bounce, options: .nonRepeating, value: glow)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 18)
+            Text("GalleryOS™")
+                .font(.system(size: 34, weight: .bold, design: .serif))
+            Text(L("Twoja galeria. Twój serwer. Bez abonamentu za chmurę."))
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Label(GalleryAccess.statusLine, systemImage: membership.unlocked ? "checkmark.seal.fill" : "clock.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(membership.unlocked ? Color.green : Color.orange)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(.white.opacity(0.08)))
+        }
+    }
+
+    private var benefits: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            benefit("iphone.and.arrow.forward", L("iPhone, iPad i Apple TV"), L("Jeden plan na wszystkie urządzenia z Twoim Apple ID."))
+            benefit("externaldrive.fill.badge.checkmark", L("Kopia bez limitów"), L("Oryginały na Twoim serwerze – tyle, ile ma dysk, nie abonament."))
+            benefit("person.3.fill", L("Chmura rodzinna"), L("Do sześciu osób w rodzinie, bez dopłat."))
+            benefit("lock.shield.fill", L("Prywatnie"), L("Bez reklam, bez śledzenia. Zdjęcia nigdy nie trafiają do nas."))
+        }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(.white.opacity(0.08), lineWidth: 1))
+    }
+
+    private func benefit(_ symbol: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(gold)
+                .frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func planCard(id: String, title: String, badge: String?, line: String, price: String, period: String) -> some View {
+        let selected = chosen == id
+        let hero = id == GalleryProduct.lifetime
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { chosen = id }
+        } label: {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    Circle().strokeBorder(selected ? AnyShapeStyle(gold) : AnyShapeStyle(Color.white.opacity(0.25)), lineWidth: 2)
+                    if selected {
+                        Circle().fill(gold).padding(5).transition(.scale)
+                    }
+                }
+                .frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(title).font(.headline)
+                        if let badge {
+                            Text(badge)
+                                .font(.system(size: 9.5, weight: .heavy))
+                                .tracking(0.6)
+                                .foregroundStyle(hero ? Color(red: 0.25, green: 0.16, blue: 0.04) : .white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(hero ? AnyShapeStyle(gold) : AnyShapeStyle(Color.green.opacity(0.75))))
+                        }
+                    }
+                    Text(line)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(price)
+                        .font(.system(.title3, design: .rounded).weight(.bold))
+                        .monospacedDigit()
+                    Text(period)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
             .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(selected ? Color.white.opacity(0.1) : Color.white.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(selected ? AnyShapeStyle(gold) : AnyShapeStyle(Color.white.opacity(0.08)), lineWidth: selected ? 1.6 : 1)
+            )
+            .scaleEffect(selected ? 1 : 0.985)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(prominent ? Color.white : Color.primary)
-        .background(prominent ? GalleryTheme.accent : Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var buyButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            buying = true
+            Task {
+                await membership.purchase(chosen)
+                buying = false
+            }
+        } label: {
+            ZStack {
+                if buying {
+                    ProgressView().tint(Color(red: 0.25, green: 0.16, blue: 0.04))
+                } else {
+                    VStack(spacing: 2) {
+                        Text(buyTitle).font(.headline)
+                        Text(buySubtitle).font(.caption.weight(.medium)).opacity(0.75)
+                    }
+                }
+            }
+            .foregroundStyle(Color(red: 0.22, green: 0.14, blue: 0.03))
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(gold)
+                    .overlay(
+                        // A slow light sweep across the button.
+                        TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+                            let t = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3.2) / 3.2
+                            GeometryReader { proxy in
+                                LinearGradient(colors: [.clear, .white.opacity(0.45), .clear], startPoint: .leading, endPoint: .trailing)
+                                    .frame(width: 70)
+                                    .rotationEffect(.degrees(18))
+                                    .offset(x: CGFloat(t) * (proxy.size.width + 140) - 140)
+                            }
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .allowsHitTesting(false)
+                    )
+            )
+            .shadow(color: Color(red: 0.95, green: 0.72, blue: 0.3).opacity(0.35), radius: 18, y: 6)
+        }
+        .buttonStyle(.plain)
+        .disabled(buying)
+    }
+
+    /// Prices come only from the App Store (the buyer's own currency); none are written in the app.
+    private var buyTitle: String {
+        let title: String
+        switch chosen {
+        case GalleryProduct.lifetime: title = L("Kup GalleryOS™ Ultimate")
+        case GalleryProduct.yearly: title = L("Wybieram rok")
+        default: title = L("Wybieram miesiąc")
+        }
+        guard let price = product(chosen)?.displayPrice else { return title }
+        return "\(title) · \(price)"
+    }
+
+    private var buySubtitle: String {
+        chosen == GalleryProduct.lifetime ? L("Raz i spokój. Bez odnawiania.") : L("Subskrypcja odnawiana automatycznie")
+    }
+
+    private var footer: some View {
+        VStack(spacing: 12) {
+            Button(L("Przywróć zakupy")) {
+                Task { await membership.restore() }
+            }
+            .font(.subheadline.weight(.semibold))
+            Text(L("Plany Rocznie i Miesięcznie to subskrypcje odnawiane automatycznie. Opłata pobierana jest z konta Apple ID po potwierdzeniu zakupu; subskrypcja odnawia się, dopóki nie zostanie anulowana w Ustawieniach co najmniej 24 godziny przed końcem okresu. GalleryOS™ Ultimate to zakup jednorazowy, na zawsze."))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 18) {
+                Link(L("Warunki użytkowania"), destination: GalleryLegal.terms)
+                Link(L("Polityka prywatności"), destination: GalleryLegal.privacy)
+            }
+            .font(.caption.weight(.medium))
+            if !storefront.isEmpty {
+                Text(L("Ceny w walucie Twojego konta App Store (\(storefront))."))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            simulation
+        }
+        .padding(.top, 4)
+    }
+
+    /// Shows what happens when the free days run out, without touching the real trial.
+    private var simulation: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: Binding(
+                get: { simulateEnded },
+                set: { value in
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    GalleryAccess.simulateEnded = value
+                    simulateEnded = value
+                    Task { await membership.refresh() }
+                }
+            )) {
+                Label(L("Symuluj koniec okresu próbnego"), systemImage: "hourglass.bottomhalf.filled")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .tint(.orange)
+            Text(simulateEnded
+                 ? L("Aplikacja i Apple TV na tym Apple ID zachowują się jak po 3 dniach. Wyłącz, a wróci Twój prawdziwy okres próbny. Kupione plany działają zawsze.")
+                 : L("Podgląd tego, co zobaczysz po 3 dniach. Prawdziwy okres próbny się nie zmienia."))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.orange.opacity(simulateEnded ? 0.14 : 0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Color.orange.opacity(0.25), lineWidth: 1))
+        .padding(.top, 8)
+        // The switch lives in iCloud: another device on this Apple ID may have flipped it.
+        .onAppear { simulateEnded = GalleryAccess.simulateEnded }
+    }
+
+    // MARK: Numbers from the real App Store prices
+
+    private func product(_ id: String) -> Product? {
+        membership.products.first { $0.id == id }
+    }
+
+    /// "Tyle co 30 miesięcy" – how lifetime compares with paying monthly.
+    private var lifetimeLine: String {
+        guard let life = product(GalleryProduct.lifetime), let month = product(GalleryProduct.monthly), month.price > 0 else {
+            return L("Jeden zakup i spokój na zawsze. Bez subskrypcji.")
+        }
+        let months = Int(NSDecimalNumber(decimal: life.price / month.price).doubleValue.rounded())
+        return Plural.pick(months,
+                           L("Raz i spokój na zawsze – tyle co \(months) miesiąc abonamentu."),
+                           L("Raz i spokój na zawsze – tyle co \(months) miesiące abonamentu."),
+                           L("Raz i spokój na zawsze – tyle co \(months) miesięcy abonamentu."))
+    }
+
+    private var yearlyLine: String {
+        guard let year = product(GalleryProduct.yearly) else { return L("Dwanaście miesięcy w niższej cenie.") }
+        let perMonth = (year.price / 12).formatted(year.priceFormatStyle)
+        return L("Tylko \(perMonth) miesięcznie, płatne raz w roku.")
+    }
+
+    private var savingBadge: String? {
+        guard let year = product(GalleryProduct.yearly), let month = product(GalleryProduct.monthly), month.price > 0 else { return nil }
+        let saving = 1 - NSDecimalNumber(decimal: year.price / (month.price * 12)).doubleValue
+        guard saving >= 0.05 else { return nil }
+        return "−\(Int((saving * 100).rounded()))%"
+    }
+}
+
+
+/// Full-screen welcome after a purchase: gold light opens from the crown, sparks rise,
+/// the plan name settles in. Taps or five seconds close it.
+struct PurchaseCelebration: View {
+    let plan: String
+    let done: () -> Void
+    @State private var start = Date()
+    @State private var shown = false
+
+    private let gold = LinearGradient(
+        colors: [Color(red: 1.0, green: 0.88, blue: 0.56), Color(red: 0.86, green: 0.62, blue: 0.24), Color(red: 1.0, green: 0.84, blue: 0.5)],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    var body: some View {
+        TimelineView(.animation) { context in
+            let t = context.date.timeIntervalSince(start)
+            ZStack {
+                Color(red: 0.02, green: 0.02, blue: 0.04)
+                // Light rays turning slowly behind the crown.
+                AngularGradient(
+                    colors: Array(repeating: [Color(red: 1, green: 0.8, blue: 0.4).opacity(0.22), .clear], count: 9).flatMap { $0 },
+                    center: .center
+                )
+                .rotationEffect(.degrees(t * 9))
+                .scaleEffect(1.6)
+                .mask(RadialGradient(colors: [.white, .clear], center: .center, startRadius: 10, endRadius: 420))
+                .opacity(min(1, t / 0.8))
+                RadialGradient(colors: [Color(red: 0.95, green: 0.72, blue: 0.3).opacity(0.45), .clear], center: .center, startRadius: 4, endRadius: 260 + 40 * sin(t * 1.6))
+                // Golden sparks rising.
+                Canvas { canvas, size in
+                    for index in 0..<70 {
+                        let seed = Double(index) * 12.9898
+                        let x = (sin(seed) * 43758.5453).truncatingRemainder(dividingBy: 1)
+                        let speed = 0.08 + abs((cos(seed) * 9631.17).truncatingRemainder(dividingBy: 1)) * 0.16
+                        let phase = abs((sin(seed * 1.7) * 1234.5).truncatingRemainder(dividingBy: 1))
+                        let progress = (t * speed + phase).truncatingRemainder(dividingBy: 1)
+                        let px = size.width * abs(x) + sin(t * 1.2 + seed) * 14
+                        let py = size.height * (1.05 - progress * 1.15)
+                        let r = 1.2 + 2.2 * (1 - progress)
+                        let alpha = sin(progress * .pi) * 0.9
+                        canvas.fill(Path(ellipseIn: CGRect(x: px - r, y: py - r, width: r * 2, height: r * 2)),
+                                    with: .color(Color(red: 1, green: 0.84, blue: 0.5).opacity(alpha)))
+                    }
+                }
+                VStack(spacing: 22) {
+                    ZStack {
+                        Circle()
+                            .fill(gold)
+                            .frame(width: 128, height: 128)
+                            .shadow(color: Color(red: 0.95, green: 0.72, blue: 0.3).opacity(0.8), radius: 40)
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 54, weight: .bold))
+                            .foregroundStyle(Color(red: 0.25, green: 0.16, blue: 0.04))
+                    }
+                    .scaleEffect(shown ? 1 : 0.2)
+                    .rotation3DEffect(.degrees(shown ? 0 : -90), axis: (x: 0, y: 1, z: 0))
+                    VStack(spacing: 8) {
+                        Text(L("Witaj w"))
+                            .font(.title3.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.7))
+                        Text(plan)
+                            .font(.system(size: 38, weight: .bold, design: .serif))
+                            .foregroundStyle(gold)
+                            .multilineTextAlignment(.center)
+                        Text(L("iPhone, iPad i Apple TV są odblokowane.\nDziękujemy, że jesteś z nami."))
+                            .font(.callout)
+                            .foregroundStyle(.white.opacity(0.75))
+                            .multilineTextAlignment(.center)
+                    }
+                    .opacity(shown ? 1 : 0)
+                    .offset(y: shown ? 0 : 24)
+                }
+                .padding(32)
+            }
+        }
+        .ignoresSafeArea()
+        .contentShape(Rectangle())
+        .onTapGesture(perform: done)
+        .onAppear {
+            start = .now
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            withAnimation(.spring(response: 0.9, dampingFraction: 0.62).delay(0.15)) { shown = true }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(5.5))
+            done()
+        }
+        .environment(\.colorScheme, .dark)
     }
 }

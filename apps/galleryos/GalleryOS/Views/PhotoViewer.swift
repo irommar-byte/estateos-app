@@ -6,6 +6,7 @@ import PhotosUI
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import VisionKit
 
 struct ViewerRequest: Identifiable {
     let id = UUID()
@@ -25,6 +26,7 @@ struct PhotoViewerHost: View {
     @State private var info = false
     @State private var showMap = false
     @State private var confirmDelete = false
+    @State private var purging: PurgeRequest?
     @State private var chromeVisible = true
     @State private var adjusting = false
     @State private var stripSelection: Int?
@@ -52,6 +54,42 @@ struct PhotoViewerHost: View {
     private var photo: PhotoRef? {
         photoID.flatMap { library.photo(id: $0) }
     }
+
+    /// Every photo can be deleted: an iPhone photo goes to Recently Deleted on the iPhone,
+    /// a server copy goes to Recently Deleted on the server.
+    private var canDelete: Bool { photoID != nil }
+
+    /// Opened from the Serwer shelf or not stored on this iPhone.
+    private var isServerCopy: Bool { photoID?.hasPrefix("cloud:") == true }
+
+    /// In Recently Deleted on the server: it can come back, or go for good.
+    private var isTrashed: Bool { photoID.map { library.isTrashed($0) } ?? false }
+
+    /// On this device and also on the server: delete here only, or everywhere.
+    private var alsoOnServer: Bool {
+        guard let photoID, !isServerCopy else { return false }
+        return library.isUploaded(photoID)
+    }
+
+    private var deleteTitle: String {
+        if isTrashed { return L("Ostatnio usunięte") }
+        return isServerCopy ? L("Usunąć z serwera?") : L("Usunąć zdjęcie?")
+    }
+
+    private var deleteMessage: String {
+        if isTrashed {
+            return L("Zdjęcie czeka w Ostatnio usuniętych. Możesz je przywrócić albo usunąć na zawsze.")
+        }
+        if isServerCopy {
+            return L("Zniknie z biblioteki GalleryOS na wszystkich urządzeniach. Będzie w Ostatnio usuniętych na serwerze, skąd można je przywrócić.")
+        }
+        if alsoOnServer {
+            return L("„Usuń z \(ThisDevice.genitive)” zostawia kopię na serwerze. „Usuń wszędzie” przenosi ją też do Ostatnio usuniętych na serwerze.")
+        }
+        return L("Kopia, która jest już na serwerze, zostaje w zakładce Serwer. Z \(ThisDevice.genitive) trafia do Ostatnio usuniętych na 30 dni.")
+    }
+
+    private var isVideo: Bool { photo?.traits.isVideo == true }
 
     private var showsTransport: Bool {
         guard let photo else { return false }
@@ -116,7 +154,7 @@ struct PhotoViewerHost: View {
         }
         .sheet(isPresented: $info) {
             if let photo {
-                PhotoInfoSheet(photo: photo, place: placeName, names: library.people(for: photo)) {
+                PhotoInfoSheet(photo: photo, place: placeName, names: PhotoIntelligence.shared.names(for: photo, library: library)) {
                     info = false
                     showMap = true
                 }
@@ -130,19 +168,44 @@ struct PhotoViewerHost: View {
             }
         }
         .sheet(isPresented: $friendShare) {
-            ShareAlbumSheet(ids: photoID.map { [$0] } ?? [])
+            CloudAlbumComposer(ids: photoID.map { [$0] } ?? [])
                 .environmentObject(library)
         }
-        .confirmationDialog("Usunąć zdjęcie?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Usuń zdjęcie", role: .destructive) {
-                if let photoID {
-                    library.delete(ids: [photoID])
-                    dismiss()
+        .confirmationDialog(deleteTitle, isPresented: $confirmDelete, titleVisibility: .visible) {
+            if let photoID {
+                if isTrashed {
+                    Button(L("Przywróć")) {
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        library.restoreFromTrash(ids: [photoID])
+                        dismiss()
+                    }
+                    Button(L("Usuń na zawsze…"), role: .destructive) {
+                        purging = library.purgeRequest([photoID])
+                    }
+                } else if isServerCopy {
+                    Button(L("Usuń z serwera"), role: .destructive) {
+                        Task { if await library.delete(ids: [photoID]) { dismiss() } }
+                    }
+                } else {
+                    Button(alsoOnServer ? L("Usuń z \(ThisDevice.genitive)") : L("Usuń zdjęcie"), role: .destructive) {
+                        Task { if await library.delete(ids: [photoID]) { dismiss() } }
+                    }
+                    if alsoOnServer {
+                        Button(L("Usuń wszędzie"), role: .destructive) {
+                            Task { if await library.deleteEverywhere(ids: [photoID]) { dismiss() } }
+                        }
+                    }
                 }
             }
-            Button("Anuluj", role: .cancel) {}
+            Button(L("Anuluj"), role: .cancel) {}
         } message: {
-            Text("Zniknie z biblioteki tego \(ThisDevice.genitive) i z biblioteki GalleryOS na innych urządzeniach. Przez 30 dni zostanie w Ostatnio usuniętych.")
+            Text(deleteMessage)
+        }
+        .sheet(item: $purging) { request in
+            PermanentDeleteSheet(request: request) {
+                library.purge(ids: request.ids)
+                dismiss()
+            }
         }
     }
 
@@ -192,7 +255,7 @@ struct PhotoViewerHost: View {
             caption
                 .padding(.horizontal, 72)
             HStack {
-                circleButton("chevron.left", "Wstecz") { closeAnimated() }
+                circleButton("chevron.left", L("Wstecz")) { closeAnimated() }
                 Spacer()
                 moreMenu
             }
@@ -208,15 +271,19 @@ struct PhotoViewerHost: View {
             }
             filmstrip
             HStack {
-                plainButton("square.and.arrow.up", "Udostępnij") { share() }
+                plainButton("square.and.arrow.up", L("Udostępnij")) { share() }
                 Spacer()
-                plainButton(photo?.isFavorite == true ? "heart.fill" : "heart", "Ulubione") { toggleFavorite() }
+                plainButton(photo?.isFavorite == true ? "heart.fill" : "heart", L("Ulubione")) { toggleFavorite() }
                 Spacer()
-                plainButton("info.circle", "Informacje") { info = true }
+                plainButton("info.circle", L("Informacje")) { info = true }
                 Spacer()
-                plainButton("slider.horizontal.3", "Dopasuj") { adjusting = true }
+                plainButton("slider.horizontal.3", L("Dopasuj")) { adjusting = true }
+                    .disabled(isVideo)
+                    .opacity(isVideo ? 0.35 : 1)
                 Spacer()
-                plainButton("trash", "Usuń") { confirmDelete = true }
+                plainButton("trash", L("Usuń")) { confirmDelete = true }
+                    .disabled(!canDelete)
+                    .opacity(canDelete ? 1 : 0.35)
             }
             .padding(.horizontal, 22)
         }
@@ -224,15 +291,19 @@ struct PhotoViewerHost: View {
 
     private var landscapeTop: some View {
         HStack(spacing: 8) {
-            circleButton("chevron.left", "Wstecz") { closeAnimated() }
-            circleButton("square.and.arrow.up", "Udostępnij") { share() }
-            circleButton(photo?.isFavorite == true ? "heart.fill" : "heart", "Ulubione") { toggleFavorite() }
+            circleButton("chevron.left", L("Wstecz")) { closeAnimated() }
+            circleButton("square.and.arrow.up", L("Udostępnij")) { share() }
+            circleButton(photo?.isFavorite == true ? "heart.fill" : "heart", L("Ulubione")) { toggleFavorite() }
             Spacer(minLength: 8)
             caption
             Spacer(minLength: 8)
-            circleButton("slider.horizontal.3", "Dopasuj") { adjusting = true }
-            circleButton("info.circle", "Informacje") { info = true }
-            circleButton("trash", "Usuń") { confirmDelete = true }
+            if !isVideo {
+                circleButton("slider.horizontal.3", L("Dopasuj")) { adjusting = true }
+            }
+            circleButton("info.circle", L("Informacje")) { info = true }
+            if canDelete {
+                circleButton("trash", L("Usuń")) { confirmDelete = true }
+            }
             moreMenu
         }
         .padding(.horizontal, 10)
@@ -269,7 +340,7 @@ struct PhotoViewerHost: View {
             .galleryGlass(in: Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityHint("Pokaż informacje i miejsce")
+        .accessibilityHint(L("Pokaż informacje i miejsce"))
     }
 
     private var transport: some View {
@@ -283,23 +354,38 @@ struct PhotoViewerHost: View {
             track: pageTrack,
             asset: { library.asset(id: $0) },
             fallback: { library.thumbnail(id: $0) },
-            onPick: { index = $0 }
+            onPick: { index = $0 },
+            onScrub: { page in
+                pageTrack.scrub(to: page)
+                index = page
+            }
         )
         .frame(height: 48)
     }
 
     private var moreMenu: some View {
         Menu {
-            Button("Informacje", systemImage: "info.circle") { info = true }
-            Button("Kopiuj", systemImage: "doc.on.doc") { copyPhoto() }
+            Button(L("Informacje"), systemImage: "info.circle") { info = true }
+            Button(L("Udostępnij znajomym"), systemImage: "person.2") { friendShare = true }
+            if let photo, let latitude = photo.latitude, let longitude = photo.longitude {
+                Menu(L("Prowadź do miejsca zdjęcia"), systemImage: "arrow.triangle.turn.up.right.diamond") {
+                    PhotoDirections.menuItems(
+                        to: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+                        name: placeName
+                    )
+                }
+            }
+            Button(L("Kopiuj"), systemImage: "doc.on.doc") { copyPhoto() }
             if let photoID {
                 let concealed = library.isConcealed(photoID)
-                Button(concealed ? "Pokaż w bibliotece" : "Ukryj", systemImage: concealed ? "eye" : "eye.slash") {
+                Button(concealed ? L("Pokaż w bibliotece") : L("Ukryj"), systemImage: concealed ? "eye" : "eye.slash") {
                     library.setConcealed(!concealed, ids: [photoID])
                     if !concealed { dismiss() }
                 }
             }
-            Button("Usuń", systemImage: "trash", role: .destructive) { confirmDelete = true }
+            if canDelete {
+                Button(L("Usuń"), systemImage: "trash", role: .destructive) { confirmDelete = true }
+            }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 17, weight: .semibold))
@@ -307,7 +393,7 @@ struct PhotoViewerHost: View {
                 .frame(width: 44, height: 44)
                 .galleryGlass(in: Circle())
         }
-        .accessibilityLabel("Więcej")
+        .accessibilityLabel(L("Więcej"))
     }
 
     private var placeName: String? {
@@ -318,7 +404,7 @@ struct PhotoViewerHost: View {
 
     private var captionTitle: String {
         if let placeName, !placeName.isEmpty { return placeName }
-        guard let photo else { return "Zdjęcie" }
+        guard let photo else { return L("Zdjęcie") }
         return PhotoGrouping.dayTitle(for: photo.created)
     }
 
@@ -331,11 +417,15 @@ struct PhotoViewerHost: View {
         return time
     }
 
-    private func viewerTime(_ date: Date) -> String {
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.locale = Localization.locale
         formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    private func viewerTime(_ date: Date) -> String {
+        Self.timeFormatter.string(from: date)
     }
 
     private func circleButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
@@ -380,8 +470,18 @@ struct PhotoViewerHost: View {
         library.setFavorite(!photo.isFavorite, ids: [photoID])
     }
 
+    /// The system share sheet (Messages, AirDrop, Save). Photos only on the server go to the
+    /// GalleryOS share, which can send server copies.
     private func share() {
-        friendShare = true
+        guard let photoID, let presenter = UIApplication.shared.galleryTopController() else { return }
+        if library.asset(id: photoID) != nil {
+            PhotoSharing.present(ids: [photoID], asset: { library.asset(id: $0) }, from: presenter)
+            return
+        }
+        // A server copy: share the downloaded original file itself.
+        let media = library.cloudMedia(id: photoID)
+        guard let file = media?.video ?? media?.still else { return }
+        PhotoSharing.present(files: [file], from: presenter)
     }
 
     private func copyPhoto() {
@@ -409,7 +509,9 @@ enum PhotoSharing {
         guard !assets.isEmpty else { return }
         let group = DispatchGroup()
         let box = ShareBox()
-        for item in assets.prefix(30) {
+        // Temporary copies only; video URLs point into the Photos library and must stay.
+        let temporary = ShareBox()
+        for item in assets.prefix(200) {
             group.enter()
             if item.mediaType == .video {
                 let options = PHVideoRequestOptions()
@@ -428,17 +530,44 @@ enum PhotoSharing {
                     if let data {
                         let ext = uti.flatMap { UTType($0)?.preferredFilenameExtension } ?? "jpg"
                         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension(ext)
-                        try? data.write(to: url)
-                        box.append(url)
+                        if (try? data.write(to: url)) != nil {
+                            box.append(url)
+                            temporary.append(url)
+                        }
                     }
                     group.leave()
                 }
             }
         }
         group.notify(queue: .main) {
-            let controller = UIActivityViewController(activityItems: box.snapshot, applicationActivities: nil)
+            let items = box.snapshot
+            guard !items.isEmpty else { return }
+            let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+            controller.completionWithItemsHandler = { _, _, _, _ in
+                // The copies were only for sharing; leaving them filled the device over time.
+                for url in temporary.snapshot { try? FileManager.default.removeItem(at: url) }
+            }
+            // iPad shows the sheet as a popover and crashes without an anchor.
+            if let popover = controller.popoverPresentationController {
+                popover.sourceView = presenter.view
+                popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+                popover.permittedArrowDirections = []
+            }
             presenter.present(controller, animated: true)
         }
+    }
+}
+
+extension PhotoSharing {
+    static func present(files: [URL], from presenter: UIViewController) {
+        guard !files.isEmpty else { return }
+        let controller = UIActivityViewController(activityItems: files, applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
+        }
+        presenter.present(controller, animated: true)
     }
 }
 
@@ -459,8 +588,14 @@ private final class ShareBox: @unchecked Sendable {
 
 final class PageTrack {
     fileprivate weak var filmstrip: FilmstripView?
+    fileprivate weak var pager: PhotoPagerController?
     func follow(_ fraction: CGFloat) {
         filmstrip?.follow(fraction)
+    }
+
+    /// The filmstrip is being dragged: show the centred photo at once, without a page animation.
+    func scrub(to page: Int) {
+        pager?.show(index: page, animated: false)
     }
 }
 
@@ -510,6 +645,7 @@ struct PhotoPager: UIViewControllerRepresentable {
         controller.onToggleChrome = onToggleChrome
         controller.onDrag = onDrag
         controller.track = track
+        track.pager = controller
         controller.playback = playback
         playback?.pager = controller
         controller.setImmersive(immersive)
@@ -548,6 +684,7 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
     private var didAppear = false
     private var appliedSize: CGSize = .zero
     private var ticker: Timer?
+    private var tapGesture: UITapGestureRecognizer?
     private var programmaticScroll = false
     private var dragging = false
     private var dismissPhoto: UIImageView?
@@ -584,6 +721,7 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
         collection.addGestureRecognizer(pan)
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
         collection.addGestureRecognizer(tap)
+        tapGesture = tap
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -617,6 +755,13 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         source?.viewerHide(nil)
+        ticker?.invalidate()
+        ticker = nil
+        if let collection {
+            for cell in collection.visibleCells { (cell as? ViewerCell)?.resignCurrent() }
+        }
+        // Give the audio back: music paused by a film resumes after the viewer closes.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     override func viewDidLayoutSubviews() {
@@ -635,6 +780,8 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
         guard !didAppear else { return }
         didAppear = true
         animateOrigin()
+        // The transport needs live progress for a film that starts by itself, not only after a tap.
+        ensureTicker()
     }
 
     func setImmersive(_ value: Bool) {
@@ -652,6 +799,10 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
         guard let collection, ids.indices.contains(target) else { return }
         let jump = abs(target - index) > 8
         index = target
+        // Keep the grid tile under the viewer in sync, so closing flies back to the right photo.
+        source?.viewerReveal(ids[target])
+        source?.viewerHide(ids[target])
+        updatePlayingPage()
         programmaticScroll = true
         collection.scrollToItem(
             at: IndexPath(item: target, section: 0),
@@ -694,8 +845,32 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: ViewerCell.reuse, for: indexPath) as! ViewerCell
         let id = ids[indexPath.item]
         cell.setCanvas(immersive ? .black : .systemBackground)
+        cell.autoplay = indexPath.item == index
+        if let doubleTap = cell.doubleTapGesture, let tapGesture {
+            // A double tap zooms; it must not also toggle the controls.
+            tapGesture.require(toFail: doubleTap)
+        }
         cell.configure(asset: asset(id), media: media(id))
         return cell
+    }
+
+    func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
+        (cell as? ViewerCell)?.resignCurrent()
+    }
+
+    /// Exactly one page plays: the current one. Called whenever the current page changes.
+    private func updatePlayingPage() {
+        guard let collection else { return }
+        for indexPath in collection.indexPathsForVisibleItems {
+            guard let cell = collection.cellForItem(at: indexPath) as? ViewerCell else { continue }
+            if indexPath.item == index {
+                cell.becameCurrent()
+            } else {
+                cell.resignCurrent()
+            }
+        }
+        ensureTicker()
+        reportPlayback()
     }
 
     func reloadVisible() {
@@ -780,11 +955,9 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
     }
 
     @objc private func tapped() {
-        if currentCell()?.playerIsActive == true {
-            currentCell()?.playIfNeeded()
-        } else {
-            onToggleChrome()
-        }
+        // A tap shows or hides the controls, as in Photos. Play and pause live on the transport bar,
+        // otherwise the controls could never be hidden over a film.
+        onToggleChrome()
     }
 
     @objc private func dragged(_ gesture: UIPanGestureRecognizer) {
@@ -922,9 +1095,9 @@ final class PhotoPagerController: UIViewController, UICollectionViewDataSource, 
         guard ids.indices.contains(page), page != index else { return }
         index = page
         onIndex(page)
-        reportPlayback()
         source?.viewerReveal(ids[page])
         source?.viewerHide(ids[page])
+        updatePlayingPage()
     }
 
     private func currentCell() -> ViewerCell? {
@@ -1026,10 +1199,16 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
     private var request: PHImageRequestID = PHInvalidImageRequestID
     private var videoRequest: PHImageRequestID = PHInvalidImageRequestID
     private var videoExportStarted = false
+    /// iCloud is already sending the film; a second full download would only compete with it.
+    private var videoDownloading = false
     private var loadToken = 0
     private var player: AVPlayer?
     private var playerLayer: AVPlayerLayer?
     private var isLive = false
+    /// Live Text, subject lifting ("podnieś motyw"), codes and Visual Look Up, as in Photos.
+    private let analysis = ImageAnalysisInteraction()
+    private var analysisTask: Task<Void, Never>?
+    private static let analyzer = ImageAnalyzer()
 
     var displayImage: UIImage? { imageView.image }
     func imageFrame(in host: UIView) -> CGRect {
@@ -1058,6 +1237,9 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
     private var requestedSide: CGFloat = 0
     private var livePulse = false
     private var filled = false
+    /// Only the page on screen may play. Neighbours are prepared silently.
+    var autoplay = false
+    private(set) var doubleTapGesture: UITapGestureRecognizer?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1075,11 +1257,14 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
         contentView.addSubview(scroll)
         scroll.addSubview(canvas)
         imageView.contentMode = .scaleAspectFit
+        imageView.isUserInteractionEnabled = true
+        analysis.preferredInteractionTypes = []
+        imageView.addInteraction(analysis)
         canvas.addSubview(imageView)
         liveView.contentMode = .scaleAspectFit
         liveView.isHidden = true
         canvas.addSubview(liveView)
-        waiting.text = "Wczytuję"
+        waiting.text = L("Wczytuję")
         waiting.font = .systemFont(ofSize: 15, weight: .semibold)
         waiting.textColor = .secondaryLabel
         waiting.isHidden = true
@@ -1089,6 +1274,7 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
         doubleTap.numberOfTapsRequired = 2
         addGestureRecognizer(doubleTap)
+        doubleTapGesture = doubleTap
         let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
         hold.minimumPressDuration = 0.28
         hold.cancelsTouchesInView = false
@@ -1127,7 +1313,11 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
         }
         request = PHInvalidImageRequestID
         videoRequest = PHInvalidImageRequestID
+        analysisTask?.cancel()
+        analysis.analysis = nil
+        analysis.preferredInteractionTypes = []
         videoExportStarted = false
+        videoDownloading = false
         imageView.image = nil
         waiting.isHidden = true
         liveView.stopPlayback()
@@ -1206,15 +1396,16 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
                     }
                 }
             }
-            preparePairedVideo(asset, token: token)
+            // The live view plays the motion itself. A separate copy of the paired video
+            // filled the temporary folder and replaced the still after playing.
             return
         }
-        if asset.playbackStyle == .imageAnimated {
+        if asset.playbackStyle == .imageAnimated || Self.isGIF(asset) {
             playAnimated(asset, token: token, side: max(size.width, size.height))
             return
         }
         if asset.mediaType == .video {
-            waiting.text = "Otwieram film…"
+            waiting.text = L("Otwieram film…")
             waiting.sizeToFit()
             waiting.isHidden = false
             let still = PHImageRequestOptions()
@@ -1236,7 +1427,8 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
             video.progressHandler = { [weak self] progress, _, _, _ in
                 DispatchQueue.main.async {
                     guard let self, self.loadToken == token, self.player == nil else { return }
-                    self.waiting.text = "Pobieram film… \(Int((progress * 100).rounded()))%"
+                    self.videoDownloading = true
+                    self.waiting.text = L("Pobieram film… \(Int((progress * 100).rounded()))%")
                     self.waiting.sizeToFit()
                     self.waiting.center = CGPoint(x: self.contentView.bounds.midX, y: self.contentView.bounds.midY)
                     self.waiting.isHidden = false
@@ -1253,7 +1445,7 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
-                guard let self, self.loadToken == token, self.player == nil else { return }
+                guard let self, self.loadToken == token, self.player == nil, !self.videoDownloading else { return }
                 self.exportFilm(asset, token: token)
             }
             return
@@ -1276,19 +1468,39 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
         try? AVAudioSession.sharedInstance().setActive(true)
         attachPlayer(item: item, visible: true)
         waiting.isHidden = true
-        player?.play()
+        if autoplay { player?.play() }
+    }
+
+    /// The pager calls this when the page becomes the one on screen.
+    func becameCurrent() {
+        guard !autoplay else { return }
+        autoplay = true
+        scheduleAnalysis()
+        guard let player, player.timeControlStatus != .playing else { return }
+        let time = player.currentTime().seconds
+        // Start a film that has not been watched yet; leave a paused one where the user stopped it.
+        if !time.isFinite || time < 0.05 { player.play() }
+    }
+
+    /// The pager calls this when the page leaves the screen: no sound from a film nobody sees.
+    func resignCurrent() {
+        autoplay = false
+        analysisTask?.cancel()
+        player?.pause()
+        liveView.stopPlayback()
+        livePulse = false
     }
 
     /// Photos sometimes returns no player item for an iCloud film. Writing the file is the path that still opens it.
     private func exportFilm(_ asset: PHAsset, token: Int) {
         guard !videoExportStarted, player == nil, loadToken == token else { return }
         videoExportStarted = true
-        waiting.text = "Pobieram film…"
+        waiting.text = L("Pobieram film…")
         waiting.sizeToFit()
         waiting.isHidden = false
         let resources = PHAssetResource.assetResources(for: asset)
         guard let resource = resources.first(where: { $0.type == .video || $0.type == .fullSizeVideo }) else {
-            waiting.text = "Nie mogę otworzyć filmu"
+            waiting.text = L("Nie mogę otworzyć filmu")
             return
         }
         let ext = (resource.originalFilename as NSString).pathExtension
@@ -1305,7 +1517,7 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
                 }
                 if error != nil || self.player != nil {
                     if self.player == nil {
-                        self.waiting.text = "Film jest w iCloud i nie schodzi"
+                        self.waiting.text = L("Film jest w iCloud i nie schodzi")
                         self.waiting.isHidden = false
                     }
                     try? FileManager.default.removeItem(at: url)
@@ -1321,7 +1533,7 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
         options.isNetworkAccessAllowed = true
         options.deliveryMode = .highQualityFormat
         PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) { [weak self] data, _, _, _ in
-            guard let data, let animated = AnimatedFrames.image(data: data, maxSide: min(side, 1200), maxFrames: 24) else { return }
+            guard let data, let animated = AnimatedFrames.image(data: data, maxSide: min(side, 900), maxFrames: 48) else { return }
             DispatchQueue.main.async {
                 guard let self, self.loadToken == token else { return }
                 self.imageView.image = animated
@@ -1333,6 +1545,7 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
         guard loadToken == token, let image else { return }
         imageView.image = image
         guard !degraded else { return }
+        scheduleAnalysis()
         let pixels = max(image.size.width, image.size.height) * image.scale
         let needed = max(bounds.width, bounds.height) * max(traitCollection.displayScale, 2)
         guard !filled, bounds.width > 1, pixels < needed * 0.8 else { return }
@@ -1352,6 +1565,7 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
             DispatchQueue.main.async {
                 guard let self, self.loadToken == token, let sharper else { return }
                 self.imageView.image = sharper
+                self.scheduleAnalysis()
             }
         }
     }
@@ -1361,21 +1575,6 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
         let width = bounds.width > 1 ? bounds.width : 390
         let height = bounds.height > 1 ? bounds.height : 844
         return CGSize(width: width * scale, height: height * scale)
-    }
-
-    private func preparePairedVideo(_ asset: PHAsset, token: Int) {
-        let resources = PHAssetResource.assetResources(for: asset)
-        guard let resource = resources.first(where: { $0.type == .pairedVideo || $0.type == .fullSizePairedVideo }) else { return }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("mov")
-        PHAssetResourceManager.default().writeData(for: resource, toFile: url, options: nil) { [weak self] error in
-            DispatchQueue.main.async {
-                guard let self, self.loadToken == token, error == nil else {
-                    try? FileManager.default.removeItem(at: url)
-                    return
-                }
-                self.attachPlayer(item: AVPlayerItem(url: url), visible: false)
-            }
-        }
     }
 
     private func attachPlayer(item: AVPlayerItem, visible: Bool) {
@@ -1435,11 +1634,50 @@ final class ViewerCell: UICollectionViewCell, UIScrollViewDelegate {
             self.player = player
             playerLayer = layer
             waiting.isHidden = true
-            player.play()
+            if autoplay { player.play() }
             return
         }
         if let still = media.still {
             imageView.image = UIImage(contentsOfFile: still.path)
+            if still.pathExtension.lowercased() == "gif" {
+                // A GIF from the server: play its frames instead of showing the first one.
+                let token = loadToken
+                let side = max(bounds.width, bounds.height) * max(traitCollection.displayScale, 2)
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    guard let data = try? Data(contentsOf: still),
+                          let animated = AnimatedFrames.image(data: data, maxSide: min(side, 900), maxFrames: 48) else { return }
+                    DispatchQueue.main.async {
+                        guard let self, self.loadToken == token else { return }
+                        self.imageView.image = animated
+                    }
+                }
+                return
+            }
+            scheduleAnalysis()
+        }
+    }
+
+    /// GIFs saved from some apps are not marked as animated by Photos; their file type tells.
+    private static func isGIF(_ asset: PHAsset) -> Bool {
+        PHAssetResource.assetResources(for: asset).contains { $0.uniformTypeIdentifier.lowercased().contains("gif") }
+    }
+
+    /// Analyses only the photo on screen, once it is sharp, so paging stays light.
+    private func scheduleAnalysis() {
+        analysisTask?.cancel()
+        guard ImageAnalyzer.isSupported, !isLive, player == nil, imageView.image != nil else { return }
+        let token = loadToken
+        analysisTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard let self, !Task.isCancelled, self.loadToken == token, self.autoplay,
+                  let image = self.imageView.image, image.images == nil else { return }
+            let configuration = ImageAnalyzer.Configuration([.text, .visualLookUp, .machineReadableCode])
+            guard let result = try? await Self.analyzer.analyze(image, configuration: configuration),
+                  !Task.isCancelled, self.loadToken == token else { return }
+            // The Live Text button sits above the filmstrip and toolbar.
+            self.analysis.supplementaryInterfaceContentInsets = UIEdgeInsets(top: 0, left: 0, bottom: 150, right: 4)
+            self.analysis.analysis = result
+            self.analysis.preferredInteractionTypes = .automatic
         }
     }
 
@@ -1525,7 +1763,7 @@ private struct ViewerTransport: View {
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(playback.playing ? "Pauza" : "Odtwórz")
+            .accessibilityLabel(playback.playing ? L("Pauza") : L("Odtwórz"))
             GeometryReader { geo in
                 Capsule()
                     .fill(Color.primary.opacity(0.18))
@@ -1564,6 +1802,7 @@ private struct LinkedFilmstrip: UIViewRepresentable {
     var asset: (String) -> PHAsset?
     var fallback: (String) -> UIImage?
     var onPick: (Int) -> Void
+    var onScrub: (Int) -> Void = { _ in }
 
     func makeUIView(context: Context) -> FilmstripView { FilmstripView() }
 
@@ -1572,6 +1811,7 @@ private struct LinkedFilmstrip: UIViewRepresentable {
         view.asset = asset
         view.fallback = fallback
         view.onPick = onPick
+        view.onScrub = onScrub
         view.set(ids: ids)
         guard context.coordinator.anchored != index, !view.isDragging else { return }
         context.coordinator.anchored = index
@@ -1589,10 +1829,14 @@ private final class FilmstripView: UIView, UICollectionViewDataSource, UICollect
     var asset: (String) -> PHAsset? = { _ in nil }
     var fallback: (String) -> UIImage? = { _ in nil }
     var onPick: (Int) -> Void = { _ in }
+    var onScrub: (Int) -> Void = { _ in }
     private var ids: [String] = []
     private var collection: UICollectionView!
     private let pitch: CGFloat = 52
     private var dragging = false
+    /// Last thumbnail that crossed the centre while dragging, as in Photos.
+    private var scrubbed = -1
+    private let tick = UISelectionFeedbackGenerator()
     private var pendingPage: Int?
     var isDragging: Bool { dragging }
 
@@ -1605,7 +1849,7 @@ private final class FilmstripView: UIView, UICollectionViewDataSource, UICollect
         collection = UICollectionView(frame: .zero, collectionViewLayout: flow)
         collection.backgroundColor = .clear
         collection.showsHorizontalScrollIndicator = false
-        collection.decelerationRate = .fast
+        collection.decelerationRate = .normal
         collection.dataSource = self
         collection.delegate = self
         collection.register(FilmstripCell.self, forCellWithReuseIdentifier: FilmstripCell.reuse)
@@ -1634,6 +1878,12 @@ private final class FilmstripView: UIView, UICollectionViewDataSource, UICollect
 
     func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int { ids.count }
 
+    /// Tapping a thumbnail jumps to it, as in Photos. Before only dragging the strip worked.
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        UISelectionFeedbackGenerator().selectionChanged()
+        onPick(indexPath.item)
+    }
+
     func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: FilmstripCell.reuse, for: indexPath) as! FilmstripCell
         let id = ids[indexPath.item]
@@ -1641,14 +1891,36 @@ private final class FilmstripView: UIView, UICollectionViewDataSource, UICollect
         return cell
     }
 
-    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { dragging = true }
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        dragging = true
+        scrubbed = centredPage(scrollView)
+        tick.prepare()
+    }
+
+    /// Every thumbnail that reaches the centre opens at once, with a light tick.
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard dragging, scrollView.bounds.width > 1, !ids.isEmpty else { return }
+        let page = centredPage(scrollView)
+        guard page != scrubbed else { return }
+        scrubbed = page
+        tick.selectionChanged()
+        tick.prepare()
+        onScrub(page)
+    }
+
+    private func centredPage(_ scrollView: UIScrollView) -> Int {
+        let raw = (scrollView.contentOffset.x + scrollView.contentInset.left) / pitch
+        return min(max(Int(round(raw)), 0), max(ids.count - 1, 0))
+    }
 
     func scrollViewWillEndDragging(
         _ scrollView: UIScrollView,
         withVelocity velocity: CGPoint,
         targetContentOffset: UnsafeMutablePointer<CGPoint>
     ) {
-        let raw = (scrollView.contentOffset.x + scrollView.contentInset.left + velocity.x * 40) / pitch
+        // Let the strip glide as far as the flick carries it (UIScrollView's own physics),
+        // then land exactly on the nearest thumbnail. Each one passing the centre still ticks.
+        let raw = (targetContentOffset.pointee.x + scrollView.contentInset.left) / pitch
         let page = min(max(Int(round(raw)), 0), max(ids.count - 1, 0))
         pendingPage = page
         targetContentOffset.pointee = CGPoint(
@@ -1810,6 +2082,7 @@ private struct ViewerAdjustments: View {
     @State private var contrast = 1.0
     @State private var saturation = 1.0
     @State private var saving = false
+    @State private var failure = ""
     private static let context = CIContext()
 
     var body: some View {
@@ -1826,26 +2099,26 @@ private struct ViewerAdjustments: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                slider("Jasność", value: $brightness, range: -0.35...0.35)
-                slider("Kontrast", value: $contrast, range: 0.7...1.4)
-                slider("Nasycenie", value: $saturation, range: 0...2)
-                Text("Gotowe zapisuje nową wersję w bibliotece tego \(ThisDevice.genitive).")
+                slider(L("Jasność"), value: $brightness, range: -0.35...0.35)
+                slider(L("Kontrast"), value: $contrast, range: 0.7...1.4)
+                slider(L("Nasycenie"), value: $saturation, range: 0...2)
+                Text(failure.isEmpty ? explanation : failure)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(failure.isEmpty ? Color.secondary : Color.orange)
                     .multilineTextAlignment(.center)
             }
             .padding(20)
-            .navigationTitle("Dopasuj")
+            .navigationTitle(L("Dopasuj"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Anuluj") { dismiss() }
+                    Button(L("Anuluj")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if saving {
                         ProgressView()
                     } else {
-                        Button("Gotowe") { save() }
+                        Button(L("Gotowe")) { save() }
                             .disabled(source == nil)
                     }
                 }
@@ -1853,6 +2126,61 @@ private struct ViewerAdjustments: View {
             .task { source = await load() }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var explanation: String {
+        if library.asset(id: photo.id) != nil {
+            return L("Gotowe zmienia zdjęcie w pełnej jakości. W aplikacji Zdjęcia możesz to cofnąć: Edytuj → Przywróć.")
+        }
+        return L("To zdjęcie jest tylko na serwerze. Gotowe zapisze poprawioną kopię na \(ThisDevice.locative), z tą samą datą i miejscem.")
+    }
+
+    /// A photo stored only on the server cannot be edited in place; the edited copy lands in
+    /// Photos on this device with the original date and location, the server original stays.
+    private func saveServerCopy() {
+        guard let still = library.cloudMedia(id: photo.id)?.still,
+              let original = CIImage(contentsOf: still, options: [.applyOrientationProperty: true]),
+              let filter = CIFilter(name: "CIColorControls") else {
+            failure = L("Oryginał jeszcze się pobiera. Spróbuj za chwilę.")
+            return
+        }
+        saving = true
+        failure = ""
+        filter.setValue(original, forKey: kCIInputImageKey)
+        filter.setValue(brightness, forKey: kCIInputBrightnessKey)
+        filter.setValue(contrast, forKey: kCIInputContrastKey)
+        filter.setValue(saturation, forKey: kCIInputSaturationKey)
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("jpg")
+        let space = original.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let result = filter.outputImage,
+              (try? Self.context.writeJPEGRepresentation(of: result, to: file, colorSpace: space, options: [:])) != nil else {
+            saving = false
+            failure = L("Nie udało się zapisać zmiany.")
+            return
+        }
+        let created = photo.created
+        let place: CLLocation? = {
+            guard let latitude = photo.latitude, let longitude = photo.longitude else { return nil }
+            return CLLocation(latitude: latitude, longitude: longitude)
+        }()
+        PHPhotoLibrary.shared().performChanges {
+            let request = PHAssetCreationRequest.forAsset()
+            request.addResource(with: .photo, fileURL: file, options: nil)
+            request.creationDate = created
+            request.location = place
+        } completionHandler: { ok, _ in
+            try? FileManager.default.removeItem(at: file)
+            DispatchQueue.main.async {
+                saving = false
+                if ok {
+                    dismiss()
+                } else {
+                    failure = L("Kopia nie została zapisana. Sprawdź dostęp do zdjęć.")
+                }
+            }
+        }
     }
 
     private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
@@ -1889,7 +2217,8 @@ private struct ViewerAdjustments: View {
             options.isNetworkAccessAllowed = true
             PHImageManager.default().requestImage(
                 for: asset,
-                targetSize: CGSize(width: 1600, height: 1600),
+                // Preview only: a smaller image keeps the sliders smooth. Saving uses the original.
+                targetSize: CGSize(width: 1000, height: 1000),
                 contentMode: .aspectFit,
                 options: options
             ) { image, info in
@@ -1900,16 +2229,61 @@ private struct ViewerAdjustments: View {
         }
     }
 
+    /// Edits the original in place, like Photos: full resolution, same date and place,
+    /// and revertible. It used to save a new 1600 px copy dated today.
     private func save() {
-        guard let image = filtered(), let data = image.jpegData(compressionQuality: 0.92) else { return }
+        guard let asset = library.asset(id: photo.id) else {
+            saveServerCopy()
+            return
+        }
         saving = true
-        PHPhotoLibrary.shared().performChanges {
-            let request = PHAssetCreationRequest.forAsset()
-            request.addResource(with: .photo, data: data, options: nil)
-        } completionHandler: { _, _ in
-            DispatchQueue.main.async {
-                saving = false
-                dismiss()
+        failure = ""
+        let brightness = brightness
+        let contrast = contrast
+        let saturation = saturation
+        let options = PHContentEditingInputRequestOptions()
+        options.isNetworkAccessAllowed = true
+        asset.requestContentEditingInput(with: options) { input, _ in
+            guard let input,
+                  let url = input.fullSizeImageURL,
+                  let original = CIImage(contentsOf: url)?.oriented(forExifOrientation: input.fullSizeImageOrientation),
+                  let filter = CIFilter(name: "CIColorControls") else {
+                DispatchQueue.main.async {
+                    saving = false
+                    failure = L("Nie udało się otworzyć oryginału.")
+                }
+                return
+            }
+            filter.setValue(original, forKey: kCIInputImageKey)
+            filter.setValue(brightness, forKey: kCIInputBrightnessKey)
+            filter.setValue(contrast, forKey: kCIInputContrastKey)
+            filter.setValue(saturation, forKey: kCIInputSaturationKey)
+            let output = PHContentEditingOutput(contentEditingInput: input)
+            output.adjustmentData = PHAdjustmentData(
+                formatIdentifier: "pl.galleryos.adjust",
+                formatVersion: "1",
+                data: Data("\(brightness);\(contrast);\(saturation)".utf8)
+            )
+            let space = original.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+            guard let result = filter.outputImage,
+                  (try? Self.context.writeJPEGRepresentation(of: result, to: output.renderedContentURL, colorSpace: space, options: [:])) != nil else {
+                DispatchQueue.main.async {
+                    saving = false
+                    failure = L("Nie udało się zapisać zmiany.")
+                }
+                return
+            }
+            PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest(for: asset).contentEditingOutput = output
+            } completionHandler: { ok, _ in
+                DispatchQueue.main.async {
+                    saving = false
+                    if ok {
+                        dismiss()
+                    } else {
+                        failure = L("Zmiana nie została zapisana.")
+                    }
+                }
             }
         }
     }

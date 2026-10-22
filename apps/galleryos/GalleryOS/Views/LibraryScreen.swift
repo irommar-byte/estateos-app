@@ -6,9 +6,13 @@ import UIKit
 struct LibraryScreen: View {
     @EnvironmentObject private var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.launchFinished) private var launchFinished
     @ObservedObject private var account = ShareAccount.shared
     @State private var showChoices = false
     var albumID: String?
+    /// Photos behind a map pin. The same grid, selection and actions as an album.
+    var placeIDs: [String]? = nil
+    var placeTitle: String? = nil
     @AppStorage("galleryos.zoom") private var zoomRaw = PhotoZoom.days.rawValue
     @AppStorage("galleryos.density") private var density = 3.0
     @AppStorage("galleryos.shelf") private var shelf = "phone"
@@ -31,30 +35,54 @@ struct LibraryScreen: View {
     @State private var confirmRemoveSynced = false
     @State private var removeResult = ""
     @State private var pendingDelete: String?
+    @State private var purging: PurgeRequest?
+    @State private var sending: SendBatch?
+    @State private var deviceFilter: DeviceFilter = .all
+    @State private var serverFilter: ServerFilter = .all
     @State private var newAlbum = false
     @State private var albumDraft = ""
     @State private var albumNote = ""
     @State private var confirmRemoveAlbum = false
+    @State private var renamingAlbum = false
+    @AppStorage("galleryos.vault.explained") private var vaultExplained = false
+    @State private var explainVault = false
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
-    private var showsShelf: Bool { albumID == nil }
+    /// The Library tab itself. Albums and map places reuse this screen without the global tools.
+    private var isRoot: Bool { albumID == nil && placeIDs == nil }
+    /// Recently Deleted on the server: restore, or delete for good.
+    private var inTrash: Bool { albumID == "galleryos.trash" }
+    private var showsShelf: Bool { isRoot }
 
+    /// Your own album, on this device or in the server library: it can be renamed, emptied, removed.
     private var userAlbum: AlbumRecord? {
-        guard let albumID, let album = library.album(id: albumID), !album.system, !album.id.hasPrefix("galleryos.") else { return nil }
+        guard let albumID, let album = library.album(id: albumID), AlbumActions.editable(album) else { return nil }
         return album
     }
+
+    private var counts: MediaCounts {
+        if showsShelf { return shelf == "server" ? library.serverCounts : library.phoneCounts }
+        return MediaCounts(model.all)
+    }
     private var model: GridModel {
+        if let placeIDs { return library.grid(placeIDs: placeIDs) }
         guard showsShelf else { return library.grid(albumID: albumID) }
         return shelf == "server" ? library.serverGrid : library.phoneGrid
     }
+    private var loadingLibrary: Bool { library.isLoading && model.all.isEmpty }
+
     private var stage: some View {
         ZStack {
             if library.authorization == .authorized || library.authorization == .limited {
-                if library.isLoading && model.all.isEmpty {
-                    ProgressView("Wczytywanie biblioteki")
+                if loadingLibrary {
+                    LibraryLoadingView()
+                        .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .scale(scale: 1.06))))
                 } else if model.all.isEmpty {
                     emptyLibrary
                 } else {
+                    // The library opens out of the loading mosaic: a soft rise and unblur.
                     grid
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.97)), removal: .opacity))
                 }
             } else if library.authorization == .denied || library.authorization == .restricted {
                 denied
@@ -62,6 +90,10 @@ struct LibraryScreen: View {
                 welcome
             }
         }
+        // Fill the screen: a small centred stage pulled the shelf picker into the middle.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.spring(response: 0.7, dampingFraction: 0.9), value: loadingLibrary)
+        .animation(.easeOut(duration: 0.5), value: model.all.isEmpty)
     }
 
     private var zoom: PhotoZoom { PhotoZoom(rawValue: zoomRaw) ?? .days }
@@ -72,18 +104,25 @@ struct LibraryScreen: View {
 
     private var covers: some View {
         stage
-        .navigationTitle(title.isEmpty ? "Biblioteka" : title)
+        .navigationTitle(title.isEmpty ? L("Biblioteka") : title)
         .galleryNavigationSubtitle(selecting ? "" : caption)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .top, spacing: 0) {
             if showsShelf, library.authorization == .authorized || library.authorization == .limited {
-                Picker("Biblioteka", selection: $shelf) {
-                    Text(ThisDevice.name).tag("phone")
-                    Text("Serwer").tag("server")
+                VStack(spacing: 0) {
+                    Picker(L("Biblioteka"), selection: $shelf) {
+                        Text(shelfLabel(ThisDevice.name, library.phoneCounts)).tag("phone")
+                        Text(shelfLabel(L("Serwer"), library.serverCounts)).tag("server")
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    if library.destinationConnected {
+                        shelfFilters
+                            .padding(.bottom, 8)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
                 .background(.bar)
             }
         }
@@ -103,7 +142,7 @@ struct LibraryScreen: View {
                 sortToken = UserDefaults.standard.string(forKey: sortKey) ?? LibrarySort.oldest.rawValue
             }
         }
-        .syncControl(hidden: selecting || !(library.authorization == .authorized || library.authorization == .limited))
+        .syncControl(hidden: !isRoot || selecting || !(library.authorization == .authorized || library.authorization == .limited))
         .toolbar(selecting ? .hidden : .automatic, for: .tabBar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selecting {
@@ -134,17 +173,20 @@ struct LibraryScreen: View {
             LibraryPlaceSheet()
                 .environmentObject(library)
         }
-        .fullScreenCover(isPresented: $showGuide) {
-            SetupGuideView()
+        .fullScreenCover(isPresented: $showGuide, onDismiss: {
+            if SyncChoices.shouldAsk { showChoices = true }
+        }) {
+            // Until setup is finished the guide greets and offers "later"; afterwards it is the menu tool.
+            SetupGuideView(firstRun: !UserDefaults.standard.bool(forKey: SetupGuide.doneKey))
                 .environmentObject(library)
         }
         .sheet(isPresented: $showChoices) {
             SyncChoicesSheet { showChoices = false }
         }
-        .onChange(of: showGuide) { _, open in
-            if !open, SyncChoices.shouldAsk { showChoices = true }
-        }
-        .task {
+        .task(id: launchFinished) {
+            // Only the Library tab greets, and only after the launch film:
+            // opening an album or a map place must not reopen the guide.
+            guard isRoot, launchFinished else { return }
             await AccountVault.restoreIfNeeded()
             if SetupGuide.needed {
                 showGuide = true
@@ -162,32 +204,32 @@ struct LibraryScreen: View {
 
     private func dialogs<V: View>(_ view: V) -> some View {
         view
-        .confirmationDialog("Usunąć z \(ThisDevice.genitive) zdjęcia, które są już na serwerze?", isPresented: $confirmRemoveSynced, titleVisibility: .visible) {
-            Button("Usuń kopie z \(ThisDevice.genitive)", role: .destructive) {
+        .confirmationDialog(L("Usunąć z \(ThisDevice.genitive) zdjęcia, które są już na serwerze?"), isPresented: $confirmRemoveSynced, titleVisibility: .visible) {
+            Button(L("Usuń kopie z \(ThisDevice.genitive)"), role: .destructive) {
                 Task { removeResult = await library.removeSyncedCopies() }
             }
-            Button("Anuluj", role: .cancel) {}
+            Button(L("Anuluj"), role: .cancel) {}
         } message: {
-            Text("Najpierw sprawdzę oryginał na serwerze. Kasuję tylko potwierdzone. Na serwerze zostają, a z \(ThisDevice.genitive) trafiają do Ostatnio usuniętych na 30 dni.")
+            Text(L("Najpierw sprawdzę oryginał na serwerze. Kasuję tylko potwierdzone. Na serwerze zostają, a z \(ThisDevice.genitive) trafiają do Ostatnio usuniętych na 30 dni."))
         }
-        .alert("Zdjęcia", isPresented: Binding(get: { !removeResult.isEmpty }, set: { if !$0 { removeResult = "" } })) {
-            Button("Dobrze") { removeResult = "" }
+        .alert(L("Zdjęcia"), isPresented: Binding(get: { !removeResult.isEmpty }, set: { if !$0 { removeResult = "" } })) {
+            Button(L("Dobrze")) { removeResult = "" }
         } message: {
             Text(removeResult)
         }
         .sheet(isPresented: $showShare) {
-            ShareAlbumSheet(ids: Array(selection))
+            CloudAlbumComposer(ids: Array(selection))
                 .environmentObject(library)
         }
-        .alert("Nowy album", isPresented: $newAlbum) {
-            TextField("Nazwa", text: $albumDraft)
-            Button("Utwórz") {
+        .alert(L("Nowy album"), isPresented: $newAlbum) {
+            TextField(L("Nazwa"), text: $albumDraft)
+            Button(L("Utwórz")) {
                 let title = albumDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                 let ids = Array(selection)
                 guard !title.isEmpty else { return }
                 Task {
                     if await AlbumLibrary.create(title, adding: ids) == nil {
-                        albumNote = "Nie udało się utworzyć albumu."
+                        albumNote = L("Nie udało się utworzyć albumu.")
                     } else {
                         selection.removeAll()
                         selecting = false
@@ -195,51 +237,84 @@ struct LibraryScreen: View {
                     }
                 }
             }
-            Button("Anuluj", role: .cancel) {}
+            Button(L("Anuluj"), role: .cancel) {}
         }
-        .alert("Album", isPresented: Binding(get: { !albumNote.isEmpty }, set: { if !$0 { albumNote = "" } })) {
-            Button("Dobrze") { albumNote = "" }
+        .alert(L("Album"), isPresented: Binding(get: { !albumNote.isEmpty }, set: { if !$0 { albumNote = "" } })) {
+            Button(L("Dobrze")) { albumNote = "" }
         } message: {
             Text(albumNote)
         }
-        .confirmationDialog("Usunąć ten album?", isPresented: $confirmRemoveAlbum, titleVisibility: .visible) {
-            Button("Usuń album", role: .destructive) {
+        .sheet(isPresented: $explainVault, onDismiss: { vaultExplained = true }) {
+            VaultExplainer { explainVault = false }
+                .presentationDetents([.medium, .large])
+        }
+        .alert(L("Zmień nazwę albumu"), isPresented: $renamingAlbum) {
+            TextField(L("Nazwa"), text: $albumDraft)
+            Button(L("Zachowaj")) {
                 guard let id = userAlbum?.id else { return }
+                let title = albumDraft
                 Task {
-                    if await AlbumLibrary.delete(id) {
+                    if await AlbumActions.rename(id, title) {
                         library.reloadNow()
-                        dismiss()
+                        // A server album is named by its title: the old screen would be empty.
+                        if AlbumActions.isServer(id) { dismiss() }
                     } else {
-                        albumNote = "Nie udało się usunąć albumu."
+                        albumNote = L("Nie udało się zmienić nazwy.")
                     }
                 }
             }
-            Button("Anuluj", role: .cancel) {}
-        } message: {
-            Text("Znika tylko album. Zdjęcia zostają na iPhonie.")
+            Button(L("Anuluj"), role: .cancel) {}
         }
-        .confirmationDialog("Usunąć z \(ThisDevice.genitive)?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Usuń z \(ThisDevice.genitive)", role: .destructive) {
-                library.delete(ids: Array(selection))
+        .confirmationDialog(L("Usunąć ten album?"), isPresented: $confirmRemoveAlbum, titleVisibility: .visible) {
+            Button(L("Usuń album"), role: .destructive) {
+                guard let id = userAlbum?.id else { return }
+                Task {
+                    if await AlbumActions.delete(id) {
+                        library.reloadNow()
+                        dismiss()
+                    } else {
+                        albumNote = L("Nie udało się usunąć albumu.")
+                    }
+                }
+            }
+            Button(L("Anuluj"), role: .cancel) {}
+        } message: {
+            Text(L("Znika tylko album. Zdjęcia zostają w bibliotece i na serwerze."))
+        }
+        .confirmationDialog(deleteTitle(Array(selection)), isPresented: $confirmDelete, titleVisibility: .visible) {
+            deleteButtons(Array(selection)) {
                 selection.removeAll()
                 selecting = false
             }
-            Button("Anuluj", role: .cancel) {}
+            Button(L("Anuluj"), role: .cancel) {}
         } message: {
-            Text("Kopie, które są już na serwerze, zostają w zakładce Serwer. Z \(ThisDevice.genitive) trafiają do Ostatnio usuniętych na 30 dni.")
+            Text(deleteMessage(Array(selection)))
         }
         .confirmationDialog(
-            "Usunąć z \(ThisDevice.genitive)?",
+            deleteTitle(pendingDelete.map { [$0] } ?? []),
             isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Usuń z \(ThisDevice.genitive)", role: .destructive) {
-                if let pendingDelete { library.delete(ids: [pendingDelete]) }
-                pendingDelete = nil
-            }
-            Button("Anuluj", role: .cancel) { pendingDelete = nil }
+            deleteButtons(pendingDelete.map { [$0] } ?? []) { pendingDelete = nil }
+            Button(L("Anuluj"), role: .cancel) { pendingDelete = nil }
         } message: {
-            Text("Kopia, która jest już na serwerze, zostaje w zakładce Serwer. Z \(ThisDevice.genitive) trafia do Ostatnio usuniętych na 30 dni.")
+            Text(deleteMessage(pendingDelete.map { [$0] } ?? []))
+        }
+        .sheet(item: $sending) { batch in
+            SendReportSheet(batch: batch)
+        }
+        .onChange(of: deviceFilter) { _, _ in
+            selection.removeAll()
+        }
+        .onChange(of: serverFilter) { _, _ in
+            selection.removeAll()
+        }
+        .sheet(item: $purging) { request in
+            PermanentDeleteSheet(request: request) {
+                library.purge(ids: request.ids)
+                selection.removeAll()
+                selecting = false
+            }
         }
         .task { library.prepare() }
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -254,7 +329,7 @@ struct LibraryScreen: View {
                             .frame(width: 24, height: 24)
                             .background(Color.orange.gradient, in: Circle())
                             .symbolEffect(.wiggle, options: .nonRepeating)
-                        Text("Serwer jest zapisany. Stuknij i wpisz hasło.")
+                        Text(L("Serwer jest zapisany. Stuknij i wpisz hasło."))
                             .font(.footnote.weight(.semibold))
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")
@@ -273,7 +348,8 @@ struct LibraryScreen: View {
     }
 
     private var title: String {
-        if selecting { return selection.isEmpty ? "Wybierz" : "Wybrano \(selection.count)" }
+        if selecting { return selection.isEmpty ? L("Wybierz") : L("Wybrano \(selection.count)") }
+        if placeIDs != nil { return placeTitle ?? L("Miejsce") }
         if let albumID, let album = library.album(id: albumID) { return album.title }
         return ""
     }
@@ -287,9 +363,11 @@ struct LibraryScreen: View {
             if showsShelf {
                 GeometryReader { proxy in
                     HStack(spacing: 0) {
-                        gridBody(library.phoneGrid.arranged(sort(for: "galleryos.sort.phone")), active: shelf != "server")
+                        gridBody(library.phoneShelf(deviceFilter), active: shelf != "server", sort: sort(for: "galleryos.sort.phone"))
+                            .overlay { filteredEmpty(phone: true) }
                             .frame(width: proxy.size.width)
-                        gridBody(library.serverGrid.arranged(sort(for: "galleryos.sort.server")), active: shelf == "server")
+                        gridBody(library.serverShelf(serverFilter), active: shelf == "server", sort: sort(for: "galleryos.sort.server"))
+                            .overlay { filteredEmpty(phone: false) }
                             .frame(width: proxy.size.width)
                     }
                     .offset(x: shelf == "server" ? -proxy.size.width : 0)
@@ -297,13 +375,14 @@ struct LibraryScreen: View {
                 }
                 .clipped()
             } else {
-                gridBody(model.arranged(sort(for: sortKey)), active: true)
+                gridBody(model, active: true, sort: sort(for: sortKey))
             }
         }
     }
 
-    private func gridBody(_ source: GridModel, active: Bool) -> some View {
-        PhotoGrid(
+    private func gridBody(_ base: GridModel, active: Bool, sort: LibrarySort) -> some View {
+        let source = base.arranged(sort)
+        return PhotoGrid(
             model: source,
             generation: library.generation,
             zoom: zoom,
@@ -312,6 +391,7 @@ struct LibraryScreen: View {
             placeNames: library.placeNames,
             density: CGFloat(density),
             synced: { library.isUploaded($0) },
+            syncMarkFor: { library.syncMark(for: $0) },
             showsSync: library.destinationConnected,
             anchor: anchor,
             asset: { library.asset(id: $0) },
@@ -324,16 +404,27 @@ struct LibraryScreen: View {
             onSendNow: { library.sendNow($0) },
             concealedAlbum: albumID == "galleryos.hidden",
             onSelectionSet: { selection = $0 },
-            onDelete: shelf == "server" && albumID == nil ? nil : { pendingDelete = $0 },
+            onDelete: { id in
+                if inTrash {
+                    purging = library.purgeRequest([id])
+                } else {
+                    pendingDelete = id
+                }
+            },
             onZoom: changeZoom,
             onDensity: { density = Double($0) },
             onCaption: { text in if active { caption = text } },
             onPlace: { coordinate in
+                // Inside a map place the map is already one step back.
+                guard placeIDs == nil else { return }
                 mapFocus = coordinate
                 showMap = true
             },
-            onVisiblePlaces: { library.resolvePlaces($0) }
+            onVisiblePlaces: { library.resolvePlaces($0) },
+            startsAtTop: sort != .oldest,
+            sharp: { id, side in await library.sharpPreview(id: id, side: side) }
         )
+        .id(sort)
     }
 
     private var limitedBanner: some View {
@@ -341,7 +432,7 @@ struct LibraryScreen: View {
             guard let controller = UIApplication.shared.galleryTopController() else { return }
             library.presentLimitedPicker(from: controller)
         } label: {
-            Text("Wybrano część zdjęć. Zarządzaj dostępem.")
+            Text(L("Wybrano część zdjęć. Zarządzaj dostępem."))
                 .font(.footnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -356,13 +447,20 @@ struct LibraryScreen: View {
         if library.authorization == .authorized || library.authorization == .limited {
             if !model.all.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(selecting ? "Gotowe" : "Wybierz") {
+                    // A compact symbol instead of the word, so the bar keeps room for the title
+                    // that slides up while scrolling.
+                    Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         withAnimation(GalleryTheme.snappy) {
                             selecting.toggle()
                             if !selecting { selection.removeAll() }
                         }
+                    } label: {
+                        Image(systemName: selecting ? "checkmark.circle.fill" : "checkmark.circle")
+                            .symbolRenderingMode(.hierarchical)
+                            .contentTransition(.symbolEffect(.replace))
                     }
+                    .accessibilityLabel(selecting ? L("Gotowe") : L("Wybierz"))
                 }
                 if !selecting {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -371,40 +469,94 @@ struct LibraryScreen: View {
                 }
             }
             if !selecting {
-                ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Button("Szukaj", systemImage: "magnifyingglass") { showSearch = true }
-                        Button("Mapa", systemImage: "map") {
-                            mapFocus = nil
-                            showMap = true
-                        }
-                        Menu("Widok", systemImage: "rectangle.grid.2x2") {
-                            ForEach(PhotoZoom.allCases) { item in
-                                Button(item.title) {
-                                    zoomRaw = item.rawValue
-                                    anchor = nil
-                                }
-                            }
-                        }
-                        Button("Biblioteka GalleryOS", systemImage: "externaldrive") { showPlace = true }
-                        Button("Kreator połączenia", systemImage: "wand.and.sparkles") { showGuide = true }
-                        Button("Apple TV", systemImage: "appletv") { showAppleTV = true }
-                        Button("Synchronizacja", systemImage: "arrow.triangle.2.circlepath") { showSync = true }
-                        Button("Stan biblioteki", systemImage: "internaldrive") { showSummary = true }
-                        Button("Usuń zsynchronizowane z \(ThisDevice.genitive)", systemImage: ThisDevice.slashSymbol) { confirmRemoveSynced = true }
-                        if userAlbum != nil {
-                            Button("Usuń album", systemImage: "trash", role: .destructive) { confirmRemoveAlbum = true }
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+                // Widok sits on the bar itself: zoom level, what is counted, screenshots on or off.
+                ToolbarItem(placement: .topBarTrailing) {
+                    viewMenu
+                }
+                if hasMoreMenu {
+                    ToolbarItem(placement: .topBarLeading) {
+                        moreMenu
                     }
-                    .accessibilityLabel("Więcej")
                 }
             }
         }
     }
 
+    /// Search and Map have their own place in the iPad sidebar; on iPhone they stay one tap away here.
+    /// Server, Apple TV and library state all live in the sync panel (the pill), not in this menu.
+    private var hasMoreMenu: Bool {
+        (isRoot && sizeClass == .compact) || userAlbum != nil || isRoot
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            if isRoot, sizeClass == .compact {
+                Button(L("Szukaj"), systemImage: "magnifyingglass") { showSearch = true }
+                Button(L("Mapa"), systemImage: "map") {
+                    mapFocus = nil
+                    showMap = true
+                }
+            }
+            if let album = userAlbum {
+                Section(album.title) {
+                    Button(L("Zmień nazwę"), systemImage: "pencil") {
+                        albumDraft = album.title
+                        renamingAlbum = true
+                    }
+                    Button(L("Usuń album"), systemImage: "trash", role: .destructive) { confirmRemoveAlbum = true }
+                }
+            }
+            if isRoot {
+                Section {
+                    Button(L("Usuń zsynchronizowane z \(ThisDevice.genitive)"), systemImage: ThisDevice.slashSymbol, role: .destructive) { confirmRemoveSynced = true }
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel(L("Więcej"))
+    }
+
+    private var viewMenu: some View {
+        Menu {
+            Section(counts.line) {
+                Picker(selection: Binding(
+                    get: { zoom },
+                    set: { item in
+                        zoomRaw = item.rawValue
+                        anchor = nil
+                    }
+                )) {
+                    ForEach(PhotoZoom.allCases) { item in
+                        Text(item.title).tag(item)
+                    }
+                } label: {
+                    Label(L("Widok"), systemImage: "rectangle.grid.2x2")
+                }
+                .pickerStyle(.inline)
+            }
+            Section {
+                Toggle(isOn: Binding(
+                    get: { !library.hideScreenshots },
+                    set: { library.hideScreenshots = !$0 }
+                )) {
+                    Label(L("Zrzuty ekranu"), systemImage: "camera.viewfinder")
+                }
+            } footer: {
+                Text(L("Wyłączone chowa zrzuty w Bibliotece i Kolekcjach. Zostają w albumie Zrzuty ekranu."))
+            }
+        } label: {
+            Image(systemName: library.hideScreenshots ? "rectangle.grid.2x2.fill" : "rectangle.grid.2x2")
+        }
+        .accessibilityLabel(L("Widok"))
+    }
+
+    private func shelfLabel(_ name: String, _ counts: MediaCounts) -> String {
+        counts.total > 0 ? "\(name) · \(PhotoFormat.grouped(counts.total))" : name
+    }
+
     private var sortKey: String {
+        if placeIDs != nil { return "galleryos.sort.place" }
         if let albumID { return "galleryos.sort.album.\(albumID)" }
         return "galleryos.sort.\(shelf)"
     }
@@ -417,7 +569,7 @@ struct LibraryScreen: View {
 
     private var sortMenu: some View {
         Menu {
-            Picker("Kolejność", selection: Binding(
+            Picker(L("Kolejność"), selection: Binding(
                 get: { sort(for: sortKey) },
                 set: { value in
                     UserDefaults.standard.set(value.rawValue, forKey: sortKey)
@@ -432,47 +584,15 @@ struct LibraryScreen: View {
         } label: {
             Image(systemName: "arrow.up.arrow.down")
         }
-        .accessibilityLabel("Sortowanie")
+        .accessibilityLabel(L("Sortowanie"))
     }
 
     private var selectionBar: some View {
         HStack {
-            Button { showShare = true } label: { Image(systemName: "square.and.arrow.up") }
-                .disabled(selection.isEmpty)
-                .accessibilityLabel("Udostępnij")
-            Spacer()
-            Button { favoriteSelection() } label: { Image(systemName: "heart") }
-                .disabled(selection.isEmpty)
-            Spacer()
-            Button { concealSelection() } label: {
-                Image(systemName: albumID == "galleryos.hidden" ? "eye" : "eye.slash")
-            }
-            .disabled(selection.isEmpty)
-            .accessibilityLabel(albumID == "galleryos.hidden" ? "Pokaż w bibliotece" : "Ukryj")
-            Spacer()
-            Menu {
-                ForEach(library.albums.filter { !$0.system && !$0.id.hasPrefix("galleryos.") && $0.id != albumID }) { album in
-                    Button(album.title) { addSelection(to: album.id) }
-                }
-                Button("Nowy album", systemImage: "plus") {
-                    albumDraft = ""
-                    newAlbum = true
-                }
-            } label: {
-                Image(systemName: "rectangle.stack.badge.plus")
-            }
-            .disabled(selection.isEmpty)
-            .accessibilityLabel("Dodaj do albumu")
-            if userAlbum != nil {
-                Spacer()
-                Button { removeSelectionFromAlbum() } label: { Image(systemName: "rectangle.stack.badge.minus") }
-                    .disabled(selection.isEmpty)
-                    .accessibilityLabel("Usuń z albumu")
-            }
-            Spacer()
-            if shelf != "server" || albumID != nil {
-                Button(role: .destructive) { confirmDelete = true } label: { Image(systemName: "trash") }
-                    .disabled(selection.isEmpty)
+            if inTrash {
+                trashActions
+            } else {
+                regularActions
             }
         }
         .font(.system(size: 20, weight: .semibold))
@@ -485,14 +605,158 @@ struct LibraryScreen: View {
         .padding(.bottom, 6)
     }
 
+    /// Recently Deleted, as in Photos: bring back, or delete for good. With nothing selected
+    /// both act on everything in the album.
+    @ViewBuilder
+    private var trashActions: some View {
+        Button {
+            restoreSelection()
+        } label: {
+            Label(selection.isEmpty ? L("Przywróć wszystkie") : L("Przywróć"), systemImage: "arrow.uturn.backward")
+                .labelStyle(.titleAndIcon)
+        }
+        .font(.system(size: 16, weight: .semibold))
+        Spacer()
+        Button(role: .destructive) {
+            let ids = selection.isEmpty ? library.trashedIDs : Array(selection)
+            guard !ids.isEmpty else { return }
+            purging = library.purgeRequest(ids)
+        } label: {
+            Label(selection.isEmpty ? L("Usuń wszystkie") : L("Usuń"), systemImage: "trash")
+                .labelStyle(.titleAndIcon)
+        }
+        .font(.system(size: 16, weight: .semibold))
+        .foregroundStyle(.red)
+    }
+
+    @ViewBuilder
+    private var regularActions: some View {
+        Menu {
+            Button(L("Wyślij…"), systemImage: "square.and.arrow.up") { shareSelection() }
+            Button(L("Album dla znajomych"), systemImage: "person.2") { showShare = true }
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+        }
+        .disabled(selection.isEmpty)
+        .accessibilityLabel(L("Udostępnij"))
+        Spacer()
+        Button { favoriteSelection() } label: { Image(systemName: "heart") }
+            .disabled(selection.isEmpty)
+        Spacer()
+        if library.destinationConnected, selection.isEmpty || selection.contains(where: { !$0.hasPrefix("cloud:") }) {
+            Button {
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                sending = library.sendBatch(Array(selection))
+                selection.removeAll()
+                selecting = false
+            } label: {
+                Image(systemName: deviceFilter == .deletedOnServer && shelf != "server" ? "arrow.uturn.up.circle" : "icloud.and.arrow.up")
+            }
+            .disabled(selection.isEmpty)
+            .accessibilityLabel(deviceFilter == .deletedOnServer ? L("Przywróć na serwer") : L("Wyślij na serwer"))
+            Spacer()
+        }
+        Button { concealSelection() } label: {
+            Image(systemName: albumID == "galleryos.hidden" ? "eye" : "eye.slash")
+        }
+        .disabled(selection.isEmpty)
+        .accessibilityLabel(albumID == "galleryos.hidden" ? L("Pokaż w bibliotece") : L("Ukryj"))
+        Spacer()
+        Menu {
+            let targets = library.albums.filter { AlbumActions.editable($0) && $0.id != albumID }
+            if userAlbum != nil, !targets.isEmpty {
+                Menu(L("Przenieś do…"), systemImage: "arrow.right.square") {
+                    ForEach(targets) { album in
+                        Button(album.title) { moveSelection(to: album.id) }
+                    }
+                }
+            }
+            Section(userAlbum != nil ? L("Dodaj też do") : L("Dodaj do albumu")) {
+                ForEach(targets) { album in
+                    Button(album.title, systemImage: AlbumActions.isServer(album.id) ? "externaldrive" : "rectangle.stack") {
+                        addSelection(to: album.id)
+                    }
+                }
+            }
+            Button(L("Nowy album"), systemImage: "plus") {
+                albumDraft = ""
+                newAlbum = true
+            }
+        } label: {
+            Image(systemName: "rectangle.stack.badge.plus")
+        }
+        .disabled(selection.isEmpty)
+        .accessibilityLabel(L("Dodaj do albumu"))
+        if userAlbum != nil {
+            Spacer()
+            Button { removeSelectionFromAlbum() } label: { Image(systemName: "rectangle.stack.badge.minus") }
+                .disabled(selection.isEmpty)
+                .accessibilityLabel(L("Usuń z albumu"))
+        }
+        Spacer()
+        Button(role: .destructive) { confirmDelete = true } label: { Image(systemName: "trash") }
+            .disabled(selection.isEmpty)
+    }
+
+    /// Where the photos stand, one tap away, with how many there are of each.
+    @ViewBuilder
+    private var shelfFilters: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if shelf == "server" {
+                    ShelfChip(symbol: "square.grid.2x2", title: L("Wszystkie"), count: library.serverGrid.all.count, tint: .accentColor, selected: serverFilter == .all) { serverFilter = .all }
+                    ShelfChip(symbol: "person.crop.circle", title: L("Moje"), count: library.serverSplit.mine, tint: .blue, selected: serverFilter == .mine) { serverFilter = .mine }
+                    ShelfChip(symbol: "person.2", title: L("Od innych"), count: library.serverSplit.others, tint: .purple, selected: serverFilter == .others) { serverFilter = .others }
+                    ShelfChip(symbol: ThisDevice.slashSymbol, title: L("Nie ma na \(ThisDevice.locative)"), count: library.serverSplit.notHere, tint: .orange, selected: serverFilter == .notHere) { serverFilter = .notHere }
+                } else {
+                    let split = library.deviceSplit
+                    ShelfChip(symbol: "square.grid.2x2", title: L("Wszystkie"), count: library.phoneGrid.all.count, tint: .accentColor, selected: deviceFilter == .all) { deviceFilter = .all }
+                    ShelfChip(symbol: "checkmark.icloud.fill", title: L("Na serwerze"), count: split.onServer, tint: .green, selected: deviceFilter == .onServer) { deviceFilter = .onServer }
+                    ShelfChip(symbol: "icloud.and.arrow.up", title: L("Czeka"), count: split.waiting, tint: .blue, selected: deviceFilter == .waiting) { deviceFilter = .waiting }
+                    ShelfChip(symbol: "exclamationmark.icloud.fill", title: L("Nie wysłane"), count: split.notSent, tint: .orange, selected: deviceFilter == .notSent) { deviceFilter = .notSent }
+                    if split.deletedOnServer > 0 || deviceFilter == .deletedOnServer {
+                        ShelfChip(symbol: "xmark.icloud.fill", title: L("Usunięte z serwera"), count: split.deletedOnServer, tint: .red, selected: deviceFilter == .deletedOnServer) { deviceFilter = .deletedOnServer }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .scrollClipDisabled()
+    }
+
+    /// A filter with nothing in it says why, instead of showing an empty grid.
+    @ViewBuilder
+    private func filteredEmpty(phone: Bool) -> some View {
+        let empty = phone
+            ? deviceFilter != .all && library.phoneShelf(deviceFilter).all.isEmpty
+            : serverFilter != .all && library.serverShelf(serverFilter).all.isEmpty
+        if empty {
+            ContentUnavailableView(
+                L("Nic tutaj"),
+                systemImage: phone ? "checkmark.circle" : "photo.on.rectangle",
+                description: Text(phone ? deviceEmptyNote : L("Żadne zdjęcie na serwerze nie pasuje do tego filtra."))
+            )
+            .transition(.opacity)
+        }
+    }
+
+    private var deviceEmptyNote: String {
+        switch deviceFilter {
+        case .all, .onServer: return L("Żadne zdjęcie z tego urządzenia nie jest jeszcze na serwerze.")
+        case .waiting: return L("Nic nie czeka. Kolejka jest pusta.")
+        case .notSent: return L("Wszystko, co miało pójść na serwer, poszło.")
+        case .deletedOnServer: return L("Żadne zdjęcie z tego urządzenia nie zostało usunięte z serwera.")
+        }
+    }
+
     private var welcome: some View {
         VStack(spacing: 18) {
             BrandWordmark(size: .largeTitle)
-            Text("Zdjęcia i filmy z tego \(ThisDevice.genitive), w układzie jak w aplikacji Zdjęcia.")
+            Text(L("Zdjęcia i filmy z tego \(ThisDevice.genitive), w układzie jak w aplikacji Zdjęcia."))
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("Kontynuuj") { library.requestAccess() }
+            Button(L("Kontynuuj")) { library.requestAccess() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
         }
@@ -504,10 +768,10 @@ struct LibraryScreen: View {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 42))
                 .foregroundStyle(.secondary)
-            Text("GalleryOS potrzebuje dostępu do zdjęć, żeby pokazać bibliotekę.")
+            Text(L("GalleryOS potrzebuje dostępu do zdjęć, żeby pokazać bibliotekę."))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            Button("Otwórz Ustawienia") {
+            Button(L("Otwórz Ustawienia")) {
                 guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                 UIApplication.shared.open(url)
             }
@@ -516,18 +780,37 @@ struct LibraryScreen: View {
         .padding(32)
     }
 
+    @ViewBuilder
     private var emptyLibrary: some View {
-        if showsShelf && shelf == "server" {
+        if placeIDs != nil {
             ContentUnavailableView(
-                "Serwer jest pusty",
+                L("Brak zdjęć"),
+                systemImage: "mappin.slash",
+                description: Text(L("Zdjęcia z tego miejsca zostały usunięte albo ukryte."))
+            )
+        } else if albumID == "galleryos.hidden" {
+            ContentUnavailableView(
+                L("Nic nie jest ukryte"),
+                systemImage: "eye.slash",
+                description: Text(L("Zaznacz zdjęcia w bibliotece i stuknij oko, żeby je tu schować."))
+            )
+        } else if albumID != nil {
+            ContentUnavailableView(
+                L("Pusty album"),
+                systemImage: "rectangle.stack",
+                description: Text(L("W bibliotece stuknij Wybierz, zaznacz zdjęcia i dodaj je do albumu."))
+            )
+        } else if showsShelf && shelf == "server" {
+            ContentUnavailableView(
+                L("Serwer jest pusty"),
                 systemImage: "externaldrive",
-                description: Text("Tu zostają kopie wysłane na serwer, także po skasowaniu ich z \(ThisDevice.genitive).")
+                description: Text(L("Tu zostają kopie wysłane na serwer, także po skasowaniu ich z \(ThisDevice.genitive)."))
             )
         } else {
             ContentUnavailableView(
-                "Brak zdjęć na \(ThisDevice.locative)",
+                L("Brak zdjęć na \(ThisDevice.locative)"),
                 systemImage: ThisDevice.symbol,
-                description: Text("Tu jest to, co jest w Rolce i czeka na wysłanie albo już zostało wysłane.")
+                description: Text(L("Tu jest to, co jest w Rolce i czeka na wysłanie albo już zostało wysłane."))
             )
         }
     }
@@ -561,12 +844,72 @@ struct LibraryScreen: View {
         let restore = albumID == "galleryos.hidden"
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         library.setConcealed(!restore, ids: [id])
+        if !restore, !vaultExplained { explainVault = true }
     }
 
     private func concealSelection() {
         let restore = albumID == "galleryos.hidden"
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         library.setConcealed(!restore, ids: Array(selection))
+        selection.removeAll()
+        selecting = false
+        if !restore, !vaultExplained { explainVault = true }
+    }
+
+    /// Server copies only ("cloud:" ids, the Serwer shelf): they go to Recently Deleted on the server.
+    private func serverOnly(_ ids: [String]) -> Bool {
+        !ids.isEmpty && ids.allSatisfy { $0.hasPrefix("cloud:") }
+    }
+
+    /// Photos on this device that also have a copy on the server: they can go from here only, or everywhere.
+    private func alsoOnServer(_ ids: [String]) -> Bool {
+        ids.contains { !$0.hasPrefix("cloud:") && library.isUploaded($0) }
+    }
+
+    private func deleteTitle(_ ids: [String]) -> String {
+        if serverOnly(ids) { return L("Usunąć z serwera?") }
+        return L("Usunąć z \(ThisDevice.genitive)?")
+    }
+
+    @ViewBuilder
+    private func deleteButtons(_ ids: [String], done: @escaping () -> Void) -> some View {
+        if serverOnly(ids) {
+            Button(L("Usuń z serwera"), role: .destructive) {
+                Task {
+                    if await library.delete(ids: ids) { done() }
+                }
+            }
+        } else {
+            Button(L("Usuń z \(ThisDevice.genitive)"), role: .destructive) {
+                Task {
+                    if await library.delete(ids: ids) { done() }
+                }
+            }
+            if alsoOnServer(ids) {
+                Button(L("Usuń wszędzie"), role: .destructive) {
+                    Task {
+                        if await library.deleteEverywhere(ids: ids) { done() }
+                    }
+                }
+            }
+        }
+    }
+
+    private func deleteMessage(_ ids: [String]) -> String {
+        if serverOnly(ids) {
+            return L("Znikną z biblioteki GalleryOS na wszystkich urządzeniach. Będą w Ostatnio usuniętych na serwerze, skąd można je przywrócić.")
+        }
+        if alsoOnServer(ids) {
+            return L("„Usuń z \(ThisDevice.genitive)” zostawia kopię na serwerze. „Usuń wszędzie” przenosi ją też do Ostatnio usuniętych na serwerze.")
+        }
+        return L("Kopie, które są już na serwerze, zostają w zakładce Serwer. Z \(ThisDevice.genitive) trafiają do Ostatnio usuniętych na 30 dni.")
+    }
+
+    private func restoreSelection() {
+        let ids = selection.isEmpty ? library.trashedIDs : Array(selection)
+        guard !ids.isEmpty else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        library.restoreFromTrash(ids: ids)
         selection.removeAll()
         selecting = false
     }
@@ -579,14 +922,33 @@ struct LibraryScreen: View {
     private func addSelection(to albumID: String) {
         let ids = Array(selection)
         Task {
-            if await AlbumLibrary.add(ids, to: albumID) {
+            if await AlbumActions.add(ids, to: albumID) {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 selection.removeAll()
                 selecting = false
                 library.reloadNow()
             } else {
-                albumNote = "Nie udało się dodać do albumu. Zdjęcia tylko z serwera zostają poza albumami iPhone’a."
+                albumNote = AlbumActions.isServer(albumID)
+                    ? L("Do albumu na serwerze trafiają tylko zdjęcia, które już są na serwerze.")
+                    : L("Nie udało się dodać do albumu. Zdjęcia tylko z serwera zostają poza albumami \(ThisDevice.genitive).")
             }
+        }
+    }
+
+    /// Add to the other album, then take out of this one.
+    private func moveSelection(to target: String) {
+        guard let albumID else { return }
+        let ids = Array(selection)
+        Task {
+            guard await AlbumActions.add(ids, to: target) else {
+                albumNote = L("Nie udało się przenieść. Album docelowy nie przyjął tych zdjęć.")
+                return
+            }
+            _ = await AlbumActions.remove(ids, from: albumID)
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            selection.removeAll()
+            selecting = false
+            library.reloadNow()
         }
     }
 
@@ -594,12 +956,12 @@ struct LibraryScreen: View {
         guard let albumID else { return }
         let ids = Array(selection)
         Task {
-            if await AlbumLibrary.remove(ids, from: albumID) {
+            if await AlbumActions.remove(ids, from: albumID) {
                 selection.removeAll()
                 selecting = false
                 library.reloadNow()
             } else {
-                albumNote = "Nie udało się usunąć z albumu."
+                albumNote = L("Nie udało się usunąć z albumu.")
             }
         }
     }
@@ -633,7 +995,7 @@ struct LibraryScreen: View {
 private struct LibrarySummarySheet: View {
     @EnvironmentObject private var library: PhotoLibrary
     @Environment(\.dismiss) private var dismiss
-    @State private var freeSpace = "Sprawdzam…"
+    @State private var freeSpace = L("Sprawdzam…")
     @State private var confirmRemove = false
     @State private var removeResult = ""
 
@@ -641,34 +1003,34 @@ private struct LibrarySummarySheet: View {
         let counts = library.syncCounts()
         NavigationStack {
             List {
-                LabeledContent("Na serwerze", value: "\(counts.sent)")
-                LabeledContent("Czeka na wysłanie", value: "\(counts.waiting)")
-                LabeledContent("Wysłano", value: ByteText.amount((UserDefaults.standard.object(forKey: "galleryos.bytes-sent") as? NSNumber)?.int64Value ?? 0))
-                LabeledContent("Wolne miejsce", value: freeSpace)
-                NavigationLink("Ustawienia synchronizacji") {
+                LabeledContent(L("Na serwerze"), value: "\(counts.sent)")
+                LabeledContent(L("Czeka na wysłanie"), value: "\(counts.waiting)")
+                LabeledContent(L("Wysłano"), value: ByteText.amount((UserDefaults.standard.object(forKey: "galleryos.bytes-sent") as? NSNumber)?.int64Value ?? 0))
+                LabeledContent(L("Wolne miejsce"), value: freeSpace)
+                NavigationLink(L("Ustawienia synchronizacji")) {
                     SyncSettingsForm()
                 }
-                Button("Usuń zsynchronizowane z \(ThisDevice.genitive)", role: .destructive) {
+                Button(L("Usuń zsynchronizowane z \(ThisDevice.genitive)"), role: .destructive) {
                     confirmRemove = true
                 }
             }
-            .navigationTitle("Biblioteka")
+            .navigationTitle(L("Biblioteka"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Zamknij") { dismiss() }
+                    Button(L("Zamknij")) { dismiss() }
                 }
             }
-            .confirmationDialog("Usunąć z \(ThisDevice.genitive) zdjęcia, które są już na serwerze?", isPresented: $confirmRemove, titleVisibility: .visible) {
-                Button("Usuń kopie z \(ThisDevice.genitive)", role: .destructive) {
+            .confirmationDialog(L("Usunąć z \(ThisDevice.genitive) zdjęcia, które są już na serwerze?"), isPresented: $confirmRemove, titleVisibility: .visible) {
+                Button(L("Usuń kopie z \(ThisDevice.genitive)"), role: .destructive) {
                     Task { removeResult = await library.removeSyncedCopies() }
                 }
-                Button("Anuluj", role: .cancel) {}
+                Button(L("Anuluj"), role: .cancel) {}
             } message: {
-                Text("Najpierw sprawdzę oryginał na serwerze. Kasuję tylko potwierdzone. Na serwerze zostają, a z \(ThisDevice.genitive) trafiają do Ostatnio usuniętych na 30 dni.")
+                Text(L("Najpierw sprawdzę oryginał na serwerze. Kasuję tylko potwierdzone. Na serwerze zostają, a z \(ThisDevice.genitive) trafiają do Ostatnio usuniętych na 30 dni."))
             }
-            .alert("Zdjęcia", isPresented: Binding(get: { !removeResult.isEmpty }, set: { if !$0 { removeResult = "" } })) {
-                Button("Dobrze") { removeResult = "" }
+            .alert(L("Zdjęcia"), isPresented: Binding(get: { !removeResult.isEmpty }, set: { if !$0 { removeResult = "" } })) {
+                Button(L("Dobrze")) { removeResult = "" }
             } message: {
                 Text(removeResult)
             }
@@ -684,11 +1046,11 @@ private struct SyncSettingsSheet: View {
     var body: some View {
         NavigationStack {
             SyncSettingsForm()
-                .navigationTitle("Synchronizacja")
+                .navigationTitle(L("Synchronizacja"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Zamknij") { dismiss() }
+                        Button(L("Zamknij")) { dismiss() }
                     }
                 }
         }
@@ -707,29 +1069,29 @@ private struct SyncSettingsForm: View {
             Section {
                 AppleTVShareToggle()
             } footer: {
-                Text("Apple TV z tym samym Apple ID pokaże bibliotekę sam.")
+                Text(L("Apple TV z tym samym Apple ID pokaże bibliotekę sam."))
             }
-            Toggle("Kopia zapasowa", isOn: $uploads)
+            Toggle(L("Kopia zapasowa"), isOn: $uploads)
                 .tint(GalleryTheme.accent)
-            Picker("Kiedy wysyłać", selection: $wifiOnly) {
-                Text("Automatycznie").tag(false)
-                Text("Tylko Wi-Fi").tag(true)
+            Picker(L("Kiedy wysyłać"), selection: $wifiOnly) {
+                Text(L("Automatycznie")).tag(false)
+                Text(L("Tylko Wi-Fi")).tag(true)
             }
             .disabled(!uploads)
-            Toggle("Tylko podczas ładowania", isOn: $chargingOnly)
+            Toggle(L("Tylko podczas ładowania"), isOn: $chargingOnly)
                 .disabled(!uploads)
-            Toggle("Live Photo", isOn: $liveAuto)
-            Text("Kopia zapasowa zapisuje nowe zdjęcia i filmy na serwerze GalleryOS. Wyłączona nie rusza po otwarciu aplikacji. Chmurka wysyła tylko wskazany plik.")
+            Toggle(L("Live Photo"), isOn: $liveAuto)
+            Text(L("Kopia zapasowa zapisuje nowe zdjęcia i filmy na serwerze GalleryOS. Wyłączona nie rusza po otwarciu aplikacji. Chmurka wysyła tylko wskazany plik."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Section {
                 NavigationLink {
                     AppleTVForm()
                 } label: {
-                    Label("Połącz kodem", systemImage: "appletv")
+                    Label(L("Połącz kodem"), systemImage: "appletv")
                 }
             } footer: {
-                Text("Pokaż bibliotekę z serwera na telewizorze.")
+                Text(L("Pokaż bibliotekę z serwera na telewizorze."))
             }
         }
         .onChange(of: uploads) { _, enabled in
@@ -742,3 +1104,77 @@ private struct SyncSettingsForm: View {
     }
 }
 
+
+
+/// The library being laid out: a mosaic of tiles breathes in diagonal waves in the colours of the
+/// launch film, so the film flows straight into it, and it opens out when the photos are ready.
+struct LibraryLoadingView: View {
+    @State private var start = Date()
+
+    private let palette: [Color] = [
+        Color(red: 0.29, green: 0.56, blue: 1.0),
+        Color(red: 0.42, green: 0.3, blue: 0.85),
+        Color(red: 1.0, green: 0.62, blue: 0.28),
+        Color(red: 0.95, green: 0.32, blue: 0.42),
+        Color(red: 0.2, green: 0.75, blue: 0.62),
+    ]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let columns = proxy.size.width > 700 ? 7 : 4
+            let gap: CGFloat = 3
+            let side = (proxy.size.width - gap * CGFloat(columns - 1)) / CGFloat(columns)
+            let rows = Int(ceil(proxy.size.height / (side + gap))) + 1
+            TimelineView(.animation) { context in
+                let t = context.date.timeIntervalSince(start)
+                ZStack {
+                    Canvas { canvas, _ in
+                        for row in 0..<rows {
+                            for column in 0..<columns {
+                                let index = row * columns + column
+                                let wave = sin(t * 2.1 - Double(row + column) * 0.45)
+                                let appear = min(1, max(0, t * 2.4 - Double(row + column) * 0.12))
+                                let tint = palette[(index * 7 + row) % palette.count]
+                                let rect = CGRect(
+                                    x: CGFloat(column) * (side + gap),
+                                    y: CGFloat(row) * (side + gap),
+                                    width: side,
+                                    height: side
+                                ).insetBy(dx: side * 0.04 * (1 - appear), dy: side * 0.04 * (1 - appear))
+                                let path = Path(roundedRect: rect, cornerRadius: 4)
+                                canvas.fill(path, with: .color(Color.white.opacity(0.035 * appear)))
+                                canvas.fill(path, with: .color(tint.opacity((0.05 + 0.07 * (wave + 1) / 2) * appear)))
+                            }
+                        }
+                    }
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.0), Color.black.opacity(0.55), Color.black.opacity(0.0)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    VStack(spacing: 14) {
+                        BrandWordmark(size: .largeTitle)
+                            .opacity(0.9)
+                        HStack(spacing: 8) {
+                            ForEach(0..<3) { dot in
+                                Circle()
+                                    .fill(Color(red: 0.29, green: 0.56, blue: 1.0))
+                                    .frame(width: 6, height: 6)
+                                    .scaleEffect(0.6 + 0.4 * max(0, sin(t * 4 - Double(dot) * 0.7)))
+                                    .opacity(0.4 + 0.6 * max(0, sin(t * 4 - Double(dot) * 0.7)))
+                            }
+                        }
+                        Text(L("Układam Twoją bibliotekę"))
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .background(Color.black)
+        .ignoresSafeArea(edges: .bottom)
+        .onAppear { start = .now }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L("Wczytywanie biblioteki"))
+    }
+}

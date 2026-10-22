@@ -1,0 +1,5 @@
+"CFBundleDisplayName" = "GalleryOS™";
+"NSFaceIDUsageDescription" = "GalleryOS просить підтвердження, перш ніж показати альбом «Приховані».";
+"NSLocalNetworkUsageDescription" = "GalleryOS шукає QNAP та інші сервери в домашній мережі, щоб синхронізувати бібліотеку.";
+"NSLocationWhenInUseUsageDescription" = "GalleryOS показує на мапі, де ви є, і прокладає маршрут до місць, де було зроблено фото.";
+"NSPhotoLibraryUsageDescription" = "GalleryOS показує вашу бібліотеку фото й відео та готує її до синхронізації з вибраним місцем.";

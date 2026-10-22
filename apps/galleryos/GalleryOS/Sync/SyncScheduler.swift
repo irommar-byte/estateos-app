@@ -33,12 +33,12 @@ enum SyncPolicy {
 
     static func blockReason(needsNetwork: Bool, online: Bool, onWiFi: Bool, constrained: Bool) -> String? {
         if chargingOnly, !charging {
-            return "Czeka na ładowanie"
+            return L("Czeka na ładowanie")
         }
         guard needsNetwork else { return nil }
-        if !online { return "Brak sieci" }
-        if wifiOnly, !onWiFi { return "Czeka na Wi-Fi" }
-        if constrained, !onWiFi { return "Oszczędzanie danych" }
+        if !online { return L("Brak sieci") }
+        if wifiOnly, !onWiFi { return L("Czeka na Wi-Fi") }
+        if constrained, !onWiFi { return L("Oszczędzanie danych") }
         return nil
     }
 
@@ -77,24 +77,23 @@ enum SyncNotice {
 
     static func finished(count: Int) {
         let content = UNMutableNotificationContent()
-        content.title = "Synchronizacja skończona"
-        content.body = "Wysłano \(TransferText.groupedPublic(count)) \(word(count)). Możesz zablokować telefon."
+        content.title = L("Synchronizacja skończona")
+        content.body = L("Wysłano \(TransferText.groupedPublic(count)) \(word(count)). Możesz zablokować telefon.")
         content.sound = .default
         let request = UNNotificationRequest(identifier: "galleryos.sync.done", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
     }
 
     private static func word(_ count: Int) -> String {
-        if count == 1 { return "zdjęcie" }
-        let tens = count % 100
-        if (2...4).contains(count % 10), !(12...14).contains(tens) { return "zdjęcia" }
-        return "zdjęć"
+        Plural.pick(count, L("zdjęcie"), L("zdjęcia"), L("zdjęć"))
     }
 }
 
 enum SyncScheduler {
     static let processingIdentifier = "pl.galleryos.app.library-sync"
     static let continuedIdentifier = "pl.galleryos.app.sync.library"
+    /// Short wake-ups iOS grants through Background App Refresh (the "fetch" mode).
+    static let refreshIdentifier = "pl.galleryos.app.refresh"
     private static var registered = false
 
     static func register() {
@@ -121,6 +120,29 @@ enum SyncScheduler {
                 gate.finish { task.setTaskCompleted(success: true) }
             }
         }
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: refreshIdentifier, using: nil) { task in
+            guard let task = task as? BGAppRefreshTask else { return }
+            // Ask for the next wake-up first; iOS only grants one request at a time.
+            scheduleRefresh()
+            let gate = TaskFinish()
+            let job = Task { @MainActor in
+                await LibraryEngine.shared.refreshInBackground()
+            }
+            task.expirationHandler = {
+                job.cancel()
+                DispatchQueue.main.async {
+                    LibraryEngine.shared.prepareForBackground()
+                }
+                gate.finish { task.setTaskCompleted(success: false) }
+            }
+            Task {
+                _ = await job.value
+                if await LibraryEngine.shared.stillCopying() {
+                    scheduleWhilePowered()
+                }
+                gate.finish { task.setTaskCompleted(success: true) }
+            }
+        }
         BGTaskScheduler.shared.register(forTaskWithIdentifier: continuedIdentifier, using: nil) { task in
             guard #available(iOS 26.0, *) else {
                 task.setTaskCompleted(success: true)
@@ -134,7 +156,7 @@ enum SyncScheduler {
                 // Complete on this queue. Waiting for the main thread (it may be stuck on one
                 // photo) is exactly what iOS reports as "Niepowodzenie" before killing the app.
                 if SyncRun.isCopying {
-                    _ = SyncScheduler.submitContinued(subtitle: "Wznawiam wysyłanie")
+                    _ = SyncScheduler.submitContinued(subtitle: L("Wznawiam wysyłanie"))
                     SyncScheduler.scheduleWhilePowered()
                 }
                 gate.finish { task.setTaskCompleted(success: true) }
@@ -161,6 +183,7 @@ enum SyncScheduler {
     }
 
     static func cancelAutomatic() {
+        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: refreshIdentifier)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: processingIdentifier)
         BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: continuedIdentifier)
     }
@@ -168,6 +191,14 @@ enum SyncScheduler {
     static func schedule() {
         guard SyncPolicy.uploadsEnabled else { return }
         submitProcessing(after: 15 * 60)
+    }
+
+    /// Background App Refresh: a short run every so often to pick up new photos.
+    static func scheduleRefresh() {
+        guard SyncPolicy.uploadsEnabled else { return }
+        let request = BGAppRefreshTaskRequest(identifier: refreshIdentifier)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 20 * 60)
+        try? BGTaskScheduler.shared.submit(request)
     }
 
     static func scheduleSoon() {
@@ -189,7 +220,7 @@ enum SyncScheduler {
     @discardableResult
     static func submitContinued(subtitle: String) -> Bool {
         guard #available(iOS 26.0, *) else { return false }
-        let line = subtitle.isEmpty ? "Wysyłanie" : subtitle
+        let line = subtitle.isEmpty ? L("Wysyłanie") : subtitle
         if submitContinued(subtitle: line, strategy: .fail) { return true }
         return submitContinued(subtitle: line, strategy: .queue)
     }
@@ -201,7 +232,7 @@ enum SyncScheduler {
     ) -> Bool {
         let request = BGContinuedProcessingTaskRequest(
             identifier: continuedIdentifier,
-            title: "Wysyłanie zdjęć",
+            title: L("Wysyłanie zdjęć"),
             subtitle: subtitle
         )
         request.strategy = strategy

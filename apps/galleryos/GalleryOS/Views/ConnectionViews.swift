@@ -28,14 +28,45 @@ struct RouteGlyph: View {
         return false
     }
 
+    private var connected: Bool {
+        if case .connected = phase { return true }
+        return false
+    }
+
+    /// A small glass disc with a fine rim: green house at home, blue globe away. Calm like the
+    /// system bar: nothing moves except the symbol itself (SF Symbols effects never shift layout).
     var body: some View {
         Image(systemName: symbol)
-            .font(.system(size: 14, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold))
+            .symbolRenderingMode(.hierarchical)
             .foregroundStyle(tint)
             .symbolEffect(.variableColor.iterative.reversing, options: .repeating, isActive: connecting)
-            .contentTransition(.symbolEffect(.replace.magic(fallback: .downUp.byLayer)))
-            .frame(width: 22, height: 28)
-            .animation(GalleryTheme.snappy, value: phase)
+            .contentTransition(.symbolEffect(.replace))
+            .frame(width: 23, height: 23)
+            .background(JewelDisc(tint: tint))
+            .frame(height: 28)
+    }
+}
+
+/// Glass disc: a soft gradient, a hairline metallic rim and a highlight at the top. Static.
+struct JewelDisc: View {
+    let tint: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(RadialGradient(colors: [tint.opacity(0.3), tint.opacity(0.08)], center: UnitPoint(x: 0.4, y: 0.25), startRadius: 0, endRadius: 16))
+            Circle()
+                .strokeBorder(
+                    LinearGradient(colors: [.white.opacity(0.55), tint.opacity(0.45), tint.opacity(0.2)], startPoint: .top, endPoint: .bottom),
+                    lineWidth: 0.8
+                )
+            Ellipse()
+                .fill(LinearGradient(colors: [.white.opacity(0.28), .clear], startPoint: .top, endPoint: .bottom))
+                .frame(width: 13, height: 6)
+                .offset(y: -6.5)
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -132,8 +163,8 @@ struct ConnectionCard: View {
             }
             VStack(spacing: 0) {
                 RouteRow(
-                    title: "Sieć domowa",
-                    address: localTitle.isEmpty ? "Nie zapisano" : localTitle,
+                    title: L("Sieć domowa"),
+                    address: localTitle.isEmpty ? L("Nie zapisano") : localTitle,
                     symbol: "house.fill",
                     tint: LinkRoute.home.tint,
                     active: link.route == .home,
@@ -141,15 +172,15 @@ struct ConnectionCard: View {
                 )
                 Divider().padding(.leading, 44)
                 RouteRow(
-                    title: "Zdalnie · DDNS",
-                    address: remoteHost.isEmpty ? "Nie ustawiono" : remoteHost,
+                    title: L("Zdalnie · DDNS"),
+                    address: remoteHost.isEmpty ? L("Nie ustawiono") : remoteHost,
                     symbol: "globe",
                     tint: LinkRoute.remote.tint,
                     active: link.route == .remote,
                     probe: link.remote
                 )
             }
-            Picker("Trasa", selection: Binding(
+            Picker(L("Trasa"), selection: Binding(
                 get: { linkMode },
                 set: { value in
                     UISelectionFeedbackGenerator().selectionChanged()
@@ -158,9 +189,9 @@ struct ConnectionCard: View {
                     Task { _ = try? await LibraryEngine.shared.connect() }
                 }
             )) {
-                Text("Automatycznie").tag(LinkMode.auto.rawValue)
-                Text("Dom").tag(LinkMode.home.rawValue)
-                Text("Zdalnie").tag(LinkMode.remote.rawValue)
+                Text(L("Automatycznie")).tag(LinkMode.auto.rawValue)
+                Text(L("Dom")).tag(LinkMode.home.rawValue)
+                Text(L("Zdalnie")).tag(LinkMode.remote.rawValue)
             }
             .pickerStyle(.segmented)
             HStack(spacing: 10) {
@@ -168,7 +199,7 @@ struct ConnectionCard: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     Task { await link.probeAll() }
                 } label: {
-                    Label("Sprawdź", systemImage: "bolt.horizontal")
+                    Label(L("Sprawdź"), systemImage: "bolt.horizontal")
                         .frame(maxWidth: .infinity)
                 }
                 .galleryGlassButton()
@@ -184,7 +215,7 @@ struct ConnectionCard: View {
                                 } else {
                                     Image(systemName: "dot.radiowaves.left.and.right")
                                 }
-                                Text(link.learning ? "Szukam…" : "Wykryj w domu")
+                                Text(link.learning ? L("Szukam…") : L("Wykryj w domu"))
                             }
                             .frame(maxWidth: .infinity)
                         }
@@ -192,12 +223,12 @@ struct ConnectionCard: View {
                         .disabled(link.learning || !link.network.isLocal)
                     } else {
                         Menu {
-                            Button("Zapomnij sieć domową", systemImage: "house.slash", role: .destructive) {
+                            Button(L("Zapomnij sieć domową"), systemImage: "house.slash", role: .destructive) {
                                 link.forgetHome()
                                 settings = DestinationSettings.load()
                             }
                         } label: {
-                            Label("Dom", systemImage: "ellipsis")
+                            Label(L("Dom"), systemImage: "ellipsis")
                                 .frame(maxWidth: .infinity)
                         }
                         .galleryGlassButton()
@@ -213,12 +244,12 @@ struct ConnectionCard: View {
 
     private var headline: String {
         switch link.phase {
-        case .idle: "Brak serwera"
-        case .connecting(let route): route == .none ? "Łączę z serwerem…" : "Łączę · \(route.title)…"
-        case .connected(.home): "Połączono w sieci domowej"
-        case .connected(.remote): "Połączono zdalnie"
-        case .connected: "Połączono"
-        case .offline: "Brak sieci"
+        case .idle: L("Brak serwera")
+        case .connecting(let route): route == .none ? L("Łączę z serwerem…") : L("Łączę · \(route.title)…")
+        case .connected(.home): L("Połączono w sieci domowej")
+        case .connected(.remote): L("Połączono zdalnie")
+        case .connected: L("Połączono")
+        case .offline: L("Brak sieci")
         case .unreachable(let message): message
         }
     }
@@ -226,10 +257,10 @@ struct ConnectionCard: View {
     private var networkLine: String {
         var parts = [link.network.title]
         if link.network.isLocal {
-            parts.append(link.onKnownHomeNetwork ? "rozpoznana sieć domowa" : "inna sieć")
+            parts.append(link.onKnownHomeNetwork ? L("rozpoznana sieć domowa") : L("inna sieć"))
         }
         if linkMode != LinkMode.auto.rawValue {
-            parts.append(linkMode == LinkMode.home.rawValue ? "tylko dom" : "tylko zdalnie")
+            parts.append(linkMode == LinkMode.home.rawValue ? L("tylko dom") : L("tylko zdalnie"))
         }
         return parts.joined(separator: " · ")
     }
@@ -255,7 +286,7 @@ private struct RouteRow: View {
                 HStack(spacing: 6) {
                     Text(title).font(.subheadline.weight(.semibold))
                     if active {
-                        Text("AKTYWNE")
+                        Text(L("AKTYWNE"))
                             .font(.system(size: 9, weight: .heavy))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -387,5 +418,99 @@ private struct Connector: View {
         }
         .frame(height: 46)
         .padding(.horizontal, 6)
+    }
+}
+
+/// The two roads to the server side by side. The one in use is lit; each shows its last ping.
+struct RouteStrip: View {
+    @ObservedObject private var link = ServerLink.shared
+    @State private var settings = DestinationSettings.load()
+
+    private var remoteHost: String {
+        settings.remoteHost.isEmpty ? (GalleryNetwork.isLocalHost(settings.host) ? "" : settings.host) : settings.remoteHost
+    }
+
+    private var localTitle: String {
+        if !settings.localName.isEmpty { return settings.localName }
+        if !settings.localHost.isEmpty { return settings.localHost }
+        if GalleryNetwork.isLocalHost(settings.host) { return settings.host }
+        return ""
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            RouteTile(
+                title: L("Dom"),
+                address: localTitle.isEmpty ? L("nie zapisano") : localTitle,
+                route: .home,
+                active: link.route == .home,
+                probe: link.home
+            )
+            RouteTile(
+                title: L("Zdalnie"),
+                address: remoteHost.isEmpty ? L("nie ustawiono") : remoteHost,
+                route: .remote,
+                active: link.route == .remote,
+                probe: link.remote
+            )
+        }
+        .onReceive(link.$phase) { _ in settings = DestinationSettings.load() }
+        .task { await link.probeAll() }
+    }
+}
+
+private struct RouteTile: View {
+    let title: String
+    let address: String
+    let route: LinkRoute
+    let active: Bool
+    let probe: LinkProbe
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: route.symbol)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(active ? .white : route.tint)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(active ? .white : .primary)
+                Spacer(minLength: 4)
+                state
+            }
+            Text(address)
+                .font(.caption2)
+                .foregroundStyle(active ? .white.opacity(0.85) : .secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(active ? AnyShapeStyle(route.tint.gradient) : AnyShapeStyle(Color.secondary.opacity(0.12)))
+        )
+        .animation(GalleryTheme.snappy, value: active)
+        .animation(GalleryTheme.snappy, value: probe)
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(active ? L("w użyciu") : "")
+    }
+
+    @ViewBuilder
+    private var state: some View {
+        if probe.checking {
+            ProgressView().controlSize(.mini)
+        } else if let reachable = probe.reachable {
+            if reachable, let millis = probe.millis {
+                Text("\(millis) ms")
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(active ? .white.opacity(0.9) : .secondary)
+            } else if !reachable {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(active ? .white : Color(red: 1.0, green: 0.27, blue: 0.23))
+            }
+        }
     }
 }

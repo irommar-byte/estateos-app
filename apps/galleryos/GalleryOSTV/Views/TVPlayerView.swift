@@ -22,6 +22,9 @@ final class TVPlayerModel: ObservableObject {
     @Published private(set) var phase: Phase = .loading
     @Published private(set) var index = 0
     @Published private(set) var downloadNote = ""
+    /// Set when the clip plays to its end: the player closes by itself, like Photos.
+    @Published private(set) var finished = false
+    private var endWatch: NSObjectProtocol?
     private var streamLoader: TVStreamLoader?
     private var resources: [LibraryResource] = []
     private var observer: AnyCancellable?
@@ -37,7 +40,7 @@ final class TVPlayerModel: ObservableObject {
         index = min(max(0, playback.start), max(resources.count - 1, 0))
         self.pipeline = pipeline
         guard resources.indices.contains(index) else {
-            phase = .failed("Brak pliku wideo.")
+            phase = .failed(L("Brak pliku wideo."))
             return
         }
         await load(resources[index], pipeline: pipeline)
@@ -63,6 +66,8 @@ final class TVPlayerModel: ObservableObject {
         streamWatch?.cancel()
         streamWatch = nil
         observer = nil
+        if let endWatch { NotificationCenter.default.removeObserver(endWatch) }
+        endWatch = nil
         player?.pause()
         player = nil
         streamLoader = nil
@@ -93,7 +98,7 @@ final class TVPlayerModel: ObservableObject {
             return
         }
 
-        await fallBackToFile(reason: "Brak strumienia — pobieram plik…", generation: generation)
+        await fallBackToFile(reason: L("Brak strumienia — pobieram plik…"), generation: generation)
     }
 
     private func watchStreamTimeout(generation: Int) {
@@ -103,18 +108,18 @@ final class TVPlayerModel: ObservableObject {
             try? await Task.sleep(nanoseconds: nanos)
             guard let self, !self.closed, !Task.isCancelled, self.loadGeneration == generation else { return }
             if case .playing = self.phase { return }
-            await self.fallBackToFile(reason: "Strumień nie wystartował — pobieram na dysk…", generation: generation)
+            await self.fallBackToFile(reason: L("Strumień nie wystartował — pobieram na dysk…"), generation: generation)
         }
     }
 
     private func fallBackToFile(reason: String?, generation: Int) async {
         guard !closed, loadGeneration == generation, let pipeline, let resource = playingResource else {
-            if !closed, loadGeneration == generation { phase = .failed("Brak połączenia z biblioteką.") }
+            if !closed, loadGeneration == generation { phase = .failed(L("Brak połączenia z biblioteką.")) }
             return
         }
         if triedDownload {
             if case .playing = phase { return }
-            if player == nil { phase = .failed("Nie udało się pobrać tego filmu.") }
+            if player == nil { phase = .failed(L("Nie udało się pobrać tego filmu.")) }
             return
         }
         triedDownload = true
@@ -126,15 +131,15 @@ final class TVPlayerModel: ObservableObject {
         streamLoader = nil
         phase = .downloading
         downloadNote = resource.bytes > 0
-            ? "Pobieram film (\(ByteCountFormatter.string(fromByteCount: Int64(resource.bytes), countStyle: .file))) na Apple TV…"
-            : "Pobieram film na Apple TV…"
+            ? L("Pobieram film (\(ByteCountFormatter.string(fromByteCount: Int64(resource.bytes), countStyle: .file))) na Apple TV…")
+            : L("Pobieram film na Apple TV…")
         if let stale = pipeline.existingFile(for: resource) {
             begin(AVPlayerItem(url: stale), canFallBack: false, generation: generation)
             return
         }
         guard let file = await pipeline.localFile(for: resource) else {
             if !closed, loadGeneration == generation, player == nil {
-                phase = .failed("Serwer nie oddał pliku wideo. Sprawdź sieć / QNAP.")
+                phase = .failed(L("Serwer nie oddał pliku wideo. Sprawdź sieć / QNAP."))
             }
             return
         }
@@ -149,6 +154,17 @@ final class TVPlayerModel: ObservableObject {
         next.automaticallyWaitsToMinimizeStalling = true
         // Swap the item on one controller surface — FilmHost keeps the same host VC.
         player = next
+        if let endWatch { NotificationCenter.default.removeObserver(endWatch) }
+        endWatch = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.didPlayToEndTimeNotification,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.closed, self.loadGeneration == generation else { return }
+                self.finished = true
+            }
+        }
         observer = item.publisher(for: \.status)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] status in
@@ -159,7 +175,7 @@ final class TVPlayerModel: ObservableObject {
                 } else if status == .failed, canFallBack {
                     Task { await self.fallBackToFile(reason: item.error?.localizedDescription, generation: generation) }
                 } else if status == .failed {
-                    self.phase = .failed(item.error?.localizedDescription ?? "Odtwarzacz odrzucił plik.")
+                    self.phase = .failed(item.error?.localizedDescription ?? L("Odtwarzacz odrzucił plik."))
                 }
             }
     }
@@ -167,11 +183,6 @@ final class TVPlayerModel: ObservableObject {
 
 /// Asks the television for the picture mode stored in the file itself.
 enum TVDisplay {
-    static func engage(_ asset: AVAsset) async {
-        guard let criteria = try? await asset.load(.preferredDisplayCriteria) else { return }
-        await MainActor.run { install(criteria) }
-    }
-
     static func release() {
         install(nil)
     }
@@ -206,7 +217,7 @@ struct TVPlayerView: View {
             // Keep one player host mounted across neighbor skips so the surface does not remount.
             // HDR and Dolby Vision play even when the TV does not switch modes; tvOS tone-maps them.
             if let player = model.player {
-                FilmHost(player: player, onNeighbor: { model.neighbor($0) }, onClose: close)
+                FilmHost(player: player, onClose: close)
                     .ignoresSafeArea()
             }
             switch model.phase {
@@ -217,8 +228,8 @@ struct TVPlayerView: View {
                     VStack(spacing: 22) {
                         ProgressView().scaleEffect(1.6)
                         Text(model.phase == .downloading
-                             ? (model.downloadNote.isEmpty ? "Pobieram film na Apple TV…" : model.downloadNote)
-                             : "Przygotowuję odtwarzanie…")
+                             ? (model.downloadNote.isEmpty ? L("Pobieram film na Apple TV…") : model.downloadNote)
+                             : L("Przygotowuję odtwarzanie…"))
                             .font(.title3)
                             .foregroundStyle(.secondary)
                     }
@@ -226,18 +237,21 @@ struct TVPlayerView: View {
             case .failed(let message):
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle").font(.system(size: 70)).foregroundStyle(.orange)
-                    Text("Nie udało się odtworzyć tego filmu").font(.title2)
+                    Text(L("Nie udało się odtworzyć tego filmu")).font(.title2)
                     Text(message)
                         .font(.title3)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: 900)
-                    Text("Naciśnij Menu, aby wrócić.").foregroundStyle(.secondary)
+                    Text(L("Naciśnij Menu, aby wrócić.")).foregroundStyle(.secondary)
                 }
             }
         }
         .task { await model.start(playback, pipeline: pipeline) }
         .onExitCommand(perform: close)
+        .onChange(of: model.finished) { _, done in
+            if done { close() }
+        }
         .onDisappear { model.stop() }
     }
 
@@ -249,20 +263,17 @@ struct TVPlayerView: View {
 
 struct FilmHost: UIViewControllerRepresentable {
     let player: AVPlayer
-    let onNeighbor: (Int) -> Void
     let onClose: () -> Void
 
     func makeUIViewController(context: Context) -> FilmScreen {
         let screen = FilmScreen()
         screen.attach(player)
-        screen.onNeighbor = onNeighbor
         screen.onClose = onClose
         return screen
     }
 
     func updateUIViewController(_ screen: FilmScreen, context: Context) {
         screen.attach(player)
-        screen.onNeighbor = onNeighbor
         screen.onClose = onClose
     }
 }
@@ -270,33 +281,28 @@ struct FilmHost: UIViewControllerRepresentable {
 /// Embeds AVPlayerViewController as a child — one Menu back leaves the player cover,
 /// without a black intermediate screen that needed a second press.
 final class FilmScreen: UIViewController {
-    var onNeighbor: ((Int) -> Void)?
     var onClose: (() -> Void)?
     private let playerController = HDRPlayerController()
-    private var scrubStart: CMTime?
     private var didEmbed = false
 
     func attach(_ player: AVPlayer) {
         if playerController.player !== player {
             playerController.player = player
-            Task { await matchPicture() }
+            Task { await startWhenScreenIsReady() }
         }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        // The player asks the TV for the film's own mode (Dolby Vision, HDR10, frame rate).
+        // The remote keeps every native gesture: click left/right skips 10 s, swipe scrubs,
+        // swipe down shows the info panel.
         playerController.appliesPreferredDisplayCriteriaAutomatically = true
-        playerController.onSkip = { [weak self] delta in
-            self?.onNeighbor?(delta)
-        }
         playerController.onMenu = { [weak self] in
             self?.onClose?()
         }
         embedPlayer()
-        let pan = UIPanGestureRecognizer(target: self, action: #selector(scrubbed(_:)))
-        pan.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.indirect.rawValue)]
-        playerController.view.addGestureRecognizer(pan)
     }
 
     private func embedPlayer() {
@@ -314,46 +320,44 @@ final class FilmScreen: UIViewController {
         playerController.didMove(toParent: self)
     }
 
-    private func matchPicture() async {
-        guard let item = playerController.player?.currentItem else { return }
-        if item.status != .readyToPlay {
-            for _ in 0..<30 where item.status == .unknown {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
-        }
-        await TVDisplay.engage(item.asset)
-        playerController.player?.play()
-    }
-
-    @objc private func scrubbed(_ pan: UIPanGestureRecognizer) {
+    /// Starts only once the item is ready and the TV has finished switching picture mode,
+    /// so the first seconds of a Dolby Vision clip are not lost behind a black screen.
+    private func startWhenScreenIsReady() async {
         guard let player = playerController.player, let item = player.currentItem else { return }
-        let duration = item.duration.seconds
-        guard duration.isFinite, duration > 0 else { return }
-        switch pan.state {
-        case .began:
-            scrubStart = player.currentTime()
-            player.pause()
-        case .changed:
-            let span = max(duration * 0.35, 20)
-            let delta = Double(pan.translation(in: playerController.view).x) / 900 * span
-            let origin = scrubStart?.seconds ?? player.currentTime().seconds
-            let target = min(max(0, origin + delta), duration - 0.05)
-            player.seek(to: CMTime(seconds: target, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-        case .ended, .cancelled, .failed:
-            scrubStart = nil
-            player.play()
-        default:
-            break
+        for _ in 0..<50 where item.status == .unknown {
+            try? await Task.sleep(nanoseconds: 100_000_000)
         }
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        for _ in 0..<30 {
+            guard let manager = view.window?.avDisplayManager, manager.isDisplayModeSwitchInProgress else { break }
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+        guard playerController.player === player else { return }
+        player.play()
     }
 }
 
-final class HDRPlayerController: AVPlayerViewController {
-    var onSkip: ((Int) -> Void)?
+final class HDRPlayerController: AVPlayerViewController, AVPlayerViewControllerDelegate {
     var onMenu: (() -> Void)?
+    private var barVisible = false
 
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        delegate = self
+    }
+
+    func playerViewController(
+        _ playerViewController: AVPlayerViewController,
+        willTransitionToVisibilityOfTransportBar visible: Bool,
+        with coordinator: AVPlayerViewControllerAnimationCoordinator
+    ) {
+        barVisible = visible
+    }
+
+    /// Menu first hides the transport bar or info panel (system behaviour); only a Menu
+    /// press on the bare picture closes the film.
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        for press in presses where press.type == .menu {
+        if presses.contains(where: { $0.type == .menu }), !barVisible {
             onMenu?()
             return
         }
@@ -361,19 +365,7 @@ final class HDRPlayerController: AVPlayerViewController {
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        for press in presses {
-            if press.type == .menu {
-                return
-            }
-            if press.type == .leftArrow {
-                onSkip?(-1)
-                return
-            }
-            if press.type == .rightArrow {
-                onSkip?(1)
-                return
-            }
-        }
+        if presses.contains(where: { $0.type == .menu }), !barVisible { return }
         super.pressesEnded(presses, with: event)
     }
 }

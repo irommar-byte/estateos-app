@@ -57,6 +57,21 @@ enum GalleryKeychain {
         guard status == errSecSuccess else { throw GalleryKeychainError.status(status) }
     }
 
+    /// Adds a synced item only when none exists yet – for keys that must never be overwritten.
+    static func addSharedIfMissing(_ value: Data, account: String) {
+        guard data(account: account) == nil else { return }
+        let add: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecAttrAccessGroup as String: accessGroup,
+            kSecAttrSynchronizable as String: kCFBooleanTrue as Any,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecValueData as String: value,
+        ]
+        SecItemAdd(add as CFDictionary, nil)
+    }
+
     static func data(account: String) -> Data? {
         copy(account: account, group: accessGroup) ?? copy(account: account, group: nil)
     }

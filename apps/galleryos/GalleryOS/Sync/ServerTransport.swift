@@ -11,9 +11,9 @@ final class ServerTransport: CatalogTransport {
 
     static func login(host: String, port: Int, username: String, password: String) async throws -> ServerTransport {
         let roots = ConnectionURL.roots(host: host, port: port, defaultPort: 8787)
-        guard !roots.isEmpty else { throw LibraryError(message: "Nieprawidłowy adres serwera.") }
+        guard !roots.isEmpty else { throw LibraryError(message: L("Nieprawidłowy adres serwera.")) }
         GalleryNetwork.shared.trust(ConnectionURL.bare(host))
-        var last = LibraryError(message: "Nie udało się połączyć z serwerem.")
+        var last = LibraryError(message: L("Nie udało się połączyć z serwerem."))
         for root in roots {
             if let name = root.host { GalleryNetwork.shared.trust(name) }
             do {
@@ -36,7 +36,7 @@ final class ServerTransport: CatalogTransport {
         try Self.validate(response, data: data)
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let token = object?["token"] as? String, !token.isEmpty else {
-            throw LibraryError(message: "Serwer nie zwrócił sesji.")
+            throw LibraryError(message: L("Serwer nie zwrócił sesji."))
         }
         return ServerTransport(baseURL: root, token: token)
     }
@@ -57,7 +57,7 @@ final class ServerTransport: CatalogTransport {
 
     func writeFile(_ relative: String, from local: URL) async throws {
         guard let safe = CatalogPath.safe(relative) else {
-            throw LibraryError(message: "Nieprawidłowa ścieżka biblioteki.")
+            throw LibraryError(message: L("Nieprawidłowa ścieżka biblioteki."))
         }
         if safe.contains("/originals/") {
             try await uploadOriginal(safe, from: local)
@@ -73,7 +73,7 @@ final class ServerTransport: CatalogTransport {
 
     func readFile(_ relative: String) async throws -> Data {
         guard let safe = CatalogPath.safe(relative) else {
-            throw LibraryError(message: "Nieprawidłowa ścieżka biblioteki.")
+            throw LibraryError(message: L("Nieprawidłowa ścieżka biblioteki."))
         }
         var request = URLRequest(url: fileURL(safe))
         request.timeoutInterval = 60 * 20
@@ -85,11 +85,11 @@ final class ServerTransport: CatalogTransport {
 
     func list(_ relative: String) async throws -> [String] {
         guard let safe = CatalogPath.safe(relative) ?? (relative.isEmpty ? "" : nil) else {
-            throw LibraryError(message: "Nieprawidłowa ścieżka biblioteki.")
+            throw LibraryError(message: L("Nieprawidłowa ścieżka biblioteki."))
         }
         var parts = URLComponents(url: baseURL.appendingPathComponent("v1/list"), resolvingAgainstBaseURL: false)
         parts?.queryItems = [URLQueryItem(name: "path", value: safe)]
-        guard let url = parts?.url else { throw LibraryError(message: "Nieprawidłowy adres serwera.") }
+        guard let url = parts?.url else { throw LibraryError(message: L("Nieprawidłowy adres serwera.")) }
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
         authorize(&request)
@@ -133,7 +133,7 @@ final class ServerTransport: CatalogTransport {
     func changes(cursor: Int) async throws -> (cursor: Int, lines: [JournalLine]) {
         var parts = URLComponents(url: baseURL.appendingPathComponent("v1/changes"), resolvingAgainstBaseURL: false)
         parts?.queryItems = [URLQueryItem(name: "cursor", value: String(cursor))]
-        guard let url = parts?.url else { throw LibraryError(message: "Nieprawidłowy adres serwera.") }
+        guard let url = parts?.url else { throw LibraryError(message: L("Nieprawidłowy adres serwera.")) }
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
         authorize(&request)
@@ -168,13 +168,13 @@ final class ServerTransport: CatalogTransport {
             try? await removeFile(relative)
         }
         guard let uploadID = object?["id"] as? String else {
-            throw LibraryError(message: "Serwer nie zarezerwował pliku.")
+            throw LibraryError(message: L("Serwer nie zarezerwował pliku."))
         }
         let handle = try FileHandle(forReadingFrom: local)
         defer { try? handle.close() }
         var offset = 0
         while true {
-            let chunk = try handle.read(upToCount: 1024 * 1024) ?? Data()
+            let chunk = try handle.chunk(1024 * 1024)
             if chunk.isEmpty { break }
             var chunkRequest = URLRequest(url: baseURL.appendingPathComponent("v1/assets/\(uploadID)/chunks"))
             var components = URLComponents(url: chunkRequest.url!, resolvingAgainstBaseURL: false)
@@ -212,9 +212,9 @@ final class ServerTransport: CatalogTransport {
 
     private static func validate(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
-            throw LibraryError(message: "Brak odpowiedzi.")
+            throw LibraryError(message: L("Brak odpowiedzi."))
         }
-        if http.statusCode == 401 { throw LibraryError(message: "Błędny login lub hasło.") }
+        if http.statusCode == 401 { throw LibraryError(message: L("Błędny login lub hasło.")) }
         if http.statusCode >= 400 {
             throw LibraryError(message: SyncPause.explainServer(status: http.statusCode, data: data))
         }
