@@ -18,6 +18,12 @@ import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { sendSMS } from '@/lib/sms';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
 import { parseIntelligenceLocks, parseIntelligencePatch, shapeIntelligenceSettings } from '@/lib/crm/clientIntelligence';
+import { parseSalutation } from '@/lib/crm/intelligenceSchedule';
+import {
+  approveIntelligenceApproval,
+  getPendingIntelligenceApproval,
+  skipIntelligenceApproval,
+} from '@/lib/crm/intelligenceApproval';
 import { ensureIntelligenceLockedFieldsColumn, pickIntelligenceOffer, sendIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
 import { linkOfferToAgencyClient } from '@/lib/offerAgencyManagement';
 import { parsePesel } from '@/lib/pesel';
@@ -355,6 +361,8 @@ export async function GET(req: Request, ctx: RouteCtx) {
         matchBriefs,
       ),
       intelligence: shapeIntelligenceSettings(client, client.buyerPreference),
+      salutation: parseSalutation(client.salutation),
+      pendingIntelligenceApproval: await getPendingIntelligenceApproval(client.id),
       pendingCheckback,
       openHandoff,
       buyerAgentTasks,
@@ -436,6 +444,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       pesel: nextPesel !== undefined ? nextPeselDigits : undefined,
       peselHash: nextPesel !== undefined ? nextPeselHash : undefined,
       notes: body.notes !== undefined ? (body.notes ? String(body.notes).trim() : null) : undefined,
+      salutation: body.salutation !== undefined ? parseSalutation(body.salutation) : undefined,
       ...(existing.type === 'SELLER'
         ? {
             sellerTransactionType: body.sellerTransactionType,
@@ -695,6 +704,26 @@ export async function POST(req: Request, ctx: RouteCtx) {
     const owned = await prisma.agencyClient.findFirst({ where: { id: clientId, agencyUserId }, select: { id: true } });
     if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
     const result = await sendIntelligenceOffer({ clientId, force: true });
+    return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'intelligence_approve' || action === 'intelligence_skip') {
+    const owned = await prisma.agencyClient.findFirst({ where: { id: clientId, agencyUserId }, select: { id: true } });
+    if (!owned) return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
+    const activityId = Number(body.activityId);
+    if (!Number.isFinite(activityId) || activityId <= 0) {
+      return NextResponse.json({ error: 'Brak propozycji do rozpatrzenia.' }, { status: 400 });
+    }
+    const result =
+      action === 'intelligence_approve'
+        ? await approveIntelligenceApproval({ clientId, agencyUserId, activityId })
+        : await skipIntelligenceApproval({
+            clientId,
+            agencyUserId,
+            activityId,
+            reason: typeof body.reason === 'string' ? body.reason : null,
+          });
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
     return NextResponse.json({ success: true, ...result });
   }
 

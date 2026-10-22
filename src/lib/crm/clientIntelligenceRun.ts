@@ -22,6 +22,12 @@ import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { withMysqlNamedLock } from '@/lib/crm/mysqlNamedLock';
+import { isWithinSendWindow, resolveIntelligenceMode, warsawDayStart } from '@/lib/crm/intelligenceSchedule';
+import {
+  createIntelligenceApproval,
+  getPendingIntelligenceApproval,
+  listDecidedApprovalOfferIds,
+} from '@/lib/crm/intelligenceApproval';
 
 function lastFeedbackLesson(
   matches: Array<{
@@ -111,6 +117,8 @@ export type IntelligencePick = {
   correctedBalconyIds: number[];
   clientWhy: string | null;
   lessons: IntelligenceLesson[];
+  /** Ogłoszenie źródłowe zniknęło z portalu — kontakt do właściciela jest w notatce prywatnej. */
+  sourceExpired?: boolean;
 };
 
 function due(lastSentAt: Date | null, intervalHours: number): boolean {
@@ -203,6 +211,8 @@ export async function pickIntelligenceOffer(
     excludeOfferIds?: number[];
     portalSupplyAttempted?: boolean;
     replyToFeedback?: boolean;
+    /** Uwzględnij oferty, których ogłoszenie wygasło (trafiają do akceptacji agenta, nie prosto do klienta). */
+    includeDeadSources?: boolean;
   } = {},
 ): Promise<{ pick: IntelligencePick; taste: LearnedTaste; agencyUserId: number; maxPrice: number | null; agentFirstName: string | null }> {
   await ensureIntelligenceLockedFieldsColumn();
@@ -313,7 +323,8 @@ export async function pickIntelligenceOffer(
   for (const row of matches) {
     if (row.notifiedAt || row.sharedAt) continue;
     if (taste.rejectedOfferIds.includes(row.offerId)) continue;
-    if (excluded.has(row.offerId) || deadSourceIds.has(row.offerId)) continue;
+    if (excluded.has(row.offerId)) continue;
+    if (deadSourceIds.has(row.offerId) && !options.includeDeadSources) continue;
     considered += 1;
     const radarScore = row.score;
     const adjusted = intelligenceAdjustScore({
@@ -473,6 +484,7 @@ export async function pickIntelligenceOffer(
       correctedBalconyIds,
       clientWhy,
       lessons,
+      sourceExpired: deadSourceIds.has(best.offerId),
     },
   };
 }
@@ -485,8 +497,8 @@ async function intelligenceSendsRemainingToday(
   clientId: number,
   dailyLimit: number | null | undefined,
 ): Promise<number> {
-  const dayStart = new Date();
-  dayStart.setHours(0, 0, 0, 0);
+  // Doba liczona w czasie polskim, nie w strefie serwera.
+  const dayStart = warsawDayStart();
   const sentToday = await prisma.agencyClientActivity.count({
     where: {
       clientId,
@@ -504,7 +516,9 @@ export async function sendIntelligenceOffer(params: {
   ignoreInterval?: boolean;
   replyToFeedback?: boolean;
   channel?: 'email' | 'manual';
-}): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
+  /** Cykl automatyczny: oferta z wygasłym ogłoszeniem idzie do akceptacji agenta zamiast do klienta. */
+  routeExpiredToApproval?: boolean;
+}): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean; approvalId?: number | null }> {
   const locked = await withMysqlNamedLock(`eos-intel-${params.clientId}`, () =>
     sendIntelligenceOfferUnlocked(params),
   );
@@ -532,7 +546,9 @@ async function sendIntelligenceOfferUnlocked(params: {
   ignoreInterval?: boolean;
   replyToFeedback?: boolean;
   channel?: 'email' | 'manual';
-}): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean }> {
+  /** Cykl automatyczny: oferta z wygasłym ogłoszeniem idzie do akceptacji agenta zamiast do klienta. */
+  routeExpiredToApproval?: boolean;
+}): Promise<{ sent: boolean; pick: IntelligencePick; emailSent?: boolean; approvalId?: number | null }> {
   const pendingCheckback = await getPendingCheckback(params.clientId);
   if (pendingCheckback) {
     const blocked = emptyIntelligencePick('Czekam na odpowiedź klienta na pytanie asystenta.', {
@@ -588,7 +604,9 @@ async function sendIntelligenceOfferUnlocked(params: {
     }
   }
 
-  const excludeOfferIds: number[] = [];
+  const excludeOfferIds: number[] = params.routeExpiredToApproval
+    ? await listDecidedApprovalOfferIds(params.clientId)
+    : [];
   let lastPick: IntelligencePick | null = null;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -598,6 +616,7 @@ async function sendIntelligenceOfferUnlocked(params: {
       ignoreInterval: params.ignoreInterval ?? params.replyToFeedback,
       replyToFeedback: params.replyToFeedback,
       excludeOfferIds,
+      includeDeadSources: params.routeExpiredToApproval,
     });
     lastPick = pick;
     if (!pick.ready || !pick.offerId || !agencyUserId) {
@@ -624,95 +643,49 @@ async function sendIntelligenceOfferUnlocked(params: {
       where: { id: pick.offerId },
       select: { userId: true },
     });
+    let sourceExpired = Boolean(pick.sourceExpired);
     if (offer?.userId) {
       const source = await refreshOfferSourceStatusIfStale(pick.offerId, offer.userId, {
         maxAgeMs: 12 * 60 * 60 * 1000,
       });
-      if (source?.importExternalUrl && source.sourceIsActive === 0) {
-        excludeOfferIds.push(pick.offerId);
-        continue;
-      }
+      if (source?.importExternalUrl && source.sourceIsActive === 0) sourceExpired = true;
     }
-
-    const reason = [`EstateOS™ Intelligence · pewność ${pick.score}%`, pick.tasteSummary, ...pick.analysis]
-      .filter(Boolean)
-      .join('\n');
-
-    const customMessage =
-      pick.clientWhy ||
-      clientFacingWhyLine({
-        reasons: pick.reasons,
-        city: pick.city,
-        district: pick.district,
-        calibrating: pick.calibrating,
-      });
-
-    const notified = await notifyAgencyClientAboutOffer({
-      clientId: params.clientId,
-      offerId: pick.offerId,
-      agencyUserId,
-      channel: params.channel ?? 'email',
-      matchScore: pick.radarScore ?? undefined,
-      customMessage,
-      intelligence: { reason },
-    });
-
-    if ('alreadyNotified' in notified && notified.alreadyNotified) {
+    if (sourceExpired) {
+      if (params.routeExpiredToApproval) {
+        // Ogłoszenie zniknęło z portalu, ale kontakt do właściciela został w notatce prywatnej.
+        // Nie wysyłamy klientowi w ciemno — agent najpierw dzwoni do właściciela i akceptuje.
+        const approval = await createIntelligenceApproval({
+          clientId: params.clientId,
+          agencyUserId,
+          pick: { ...pick, sourceExpired: true },
+        });
+        return {
+          sent: false,
+          approvalId: approval?.id ?? null,
+          pick: {
+            ...pick,
+            ready: false,
+            sourceExpired: true,
+            skipReason: 'Ogłoszenie wygasło na portalu — propozycja czeka na Twoją akceptację.',
+          },
+        };
+      }
       excludeOfferIds.push(pick.offerId);
       continue;
     }
 
-    await sendPortalChat({
+    const delivered = await deliverIntelligencePick({
       clientId: params.clientId,
       agencyUserId,
-      from: 'agent',
-      content: customMessage,
-      activityMetadata: {
-        audience: 'both',
-        kind: 'client_step',
-        source: 'intelligence_offer',
-        offerId: pick.offerId,
-      },
-    }).catch(() => {});
-
-    await prisma.agencyClient.update({
-      where: { id: params.clientId },
-      data: { intelligenceLastSentAt: new Date() },
+      pick,
+      channel: params.channel ?? 'email',
     });
+    if (delivered.alreadyNotified) {
+      excludeOfferIds.push(pick.offerId);
+      continue;
+    }
 
-    const openStalls = await prisma.agencyClientActivity.findMany({
-      where: { clientId: params.clientId, kind: 'INTELLIGENCE_STALLED' },
-      select: { id: true, metadata: true },
-    });
-    await Promise.all(
-      openStalls
-        .filter((activity) => {
-          const metadata =
-            activity.metadata && typeof activity.metadata === 'object' && !Array.isArray(activity.metadata)
-              ? (activity.metadata as Record<string, unknown>)
-              : {};
-          return metadata.agentStatus !== 'done' && !metadata.agentHandledAt;
-        })
-        .map((activity) => {
-          const metadata =
-            activity.metadata && typeof activity.metadata === 'object' && !Array.isArray(activity.metadata)
-              ? (activity.metadata as Record<string, unknown>)
-              : {};
-          return prisma.agencyClientActivity.update({
-            where: { id: activity.id },
-            data: {
-              metadata: {
-                ...metadata,
-                agentStatus: 'done',
-                autoResolvedAt: new Date().toISOString(),
-                autoResolvedByOfferId: pick.offerId,
-              },
-            },
-          });
-        }),
-    );
-
-    return { sent: true, pick, emailSent: notified.emailSent };
+    return { sent: true, pick, emailSent: delivered.emailSent };
   }
 
   return {
@@ -742,19 +715,122 @@ async function sendIntelligenceOfferUnlocked(params: {
   };
 }
 
+/** Wysyła wybraną propozycję klientowi (mail/panel + czat) i porządkuje otwarte alerty „brak oferty”. */
+export async function deliverIntelligencePick(params: {
+  clientId: number;
+  agencyUserId: number;
+  pick: IntelligencePick;
+  channel: 'email' | 'manual';
+}): Promise<{ alreadyNotified: boolean; emailSent: boolean }> {
+  if (!params.pick.offerId) return { alreadyNotified: true, emailSent: false };
+  const offerId = params.pick.offerId;
+  const reason = [`EstateOS™ Intelligence · pewność ${params.pick.score}%`, params.pick.tasteSummary, ...params.pick.analysis]
+    .filter(Boolean)
+    .join('\n');
+
+  const customMessage =
+    params.pick.clientWhy ||
+    clientFacingWhyLine({
+      reasons: params.pick.reasons,
+      city: params.pick.city,
+      district: params.pick.district,
+      calibrating: params.pick.calibrating,
+    });
+
+  const notified = await notifyAgencyClientAboutOffer({
+    clientId: params.clientId,
+    offerId: offerId,
+    agencyUserId: params.agencyUserId,
+    channel: params.channel,
+    matchScore: params.pick.radarScore ?? undefined,
+    customMessage,
+    intelligence: { reason },
+  });
+
+  if ('alreadyNotified' in notified && notified.alreadyNotified) {
+    return { alreadyNotified: true, emailSent: false };
+  }
+
+  await sendPortalChat({
+    clientId: params.clientId,
+    agencyUserId: params.agencyUserId,
+    from: 'agent',
+    content: customMessage,
+    activityMetadata: {
+      audience: 'both',
+      kind: 'client_step',
+      source: 'intelligence_offer',
+      offerId: offerId,
+    },
+  }).catch(() => {});
+
+  await prisma.agencyClient.update({
+    where: { id: params.clientId },
+    data: { intelligenceLastSentAt: new Date() },
+  });
+
+  const openStalls = await prisma.agencyClientActivity.findMany({
+    where: { clientId: params.clientId, kind: 'INTELLIGENCE_STALLED' },
+    select: { id: true, metadata: true },
+  });
+  await Promise.all(
+    openStalls
+      .filter((activity) => {
+        const metadata =
+          activity.metadata && typeof activity.metadata === 'object' && !Array.isArray(activity.metadata)
+            ? (activity.metadata as Record<string, unknown>)
+            : {};
+        return metadata.agentStatus !== 'done' && !metadata.agentHandledAt;
+      })
+      .map((activity) => {
+        const metadata =
+          activity.metadata && typeof activity.metadata === 'object' && !Array.isArray(activity.metadata)
+            ? (activity.metadata as Record<string, unknown>)
+            : {};
+        return prisma.agencyClientActivity.update({
+          where: { id: activity.id },
+          data: {
+            metadata: {
+              ...metadata,
+              agentStatus: 'done',
+              autoResolvedAt: new Date().toISOString(),
+              autoResolvedByOfferId: offerId,
+            },
+          },
+        });
+      }),
+  );
+
+  return { alreadyNotified: false, emailSent: Boolean(notified.emailSent) };
+}
+
 export async function tickClientIntelligence(): Promise<{
   scanned: number;
   sent: number;
   skipped: number;
   reminded: number;
+  approvals: number;
+  outsideWindow?: boolean;
 }> {
   await ensureIntelligenceLockedFieldsColumn();
+  // Do klientów piszemy tylko w dni robocze 8:00–20:00 czasu polskiego.
+  if (!isWithinSendWindow()) {
+    return { scanned: 0, sent: 0, skipped: 0, reminded: 0, approvals: 0, outsideWindow: true };
+  }
   const clients = await prisma.agencyClient.findMany({
     where: { status: 'ACTIVE', intelligenceEnabled: true, buyerPreference: { isNot: null } },
-    select: { id: true, agencyUserId: true, intelligenceDailyLimit: true, intelligenceLastSentAt: true },
+    select: {
+      id: true,
+      agencyUserId: true,
+      intelligenceDailyLimit: true,
+      intelligenceLastSentAt: true,
+      intelligenceMode: true,
+      createdAt: true,
+    },
   });
   let sent = 0;
   let skipped = 0;
+  let approvals = 0;
   for (const client of clients) {
     try {
     const pending = await getPendingCheckback(client.id);
@@ -765,6 +841,33 @@ export async function tickClientIntelligence(): Promise<{
     const openHandoff = await getOpenIntelligenceHandoff(client.id);
     if (openHandoff) {
       skipped += 1;
+      continue;
+    }
+    const mode = resolveIntelligenceMode(client);
+    if (mode.effective === 'APPROVAL') {
+      // Tryb z akceptacją: asystent przygotowuje jedną propozycję naraz, agent decyduje.
+      const pendingApproval = await getPendingIntelligenceApproval(client.id);
+      const remainingToday = pendingApproval
+        ? 0
+        : await intelligenceSendsRemainingToday(client.id, client.intelligenceDailyLimit);
+      if (remainingToday <= 0) {
+        skipped += 1;
+        continue;
+      }
+      const { pick } = await pickIntelligenceOffer(client.id, {
+        includeDeadSources: true,
+        excludeOfferIds: await listDecidedApprovalOfferIds(client.id),
+      });
+      if (pick.ready && pick.offerId) {
+        const approval = await createIntelligenceApproval({
+          clientId: client.id,
+          agencyUserId: client.agencyUserId,
+          pick,
+        });
+        if (approval?.created) approvals += 1;
+      } else {
+        skipped += 1;
+      }
       continue;
     }
     const preview = await pickIntelligenceOffer(client.id, { preview: true });
@@ -808,7 +911,12 @@ export async function tickClientIntelligence(): Promise<{
     for (let i = 0; i < remaining; i += 1) {
       const result = await sendIntelligenceOffer({
         clientId: client.id,
+        routeExpiredToApproval: true,
       });
+      if (result.approvalId) {
+        approvals += 1;
+        break;
+      }
       if (result.sent) {
         sent += 1;
         sentForClient += 1;
@@ -887,5 +995,5 @@ export async function tickClientIntelligence(): Promise<{
     console.error('[intelligence.tick] reminders', error);
     return { reminded: 0 };
   });
-  return { scanned: clients.length, sent, skipped, reminded: reminders.reminded };
+  return { scanned: clients.length, sent, skipped, reminded: reminders.reminded, approvals };
 }

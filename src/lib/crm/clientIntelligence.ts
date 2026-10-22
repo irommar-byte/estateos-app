@@ -1,4 +1,14 @@
 import {
+  INTELLIGENCE_TEMPO_PRESETS,
+  parseIntelligenceModeSetting,
+  parseIntelligenceTempo,
+  resolveIntelligenceMode,
+  tempoFromSettings,
+  type IntelligenceEffectiveMode,
+  type IntelligenceModeSetting,
+  type IntelligenceTempo,
+} from '@/lib/crm/intelligenceSchedule';
+import {
   formatClientFeedbackForAgent,
   parseClientOfferFeedback,
   sentimentLabel,
@@ -77,6 +87,12 @@ export type IntelligenceSettings = {
   minScore: number;
   lastSentAt: string | null;
   lockedFields: IntelligenceLocks;
+  /** Ustawienie agenta: TRIAL (7 dni z akceptacją), APPROVAL, AUTOPILOT. */
+  mode: IntelligenceModeSetting;
+  /** Jak asystent działa teraz — po uwzględnieniu okresu próbnego. */
+  effectiveMode: IntelligenceEffectiveMode;
+  approvalUntil: string | null;
+  tempo: IntelligenceTempo;
 };
 
 export const DEFAULT_INTELLIGENCE_LOCKS: IntelligenceLocks = {
@@ -101,6 +117,10 @@ export const DEFAULT_INTELLIGENCE_SETTINGS: IntelligenceSettings = {
   minScore: 92,
   lastSentAt: null,
   lockedFields: { ...DEFAULT_INTELLIGENCE_LOCKS },
+  mode: 'TRIAL',
+  effectiveMode: 'APPROVAL',
+  approvalUntil: null,
+  tempo: 'STANDARD',
 };
 
 type OfferLike = {
@@ -955,11 +975,20 @@ export function parseIntelligencePatch(raw: unknown): Partial<{
   intelligenceMinLearns: number;
   intelligenceMinScore: number;
   intelligenceLockedFields: IntelligenceLocks;
+  intelligenceMode: IntelligenceModeSetting;
 }> | null {
   if (!raw || typeof raw !== 'object') return null;
   const body = raw as Record<string, unknown>;
   const out: ReturnType<typeof parseIntelligencePatch> = {};
   if (typeof body.enabled === 'boolean') out!.intelligenceEnabled = body.enabled;
+  const mode = parseIntelligenceModeSetting(body.mode);
+  if (mode) out!.intelligenceMode = mode;
+  // Tempo to gotowy zestaw interwału i limitu; jawnie podane intervalHours/dailyLimit mają pierwszeństwo.
+  const tempo = parseIntelligenceTempo(body.tempo);
+  if (tempo) {
+    out!.intelligenceIntervalHours = INTELLIGENCE_TEMPO_PRESETS[tempo].intervalHours;
+    out!.intelligenceDailyLimit = INTELLIGENCE_TEMPO_PRESETS[tempo].dailyLimit;
+  }
   if (body.intervalHours != null) {
     const n = Math.round(Number(body.intervalHours));
     const snapped = snapToAllowed(n, INTELLIGENCE_INTERVAL_OPTIONS.map((item) => item.value));
@@ -995,17 +1024,26 @@ export function shapeIntelligenceSettings(
     intelligenceMinScore?: number | null;
     intelligenceLastSentAt?: Date | string | null;
     intelligenceLockedFields?: unknown;
+    intelligenceMode?: string | null;
+    createdAt?: Date | string | null;
   },
   pref?: Parameters<typeof defaultIntelligenceLocks>[0],
 ): IntelligenceSettings {
+  const mode = resolveIntelligenceMode(client);
+  const intervalHours =
+    snapToAllowed(Number(client.intelligenceIntervalHours || DEFAULT_INTELLIGENCE_SETTINGS.intervalHours), INTELLIGENCE_INTERVAL_OPTIONS.map((item) => item.value)) ||
+    DEFAULT_INTELLIGENCE_SETTINGS.intervalHours;
+  const dailyLimit =
+    snapToAllowed(Number(client.intelligenceDailyLimit || DEFAULT_INTELLIGENCE_SETTINGS.dailyLimit), INTELLIGENCE_DAILY_LIMIT_OPTIONS.map((item) => item.value)) ||
+    DEFAULT_INTELLIGENCE_SETTINGS.dailyLimit;
   return {
+    mode: mode.setting,
+    effectiveMode: mode.effective,
+    approvalUntil: mode.approvalUntil,
+    tempo: tempoFromSettings(intervalHours, dailyLimit),
     enabled: Boolean(client.intelligenceEnabled),
-    intervalHours:
-      snapToAllowed(Number(client.intelligenceIntervalHours || DEFAULT_INTELLIGENCE_SETTINGS.intervalHours), INTELLIGENCE_INTERVAL_OPTIONS.map((item) => item.value)) ||
-      DEFAULT_INTELLIGENCE_SETTINGS.intervalHours,
-    dailyLimit:
-      snapToAllowed(Number(client.intelligenceDailyLimit || DEFAULT_INTELLIGENCE_SETTINGS.dailyLimit), INTELLIGENCE_DAILY_LIMIT_OPTIONS.map((item) => item.value)) ||
-      DEFAULT_INTELLIGENCE_SETTINGS.dailyLimit,
+    intervalHours,
+    dailyLimit,
     minLearns:
       snapToAllowed(Number(client.intelligenceMinLearns || DEFAULT_INTELLIGENCE_SETTINGS.minLearns), INTELLIGENCE_MIN_LEARNS_OPTIONS.map((item) => item.value)) ||
       DEFAULT_INTELLIGENCE_SETTINGS.minLearns,
