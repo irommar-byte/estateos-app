@@ -756,6 +756,7 @@ export async function tickClientIntelligence(): Promise<{
   let sent = 0;
   let skipped = 0;
   for (const client of clients) {
+    try {
     const pending = await getPendingCheckback(client.id);
     if (pending) {
       skipped += 1;
@@ -861,7 +862,30 @@ export async function tickClientIntelligence(): Promise<{
       }
     }
     if (!sentForClient) skipped += 1;
+    } catch (error) {
+      skipped += 1;
+      console.error('[intelligence.tick] client', client.id, error);
+      await prisma.agencyClientActivity
+        .create({
+          data: {
+            clientId: client.id,
+            agencyUserId: client.agencyUserId,
+            kind: 'INTELLIGENCE_STALLED',
+            title: 'Asystent nie dokończył wysyłki',
+            body: 'Wystąpił błąd techniczny przy przygotowaniu albo wysyłce oferty. Asystent spróbuje ponownie w kolejnym cyklu; możesz też wysłać ofertę ręcznie.',
+            metadata: {
+              agentStatus: 'pending',
+              source: 'tick_error',
+              error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+            },
+          },
+        })
+        .catch(() => {});
+    }
   }
-  const reminders = await remindPendingClientFeedback();
+  const reminders = await remindPendingClientFeedback().catch((error) => {
+    console.error('[intelligence.tick] reminders', error);
+    return { reminded: 0 };
+  });
   return { scanned: clients.length, sent, skipped, reminded: reminders.reminded };
 }

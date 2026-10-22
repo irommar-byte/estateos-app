@@ -527,6 +527,7 @@ export async function registerPortalDevice(params: {
       email: client.email,
       phone: client.phone,
       name: `${client.firstName} ${client.lastName}`.trim() || 'Klient CRM',
+      linkExisting: true,
     });
     if (linkedUserId) {
       await prisma.agencyClient.update({

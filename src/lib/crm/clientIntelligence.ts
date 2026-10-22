@@ -490,7 +490,7 @@ export function intelligenceAdjustScore(params: {
   }
   if (phraseCounts.get('Brak balkonu') && !hasBalcony) {
     score -= 18;
-    reasons.push('Klientka odrzucała mieszkania bez balkonu.');
+    reasons.push('Klient odrzucał wcześniej mieszkania bez balkonu.');
   } else if (phraseCounts.get('Brak balkonu') && hasBalcony) {
     score += 6;
     reasons.push('Ma balkon / loggię — tego wcześniej brakowało.');
@@ -501,7 +501,7 @@ export function intelligenceAdjustScore(params: {
   );
   if (!acceptScarceBudget && expensiveNearBudget.length && maxPrice && Number(offer.price) > maxPrice * 0.92) {
     score -= 16;
-    reasons.push('Cena jest blisko lub powyżej budżetu, a klientka sygnalizowała „za drogo” przy podobnych kwotach.');
+    reasons.push('Cena jest blisko lub powyżej budżetu, a klient sygnalizował „za drogo” przy podobnych kwotach.');
   }
 
   for (const [phrase, count] of phraseCounts) {
@@ -930,13 +930,14 @@ export function clientFacingWhyLine(params: {
 
   const mapped = params.reasons
     .map((reason) => {
-      if (/balkon/i.test(reason)) return 'Ma balkon, którego wcześniej brakowało.';
-      if (/dzielnica .+ już się podobała/i.test(reason)) return reason.replace('już się podobała.', 'którą już zaznaczałeś jako trafioną.');
-      if (/paśmie ogłoszeń/i.test(reason)) return 'Cena jest zbliżona do ofert, które już Ci się podobały.';
-      if (/pok\./i.test(reason) && /zostawał|może być/i.test(reason)) return 'Ma układ pokoi podobny do tego, który już zostawiałeś.';
-      if (/za drogo/i.test(reason)) return null;
-      if (/Radar dał|Po nauce|Dotychczasowa|Spośród|parametr był/i.test(reason)) return null;
-      return reason;
+      // Allow-list: anything not listed here is internal analysis and never reaches the client.
+      if (/tego wcześniej brakowało/i.test(reason)) return 'Ma balkon lub loggię — tego wcześniej brakowało.';
+      if (/^Dzielnica .+ już się podobała\.$/i.test(reason)) return reason.replace('już się podobała.', 'była wcześniej oceniona jako trafiona.');
+      if (/paśmie ogłoszeń/i.test(reason)) return 'Cena jest zbliżona do ofert, które wcześniej oceniono pozytywnie.';
+      if (/^Układ \d+ pok\. (już zostawał|był przy)/i.test(reason)) return 'Ma układ pokoi podobny do wcześniej ocenionych pozytywnie.';
+      if (/^Ma co najmniej \d+ pokoje/i.test(reason)) return reason.replace(' — zgodnie z Twoimi uwagami.', '.');
+      if (/spełnia oczekiwanie co do roku budowy/i.test(reason)) return reason;
+      return null;
     })
     .find(Boolean);
 

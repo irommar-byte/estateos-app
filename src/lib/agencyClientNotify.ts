@@ -473,14 +473,31 @@ export async function notifyAgencyClientAboutOffer(params: {
   let emailSent = false;
   if (params.channel === 'email' && preview.clientEmail) {
     const transporter = buildTransporter();
-    await transporter.sendMail({
-      from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
-      to: preview.clientEmail,
-      replyTo: preview.agentEmail || undefined,
-      subject: preview.subject,
-      html: preview.html,
-    });
-    emailSent = true;
+    try {
+      await transporter.sendMail({
+        from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
+        to: preview.clientEmail,
+        replyTo: preview.agentEmail || undefined,
+        subject: preview.subject,
+        html: preview.html,
+      });
+      emailSent = true;
+    } catch (error) {
+      // Release the claim so the offer is not lost: it was never delivered.
+      if (params.skipIfNotified !== false) {
+        await prisma.agencyClientMatch
+          .updateMany({
+            where: { clientId: params.clientId, offerId: params.offerId, notifiedAt: now },
+            data: {
+              notifiedAt: null,
+              sharedAt: null,
+              ...(params.intelligence ? { intelligenceSent: false, intelligenceReason: null } : {}),
+            },
+          })
+          .catch(() => {});
+      }
+      throw error;
+    }
   }
 
   await prisma.agencyClientActivity.create({

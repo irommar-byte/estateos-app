@@ -60,6 +60,7 @@ type ScheduleSlot = {
   reason: string | null;
   previousStartsAt: string | null;
   prepLabels?: string[];
+  proposedSlots?: string[];
   offer?: PortalPresentationSlot["offer"];
 };
 

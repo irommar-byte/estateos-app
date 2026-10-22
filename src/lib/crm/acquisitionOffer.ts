@@ -225,7 +225,9 @@ export async function createOfferFromAcquisitionRecord(params: {
   if (!(areaVal > 0)) {
     return { ok: false, error: 'Uzupełnij powierzchnię w kroku „Nieruchomość”.' };
   }
-  if (!(roomsVal > 0)) {
+  const propertyKind = parseSellerPropertyType(property.propertyType || client.sellerPropertyType);
+  const needsRooms = propertyKind === 'FLAT' || propertyKind === 'HOUSE';
+  if (needsRooms && !(roomsVal > 0)) {
     return { ok: false, error: 'Uzupełnij liczbę pokoi w kroku „Nieruchomość”.' };
   }
   if (!(priceVal > 0)) {
@@ -339,7 +341,7 @@ export async function createOfferFromAcquisitionRecord(params: {
       sellerCity: city,
       sellerDistrict: district,
       sellerArea: areaVal,
-      sellerRooms: Math.round(roomsVal),
+      sellerRooms: roomsVal > 0 ? Math.round(roomsVal) : null,
       sellerPrice: priceVal,
       sellerPropertyType: parseSellerPropertyType(property.propertyType),
     },
@@ -348,7 +350,7 @@ export async function createOfferFromAcquisitionRecord(params: {
   try {
     const createdOffer = await createOffer({
       userId: params.agencyUserId,
-      title: address ? `Nieruchomość ${address}` : `Mieszkanie ${areaVal} m² ${city}`,
+      title: address ? `Nieruchomość ${address}` : `${sellerPropertyTypeLabel(propertyKind)} ${areaVal} m² ${city}`,
       transactionType: 'SELL',
       propertyType: mapPropertyType(property.propertyType),
       price: priceVal,
@@ -357,7 +359,7 @@ export async function createOfferFromAcquisitionRecord(params: {
       district,
       street: address || undefined,
       area: areaVal,
-      rooms: roomsVal,
+      rooms: roomsVal > 0 ? roomsVal : undefined,
       floor: property.floor ? Number(property.floor) : undefined,
       totalFloors: property.totalFloors ? Number(property.totalFloors) : undefined,
       yearBuilt: property.yearBuilt ? Number(property.yearBuilt) : undefined,

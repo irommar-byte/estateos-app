@@ -88,17 +88,17 @@ export function buildOfferDialogueTurn(params: {
   if (!facts.length && params.reasons?.length) {
     const mapped = params.reasons
       .map((reason) => {
-        if (/balkon/i.test(reason)) return 'Ma balkon lub loggię — tego wcześniej brakowało.';
-        if (/pokoje|pok\./i.test(reason) && /zgodnie|minimum/i.test(reason)) return reason;
-        if (/Budynek z \d{4}/i.test(reason)) return reason;
-        if (/dzielnica .+ już się podobała/i.test(reason)) {
-          return reason.replace('już się podobała.', 'którą już zaznaczałeś jako trafioną.');
+        // Allow-list: only these reasons may reach the client; everything else is the agent's analysis.
+        if (/tego wcześniej brakowało/i.test(reason)) return 'Ma balkon lub loggię — tego wcześniej brakowało.';
+        if (/^Ma co najmniej \d+ pokoje/i.test(reason)) return reason.replace(' — zgodnie z Twoimi uwagami.', '.');
+        if (/spełnia oczekiwanie co do roku budowy/i.test(reason)) return reason;
+        if (/^Dzielnica .+ już się podobała\.$/i.test(reason)) {
+          return reason.replace('już się podobała.', 'była wcześniej oceniona jako trafiona.');
         }
-        if (/paśmie ogłoszeń/i.test(reason)) return 'Cena jest zbliżona do ofert, które już Ci się podobały.';
-        if (/za drogo|Radar dał|Po nauce|Dotychczasowa|Spośród|parametr był|scoring|zderza|wraca słowo|już odpadała|dostała negatywną/i.test(reason)) {
-          return null;
-        }
-        return reason;
+        if (/paśmie ogłoszeń/i.test(reason)) return 'Cena jest zbliżona do ofert, które wcześniej oceniono pozytywnie.';
+        if (/^Ma parking/i.test(reason)) return 'Ma parking lub miejsce postojowe.';
+        if (/^Jest winda/i.test(reason)) return 'Jest winda w budynku.';
+        return null;
       })
       .filter(Boolean) as string[];
     facts.push(...mapped.slice(0, 3));

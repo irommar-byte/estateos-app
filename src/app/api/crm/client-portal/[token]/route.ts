@@ -637,7 +637,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             clientFeedback: m.clientFeedback,
             clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,
             intelligenceSent: Boolean(m.intelligenceSent),
-            intelligenceReason: m.intelligenceReason || null,
+            // Internal assistant analysis (confidence, learned budget) stays with the agent.
+            intelligenceReason: null,
             clientWhy: intelligenceEnabled ? whyByOffer.get(m.offerId) || null : null,
             offer: shapeAgencyClientMatchOffer(m.offer),
           }))
@@ -762,6 +763,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       linkedUserId: true,
       firstName: true,
       lastName: true,
+      intelligenceEnabled: true,
       buyerPreference: { select: { minMatchThreshold: true } },
       acquisition: {
         select: {
@@ -817,9 +819,19 @@ export async function POST(req: Request, ctx: RouteCtx) {
       });
     }
 
+    // Only the very first proposal can be pulled by the client; later ones follow the assistant's rhythm.
+    const alreadySent = await prisma.agencyClientMatch.count({
+      where: { clientId: client.id, notifiedAt: { not: null } },
+    });
+    if (alreadySent > 0) {
+      return NextResponse.json({
+        success: false,
+        reason: 'Pierwsza propozycja już jest w panelu — kolejne przyjdą w ustalonym rytmie.',
+      });
+    }
+
     const intel = await sendIntelligenceOffer({
       clientId: client.id,
-      force: true,
       ignoreInterval: true,
       channel: 'manual',
     });

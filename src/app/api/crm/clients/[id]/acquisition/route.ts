@@ -375,6 +375,14 @@ export async function POST(req: Request, ctx: RouteCtx) {
           .digest("hex")
       : null;
 
+    const claimed = await prisma.agencyClientAcquisition.updateMany({
+      where: { id: base.id, NOT: { status: "SIGNED" } },
+      data: { status: "SIGNED", signedAt },
+    });
+    if (claimed.count !== 1) {
+      return NextResponse.json({ error: "Dokument został już podpisany." }, { status: 409 });
+    }
+
     const updated = await prisma.agencyClientAcquisition.update({
       where: { id: base.id },
       data: {

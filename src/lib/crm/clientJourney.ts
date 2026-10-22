@@ -333,6 +333,11 @@ export function resolvePresentation(activities: ActivityLike[]): ScheduleSlot | 
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   const lastHeld = held[held.length - 1];
   if (!lastHeld) return slot;
+  // A new showing proposed after the last held one is a separate visit — it has not happened yet.
+  const latestSeedAt = activities
+    .filter((row) => row.kind === JOURNEY_ACTIVITY.PRESENTATION)
+    .reduce((max, row) => Math.max(max, new Date(row.createdAt).getTime()), 0);
+  if (latestSeedAt > new Date(lastHeld.createdAt).getTime()) return slot;
   const heldAt =
     parseIso(asMeta(lastHeld.metadata).heldAt) ||
     (typeof lastHeld.createdAt === 'string' ? lastHeld.createdAt : lastHeld.createdAt.toISOString());
