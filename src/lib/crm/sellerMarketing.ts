@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
+import { buildAppleClientEmailHtml, loadAppleClientEmailIdentity } from "@/lib/email/appleClientEmail";
+import { deliverToClient, emailStep } from "@/lib/crm/clientOutbox";
 import { Prisma } from "@prisma/client";
-import { sendClientPortalWebPush } from "@/lib/crm/clientPortalWebPush";
-import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { buildPortalUrl } from "@/lib/agencyClientNotify";
 import { agentCanPublishOfferEvents } from "@/lib/crm/agencyTeammates";
 import type { PublicLinkPreview } from "@/lib/crm/publicLinkPreview";
@@ -242,6 +242,34 @@ function buildMarketingMetadata(
   } as Prisma.InputJsonObject;
 }
 
+/** Wspólny, elegancki szablon maili do sprzedającego (logo biura, wizytówka agenta, jeden przycisk). */
+async function sellerClientEmailHtml(params: {
+  agencyUserId: number;
+  firstName: string | null;
+  eyebrow: string;
+  title: string;
+  message: string;
+  ctaLabel: string;
+  ctaHref: string;
+}): Promise<string> {
+  const identity = await loadAppleClientEmailIdentity(params.agencyUserId);
+  const paragraphs = String(params.message || "")
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => `<p style="margin:0 0 12px;">${escapeHtml(part).replace(/\n/g, "<br />")}</p>`)
+    .join("");
+  return buildAppleClientEmailHtml({
+    eyebrow: params.eyebrow,
+    title: params.title,
+    greetingName: params.firstName?.trim() || "Państwo",
+    bodyHtml: paragraphs,
+    identity,
+    ctas: [{ label: params.ctaLabel, href: params.ctaHref, variant: "primary" }],
+    includeAgentCard: true,
+  });
+}
+
 export async function notifyClientIfVisible(params: {
   clientId: number;
   visibleToClient: boolean;
@@ -250,39 +278,56 @@ export async function notifyClientIfVisible(params: {
   email?: { to: string; subject: string; html: string };
   tag?: string;
   notificationType?: string;
+  /** Agent zobaczył podgląd tej informacji. */
+  approved?: boolean;
 }) {
   if (!params.visibleToClient) {
     return { emailed: false, pushed: 0 };
   }
 
-  let emailed = false;
-  if (params.email) {
-    const client = await prisma.agencyClient.findUnique({
-      where: { id: params.clientId },
-      select: { portalToken: true },
-    });
-    const portalUrl = client?.portalToken
-      ? buildPortalUrl(client.portalToken)
-      : "https://estateos.pl";
-    emailed = await sendTransactionalEmail({
-      to: params.email.to,
-      subject: params.email.subject,
-      html: params.email.html.replace(
-        /\{\{portalUrl\}\}/g,
-        escapeHtml(portalUrl),
-      ),
-    });
-  }
+  const client = await prisma.agencyClient.findUnique({
+    where: { id: params.clientId },
+    select: { portalToken: true, agencyUserId: true },
+  });
+  if (!client) return { emailed: false, pushed: 0 };
+  const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : "https://estateos.pl";
 
-  const push = await sendClientPortalWebPush(params.clientId, {
-    title: params.title,
-    body: params.body.slice(0, 180),
-    tag: params.tag || `seller-marketing-${params.clientId}`,
-    notificationType: params.notificationType || "seller_marketing",
-    native: true,
+  const delivery = await deliverToClient({
+    agencyUserId: client.agencyUserId,
+    clientId: params.clientId,
+    category: "marketing",
+    source: params.notificationType || "seller_marketing",
+    approved: params.approved,
+    steps: [
+      ...(params.email
+        ? [
+            emailStep({
+              to: params.email.to,
+              subject: params.email.subject,
+              html: params.email.html.replace(/\{\{portalUrl\}\}/g, escapeHtml(portalUrl)),
+            }),
+          ]
+        : []),
+      {
+        kind: "push" as const,
+        clientId: params.clientId,
+        payload: {
+          title: params.title,
+          body: params.body.slice(0, 180),
+          tag: params.tag || `seller-marketing-${params.clientId}`,
+          notificationType: params.notificationType || "seller_marketing",
+          native: true,
+        },
+      },
+    ],
   });
 
-  return { emailed, pushed: push.sent || 0 };
+  return {
+    emailed: delivery.emailSent,
+    pushed: delivery.sent ? 1 : 0,
+    queued: delivery.queued,
+    outboxId: delivery.outboxId,
+  };
 }
 
 export function shapeMarketingTimelineItem(activity: {
@@ -342,14 +387,14 @@ export function shapeMarketingTimelineItem(activity: {
   };
 }
 
-async function deliverMarketingNotification(activityId: number) {
+async function deliverMarketingNotification(activityId: number, approved?: boolean) {
   const queued = await prisma.sellerMarketingNotification.findUnique({
     where: { activityId },
     include: {
       activity: {
         include: {
           client: {
-            select: { email: true, firstName: true },
+            select: { email: true, firstName: true, agencyUserId: true },
           },
         },
       },
@@ -368,6 +413,7 @@ async function deliverMarketingNotification(activityId: number) {
 
   try {
     const result = await notifyClientIfVisible({
+      approved,
       clientId: activity.clientId,
       visibleToClient: true,
       title: activity.title || "Aktualizacja promocji oferty",
@@ -378,13 +424,15 @@ async function deliverMarketingNotification(activityId: number) {
         ? {
             to: activity.client.email,
             subject: activity.title || "Aktualizacja promocji oferty",
-            html: `<div style="font-family:-apple-system,sans-serif;padding:24px;color:#111">
-              <p style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#059669;font-weight:800">EstateOS™ · sprzedaż</p>
-              <h2 style="margin:8px 0 12px">${escapeHtml(activity.title || "Aktualizacja promocji oferty")}</h2>
-              <p>Dzień dobry ${escapeHtml(activity.client.firstName)},</p>
-              <p>${escapeHtml(activity.body || "")}</p>
-              <p><a href="{{portalUrl}}" style="display:inline-block;background:#10b981;color:#052e1c;padding:12px 18px;border-radius:999px;font-weight:800;text-decoration:none">Otwórz panel współpracy</a></p>
-            </div>`,
+            html: await sellerClientEmailHtml({
+              agencyUserId: activity.client.agencyUserId,
+              firstName: activity.client.firstName,
+              eyebrow: "Promocja Twojej oferty",
+              title: activity.title || "Aktualizacja promocji oferty",
+              message: activity.body || "",
+              ctaLabel: "Zobacz w panelu klienta",
+              ctaHref: "{{portalUrl}}",
+            }),
           }
         : undefined,
     });
@@ -425,6 +473,8 @@ export async function recordMarketingActivity(params: {
   visibleToClient?: boolean;
   notifyEmail?: boolean;
   skipClientNotify?: boolean;
+  /** Agent zobaczył treść tej informacji przed publikacją. */
+  approved?: boolean;
 }) {
   const client = await prisma.agencyClient.findFirst({
     where: {
@@ -473,7 +523,7 @@ export async function recordMarketingActivity(params: {
   });
 
   const notification = shouldNotify
-    ? await deliverMarketingNotification(activity.id)
+    ? await deliverMarketingNotification(activity.id, params.approved)
     : { emailed: false, pushed: 0 };
 
   return {
@@ -759,6 +809,7 @@ export async function upsertSellerNextStep(params: {
   clientMessage?: string | null;
   dueAt?: Date | null;
   visibleToClient?: boolean;
+  approved?: boolean;
 }) {
   const currentStep = params.currentStep.trim();
   const nextAction = params.nextAction.trim();
@@ -774,7 +825,7 @@ export async function upsertSellerNextStep(params: {
       type: "SELLER",
       status: "ACTIVE",
     },
-    select: { id: true, agencyUserId: true, email: true, portalToken: true },
+    select: { id: true, agencyUserId: true, email: true, portalToken: true, firstName: true },
   });
   if (!owned)
     return {
@@ -814,6 +865,7 @@ export async function upsertSellerNextStep(params: {
   if (params.visibleToClient === true) {
     const portalUrl = owned.portalToken ? buildPortalUrl(owned.portalToken) : "https://estateos.pl";
     await notifyClientIfVisible({
+      approved: params.approved,
       clientId: params.clientId,
       visibleToClient: true,
       title: currentStep.slice(0, 80),
@@ -823,12 +875,16 @@ export async function upsertSellerNextStep(params: {
       email: owned.email
         ? {
             to: owned.email,
-            subject: `${currentStep.slice(0, 80)} · EstateOS`,
-            html: `<div style="font-family:-apple-system,sans-serif;padding:24px;max-width:560px">
-              <h2>${escapeHtml(currentStep)}</h2>
-              <p>${escapeHtml(params.clientMessage || nextAction)}</p>
-              <p><a href="${portalUrl}">Otwórz panel klienta</a></p>
-            </div>`,
+            subject: `${currentStep.slice(0, 80)} · aktualizacja sprzedaży`,
+            html: await sellerClientEmailHtml({
+              agencyUserId: owned.agencyUserId,
+              firstName: owned.firstName,
+              eyebrow: "Sprzedaż Twojej nieruchomości",
+              title: currentStep,
+              message: params.clientMessage || nextAction,
+              ctaLabel: "Otwórz panel klienta",
+              ctaHref: portalUrl,
+            }),
           }
         : undefined,
     });
@@ -863,6 +919,7 @@ export async function createClientDecisionRequest(params: {
   clientMessage: string;
   dueAt?: Date | null;
   payload?: Record<string, unknown> | null;
+  approved?: boolean;
 }) {
   const title = params.title.trim();
   const clientMessage = params.clientMessage.trim();
@@ -879,7 +936,7 @@ export async function createClientDecisionRequest(params: {
       type: "SELLER",
       status: "ACTIVE",
     },
-    select: { id: true, agencyUserId: true, email: true, portalToken: true },
+    select: { id: true, agencyUserId: true, email: true, portalToken: true, firstName: true },
   });
   if (!owned)
     return {
@@ -910,6 +967,7 @@ export async function createClientDecisionRequest(params: {
 
   const portalUrl = owned.portalToken ? buildPortalUrl(owned.portalToken) : "https://estateos.pl";
   await notifyClientIfVisible({
+      approved: params.approved,
     clientId: params.clientId,
     visibleToClient: true,
     title: "Potrzebujemy Twojej decyzji",
@@ -919,12 +977,16 @@ export async function createClientDecisionRequest(params: {
     email: owned.email
       ? {
           to: owned.email,
-          subject: `Decyzja: ${title.slice(0, 80)}`,
-          html: `<div style="font-family:-apple-system,sans-serif;padding:24px;max-width:560px">
-            <h2>${escapeHtml(title)}</h2>
-            <p>${escapeHtml(clientMessage)}</p>
-            <p><a href="${portalUrl}">Otwórz panel i odpowiedz</a></p>
-          </div>`,
+          subject: `Prosimy o decyzję: ${title.slice(0, 80)}`,
+          html: await sellerClientEmailHtml({
+            agencyUserId: owned.agencyUserId,
+            firstName: owned.firstName,
+            eyebrow: "Potrzebna Twoja decyzja",
+            title,
+            message: clientMessage,
+            ctaLabel: "Odpowiedz w panelu",
+            ctaHref: portalUrl,
+          }),
         }
       : undefined,
   });

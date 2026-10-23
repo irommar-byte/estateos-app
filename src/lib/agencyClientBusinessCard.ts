@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { sendTransactionalEmail } from '@/lib/email/transactional';
+import { deliverToClient, emailStep } from '@/lib/crm/clientOutbox';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { getBestUserAvatarUrl } from '@/lib/userAvatar';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
@@ -158,6 +158,8 @@ export async function sendAgencyClientBusinessCard(params: {
     notes?: string | null;
   };
   prepLabels?: string[];
+  /** Agent zobaczył podgląd maila (np. przy dodawaniu klienta). */
+  approved?: boolean;
 }) {
   const [client, agent] = await Promise.all([
     prisma.agencyClient.findFirst({
@@ -277,7 +279,7 @@ export async function sendAgencyClientBusinessCard(params: {
       })
     : null;
 
-  const sent = await sendTransactionalEmail({
+  const cardDelivery = await deliverToClient({ agencyUserId: params.agencyUserId, clientId: client.id, category: 'card', source: params.meeting ? 'card_meeting' : 'card', approved: params.approved, steps: [emailStep({
     to: client.email,
     subject: meeting
       ? `Spotkanie ${formatMeetingWhenPl(meeting.startsAt)} · ${agencyName}`
@@ -299,9 +301,12 @@ export async function sendAgencyClientBusinessCard(params: {
           ]
         : []),
     ],
-  });
+  })] });
 
-  if (!sent) throw new Error('Nie udało się wysłać e-maila. Sprawdź konfigurację poczty.');
+  if (cardDelivery.queued) {
+    return { sent: false, queued: true, outboxId: cardDelivery.outboxId, email: client.email, agentName, agencyName };
+  }
+  if (!cardDelivery.emailSent) throw new Error('Nie udało się wysłać e-maila. Sprawdź konfigurację poczty.');
 
   await prisma.agencyClientActivity.create({
     data: {
@@ -324,6 +329,8 @@ export async function sendAgencyClientBusinessCard(params: {
 
   return {
     sent: true,
+    queued: false,
+    outboxId: null,
     email: client.email,
     agentName,
     agencyName,

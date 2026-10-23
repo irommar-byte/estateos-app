@@ -30,12 +30,12 @@ test('północ w Warszawie', () => {
   assert.equal(warsawDayStart(new Date('2026-07-21T23:30:00Z')).toISOString(), '2026-07-21T22:00:00.000Z');
 });
 
-test('tryb: TRIAL przez 7 dni z akceptacją, potem autopilot', () => {
+test('tryb: domyślnie wszystko czeka na akceptację agenta', () => {
   const now = new Date('2026-10-23T10:00:00Z');
-  assert.equal(resolveIntelligenceMode({ intelligenceMode: 'TRIAL', createdAt: '2026-10-20T10:00:00Z' }, now).effective, 'APPROVAL');
-  assert.equal(resolveIntelligenceMode({ intelligenceMode: 'TRIAL', createdAt: '2026-10-10T10:00:00Z' }, now).effective, 'AUTOPILOT');
-  assert.equal(resolveIntelligenceMode({ intelligenceMode: 'APPROVAL', createdAt: '2020-01-01' }, now).effective, 'APPROVAL');
-  assert.equal(resolveIntelligenceMode({ intelligenceMode: null }, now).effective, 'AUTOPILOT');
+  assert.equal(resolveIntelligenceMode({ intelligenceMode: 'TRIAL', createdAt: '2026-10-10T10:00:00Z' }, now).effective, 'APPROVAL');
+  assert.equal(resolveIntelligenceMode({ intelligenceMode: 'APPROVAL' }, now).effective, 'APPROVAL');
+  assert.equal(resolveIntelligenceMode({ intelligenceMode: null }, now).effective, 'APPROVAL');
+  assert.equal(resolveIntelligenceMode({ intelligenceMode: 'AUTOPILOT' }, now).effective, 'AUTOPILOT');
 });
 
 test('tempo z ustawień', () => {

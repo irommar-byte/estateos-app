@@ -34,6 +34,8 @@ import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
 import { collectAgentOfferReplies, type ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
 import { initialOpenMatchIds } from "@/lib/crm/clientPortalOfferBoard";
 import ClientPortalAgentReplyInbox from "@/components/portal/ClientPortalAgentReplyInbox";
+import ClientPortalNowCard from "@/components/portal/ClientPortalNowCard";
+import { Mail, Phone } from "lucide-react";
 
 type SearchCriteria = {
   location: string;
@@ -271,6 +273,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [fromSzukam, setFromSzukam] = useState(false);
   const [welcomeEmailSent, setWelcomeEmailSent] = useState(false);
   const [releaseAttempted, setReleaseAttempted] = useState(false);
+  const [firstOfferPendingAgent, setFirstOfferPendingAgent] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const matchesSectionRef = useRef<HTMLDivElement | null>(null);
   const knownMatchIdsRef = useRef<number[]>([]);
@@ -388,7 +391,12 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "release_first_match" }),
     })
-      .then(() => load({ silent: true }))
+      .then(async (response) => {
+        const json = await response.json().catch(() => ({}));
+        // Agent najpierw zatwierdza pierwszą propozycję — pokazujemy to zamiast pustego ekranu.
+        if (json?.pendingAgent) setFirstOfferPendingAgent(true);
+        return load({ silent: true });
+      })
       .catch(() => {});
   }, [token, portal, releaseAttempted, load]);
 
@@ -535,95 +543,88 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     portal.type === "SELLER" &&
     (Boolean(portal.presentation) || portal.acquisition?.status === "SIGNED");
 
+  const unreadAgentReplies = collectAgentOfferReplies(portal.matches).filter((reply) => reply.unread).length;
+  const pendingDecision = (portal.pendingDecisions || []).find((decision) => !decision.clientResponse) || null;
+  const listingLive = portal.listing?.status === "ACTIVE" || portal.listing?.status === "PUBLISHED";
+
   return (
-    <main className="client-portal-page pb-24 pt-2 text-[var(--eos-text)] sm:pb-28">
-    <div className="mx-auto max-w-3xl space-y-8 px-4 sm:px-6">
-      {portal.presentation && token ? (
-        <ClientPortalPresentationHero
-          token={token}
-          clientType={portal.type}
-          slot={portal.presentation}
-          agentName={portal.agentName}
-          onDone={() => load()}
-        />
-      ) : null}
+    <main className="client-portal-page pb-24 pt-4 text-[var(--eos-text)] sm:pb-28">
+    <div className="mx-auto max-w-3xl space-y-6 px-4 sm:px-6">
+      <ClientPortalNowCard
+        input={{
+          type: portal.type,
+          clientFirstName: greetingName.split(" ")[0] || greetingName,
+          agentName: portal.agentName,
+          agentPhone: portal.agentPhone || portal.agencyPhone || null,
+          presentation: portal.presentation,
+          meeting: portal.meeting,
+          hasCheckback: portal.type === "BUYER" && Boolean(portal.pendingCheckback),
+          unreadAgentReplies,
+          pendingOfferCount: pendingMatches.length,
+          totalOfferCount: portal.matches.length,
+          awaitingFirstOffer,
+          firstOfferPendingAgent: firstOfferPendingAgent && portal.matches.length === 0,
+          pendingDecisionTitle: portal.type === "SELLER" && pendingDecision ? pendingDecision.title : null,
+          agreementSigned: portal.acquisition?.status === "SIGNED",
+          hasAgreement: Boolean(portal.acquisition?.agreementSnapshot),
+          listingLive,
+          purchasePhase: portal.purchase?.phase || null,
+        }}
+      />
 
-      {portal.type === "BUYER" && portal.purchase ? (
-        <section className="eos-lux-panel rounded-[1.75rem] p-6">
-          <p className="eos-portal-label eos-portal-label--ok">
-            {portal.purchase.phase === "closed"
-              ? "Twoja nieruchomość"
-              : portal.purchase.phase === "negotiating"
-                ? "Transakcja"
-                : "Po oglądaniu"}
+      {/* Twój agent — zawsze pod ręką */}
+      <section className="eos-inset-frame flex items-center gap-4 rounded-[1.5rem] p-4 sm:p-5">
+        {portal.agentPhoto ? (
+          <img
+            src={portal.agentPhoto}
+            alt={portal.agentName}
+            className="size-14 shrink-0 rounded-full object-cover ring-2 ring-emerald-500/30"
+          />
+        ) : (
+          <div className="eos-inset-well flex size-14 shrink-0 items-center justify-center rounded-full text-lg font-black text-emerald-600">
+            {portal.agentName.charAt(0)}
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">Twój agent</p>
+          <p className="truncate text-base font-bold text-[var(--eos-text)]">{portal.agentName}</p>
+          <p className="truncate text-xs text-[var(--eos-muted)]">
+            {[portal.agentTitle || "Agent nieruchomości", portal.agencyName].filter(Boolean).join(" · ")}
           </p>
-          <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">{portal.purchase.title}</h2>
-          {portal.purchase.address ? (
-            <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.purchase.address}</p>
-          ) : null}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xl font-black text-emerald-600">
-              {portal.purchase.price
-                ? `${Number(portal.purchase.price).toLocaleString("pl-PL")} PLN`
-                : "Cena do uzgodnienia"}
-            </p>
-            <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-[10px]">
-              {portal.purchase.statusLabel}
-            </span>
-          </div>
-          <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
-            {portal.purchase.phase === "closed"
-              ? "Ta oferta jest kupiona. Akt notarialny i klucze domyka agent."
-              : portal.purchase.phase === "negotiating"
-                ? "Pokaz już był. Trwa rozmowa o cenie — zakup zamknie się dopiero przy akcie."
-                : "Oglądanie się odbyło. To jeszcze nie zakup. Kolejny krok to rezerwacja i uzgodniona cena."}
-          </p>
-        </section>
-      ) : null}
-
-      <header className="eos-inset-frame eos-stack-card relative rounded-[2rem] p-6 sm:p-8">
-        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0 space-y-1">
-            <span className="eos-portal-label eos-portal-label--ok inline-flex items-center gap-1.5 eos-raised-chip rounded-full px-3 py-1">
-              <CheckCircle2 className="size-3.5" />
-              Panel Klienta EstateOS
-            </span>
-            <h1 className="mt-2 break-words text-3xl font-black leading-tight text-[var(--eos-text)]">Witaj, {greetingName}</h1>
-            <p className="text-sm leading-relaxed text-[var(--eos-muted)]">
-              {portal.type === "BUYER"
-                ? `Twój agent prowadzi dopasowanie. Oferty są posegregowane: nowe, do oglądania, do przemyślenia i te, które nie pasują.`
-                : `Dedykowany agent i biuro reprezentują Twoją nieruchomość.`}
-            </p>
-          </div>
-
-          {/* Agent Business Card */}
-          <div className="eos-inset-well relative z-10 -mt-1 flex w-full shrink-0 items-center gap-4 rounded-2xl p-4 md:-mr-2 md:mt-6 md:w-auto md:max-w-sm">
-            {portal.agentPhoto ? (
-              <img
-                src={portal.agentPhoto}
-                alt={portal.agentName}
-                className="size-16 rounded-full object-cover ring-2 ring-emerald-500/30"
-              />
-            ) : (
-              <div className="eos-inset-well flex size-16 items-center justify-center rounded-full text-xl font-black text-emerald-600">
-                {portal.agentName.charAt(0)}
-              </div>
-            )}
-            <div className="min-w-0 space-y-1">
-              <p className="eos-portal-label eos-portal-label--ok">Twój agent</p>
-              <p className="break-words text-base font-bold text-[var(--eos-text)]">{portal.agentName}</p>
-              <p className="break-words text-xs text-[var(--eos-muted)]">{portal.agentTitle || "Doradca ds. Nieruchomości"}</p>
-              <p className="break-words text-xs font-semibold text-emerald-600">{portal.agencyName}</p>
-            </div>
-          </div>
         </div>
+        <div className="flex shrink-0 gap-2">
+          {portal.agentPhone || portal.agencyPhone ? (
+            <a
+              href={`tel:${String(portal.agentPhone || portal.agencyPhone).replace(/[^\d+]/g, "")}`}
+              aria-label="Zadzwoń do agenta"
+              className="flex size-11 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-emerald-600 transition hover:border-emerald-500/40"
+            >
+              <Phone className="size-[18px]" />
+            </a>
+          ) : null}
+          {portal.agentEmail ? (
+            <a
+              href={`mailto:${portal.agentEmail}`}
+              aria-label="Napisz e-mail do agenta"
+              className="flex size-11 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-emerald-600 transition hover:border-emerald-500/40"
+            >
+              <Mail className="size-[18px]" />
+            </a>
+          ) : null}
+        </div>
+      </section>
 
-        {token ? (
-          <div className="mt-6 space-y-3 border-t border-[var(--eos-border)]/60 pt-6">
-            <ClientPortalLiveChat token={token} agentName={portal.agentName} />
-          </div>
-        ) : null}
-      </header>
+      {portal.presentation && token ? (
+        <div id="portal-presentation" className="scroll-mt-24">
+          <ClientPortalPresentationHero
+            token={token}
+            clientType={portal.type}
+            slot={portal.presentation}
+            agentName={portal.agentName}
+            onDone={() => load()}
+          />
+        </div>
+      ) : null}
 
       {portal.meeting && collapseAgentMeeting ? (
         <p className="px-1 text-sm leading-relaxed text-[var(--eos-muted)]">
@@ -631,9 +632,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           {portal.meeting.status === "confirmed" ? " — zakończone." : "."} Umowa i ogłoszenie są poniżej.
         </p>
       ) : portal.meeting ? (
-        <section className="eos-lux-panel rounded-[1.75rem] p-6">
+        <section id="portal-meeting" className="eos-lux-panel scroll-mt-24 rounded-[1.75rem] p-6">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <p className="eos-portal-label eos-portal-label--ok">
                 {portal.type === "SELLER" ? "Spotkanie z agentem" : "Umówienie spotkania"}
               </p>
@@ -644,7 +645,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.meeting.location}</p>
               ) : null}
             </div>
-            <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-[10px]">
+            <span className="eos-raised-chip eos-raised-chip--on shrink-0 self-start whitespace-nowrap rounded-full px-3 py-1 text-[10px]">
               {portal.meeting.status === "confirmed" ? "Potwierdzone" : "Do potwierdzenia"}
             </span>
           </div>
@@ -675,6 +676,39 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </section>
       ) : null}
 
+      {portal.type === "BUYER" && portal.purchase ? (
+        <section className="eos-lux-panel rounded-[1.75rem] p-6">
+          <p className="eos-portal-label eos-portal-label--ok">
+            {portal.purchase.phase === "closed"
+              ? "Twoja nieruchomość"
+              : portal.purchase.phase === "negotiating"
+                ? "Transakcja"
+                : "Po oglądaniu"}
+          </p>
+          <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">{portal.purchase.title}</h2>
+          {portal.purchase.address ? (
+            <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.purchase.address}</p>
+          ) : null}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xl font-black text-emerald-600">
+              {portal.purchase.price
+                ? `${Number(portal.purchase.price).toLocaleString("pl-PL")} PLN`
+                : "Cena do uzgodnienia"}
+            </p>
+            <span className="eos-raised-chip eos-raised-chip--on whitespace-nowrap rounded-full px-3 py-1 text-[10px]">
+              {portal.purchase.statusLabel}
+            </span>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
+            {portal.purchase.phase === "closed"
+              ? "Ta oferta jest kupiona. Akt notarialny i klucze domyka agent."
+              : portal.purchase.phase === "negotiating"
+                ? "Pokaz już był. Trwa rozmowa o cenie — zakup zamknie się dopiero przy akcie."
+                : "Oglądanie się odbyło. To jeszcze nie zakup. Kolejny krok to rezerwacja i uzgodniona cena."}
+          </p>
+        </section>
+      ) : null}
+
       {portal.type === "BUYER" && portal.pendingCheckback && token ? (
         <ClientPortalIntelligenceCheckback
           token={token}
@@ -684,6 +718,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {portal.type === "BUYER" && token ? (
+        <div id="portal-replies" className="scroll-mt-24">
         <ClientPortalAgentReplyInbox
           token={token}
           replies={collectAgentOfferReplies(portal.matches)}
@@ -695,6 +730,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           }}
           onDone={() => void load({ silent: true })}
         />
+        </div>
       ) : null}
 
       {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}
@@ -722,7 +758,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {portal.type === "SELLER" && portal.acquisition ? (
-        <section className="eos-lux-panel space-y-5 rounded-[1.75rem] p-5 sm:p-7">
+        <section id="portal-agreement" className="eos-lux-panel scroll-mt-24 space-y-5 rounded-[1.75rem] p-5 sm:p-7">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <p className="eos-portal-label eos-portal-label--ok flex items-center gap-2">
@@ -731,10 +767,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               </p>
               <h2 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Umowa i ustalenia</h2>
               <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
-                Umowa i ustalenia ze spotkania. Agent prowadzi ten etap — nic nie zaznaczasz.
+                Warunki współpracy ustalone na spotkaniu. Ten etap prowadzi agent — nie musisz nic zaznaczać.
               </p>
             </div>
-            <span className={`eos-raised-chip inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2 text-[9px] ${
+            <span className={`eos-raised-chip inline-flex shrink-0 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 py-2 text-[10px] ${
               portal.acquisition.status === "SIGNED" ? "eos-raised-chip--on" : ""
             }`}>
               {portal.acquisition.status === "SIGNED" ? <ShieldCheck className="size-3.5" /> : <CalendarCheck2 className="size-3.5" />}
@@ -794,15 +830,15 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {portal.type === "SELLER" ? (
-        <section className="eos-lux-panel rounded-[1.75rem] p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+        <section id="portal-listing" className="eos-lux-panel scroll-mt-24 rounded-[1.75rem] p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <p className="eos-portal-label eos-portal-label--ok">Sprzedaż</p>
               <h2 className="mt-1 text-xl font-bold text-[var(--eos-text)]">
                 {portal.listing?.title || "Przygotowanie ogłoszenia"}
               </h2>
             </div>
-            <span className="eos-raised-chip eos-raised-chip--on rounded-full px-3 py-1 text-xs">
+            <span className="eos-raised-chip eos-raised-chip--on mt-1 shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] leading-none">
               {portal.listing?.statusLabel || "W przygotowaniu"}
             </span>
           </div>
@@ -822,7 +858,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 {portal.listing.price ? `${portal.listing.price.toLocaleString("pl-PL")} PLN` : "Cena na zapytanie"}
               </p>
               <p className="text-sm font-semibold text-[var(--eos-text)]">
-                📍 {portal.listing.city} {portal.listing.district ? `· ${portal.listing.district}` : ""}
+                {[portal.listing.city, portal.listing.district].filter(Boolean).join(" · ")}
               </p>
               {portal.listing.status === "ACTIVE" || portal.listing.status === "PUBLISHED" ? (
                 <>
@@ -865,6 +901,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : null}
 
       {portal.type === "SELLER" && token ? (
+        <div id="portal-decisions" className="scroll-mt-24">
         <SellerPortalCollaboration
           token={token}
           listingImage={portal.listing?.imageUrl}
@@ -878,10 +915,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           }
           onDone={() => void load()}
         />
+        </div>
       ) : null}
 
       {portal.type === "BUYER" && token ? (
-        <div ref={matchesSectionRef}>
+        <div ref={matchesSectionRef} id="portal-offers" className="scroll-mt-24">
           <ClientPortalOfferBoard
             token={token}
             matches={portal.matches}
@@ -909,6 +947,19 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             }}
           />
         </div>
+      ) : null}
+
+      {token ? (
+        <section id="portal-chat" className="eos-inset-frame scroll-mt-24 rounded-[1.75rem] p-5 sm:p-6">
+          <p className="eos-portal-label eos-portal-label--ok">Rozmowa z agentem</p>
+          <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">Masz pytanie? Napisz tutaj</h2>
+          <p className="mt-1 text-sm text-[var(--eos-muted)]">
+            {portal.agentName} odpowie w tym oknie — dostaniesz też powiadomienie.
+          </p>
+          <div className="mt-4">
+            <ClientPortalLiveChat token={token} agentName={portal.agentName} />
+          </div>
+        </section>
       ) : null}
 
       {token ? (

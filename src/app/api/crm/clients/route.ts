@@ -1,4 +1,5 @@
 import { parseSalutation } from '@/lib/crm/intelligenceSchedule';
+import { withOutboxResponse } from '@/lib/crm/clientOutbox';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
@@ -162,6 +163,10 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  return withOutboxResponse(() => handlePOST(req));
+}
+
+async function handlePOST(req: Request) {
   const agencyUserId = await requireAgencyUserId(req);
   if (!agencyUserId) {
     return NextResponse.json({ error: 'Dostęp tylko dla agencji i agentów.' }, { status: 403 });
@@ -363,6 +368,7 @@ export async function POST(req: Request) {
 
   if (emailRaw) {
     await sendAgencyClientBusinessCard({
+      approved: body.approved === true,
       clientId: client.id,
       agencyUserId,
       customMessage: meetingPayload

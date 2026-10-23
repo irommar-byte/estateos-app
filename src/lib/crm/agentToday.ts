@@ -7,6 +7,7 @@ import { isSameWarsawDay } from '@/lib/crm/scheduleIdentity';
 import { getOfferPrivateNote } from '@/lib/offerPrivateNotes';
 import { JOURNEY_ACTIVITY } from '@/lib/crm/clientJourney';
 import { extractOwnerContact, type TodayOwnerContact } from '@/lib/crm/ownerContact';
+import { listPendingOutbox, type OutboxItem } from '@/lib/crm/clientOutbox';
 
 /**
  * Ekran „Dziś” agenta: wszystko, co czeka na jego ruch, w kolejności pilności.
@@ -88,6 +89,7 @@ export type TodayStaleClient = {
 export type AgentToday = {
   generatedAt: string;
   counts: {
+    outbox: number;
     ownerCalls: number;
     approvals: number;
     replies: number;
@@ -95,6 +97,8 @@ export type AgentToday = {
     stale: number;
     total: number;
   };
+  /** Wiadomości do klientów czekające na akceptację agenta. */
+  outbox: OutboxItem[];
   ownerCalls: TodayOwnerCall[];
   approvals: TodayApproval[];
   replies: TodayReply[];
@@ -387,13 +391,15 @@ export async function loadAgentToday(params: {
       };
     });
 
+  const outbox = await listPendingOutbox(agencyUserId).catch(() => [] as OutboxItem[]);
   const counts = {
+    outbox: outbox.length,
     ownerCalls: ownerCalls.length,
     approvals: approvals.length,
     replies: replies.length,
     schedule: schedule.length,
     stale: stale.length,
-    total: ownerCalls.length + approvals.length + replies.length + schedule.length + stale.length,
+    total: outbox.length + ownerCalls.length + approvals.length + replies.length + schedule.length + stale.length,
   };
-  return { generatedAt: now.toISOString(), counts, ownerCalls, approvals, replies, schedule, stale };
+  return { generatedAt: now.toISOString(), counts, outbox, ownerCalls, approvals, replies, schedule, stale };
 }

@@ -1,9 +1,12 @@
 import nodemailer from 'nodemailer';
 
-type EmailParams = {
+export type EmailParams = {
   to: string;
   subject: string;
   html: string;
+  /** Nadawca, np. '"Biuro XYZ" <powiadomienia@estateos.pl>'. Domyślnie EMAIL_FROM. */
+  from?: string;
+  replyTo?: string;
   attachments?: Array<{
     filename: string;
     content: string | Buffer;
@@ -52,9 +55,10 @@ function getTransport() {
 export async function sendTransactionalEmail(params: EmailParams): Promise<boolean> {
   if (!isEmailDeliveryEnabled()) return false;
   try {
-    const fromAddress = process.env.EMAIL_FROM?.trim() || '"EstateOS" <powiadomienia@estateos.pl>';
+    const fromAddress = params.from?.trim() || process.env.EMAIL_FROM?.trim() || '"EstateOS" <powiadomienia@estateos.pl>';
     await getTransport().sendMail({
       from: fromAddress,
+      ...(params.replyTo ? { replyTo: params.replyTo } : {}),
       to: params.to,
       subject: params.subject,
       html: params.html,

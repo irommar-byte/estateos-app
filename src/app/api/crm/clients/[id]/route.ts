@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { parseAutoSendCategories, withOutboxResponse } from '@/lib/crm/clientOutbox';
 import { prisma } from '@/lib/prisma';
 import { getAgencyClientForUser, getAgencyClientLiteForUser, requireAgencyUserId } from '@/lib/agencyClientAuth';
 import {
@@ -362,6 +363,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
       ),
       intelligence: shapeIntelligenceSettings(client, client.buyerPreference),
       salutation: parseSalutation(client.salutation),
+      autoSendCategories: parseAutoSendCategories(client.autoSendCategories),
       pendingIntelligenceApproval: await getPendingIntelligenceApproval(client.id),
       pendingCheckback,
       openHandoff,
@@ -402,6 +404,10 @@ export async function GET(req: Request, ctx: RouteCtx) {
 }
 
 export async function PATCH(req: Request, ctx: RouteCtx) {
+  return withOutboxResponse(() => handlePATCH(req, ctx));
+}
+
+async function handlePATCH(req: Request, ctx: RouteCtx) {
   const agencyUserId = await requireAgencyUserId(req);
   if (!agencyUserId) {
     return NextResponse.json({ error: 'Dostęp tylko dla agencji i agentów.' }, { status: 403 });
@@ -445,6 +451,9 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       peselHash: nextPesel !== undefined ? nextPeselHash : undefined,
       notes: body.notes !== undefined ? (body.notes ? String(body.notes).trim() : null) : undefined,
       salutation: body.salutation !== undefined ? parseSalutation(body.salutation) : undefined,
+      autoSendCategories: Array.isArray(body.autoSendCategories)
+        ? parseAutoSendCategories(body.autoSendCategories)
+        : undefined,
       ...(existing.type === 'SELLER'
         ? {
             sellerTransactionType: body.sellerTransactionType,
@@ -568,6 +577,10 @@ export async function DELETE(req: Request, ctx: RouteCtx) {
 }
 
 export async function POST(req: Request, ctx: RouteCtx) {
+  return withOutboxResponse(() => handlePOST(req, ctx));
+}
+
+async function handlePOST(req: Request, ctx: RouteCtx) {
   const agencyUserId = await requireAgencyUserId(req);
   if (!agencyUserId) {
     return NextResponse.json({ error: 'Dostęp tylko dla agencji i agentów.' }, { status: 403 });
@@ -757,6 +770,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: 'Brak ID oferty.' }, { status: 400 });
     }
     const result = await notifyAgencyClientAboutOffer({
+      approved: body.approved === true,
       clientId,
       offerId,
       agencyUserId,
@@ -791,6 +805,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: 'Wybierz co najmniej jedną ofertę.' }, { status: 400 });
     }
     const result = await notifyAgencyClientAboutOffers({
+      approved: body.approved === true,
       clientId,
       offerIds,
       agencyUserId,
@@ -818,6 +833,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       });
       const slot = resolveMeeting(acts);
       const result = await sendAgencyClientBusinessCard({
+      approved: body.approved === true,
         clientId,
         agencyUserId,
         customMessage: typeof body.message === 'string' ? body.message : undefined,
@@ -909,6 +925,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       return NextResponse.json({ error: 'Nie znaleziono klienta.' }, { status: 404 });
     }
     const result = await recordMarketingActivity({
+      approved: body.approved === true,
       clientId,
       agencyUserId,
       kind: MARKETING_ACTIVITY.OTHER_AGENCY_OUTREACH,
@@ -1096,6 +1113,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       select: { linkedOfferId: true },
     });
     const result = await recordMarketingActivity({
+      approved: body.approved === true,
       clientId,
       agencyUserId,
       kind: MARKETING_ACTIVITY.MARKETING_NOTE,
@@ -1111,6 +1129,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   if (action === 'set_seller_next_step') {
     const result = await upsertSellerNextStep({
+      approved: body.approved === true,
       clientId,
       agencyUserId,
       currentStep: String(body.currentStep || ''),
@@ -1125,6 +1144,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   if (action === 'request_client_decision') {
     const result = await createClientDecisionRequest({
+      approved: body.approved === true,
       clientId,
       agencyUserId,
       kind: String(body.kind || 'other'),
@@ -1495,6 +1515,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         },
       });
       const mailed = await emailClientSchedule({
+      approved: body.approved === true,
         clientId: targetId,
         kind: isMeeting ? 'meeting' : 'presentation',
         mode: isMeeting || alreadyAgreed ? 'confirmed' : 'proposed',
@@ -1638,6 +1659,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       });
     }
     await emailClientSchedule({
+      approved: body.approved === true,
       clientId,
       kind: 'presentation',
       mode: 'proposed',
@@ -1834,6 +1856,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       });
     }
     await emailClientSchedule({
+      approved: body.approved === true,
       clientId,
       kind,
       mode: 'confirmed',
@@ -1847,6 +1870,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (action === 'complete_presentation_visit') {
     const { completePresentationVisit } = await import('@/lib/crm/completePresentationVisit');
     const result = await completePresentationVisit({
+      approved: body.approved === true,
       agencyUserId,
       clientId,
       signatureDataUrl: String(body.signatureDataUrl || ''),
@@ -1868,6 +1892,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (action === 'resend_attendance_email') {
     const { resendAttendanceEmail } = await import('@/lib/crm/completePresentationVisit');
     const result = await resendAttendanceEmail({
+      approved: body.approved === true,
       agencyUserId,
       clientId,
       html: String(body.html || ''),
@@ -1898,6 +1923,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
   if (action === 'send_visit_prep_packet') {
     const { sendVisitPrepPacket } = await import('@/lib/crm/visitPrepPacket');
     const result = await sendVisitPrepPacket({
+      approved: body.approved === true,
       agencyUserId,
       clientId,
       parkingNote: body.parkingNote != null ? String(body.parkingNote) : null,

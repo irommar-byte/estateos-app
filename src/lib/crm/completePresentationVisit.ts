@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { deliverToClient, emailStep } from '@/lib/crm/clientOutbox';
 import { parsePesel } from '@/lib/pesel';
 import { normalizePhoneE164 } from '@/lib/phoneE164';
 import { hashPesel, normalizePeselDigits } from '@/lib/crm/peselHash';
@@ -8,7 +9,6 @@ import {
   buildPresentationAttendanceHtml,
   formatMoneyPln,
 } from '@/lib/crm/presentationAttendanceDocument';
-import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { loadAppleClientEmailIdentity } from '@/lib/email/appleClientEmail';
 import { resumeIntelligenceForAgent } from '@/lib/crm/intelligenceCheckback';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
@@ -47,6 +47,8 @@ function documentIdFor(clientId: number, offerId: number, at: Date) {
 }
 
 export async function completePresentationVisit(params: {
+  /** Agent zobaczył podgląd maila z potwierdzeniem obecności. */
+  approved?: boolean;
   agencyUserId: number;
   clientId: number;
   signatureDataUrl?: string | null;
@@ -412,7 +414,7 @@ export async function completePresentationVisit(params: {
         contentType: 'text/html; charset=utf-8',
       });
     }
-    emailSent = await sendTransactionalEmail({
+    const attendanceDelivery = await deliverToClient({ agencyUserId: params.agencyUserId, clientId: client.id, category: 'visit', source: 'attendance', approved: params.approved, steps: [emailStep({
       to: clientEmail,
       subject: `Potwierdzenie oglądania — ${address} — ${viewingAtLabel}`,
       html: buildAttendanceClientEmailHtml({
@@ -428,8 +430,13 @@ export async function completePresentationVisit(params: {
         companyLogoUrl: identity.companyLogoUrl,
       }),
       attachments,
-    });
-    if (!emailSent) emailSkippedReason = 'Nie udało się wysłać maila (SMTP). Dokument zapisany.';
+    })] });
+    emailSent = attendanceDelivery.emailSent;
+    if (attendanceDelivery.queued) {
+      emailSkippedReason = 'Mail z potwierdzeniem czeka na Twoją akceptację.';
+    } else if (!emailSent) {
+      emailSkippedReason = 'Nie udało się wysłać maila (SMTP). Dokument zapisany.';
+    }
   }
 
   await prisma.agencyClientActivity.create({
@@ -463,6 +470,7 @@ export async function completePresentationVisit(params: {
 }
 
 export async function resendAttendanceEmail(params: {
+  approved?: boolean;
   agencyUserId: number;
   clientId: number;
   html: string;
@@ -494,7 +502,7 @@ export async function resendAttendanceEmail(params: {
       contentType: 'text/html; charset=utf-8',
     });
   }
-  const sent = await sendTransactionalEmail({
+  const resendDelivery = await deliverToClient({ agencyUserId: params.agencyUserId, clientId: params.clientId, category: 'visit', source: 'attendance_resend', approved: params.approved, steps: [emailStep({
     to: client.email,
     subject: `Potwierdzenie oglądania — ${params.address} — ${params.whenLabel}`,
     html: buildAttendanceClientEmailHtml({
@@ -510,7 +518,8 @@ export async function resendAttendanceEmail(params: {
       companyLogoUrl: identity.companyLogoUrl,
     }),
     attachments,
-  });
-  if (!sent) return { ok: false as const, status: 502, error: 'Nie udało się wysłać maila.' };
+  })] });
+  if (resendDelivery.queued) return { ok: true as const, queued: true, outboxId: resendDelivery.outboxId };
+  if (!resendDelivery.emailSent) return { ok: false as const, status: 502, error: 'Nie udało się wysłać maila.' };
   return { ok: true as const };
 }

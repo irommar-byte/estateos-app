@@ -1,4 +1,5 @@
 import { publicAssetUrl, type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
+import { buildAppleClientEmailHtml, type AppleClientEmailIdentity } from "@/lib/email/appleClientEmail";
 import { buildPortalDocumentUrl, buildPortalUrl } from "@/lib/agencyClientNotify";
 
 export function escapeAcquisitionHtml(value: unknown): string {
@@ -56,7 +57,24 @@ export function buildAcquisitionClientEmailHtml(params: {
   documentUrl: string;
   documentLabel: string;
   extraHtml?: string;
+  /** Wizytówka agenta i logo biura — wtedy mail ma wspólny, elegancki szablon EstateOS. */
+  identity?: AppleClientEmailIdentity;
 }): string {
+  if (params.identity) {
+    return buildAppleClientEmailHtml({
+      eyebrow: "Współpraca przy sprzedaży",
+      title: params.title,
+      greetingName: params.firstName || "Państwo",
+      bodyHtml: `<p style="margin:0 0 12px;">${escapeAcquisitionHtml(params.intro)}</p>${params.extraHtml || ""}
+        <p style="margin:12px 0 0;font-size:12px;color:#6b7280;">Dokument otwiera się w przeglądarce pod bezpiecznym adresem estateos.pl.</p>`,
+      identity: params.identity,
+      ctas: [
+        { label: params.documentLabel, href: params.documentUrl, variant: "primary" },
+        { label: "Otwórz panel klienta", href: params.portalUrl, variant: "soft" },
+      ],
+      includeAgentCard: true,
+    });
+  }
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:24px;max-width:560px">
     <h2 style="margin:0 0 12px">${escapeAcquisitionHtml(params.title)}</h2>
     <p>Dzień dobry ${escapeAcquisitionHtml(params.firstName)},</p>

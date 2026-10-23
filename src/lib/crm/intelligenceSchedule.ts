@@ -81,23 +81,18 @@ export function trialApprovalUntil(createdAt: Date | string | null | undefined):
 }
 
 /**
- * TRIAL → akceptacja agenta przez 7 dni od dodania klienta, potem autopilot.
- * APPROVAL → zawsze akceptacja. AUTOPILOT → wysyłka bez akceptacji.
- * Brak / nieznana wartość = AUTOPILOT (zachowanie sprzed zmiany dla istniejących klientów).
+ * Zasada agenta: nic nie wychodzi do klienta bez jego weryfikacji.
+ * APPROVAL (domyślnie) → każda propozycja czeka na „Wyślij”.
+ * AUTOPILOT → agent po weryfikacji zaznaczył „od teraz wysyłaj automatycznie”.
+ * TRIAL / brak / nieznana wartość → traktujemy jak APPROVAL.
  */
 export function resolveIntelligenceMode(
   client: { intelligenceMode?: string | null; createdAt?: Date | string | null },
-  now: Date = new Date(),
+  _now: Date = new Date(),
 ): { setting: IntelligenceModeSetting; effective: IntelligenceEffectiveMode; approvalUntil: string | null } {
-  const setting = parseIntelligenceModeSetting(client.intelligenceMode) || 'AUTOPILOT';
-  if (setting === 'APPROVAL') return { setting, effective: 'APPROVAL', approvalUntil: null };
-  if (setting === 'TRIAL') {
-    const until = trialApprovalUntil(client.createdAt);
-    if (until && until.getTime() > now.getTime()) {
-      return { setting, effective: 'APPROVAL', approvalUntil: until.toISOString() };
-    }
-  }
-  return { setting, effective: 'AUTOPILOT', approvalUntil: null };
+  const parsed = parseIntelligenceModeSetting(client.intelligenceMode);
+  if (parsed === 'AUTOPILOT') return { setting: 'AUTOPILOT', effective: 'AUTOPILOT', approvalUntil: null };
+  return { setting: 'APPROVAL', effective: 'APPROVAL', approvalUntil: null };
 }
 
 export function tempoFromSettings(intervalHours: number, dailyLimit: number): IntelligenceTempo {

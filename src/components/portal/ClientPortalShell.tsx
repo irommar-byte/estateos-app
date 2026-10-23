@@ -20,7 +20,7 @@ export default function ClientPortalShell({ children }: { children: React.ReactN
               <span className="block truncate text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">
                 EstateOS™
               </span>
-              <span className="block truncate text-[13px] font-bold text-[var(--eos-text)]">Twój panel wyszukiwania</span>
+              <span className="block truncate text-[13px] font-bold text-[var(--eos-text)]">Twój panel klienta</span>
             </span>
           </Link>
           <span className="client-portal-shell__badge hidden shrink-0 items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/8 px-2.5 py-1 text-[10px] font-semibold text-emerald-600 sm:inline-flex">

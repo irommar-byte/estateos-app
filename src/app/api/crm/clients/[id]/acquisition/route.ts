@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { loadAppleClientEmailIdentity } from "@/lib/email/appleClientEmail";
+import { deliverToClient, emailStep, withOutboxResponse } from "@/lib/crm/clientOutbox";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAgencyUserId } from "@/lib/agencyClientAuth";
@@ -11,7 +13,6 @@ import {
   publicAssetUrl,
   type AcquisitionFormData,
 } from "@/lib/acquisitionWorkflow";
-import { sendTransactionalEmail } from "@/lib/email/transactional";
 import { resolveSellerPersonName } from "@/lib/sellerDisplay";
 import { createOfferFromAcquisitionRecord } from "@/lib/crm/acquisitionOffer";
 import { parseSellerPropertyType } from "@/lib/crm/sellerProperty";
@@ -283,6 +284,10 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
 }
 
 export async function POST(req: Request, ctx: RouteCtx) {
+  return withOutboxResponse(() => handlePOST(req, ctx));
+}
+
+async function handlePOST(req: Request, ctx: RouteCtx) {
   const agencyUserId = await requireAgencyUserId(req);
   if (!agencyUserId) return NextResponse.json({ error: "Brak dostępu." }, { status: 403 });
   const clientId = Number((await ctx.params).id);
@@ -320,12 +325,14 @@ export async function POST(req: Request, ctx: RouteCtx) {
     });
 
     let emailSent = false;
+    let termsDelivery: Awaited<ReturnType<typeof deliverToClient>> | null = null;
     if (action === "send_preview" && client.email) {
       const links = portalLinks(client);
-      emailSent = await sendTransactionalEmail({
+      termsDelivery = await deliverToClient({ agencyUserId, clientId, category: "documents", source: "acquisition_terms_preview", approved: body.approved === true, steps: [emailStep({
         to: client.email,
         subject: `Warunki współpracy do zapoznania · ${client.agencyUser.companyName || "EstateOS"}`,
         html: buildAcquisitionClientEmailHtml({
+          identity: await loadAppleClientEmailIdentity(agencyUserId),
           firstName: client.firstName,
           title: "Przygotowanie do spotkania",
           intro:
@@ -334,11 +341,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
           documentUrl: links.documentUrl,
           documentLabel: "Otwórz warunki współpracy",
         }),
-      });
+      })] });
+      emailSent = termsDelivery.emailSent;
     }
     return NextResponse.json({
       success: true,
       emailSent,
+      queued: Boolean(termsDelivery?.queued),
       documentUrl: client.portalToken ? `/klient/${client.portalToken}/dokument` : null,
       acquisition: shapeAcquisition(updated, form),
     });
@@ -410,10 +419,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
       })
       .filter(Boolean)
       .join("");
-    const emailSent = await sendTransactionalEmail({
+    const copyDelivery = await deliverToClient({ agencyUserId, clientId, category: "documents", source: "acquisition_signed_copy", approved: body.approved === true, steps: [emailStep({
       to: signerEmail,
       subject: `Podpisana umowa i karta nieruchomości · ${client.agencyUser.companyName || "EstateOS"}`,
       html: buildAcquisitionClientEmailHtml({
+          identity: await loadAppleClientEmailIdentity(agencyUserId),
         firstName: client.firstName,
         title: "Dokument został podpisany",
         intro: `Umowa została utrwalona ${signedAt.toLocaleString("pl-PL")}. Otwórz ją w przeglądarce — to publiczny link EstateOS, nie załącznik z poczty.`,
@@ -422,7 +432,8 @@ export async function POST(req: Request, ctx: RouteCtx) {
         documentLabel: "Otwórz podpisaną umowę",
         extraHtml: `${paperLinks}<p style="font-size:12px;color:#6b7280;word-break:break-all">SHA-256: ${escapeHtml(documentHash)}</p>`,
       }),
-    });
+    })] });
+    const emailSent = copyDelivery.emailSent;
     if (emailSent) {
       await prisma.agencyClientAcquisition.update({
         where: { id: base.id },
@@ -435,7 +446,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         agencyUserId,
         kind: "ACQUISITION_SIGNED",
         title: "Podpisano warunki współpracy",
-        body: `Podpisujący: ${signerName}. Kopia e-mail: ${emailSent ? "wysłana" : "niewysłana"}.`,
+        body: `Podpisujący: ${signerName}. Kopia e-mail: ${emailSent ? "wysłana" : copyDelivery.queued ? "czeka na akceptację agenta" : "niewysłana"}.`,
         metadata: { acquisitionId: base.id, documentHash, signedAt: signedAt.toISOString(), emailSent },
       },
     });

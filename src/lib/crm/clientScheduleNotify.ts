@@ -1,8 +1,8 @@
 import { prisma } from '@/lib/prisma';
+import { deliverToClient, emailStep } from '@/lib/crm/clientOutbox';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { buildAcquisitionIcs } from '@/lib/agencyClientBusinessCard';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
-import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
 import {
   buildAppleClientEmailHtml,
   escapeEmailHtml,
@@ -38,6 +38,8 @@ type ScheduleMailParams = {
   audience?: 'buyer' | 'seller' | 'auto';
   offerId?: number | null;
   offerTitle?: string | null;
+  /** Agent właśnie zobaczył i zatwierdził podgląd tej wiadomości. */
+  approved?: boolean;
 };
 
 async function composeClientScheduleMail(params: ScheduleMailParams) {
@@ -292,37 +294,55 @@ export async function previewClientSchedule(
 
 export async function emailClientSchedule(
   params: ScheduleMailParams,
-): Promise<{ emailed: boolean; to: string | null; preview?: ClientOutboundPreview }> {
+): Promise<{ emailed: boolean; queued?: boolean; outboxId?: number | null; to: string | null; preview?: ClientOutboundPreview }> {
   const composed = await composeClientScheduleMail(params);
   if (!composed) return { emailed: false, to: null };
 
-  await sendTransactionalEmail({
-    to: composed.client.email!,
-    subject: composed.subject,
-    html: composed.html,
-    attachments: composed.ics
-      ? [
-          {
-            filename: `${params.kind}.ics`,
-            content: composed.ics,
-            contentType: 'text/calendar; charset=utf-8',
-          },
-        ]
-      : undefined,
-  }).catch(() => {});
+  const delivery = await deliverToClient({
+    agencyUserId: composed.client.agencyUserId,
+    clientId: params.clientId,
+    category: 'schedule',
+    source: `schedule_${params.kind}_${params.mode}`,
+    approved: params.approved,
+    steps: [
+      emailStep({
+        to: composed.client.email!,
+        subject: composed.subject,
+        html: composed.html,
+        attachments: composed.ics
+          ? [
+              {
+                filename: `${params.kind}.ics`,
+                content: composed.ics,
+                contentType: 'text/calendar; charset=utf-8',
+              },
+            ]
+          : undefined,
+      }),
+      {
+        kind: 'push',
+        clientId: params.clientId,
+        payload: {
+          title: composed.title,
+          body: composed.pushBody,
+          tag:
+            composed.audience === 'seller'
+              ? `schedule-seller-${params.clientId}`
+              : `schedule-${params.kind}-${params.clientId}`,
+          notificationType: 'client_schedule',
+          native: true,
+        },
+      },
+    ],
+  });
 
-  await sendClientPortalWebPush(params.clientId, {
-    title: composed.title,
-    body: composed.pushBody,
-    tag:
-      composed.audience === 'seller'
-        ? `schedule-seller-${params.clientId}`
-        : `schedule-${params.kind}-${params.clientId}`,
-    notificationType: 'client_schedule',
-    native: true,
-  }).catch(() => {});
-
-  return { emailed: true, to: composed.client.email, preview: composed.preview };
+  return {
+    emailed: delivery.emailSent,
+    queued: delivery.queued,
+    outboxId: delivery.outboxId,
+    to: composed.client.email,
+    preview: composed.preview,
+  };
 }
 
 export async function emailGuestAgencyPresentation(params: {

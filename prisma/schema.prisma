@@ -1185,8 +1185,10 @@ model AgencyClient {
   intelligenceMinScore      Int                @default(92)
   intelligenceLastSentAt    DateTime?
   intelligenceLockedFields  Json?
-  /// TRIAL = akceptacja agenta przez 7 dni od dodania, APPROVAL = zawsze, AUTOPILOT = bez akceptacji.
-  intelligenceMode          String             @default("TRIAL") @db.VarChar(16)
+  /// APPROVAL = każda propozycja czeka na agenta (domyślnie), AUTOPILOT = agent pozwolił wysyłać samodzielnie. TRIAL = dawna wartość, działa jak APPROVAL.
+  intelligenceMode          String             @default("APPROVAL") @db.VarChar(16)
+  /// Rodzaje wiadomości, które agent pozwolił wysyłać temu klientowi bez akceptacji (np. ["reminder","schedule"]).
+  autoSendCategories        Json?
   /// PAN / PANI — forma grzecznościowa w wiadomościach; null = zwrot po imieniu.
   salutation                String?            @db.VarChar(8)
   createdAt                 DateTime           @default(now())
@@ -1713,4 +1715,28 @@ model CoreRemediationAudit {
   @@index([createdAt])
   @@index([incidentId, createdAt])
   @@index([actorUserId, createdAt])
+}
+
+/// Kolejka „Do wysłania”: wiadomości do klienta czekające na akceptację agenta.
+model CrmOutbox {
+  id           Int       @id @default(autoincrement())
+  agencyUserId Int
+  clientId     Int
+  category     String    @db.VarChar(32)
+  source       String?   @db.VarChar(64)
+  status       String    @default("pending") @db.VarChar(16)
+  channels     String    @default("") @db.VarChar(64)
+  recipient    String?   @db.VarChar(191)
+  subject      String?   @db.VarChar(255)
+  previewText  String?   @db.Text
+  previewHtml  String?   @db.MediumText
+  steps        Json
+  error        String?   @db.VarChar(500)
+  createdAt    DateTime  @default(now())
+  decidedAt    DateTime?
+  decidedBy    Int?
+  sentAt       DateTime?
+
+  @@index([agencyUserId, status, createdAt])
+  @@index([clientId, status])
 }

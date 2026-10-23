@@ -23,6 +23,7 @@ import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { withMysqlNamedLock } from '@/lib/crm/mysqlNamedLock';
 import { isWithinSendWindow, resolveIntelligenceMode, warsawDayStart } from '@/lib/crm/intelligenceSchedule';
+import { isClientAutoSendAllowed } from '@/lib/crm/clientOutbox';
 import {
   createIntelligenceApproval,
   getPendingIntelligenceApproval,
@@ -679,7 +680,16 @@ async function sendIntelligenceOfferUnlocked(params: {
       agencyUserId,
       pick,
       channel: params.channel ?? 'email',
+      // „Wyślij teraz” na karcie klienta: agent widzi tę propozycję w karcie asystenta.
+      approved: Boolean(params.force),
     });
+    if (delivered.approvalId) {
+      return {
+        sent: false,
+        approvalId: delivered.approvalId,
+        pick: { ...pick, ready: false, skipReason: 'Propozycja czeka na Twoją akceptację w „Dziś”.' },
+      };
+    }
     if (delivered.alreadyNotified) {
       excludeOfferIds.push(pick.offerId);
       continue;
@@ -721,9 +731,19 @@ export async function deliverIntelligencePick(params: {
   agencyUserId: number;
   pick: IntelligencePick;
   channel: 'email' | 'manual';
-}): Promise<{ alreadyNotified: boolean; emailSent: boolean }> {
+  /** Agent zatwierdził tę propozycję. Bez tego — o ile nie włączył autopilota — trafia do akceptacji. */
+  approved?: boolean;
+}): Promise<{ alreadyNotified: boolean; emailSent: boolean; approvalId?: number | null }> {
   if (!params.pick.offerId) return { alreadyNotified: true, emailSent: false };
   const offerId = params.pick.offerId;
+  if (!params.approved && !(await isClientAutoSendAllowed(params.clientId, 'offer'))) {
+    const approval = await createIntelligenceApproval({
+      clientId: params.clientId,
+      agencyUserId: params.agencyUserId,
+      pick: params.pick,
+    });
+    return { alreadyNotified: false, emailSent: false, approvalId: approval?.id ?? null };
+  }
   const reason = [`EstateOS™ Intelligence · pewność ${params.pick.score}%`, params.pick.tasteSummary, ...params.pick.analysis]
     .filter(Boolean)
     .join('\n');
@@ -745,6 +765,7 @@ export async function deliverIntelligencePick(params: {
     matchScore: params.pick.radarScore ?? undefined,
     customMessage,
     intelligence: { reason },
+    approved: true,
   });
 
   if ('alreadyNotified' in notified && notified.alreadyNotified) {

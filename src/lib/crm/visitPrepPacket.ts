@@ -1,8 +1,7 @@
 import { prisma } from '@/lib/prisma';
+import { deliverToClient, emailStep } from '@/lib/crm/clientOutbox';
 import { JOURNEY_ACTIVITY, resolvePresentation } from '@/lib/crm/clientJourney';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
-import { sendTransactionalEmail } from '@/lib/email/transactional';
-import { sendSMS } from '@/lib/sms';
 import {
   buildAppleClientEmailHtml,
   escapeEmailHtml,
@@ -182,28 +181,27 @@ export async function sendVisitPrepPacket(params: {
   agencyUserId: number;
   clientId: number;
   parkingNote?: string | null;
+  /** Agent zobaczył podgląd pakietu. */
+  approved?: boolean;
 }) {
   const built = await buildVisitPrepPacket(params);
   if (!built.ok) return built;
 
-  let emailSent = false;
-  if (built.client.email) {
-    emailSent = await sendTransactionalEmail({
-      to: built.client.email,
-      subject: built.subject,
-      html: built.emailHtml,
-    });
-  }
-
-  let smsSent = false;
-  if (built.client.phone) {
-    try {
-      await sendSMS(built.client.phone, built.sms);
-      smsSent = true;
-    } catch {
-      smsSent = false;
-    }
-  }
+  const delivery = await deliverToClient({
+    agencyUserId: params.agencyUserId,
+    clientId: built.client.id,
+    category: 'visit',
+    source: 'visit_prep_packet',
+    approved: params.approved,
+    steps: [
+      ...(built.client.email
+        ? [emailStep({ to: built.client.email, subject: built.subject, html: built.emailHtml })]
+        : []),
+      ...(built.client.phone ? [{ kind: 'sms' as const, to: built.client.phone, message: built.sms }] : []),
+    ],
+  });
+  const emailSent = delivery.emailSent;
+  const smsSent = delivery.smsSent;
 
   await prisma.agencyClientActivity.create({
     data: {
@@ -211,7 +209,7 @@ export async function sendVisitPrepPacket(params: {
       agencyUserId: params.agencyUserId,
       offerId: built.offerId || undefined,
       kind: 'VISIT_PREP_PACKET',
-      title: 'Wysłano pakiet przed wizytą',
+      title: delivery.queued ? 'Pakiet przed wizytą czeka na akceptację' : 'Wysłano pakiet przed wizytą',
       body: built.whenLabel,
       metadata: {
         emailSent,
@@ -228,6 +226,8 @@ export async function sendVisitPrepPacket(params: {
 
   return {
     ok: true as const,
+    queued: delivery.queued,
+    outboxId: delivery.outboxId,
     emailSent,
     smsSent,
     smsBody: built.sms,

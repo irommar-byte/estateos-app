@@ -2487,3 +2487,10 @@ html.dark button[class*="bg-[#111]"] {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
 }
 
+
+/* Panel klienta: statusy w „pigułkach” zawsze w jednej linii i wyrównane do góry nagłówka. */
+.client-portal-page span.eos-raised-chip {
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: flex-start;
+}

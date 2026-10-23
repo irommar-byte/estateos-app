@@ -213,6 +213,7 @@ export async function approveIntelligenceApproval(params: {
       agencyUserId: params.agencyUserId,
       pick,
       channel: 'email',
+      approved: true,
     });
     await prisma.agencyClientActivity.update({
       where: { id: row.id },

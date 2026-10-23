@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { deliverChatToClient } from '@/lib/crm/clientOutbox';
 import {
   learnFromFeedback,
   parseIntelligenceLocks,
@@ -338,7 +339,7 @@ export async function createAndDeliverCheckback(params: {
     select: { id: true },
   });
 
-  await sendPortalChat({
+  await deliverChatToClient({
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
     from: 'agent',
@@ -352,7 +353,7 @@ export async function createAndDeliverCheckback(params: {
       kind: 'checkback',
       source: 'intelligence_checkback',
     },
-  }).catch(() => {});
+  }, { category: 'assistant', source: 'intelligence_checkback' }).catch(() => {});
 
   return { activityId: activity.id };
 }
@@ -507,7 +508,7 @@ export async function respondToIntelligenceCheckback(params: {
     handedToAgent: Boolean(agentNote),
   });
 
-  await sendPortalChat({
+  await deliverChatToClient({
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
     from: 'agent',
@@ -517,7 +518,7 @@ export async function respondToIntelligenceCheckback(params: {
       kind: 'client_step',
       source: 'intelligence_checkback_ack',
     },
-  }).catch(() => {});
+  }, { category: 'assistant', source: 'intelligence_checkback_reply' }).catch(() => {});
 
   if (Object.keys(prefUpdate).length) {
     const { refreshAgencyClientMatches } = await import('@/lib/agencyClientMatching');

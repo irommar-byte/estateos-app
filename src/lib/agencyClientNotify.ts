@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import nodemailer from 'nodemailer';
+import { deliverToClient, emailStep, isClientAutoSendAllowed, type OutboxStep } from '@/lib/crm/clientOutbox';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
@@ -9,7 +9,6 @@ import { appendPresentationQuery } from '@/lib/offerPresentingAgent';
 import { DISLIKE_PHRASES, LIKE_PHRASES } from '@/lib/crm/clientPortalFeedback';
 import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
-import { sendClientPortalWebPush } from '@/lib/crm/clientPortalWebPush';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
 
 async function resolveClientMatchScore(params: {
@@ -33,17 +32,6 @@ async function resolveClientMatchScore(params: {
     select: { score: true },
   });
   return refreshed?.score && refreshed.score > 0 ? refreshed.score : 0;
-}
-
-function buildTransporter() {
-  const smtpPort = Number(process.env.EMAIL_PORT) || 587;
-  return nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: smtpPort,
-    secure: smtpPort === 465,
-    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-    tls: { rejectUnauthorized: false },
-  });
 }
 
 export function generatePortalToken(): string {
@@ -421,6 +409,8 @@ export async function notifyAgencyClientAboutOffer(params: {
   skipIfNotified?: boolean;
   matchScore?: number;
   intelligence?: { reason: string };
+  /** Agent właśnie zobaczył i zatwierdził tę propozycję. */
+  approved?: boolean;
 }) {
   const preview = await buildAgencyClientEmailPreview({
     clientId: params.clientId,
@@ -428,6 +418,56 @@ export async function notifyAgencyClientAboutOffer(params: {
     agencyUserId: params.agencyUserId,
     customMessage: params.customMessage,
   });
+
+  // Bez akceptacji agenta oferta nie trafia ani do panelu, ani na maila — czeka w „Do wysłania”.
+  if (!params.approved && !(await isClientAutoSendAllowed(params.clientId, 'offer'))) {
+    const existing = await prisma.agencyClientMatch.findUnique({
+      where: { clientId_offerId: { clientId: params.clientId, offerId: params.offerId } },
+      select: { notifiedAt: true },
+    });
+    if (existing?.notifiedAt && params.skipIfNotified !== false) {
+      return { emailSent: false, offerUrl: `https://estateos.pl/oferta/${params.offerId}`, alreadyNotified: true };
+    }
+    const wantsEmailLater = params.channel === 'email' && Boolean(preview.clientEmail);
+    const queued = await deliverToClient({
+      agencyUserId: params.agencyUserId,
+      clientId: params.clientId,
+      category: 'offer',
+      source: params.intelligence ? 'intelligence_offer' : 'offer',
+      steps: [
+        {
+          kind: 'action',
+          name: 'notifyOffer',
+          params: {
+            clientId: params.clientId,
+            offerId: params.offerId,
+            agencyUserId: params.agencyUserId,
+            channel: params.channel,
+            customMessage: params.customMessage,
+            skipIfNotified: params.skipIfNotified,
+            matchScore: params.matchScore,
+            intelligence: params.intelligence,
+          },
+        },
+      ],
+      preview: {
+        subject: preview.subject,
+        html: wantsEmailLater ? preview.html : null,
+        text: wantsEmailLater
+          ? null
+          : `Propozycja w panelu klienta: ${preview.offers[0]?.title || 'oferta'}${params.customMessage ? `\n\n${params.customMessage}` : ''}`,
+        recipient: wantsEmailLater ? preview.clientEmail : null,
+        channels: wantsEmailLater ? ['email', 'push'] : ['push'],
+      },
+    });
+    return {
+      emailSent: false,
+      queued: true,
+      outboxId: queued.outboxId,
+      offerUrl: `https://estateos.pl/oferta/${params.offerId}`,
+      preview,
+    };
+  }
 
   const now = new Date();
   const score = await resolveClientMatchScore({
@@ -470,34 +510,53 @@ export async function notifyAgencyClientAboutOffer(params: {
     });
   }
 
-  let emailSent = false;
-  if (params.channel === 'email' && preview.clientEmail) {
-    const transporter = buildTransporter();
-    try {
-      await transporter.sendMail({
-        from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
-        to: preview.clientEmail,
-        replyTo: preview.agentEmail || undefined,
-        subject: preview.subject,
-        html: preview.html,
-      });
-      emailSent = true;
-    } catch (error) {
-      // Release the claim so the offer is not lost: it was never delivered.
-      if (params.skipIfNotified !== false) {
-        await prisma.agencyClientMatch
-          .updateMany({
-            where: { clientId: params.clientId, offerId: params.offerId, notifiedAt: now },
-            data: {
-              notifiedAt: null,
-              sharedAt: null,
-              ...(params.intelligence ? { intelligenceSent: false, intelligenceReason: null } : {}),
-            },
-          })
-          .catch(() => {});
-      }
-      throw error;
+  const wantsEmail = params.channel === 'email' && Boolean(preview.clientEmail);
+  const delivery = await deliverToClient({
+    agencyUserId: params.agencyUserId,
+    clientId: params.clientId,
+    category: 'offer',
+    source: params.intelligence ? 'intelligence_offer' : 'offer',
+    approved: params.approved,
+    steps: [
+      ...(wantsEmail
+        ? [
+            emailStep({
+              from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
+              to: preview.clientEmail as string,
+              replyTo: preview.agentEmail || undefined,
+              subject: preview.subject,
+              html: preview.html,
+            }),
+          ]
+        : []),
+      {
+        kind: 'push' as const,
+        clientId: params.clientId,
+        payload: {
+          title: preview.offers[0]?.title ? `Nowa propozycja: ${preview.offers[0].title}` : 'Nowa propozycja od agenta',
+          body: 'Otwórz panel klienta — zdjęcia, szczegóły i ocena czekają w aplikacji.',
+          tag: `estateos-client-offer-${params.clientId}-${params.offerId}`,
+          url: preview.portalUrl || undefined,
+        },
+      },
+    ],
+  });
+  const emailSent = delivery.emailSent;
+  if (delivery.sent && wantsEmail && !emailSent) {
+    // Release the claim so the offer is not lost: it was never delivered.
+    if (params.skipIfNotified !== false) {
+      await prisma.agencyClientMatch
+        .updateMany({
+          where: { clientId: params.clientId, offerId: params.offerId, notifiedAt: now },
+          data: {
+            notifiedAt: null,
+            sharedAt: null,
+            ...(params.intelligence ? { intelligenceSent: false, intelligenceReason: null } : {}),
+          },
+        })
+        .catch(() => {});
     }
+    throw new Error('Nie udało się wysłać e-maila do klienta.');
   }
 
   await prisma.agencyClientActivity.create({
@@ -517,6 +576,7 @@ export async function notifyAgencyClientAboutOffer(params: {
       metadata: {
         channel: params.channel,
         emailSent,
+        outboxId: delivery.outboxId,
         intelligence: Boolean(params.intelligence),
         intelligenceReason: params.intelligence?.reason || null,
         clientWhy: params.customMessage?.trim() || null,
@@ -537,7 +597,9 @@ export async function notifyAgencyClientAboutOffer(params: {
       userId: params.agencyUserId,
       type: 'CRM_EVENT',
       title: `Intelligence wysłało: ${preview.offers[0]?.title || 'ofertę'}`,
-      body: emailSent
+      body: delivery.queued
+        ? `${preview.clientName}: mail czeka na Twoją akceptację w „Dziś”.`
+        : emailSent
         ? `${preview.clientName} dostał maila z propozycją.`
         : `${preview.clientName} ma nową propozycję w panelu (bez maila).`,
       data: crmAgentPushData(params.clientId, {
@@ -547,14 +609,13 @@ export async function notifyAgencyClientAboutOffer(params: {
     }).catch(() => {});
   }
 
-  await sendClientPortalWebPush(params.clientId, {
-    title: preview.offers[0]?.title ? `Nowa propozycja: ${preview.offers[0].title}` : 'Nowa propozycja od agenta',
-    body: 'Otwórz panel klienta — zdjęcia, szczegóły i ocena czekają w aplikacji.',
-    tag: `estateos-client-offer-${params.clientId}-${params.offerId}`,
-    url: preview.portalUrl || undefined,
-  }).catch(() => {});
-
-  return { emailSent, offerUrl: `https://estateos.pl/oferta/${params.offerId}`, preview };
+  return {
+    emailSent,
+    queued: delivery.queued,
+    outboxId: delivery.outboxId,
+    offerUrl: `https://estateos.pl/oferta/${params.offerId}`,
+    preview,
+  };
 }
 
 export async function notifyAgencyClientAboutOffers(params: {
@@ -564,6 +625,8 @@ export async function notifyAgencyClientAboutOffers(params: {
   channel: 'email' | 'manual';
   customMessage?: string;
   allowResend?: boolean;
+  /** Agent właśnie zobaczył i zatwierdził podgląd. */
+  approved?: boolean;
 }) {
   const offerIds = [...new Set(params.offerIds.filter((id) => Number.isFinite(id)))];
   if (!offerIds.length) throw new Error('Wybierz co najmniej jedną ofertę.');
@@ -586,7 +649,65 @@ export async function notifyAgencyClientAboutOffers(params: {
     throw new Error('Wszystkie zaznaczone oferty zostały już wysłane tym klientowi.');
   }
 
+  if (toSend.length && !params.approved && !(await isClientAutoSendAllowed(params.clientId, 'offer'))) {
+    const wantsEmailLater = params.channel === 'email' && Boolean(preview.clientEmail);
+    const queued = await deliverToClient({
+      agencyUserId: params.agencyUserId,
+      clientId: params.clientId,
+      category: 'offer',
+      source: 'offers_manual',
+      steps: [
+        {
+          kind: 'action',
+          name: 'notifyOffers',
+          params: {
+            clientId: params.clientId,
+            offerIds: toSend,
+            agencyUserId: params.agencyUserId,
+            channel: params.channel,
+            customMessage: params.customMessage,
+            allowResend: params.allowResend,
+          },
+        },
+      ],
+      preview: {
+        subject: preview.subject,
+        html: wantsEmailLater ? preview.html : null,
+        text: wantsEmailLater
+          ? null
+          : `Propozycje w panelu klienta:\n${preview.offers
+              .filter((o) => toSend.includes(o.id))
+              .map((o) => `• ${o.title}`)
+              .join('\n')}`,
+        recipient: wantsEmailLater ? preview.clientEmail : null,
+        channels: wantsEmailLater ? ['email', 'push'] : ['push'],
+      },
+    });
+    return {
+      emailSent: false,
+      queued: true,
+      outboxId: queued.outboxId,
+      sentCount: 0,
+      skippedCount: blockedIds.size,
+      preview,
+    };
+  }
+
   let emailSent = false;
+  let queuedOutboxId: number | null = null;
+  const pushStep = {
+    kind: 'push' as const,
+    clientId: params.clientId,
+    payload: {
+      title:
+        toSend.length === 1
+          ? `Nowa propozycja: ${preview.offers.find((o) => o.id === toSend[0])?.title || 'oferta'}`
+          : `${toSend.length} nowe propozycje od agenta`,
+      body: 'Otwórz panel klienta w aplikacji — ocena i zdjęcia są w jednym miejscu.',
+      tag: `estateos-client-offers-${params.clientId}`,
+      url: preview.portalUrl || undefined,
+    },
+  };
   if (params.channel === 'email' && preview.clientEmail && toSend.length) {
     const sendOffers = preview.offers.filter((o) => toSend.includes(o.id));
     const client = await prisma.agencyClient.findFirst({
@@ -604,15 +725,36 @@ export async function notifyAgencyClientAboutOffers(params: {
       agentPhone: preview.agentPhone,
       agentEmail: preview.agentEmail,
     });
-    const transporter = buildTransporter();
-    await transporter.sendMail({
-      from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
-      to: preview.clientEmail,
-      replyTo: preview.agentEmail || undefined,
-      subject: preview.subject,
-      html: sendPreview,
+    const delivery = await deliverToClient({
+      agencyUserId: params.agencyUserId,
+      clientId: params.clientId,
+      category: 'offer',
+      source: 'offers_manual',
+      approved: params.approved,
+      steps: [
+        emailStep({
+          from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
+          to: preview.clientEmail,
+          replyTo: preview.agentEmail || undefined,
+          subject: preview.subject,
+          html: sendPreview,
+        }),
+        pushStep,
+      ],
     });
-    emailSent = true;
+    if (delivery.sent && !delivery.emailSent) throw new Error('Nie udało się wysłać e-maila do klienta.');
+    emailSent = delivery.emailSent;
+    queuedOutboxId = delivery.outboxId;
+  } else if (toSend.length) {
+    const delivery = await deliverToClient({
+      agencyUserId: params.agencyUserId,
+      clientId: params.clientId,
+      category: 'offer',
+      source: 'offers_manual',
+      approved: params.approved,
+      steps: [pushStep],
+    });
+    queuedOutboxId = delivery.outboxId;
   }
 
   const now = new Date();
@@ -644,6 +786,7 @@ export async function notifyAgencyClientAboutOffers(params: {
       metadata: {
         channel: params.channel,
         emailSent,
+        outboxId: queuedOutboxId,
         offerIds: toSend,
         offers: preview.offers
           .filter((o) => toSend.includes(o.id))
@@ -658,17 +801,14 @@ export async function notifyAgencyClientAboutOffers(params: {
     },
   });
 
-  await sendClientPortalWebPush(params.clientId, {
-    title:
-      toSend.length === 1
-        ? `Nowa propozycja: ${preview.offers.find((o) => o.id === toSend[0])?.title || 'oferta'}`
-        : `${toSend.length} nowe propozycje od agenta`,
-    body: 'Otwórz panel klienta w aplikacji — ocena i zdjęcia są w jednym miejscu.',
-    tag: `estateos-client-offers-${params.clientId}`,
-    url: preview.portalUrl || undefined,
-  }).catch(() => {});
-
-  return { emailSent, sentCount: toSend.length, skippedCount: blockedIds.size, preview };
+  return {
+    emailSent,
+    queued: queuedOutboxId != null,
+    outboxId: queuedOutboxId,
+    sentCount: toSend.length,
+    skippedCount: blockedIds.size,
+    preview,
+  };
 }
 
 const FEEDBACK_REMIND_AFTER_MS = 36 * 60 * 60 * 1000;
@@ -751,6 +891,8 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
         : `Czekają ${waiting} propozycje bez odpowiedzi. Po zdjęciach zaznacz czemu tak / czemu nie — agent i EstateOS™ Intelligence uczą się z każdej reakcji.`;
 
     let via: 'email' | 'portal' = 'portal';
+    const reminderTitle = waiting === 1 ? 'Czekamy na Twoją opinię' : `${waiting} propozycje czekają na odpowiedź`;
+    const reminderSteps: OutboxStep[] = [];
     if (first.client.email) {
       const html = buildEmailHtml({
         agencyName,
@@ -763,25 +905,26 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
         agentPhone: agent.phone,
         agentEmail: agent.email,
       });
-      const transporter = buildTransporter();
-      await transporter.sendMail({
-        from: `"${agencyName}" <powiadomienia@estateos.pl>`,
-        to: first.client.email,
-        replyTo: agent.email || undefined,
-        subject:
-          waiting === 1
-            ? `${agentName}: przypomnienie — czekam na Twoją opinię`
-            : `${agentName}: przypomnienie — ${waiting} propozycje czekają na odpowiedź`,
-        html,
-      });
+      reminderSteps.push(
+        emailStep({
+          from: `"${agencyName}" <powiadomienia@estateos.pl>`,
+          to: first.client.email,
+          replyTo: agent.email || undefined,
+          subject:
+            waiting === 1
+              ? `${agentName}: przypomnienie — czekam na Twoją opinię`
+              : `${agentName}: przypomnienie — ${waiting} propozycje czekają na odpowiedź`,
+          html,
+        }),
+      );
       via = 'email';
     }
 
     if (first.client.linkedUserId) {
-      await sendNotification({
+      reminderSteps.push({
+        kind: 'notify',
         userId: first.client.linkedUserId,
-        type: 'CRM_EVENT',
-        title: waiting === 1 ? 'Czekamy na Twoją opinię' : `${waiting} propozycje czekają na odpowiedź`,
+        title: reminderTitle,
         body: 'Otwórz panel klienta i zaznacz, czemu tak albo czemu nie.',
         data: {
           kind: 'CLIENT_PORTAL',
@@ -789,16 +932,29 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
           deeplink: portalUrl,
           url: portalUrl,
         },
-      }).catch(() => {});
+      });
     }
 
-    await sendClientPortalWebPush(clientId, {
-      title: waiting === 1 ? 'Czekamy na Twoją opinię' : `${waiting} propozycje czekają na odpowiedź`,
-      body: 'Otwórz panel klienta i zaznacz, czemu tak albo czemu nie.',
-      tag: `estateos-client-feedback-${clientId}`,
-      url: portalUrl,
-      native: !first.client.linkedUserId,
-    }).catch(() => {});
+    reminderSteps.push({
+      kind: 'push',
+      clientId,
+      payload: {
+        title: reminderTitle,
+        body: 'Otwórz panel klienta i zaznacz, czemu tak albo czemu nie.',
+        tag: `estateos-client-feedback-${clientId}`,
+        url: portalUrl,
+        native: !first.client.linkedUserId,
+      },
+    });
+
+    // Przypomnienie powstaje automatycznie — czeka na akceptację agenta, chyba że pozwolił wysyłać takie samodzielnie.
+    const reminderDelivery = await deliverToClient({
+      agencyUserId: first.client.agencyUserId,
+      clientId,
+      category: 'reminder',
+      source: 'feedback_reminder',
+      steps: reminderSteps,
+    });
 
     await prisma.agencyClientActivity.create({
       data: {
@@ -818,9 +974,15 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
           offerIds: rows.map((row) => row.offerId),
           waiting,
           via,
+          outboxId: reminderDelivery.outboxId,
         },
       },
     });
+
+    if (reminderDelivery.queued) {
+      reminded += 1;
+      continue;
+    }
 
     await sendNotification({
       userId: first.client.agencyUserId,

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { deliverChatToClient } from '@/lib/crm/clientOutbox';
 import { prisma } from '@/lib/prisma';
 import { buildPortalSyncVersion } from '@/lib/crm/portalSyncVersion';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
@@ -838,6 +839,14 @@ export async function POST(req: Request, ctx: RouteCtx) {
     if (intel.sent && intel.pick.offerId) {
       return NextResponse.json({ success: true, offerId: intel.pick.offerId, via: 'intelligence' });
     }
+    if (intel.approvalId) {
+      // Agent najpierw sprawdza propozycję — klient dostaje ją po akceptacji.
+      return NextResponse.json({
+        success: true,
+        pendingAgent: true,
+        message: 'Twój agent sprawdza pierwszą propozycję. Pojawi się tutaj, gdy ją zatwierdzi.',
+      });
+    }
 
     const minScore = client.buyerPreference?.minMatchThreshold ?? 70;
     const topMatch = await prisma.agencyClientMatch.findFirst({
@@ -856,7 +865,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       });
     }
 
-    await notifyAgencyClientAboutOffer({
+    const released = await notifyAgencyClientAboutOffer({
       clientId: client.id,
       offerId: topMatch.offerId,
       agencyUserId: client.agencyUserId,
@@ -868,6 +877,13 @@ export async function POST(req: Request, ctx: RouteCtx) {
       },
     });
 
+    if ('queued' in released && released.queued) {
+      return NextResponse.json({
+        success: true,
+        pendingAgent: true,
+        message: 'Twój agent sprawdza pierwszą propozycję. Pojawi się tutaj, gdy ją zatwierdzi.',
+      });
+    }
     return NextResponse.json({ success: true, offerId: topMatch.offerId, via: 'match' });
   }
 
@@ -1359,7 +1375,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         }
 
         const prompt = buildCheckbackChoicePrompt(pending.options);
-        await sendPortalChat({
+        await deliverChatToClient({
           clientId: client.id,
           agencyUserId: client.agencyUserId,
           from: 'agent',
@@ -1373,7 +1389,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
             kind: 'checkback',
             source: 'intelligence_checkback_prompt',
           },
-        });
+        }, { category: 'assistant', source: 'intelligence_checkback_prompt' });
         if (content) {
           await sendPortalChat({
             clientId: client.id,

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { deliverChatToClient } from '@/lib/crm/clientOutbox';
 import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
 import { sendIntelligenceOffer, pickIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
 import { autoSupplyClientFromNieruchomosciOnline } from '@/lib/crm/clientIntelligencePortalSupply';
@@ -68,7 +69,7 @@ export async function handleIntelligenceAfterFeedback(params: {
       },
     });
     const clientKind = handoffClientKindFromReason(handoffReason);
-    await sendPortalChat({
+    await deliverChatToClient({
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
       from: 'agent',
@@ -80,7 +81,7 @@ export async function handleIntelligenceAfterFeedback(params: {
         matchId: params.matchId,
         offerId: match?.offerId || null,
       },
-    }).catch(() => {});
+    }, { category: 'assistant', source: 'intelligence_handoff' }).catch(() => {});
     await sendPortalChat({
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
@@ -179,7 +180,7 @@ export async function mirrorIntelligenceOfferToChat(params: {
   offerId: number;
   body: string;
 }) {
-  await sendPortalChat({
+  await deliverChatToClient({
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
     from: 'agent',
@@ -190,7 +191,7 @@ export async function mirrorIntelligenceOfferToChat(params: {
       source: 'intelligence_offer',
       offerId: params.offerId,
     },
-  }).catch(() => {});
+  }, { category: 'assistant', source: 'intelligence_feedback' }).catch(() => {});
 }
 
 export { notifyAgencyClientAboutOffer };
