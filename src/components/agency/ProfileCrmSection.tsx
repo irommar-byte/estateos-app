@@ -232,7 +232,7 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
     if (res.ok) setClients(res.clients);
     if (today.ok) {
       const c = today.today.counts;
-      setTodayWaiting(c.ownerCalls + c.approvals + c.replies);
+      setTodayWaiting((c.outbox ?? 0) + c.ownerCalls + c.approvals + c.replies);
     }
   }, [token]);
 

@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import NumericKeyboardAccessory from '../NumericKeyboardAccessory';
 import {
   Dimensions,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import SafeModal from '../SafeModal';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -18,8 +19,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { CountryCode } from 'libphonenumber-js';
 import {
   ALLOWED_PHONE_COUNTRIES,
-  countryLabelInOwnLanguage,
-  countryLabelSortPl,
+  PRIORITY_PHONE_COUNTRIES,
+  countryNamePl,
   dialCodeFor,
   flagEmojiFromIso2,
 } from '../../utils/phoneRegions';
@@ -42,18 +43,26 @@ export function PhoneCountryPickerPanel({ selectedIso, onSelect, onClose, isDark
   const [q, setQ] = useState('');
 
   const rows = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = q
+      .trim()
+      .toLocaleLowerCase('pl-PL')
+      .replace(/^00/, '+');
     const list = [...ALLOWED_PHONE_COUNTRIES].map((iso) => ({
       iso,
       dial: dialCodeFor(iso),
-      label: countryLabelInOwnLanguage(iso),
-      sort: countryLabelSortPl(iso),
+      label: countryNamePl(iso),
+      priority: PRIORITY_PHONE_COUNTRIES.indexOf(iso),
     }));
-    list.sort((a, b) => a.sort.localeCompare(b.sort, 'pl', { sensitivity: 'base' }));
+    // Najczęstsze kraje na górze, reszta alfabetycznie po polsku.
+    list.sort((a, b) => {
+      const pa = a.priority < 0 ? 99 : a.priority;
+      const pb = b.priority < 0 ? 99 : b.priority;
+      return pa - pb || a.label.localeCompare(b.label, 'pl', { sensitivity: 'base' });
+    });
     if (!needle) return list;
     return list.filter((r) => {
-      const hay = `${r.label} ${r.iso} +${r.dial}`.toLowerCase();
-      return hay.includes(needle);
+      const hay = `${r.label} ${r.iso} +${r.dial}`.toLocaleLowerCase('pl-PL');
+      return hay.includes(needle) || (needle.startsWith('+') && `+${r.dial}`.startsWith(needle));
     });
   }, [q]);
 
@@ -88,6 +97,8 @@ export function PhoneCountryPickerPanel({ selectedIso, onSelect, onClose, isDark
       <TextInput
         value={q}
         onChangeText={setQ}
+        returnKeyType="search"
+        clearButtonMode="while-editing"
         placeholder="Szukaj kraju lub +kod…"
         placeholderTextColor={textMuted}
         style={[styles.search, { color: textMain, backgroundColor: inputBg, borderColor: border }]}
@@ -98,8 +109,12 @@ export function PhoneCountryPickerPanel({ selectedIso, onSelect, onClose, isDark
         data={rows}
         keyExtractor={(r) => r.iso}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         style={{ maxHeight: listMaxH }}
         nestedScrollEnabled
+        ListEmptyComponent={
+          <Text style={[styles.hint, { color: textMuted, textAlign: 'center', marginTop: 12 }]}>Brak kraju „{q.trim()}”</Text>
+        }
         renderItem={({ item }) => {
           const sel = item.iso === selectedIso;
           return (
@@ -125,7 +140,7 @@ export function PhoneCountryPickerPanel({ selectedIso, onSelect, onClose, isDark
                   {item.label}
                 </Text>
                 <Text style={[styles.rowSub, { color: textMuted }]} numberOfLines={1}>
-                  {item.iso} · +{item.dial}
+                  +{item.dial}
                 </Text>
               </View>
               {sel ? <Ionicons name="checkmark-circle" size={22} color="#34C759" /> : null}
@@ -147,8 +162,13 @@ type ModalProps = PhoneCountryPickerPanelProps & {
  */
 export default function PhoneCountryPickerModal({ visible, onClose, selectedIso, onSelect, isDark = false }: ModalProps) {
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalRoot} pointerEvents="box-none">
+    <SafeModal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      {/* Arkusz podnosi się nad klawiaturę — pole wyszukiwania i lista zostają widoczne. */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.modalRoot}
+        pointerEvents="box-none"
+      >
         <BlurView
           pointerEvents="none"
           intensity={isDark ? 50 : 65}
@@ -164,9 +184,8 @@ export default function PhoneCountryPickerModal({ visible, onClose, selectedIso,
         <View style={styles.sheetDock} pointerEvents="box-none">
           <PhoneCountryPickerPanel selectedIso={selectedIso} onSelect={onSelect} onClose={onClose} isDark={isDark} />
         </View>
-      </View>
-    <NumericKeyboardAccessory />
-    </Modal>
+      </KeyboardAvoidingView>
+    </SafeModal>
   );
 }
 

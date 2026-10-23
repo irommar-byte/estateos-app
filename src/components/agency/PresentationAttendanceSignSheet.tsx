@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import SafeModal from '../SafeModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -84,7 +84,7 @@ export default function PresentationAttendanceSignSheet({
       : facts.viewingAtLabel;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <SafeModal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top + 6 }]}>
         <View style={styles.header}>
           <Pressable onPress={onClose} hitSlop={12} disabled={busy} style={styles.headerSide}>
@@ -223,7 +223,7 @@ export default function PresentationAttendanceSignSheet({
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 

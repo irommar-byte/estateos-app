@@ -9,8 +9,11 @@ import {
   flagEmojiFromIso2,
   formatNationalAsYouType,
   getDeviceRegionCountry,
+  isAllowedPhoneCountry,
+  maxNationalDigits,
   parseStoredPhoneToLine,
 } from '../../utils/phoneRegions';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 export default function AcquisitionPhoneField({
   value,
@@ -53,10 +56,27 @@ export default function AcquisitionPhoneField({
     }
   }, [value]);
 
-  const emit = (nextIso: CountryCode, nextNational: string) => {
-    const formatted = formatNationalAsYouType(nextIso, nextNational.replace(/\D/g, ''));
+  const emit = (nextIso: CountryCode, typed: string) => {
+    let isoToUse = nextIso;
+    let digits = typed.replace(/\D/g, '');
+    const trimmed = typed.trim();
+    // Wklejony numer z kierunkowym („+49 170…”, „0048 501…”) — rozpoznaj kraj i utnij prefiks.
+    if (trimmed.startsWith('+') || trimmed.startsWith('00')) {
+      const parsed = parsePhoneNumberFromString(trimmed.replace(/^00/, '+'));
+      if (parsed?.country && isAllowedPhoneCountry(parsed.country)) {
+        isoToUse = parsed.country;
+        digits = String(parsed.nationalNumber || '');
+        if (isoToUse !== iso) setIso(isoToUse);
+      }
+    } else {
+      const dial = dialCodeFor(isoToUse);
+      if (digits.length > maxNationalDigits(isoToUse) && digits.startsWith(dial)) {
+        digits = digits.slice(dial.length);
+      }
+    }
+    const formatted = formatNationalAsYouType(isoToUse, digits);
     setNational(formatted);
-    const e164 = buildE164FromNational(nextIso, formatted);
+    const e164 = buildE164FromNational(isoToUse, formatted);
     onChange(e164 || formatted);
   };
 
@@ -106,7 +126,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 44,
+    height: 48,
     borderRadius: 12,
     borderWidth: 1,
     paddingRight: 12,
@@ -114,10 +134,10 @@ const styles = StyleSheet.create({
   flagBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 36,
+    height: 38,
     borderRadius: 10,
     paddingHorizontal: 8,
-    marginLeft: 4,
+    marginLeft: 5,
     gap: 4,
   },
   flag: { fontSize: 20 },

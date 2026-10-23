@@ -3,13 +3,13 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import SafeModal from '../SafeModal';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -252,7 +252,7 @@ export default function AgencyTransferModal({ visible, offerId, offerTitle, onCl
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
+    <SafeModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={[styles.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.header}>
           <Pressable onPress={handleClose} hitSlop={12}>
@@ -380,7 +380,7 @@ export default function AgencyTransferModal({ visible, offerId, offerTitle, onCl
           </ScrollView>
         )}
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 

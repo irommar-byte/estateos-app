@@ -121,6 +121,7 @@ import AgencyClientsScreen from './src/screens/AgencyClientsScreen';
 import AgencyClientCreateScreen from './src/screens/AgencyClientCreateScreen';
 import AgencyClientDetailScreen from './src/screens/AgencyClientDetailScreen';
 import AgencyTodayScreen from './src/screens/AgencyTodayScreen';
+import OutboxReviewHost from './src/components/agency/OutboxReviewHost';
 import CapturePortalLeadScreen from './src/screens/CapturePortalLeadScreen';
 import PresentationVisitWizardScreen from './src/screens/PresentationVisitWizardScreen';
 import ClientPortalScreen from './src/screens/ClientPortalScreen';
@@ -1394,7 +1395,8 @@ const parsePushTargetFromResponse = (
   // Propozycje asystenta do akceptacji i telefony do właścicieli → ekran „Dziś”.
   if (
     String(data.screen || data.route || '') === 'AgencyToday' ||
-    String(data.kind || '').toUpperCase() === 'INTELLIGENCE_APPROVAL'
+    String(data.kind || '').toUpperCase() === 'INTELLIGENCE_APPROVAL' ||
+    String(data.kind || '').toUpperCase() === 'CRM_OUTBOX'
   ) {
     return { screen: 'AgencyToday', params: {} };
   }
@@ -2154,6 +2156,7 @@ export default function App() {
         </View>
         </I18nProvider>
         <NumericKeyboardAccessory isDark={resolvedTheme === 'dark'} />
+        <OutboxReviewHost />
       </GestureHandlerRootView>
       </KeyboardProvider>
       </SafeAreaProvider>

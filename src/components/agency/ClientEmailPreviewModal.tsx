@@ -1,13 +1,13 @@
 import React from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import SafeModal from '../SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { capitalizeSentence, capitalizeWords, formatPolishDateTime } from '../../lib/polishText';
@@ -58,7 +58,7 @@ export default function ClientEmailPreviewModal({
   const prep = (data?.prepLabels || []).filter(Boolean);
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onCancel}>
+    <SafeModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onCancel}>
       <View style={[styles.root, { backgroundColor: isDark ? '#000' : '#F2F2F7', paddingTop: 12 }]}>
         <View style={styles.grabber} />
         <View style={styles.header}>
@@ -153,7 +153,7 @@ export default function ClientEmailPreviewModal({
           </Pressable>
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 

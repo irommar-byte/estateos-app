@@ -67,9 +67,24 @@ export type TodayStaleClient = {
   days: number;
 };
 
+export type TodayOutboxItem = {
+  id: number;
+  clientId: number;
+  clientName: string;
+  category: string;
+  categoryLabel: string;
+  channels: string[];
+  recipient: string | null;
+  subject: string | null;
+  previewText: string | null;
+  createdAt: string;
+};
+
 export type AgentToday = {
   generatedAt: string;
-  counts: { ownerCalls: number; approvals: number; replies: number; schedule: number; stale: number; total: number };
+  counts: { outbox?: number; ownerCalls: number; approvals: number; replies: number; schedule: number; stale: number; total: number };
+  /** Wiadomości do klientów czekające na akceptację (starsze serwery mogą nie zwracać). */
+  outbox?: TodayOutboxItem[];
   ownerCalls: TodayOwnerCall[];
   approvals: TodayApproval[];
   replies: TodayReply[];

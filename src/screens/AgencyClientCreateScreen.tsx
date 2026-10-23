@@ -579,6 +579,8 @@ export default function AgencyClientCreateScreen() {
         pesel: form.pesel.trim() || null,
         notes: form.internalNotes.trim() || null,
         salutation,
+        // Gdy klient ma e-mail, agent przed chwilą zatwierdził podgląd wiadomości powitalnej.
+        approved: Boolean(form.email.trim()),
         forceCreate,
         ...(type === 'SELLER'
           ? {
@@ -640,6 +642,8 @@ export default function AgencyClientCreateScreen() {
       await AsyncStorage.removeItem(DRAFT_KEY);
       const listingUrl = form.listingUrl.trim();
       if (listingUrl) {
+        // Po zamknięciu podglądu maila — inaczej iOS nie pokaże okna.
+        await new Promise((resolve) => setTimeout(resolve, 400));
         Alert.alert(
           'Klient dodany',
           form.email.trim()

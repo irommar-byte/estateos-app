@@ -32,7 +32,9 @@ import {
   type TodayReply,
   type TodayScheduleItem,
   type TodayStaleClient,
+  type TodayOutboxItem,
 } from '../services/agentTodayService';
+import { onOutboxChanged, openOutboxReview } from '../lib/outboxEvents';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -425,6 +427,44 @@ function StaleRow({ item, palette, onPress }: { item: TodayStaleClient; palette:
   );
 }
 
+const CHANNEL_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  email: 'mail',
+  sms: 'chatbox',
+  chat: 'chatbubbles',
+  push: 'notifications',
+};
+
+function OutboxRow({ item, palette, onPress }: { item: TodayOutboxItem; palette: Palette; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { backgroundColor: palette.card, borderColor: palette.hairline, opacity: pressed ? 0.75 : 1 }]}
+    >
+      <View style={[styles.rowIcon, { backgroundColor: 'rgba(10,132,255,0.14)' }]}>
+        <Ionicons name={CHANNEL_ICON[item.channels[0]] || 'paper-plane'} size={17} color={palette.blue} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={styles.rowTop}>
+          <Text style={[styles.rowName, { color: palette.text }]} numberOfLines={1}>
+            {item.clientName}
+          </Text>
+          <Text style={[styles.rowTime, { color: palette.secondary }]}>{agoLabel(item.createdAt)}</Text>
+        </View>
+        <Text style={[styles.rowTitle, { color: palette.text }]} numberOfLines={1}>
+          {item.subject || item.categoryLabel}
+        </Text>
+        <Text style={[styles.rowBody, { color: palette.secondary }]} numberOfLines={2}>
+          {item.categoryLabel}
+          {item.previewText ? ` · ${item.previewText.replace(/\s+/g, ' ')}` : ''}
+        </Text>
+      </View>
+      <View style={[styles.reviewPill, { backgroundColor: palette.blue }]}>
+        <Text style={styles.reviewPillText}>Sprawdź</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 /* ───────────────────────────── screen ───────────────────────────── */
 
 export default function AgencyTodayScreen() {
@@ -458,6 +498,18 @@ export default function AgencyTodayScreen() {
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
   }, []);
+
+  // Wiadomość zatwierdzona albo anulowana w podglądzie — znika z listy od razu.
+  useEffect(() => {
+    const sub = onOutboxChanged(({ id, result }) => {
+      animateNext();
+      setToday((current) =>
+        current ? { ...current, outbox: (current.outbox || []).filter((row) => row.id !== id) } : current,
+      );
+      showToast(result === 'sent' ? 'Wysłano do klienta' : 'Nie wysłano — wiadomość odrzucona');
+    });
+    return () => sub.remove();
+  }, [showToast]);
 
   const load = useCallback(
     async (mode: 'initial' | 'refresh' | 'silent' = 'initial') => {
@@ -563,7 +615,8 @@ export default function AgencyTodayScreen() {
   };
 
   const counts = today?.counts;
-  const actionable = counts ? counts.ownerCalls + counts.approvals + counts.replies : 0;
+  const outboxCount = today?.outbox?.length || 0;
+  const actionable = counts ? outboxCount + counts.ownerCalls + counts.approvals + counts.replies : 0;
   const dateLabel = new Date().toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' });
   const summary = !counts
     ? ''
@@ -618,6 +671,22 @@ export default function AgencyTodayScreen() {
           </View>
         ) : today ? (
           <>
+            {today.outbox?.length ? (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Do wysłania"
+                  count={today.outbox.length}
+                  tint={palette.blue}
+                  icon="paper-plane"
+                  palette={palette}
+                  hint="Nic nie wychodzi do klienta bez Twojej akceptacji"
+                />
+                {today.outbox.map((item) => (
+                  <OutboxRow key={item.id} item={item} palette={palette} onPress={() => openOutboxReview(item.id)} />
+                ))}
+              </View>
+            ) : null}
+
             {today.ownerCalls.length ? (
               <View style={styles.section}>
                 <SectionHeader
@@ -791,6 +860,8 @@ const styles = StyleSheet.create({
   timeText: { fontSize: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
   timeHint: { fontSize: 10, fontWeight: '700', marginTop: 1 },
   roundBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  reviewPill: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
+  reviewPillText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   empty: { alignItems: 'center', gap: 12, paddingTop: 64, paddingHorizontal: 24 },
   emptyBadge: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center' },

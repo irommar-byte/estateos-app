@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import SafeModal from '../SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { capitalizeSentence, formatPolishDateTime } from '../../lib/polishText';
 
@@ -157,7 +158,7 @@ export default function AcquisitionDatePickerModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <SafeModal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable onPress={onClose} style={styles.overlay}>
         <Pressable
           style={[
@@ -350,7 +351,7 @@ export default function AcquisitionDatePickerModal({
           </View>
         </Pressable>
       </Pressable>
-    </Modal>
+    </SafeModal>
   );
 }
 

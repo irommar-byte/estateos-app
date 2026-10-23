@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import SafeModal from '../SafeModal';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +27,7 @@ export default function StreetViewPreviewModal({ visible, lat, lng, title, onClo
   const uri = streetViewFallbackUrl(lat, lng);
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <SafeModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[styles.root, { backgroundColor: isDark ? '#000' : '#F2F2F7', paddingTop: insets.top + 8 }]}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
@@ -47,7 +48,7 @@ export default function StreetViewPreviewModal({ visible, lat, lng, title, onClo
           javaScriptEnabled
         />
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 

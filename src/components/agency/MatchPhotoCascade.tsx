@@ -3,12 +3,12 @@ import {
   Animated,
   Dimensions,
   Easing,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
+import SafeModal from '../SafeModal';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -110,7 +110,7 @@ export default function MatchPhotoCascade({
   const tileH = (areaH - PAD - GAP * (ROWS_IN_HALF - 1)) / ROWS_IN_HALF;
 
   return (
-    <Modal visible={shown} transparent animationType="fade" onRequestClose={requestClose}>
+    <SafeModal visible={shown} transparent animationType="fade" onRequestClose={requestClose}>
       <Pressable
         style={styles.backdrop}
         onPress={() => {
@@ -207,7 +207,7 @@ export default function MatchPhotoCascade({
           </View>
         )}
       </Pressable>
-    </Modal>
+    </SafeModal>
   );
 }
 
