@@ -1,6 +1,16 @@
 /** Gotowe SMS / mail po wizycie — agent otwiera natywny sheet. */
 
+import { buildClientVoice } from './clientVoice';
+
 export type DebriefOutcome = 'interested' | 'maybe' | 'reject';
+
+function visitVoice(params: { firstName: string; agentName: string; salutation?: string | null }) {
+  return buildClientVoice({
+    firstName: params.firstName,
+    salutation: params.salutation,
+    agentName: params.agentName,
+  });
+}
 
 export function buildPostVisitSms(params: {
   firstName: string;
@@ -10,15 +20,19 @@ export function buildPostVisitSms(params: {
   remindDays?: number;
   portalUrl: string;
   agentName: string;
+  salutation?: string | null;
 }): string {
-  const { firstName, outcome, offerTitle, portalUrl, agentName } = params;
-  if (outcome === 'interested') {
-    return `Dziękuję za dzisiejsze oglądanie, ${firstName}. Notuję zainteresowanie ofertą${params.priceHint ? ` ok. ${params.priceHint}` : ''}. Wkrótce dam znać co dalej. — ${agentName}`;
+  const v = visitVoice(params);
+  const { a, c } = v;
+  const hello = v.vocative ? `${v.vocative}, d` : 'D';
+  const sign = v.agentFirstName || params.agentName;
+  if (params.outcome === 'interested') {
+    return `${hello}ziękuję za dzisiejsze oglądanie! Cieszę się, że mieszkanie ${c('Pani się spodobało', 'Panu się spodobało', 'się spodobało')}${params.priceHint ? ` — ${a('zanotowałem', 'zanotowałam')} kwotę ok. ${params.priceHint}` : ''}. Przygotuję kolejny krok i odezwę się wkrótce. ${sign}`;
   }
-  if (outcome === 'maybe') {
-    return `Dziękuję za oglądanie, ${firstName}. Dam znać za ${params.remindDays || 5} dni — bez zobowiązań. Wszystko w panelu: ${portalUrl} — ${agentName}`;
+  if (params.outcome === 'maybe') {
+    return `${hello}ziękuję za oglądanie. Rozumiem, że to decyzja na spokojnie — odezwę się za ${params.remindDays || 5} dni, bez pośpiechu. Wszystko jest w panelu: ${params.portalUrl} ${sign}`;
   }
-  return `Dziękuję za oglądanie, ${firstName}. Na podstawie rozmowy wyślę podobne oferty do panelu: ${portalUrl} — ${agentName}`;
+  return `${hello}ziękuję za oglądanie i szczerość. Skoro to nie było „to”, poszukam czegoś lepiej dopasowanego — nowe propozycje pojawią się w panelu: ${params.portalUrl} ${sign}`;
 }
 
 export function buildPostVisitEmail(params: {
@@ -30,22 +44,26 @@ export function buildPostVisitEmail(params: {
   portalUrl: string;
   agentName: string;
   agencyName: string;
+  salutation?: string | null;
 }): { subject: string; body: string } {
+  const v = visitVoice(params);
+  const { a, c } = v;
+  const signoff = `Pozdrawiam serdecznie,\n${params.agentName}\n${params.agencyName}`;
   if (params.outcome === 'interested') {
     return {
-      subject: 'Dziękuję za oglądanie — kolejny krok',
-      body: `Dzień dobry ${params.firstName},\n\ndziękuję za dzisiejsze oglądanie oferty ${params.offerTitle}.\n\nNotuję Państwa zainteresowanie${params.priceHint ? ` oraz orientacyjną kwotę: ${params.priceHint}` : ''}.\nPrzygotowuję kolejny krok i odezwię się wkrótce.\n\nPanel: ${params.portalUrl}\n\nPozdrawiam,\n${params.agentName}\n${params.agencyName}`,
+      subject: 'Dziękuję za oglądanie — co dalej',
+      body: `${v.greeting}\n\ndziękuję za dzisiejsze oglądanie: ${params.offerTitle}. Bardzo się cieszę, że ${c('przypadło Pani do gustu', 'przypadło Panu do gustu', 'się spodobało')}.\n\n${params.priceHint ? `${a('Zanotowałem', 'Zanotowałam')} orientacyjną kwotę: ${params.priceHint}. ` : ''}Przygotuję kolejny krok i wkrótce się odezwę. Gdyby w międzyczasie pojawiły się pytania — proszę dzwonić śmiało.\n\nPanel: ${params.portalUrl}\n\n${signoff}`,
     };
   }
   if (params.outcome === 'maybe') {
     return {
       subject: `Dziękuję za oglądanie — odezwę się za ${params.remindDays || 5} dni`,
-      body: `Dzień dobry ${params.firstName},\n\ndziękuję za dzisiejsze oglądanie.\n\nRozumiem, że potrzebują Państwo chwili na decyzję.\nOdezwę się za ${params.remindDays || 5} dni — bez nacisku.\n\nPanel: ${params.portalUrl}\n\nPozdrawiam,\n${params.agentName}`,
+      body: `${v.greeting}\n\ndziękuję za dzisiejsze oglądanie. Rozumiem, że taka decyzja wymaga chwili.\n\nOdezwę się za ${params.remindDays || 5} dni, bez żadnego pośpiechu. Jeśli wcześniej pojawią się pytania albo wątpliwości, chętnie pomogę je rozwiać.\n\nPanel: ${params.portalUrl}\n\n${signoff}`,
     };
   }
   return {
-    subject: 'Propozycje podobnych mieszkań dla Pana/Pani',
-    body: `Dzień dobry ${params.firstName},\n\ndziękuję za dzisiejsze oglądanie. Skoro ta nieruchomość nie była „tą”, przygotuję kolejne propozycje.\n\nProszę zajrzeć do panelu i przy każdej ofercie wybrać:\n• Chcę oglądać\n• Do przemyślenia\n• Nie pasuje\n\nPanel: ${params.portalUrl}\n\nPozdrawiam,\n${params.agentName}`,
+    subject: 'Dziękuję za oglądanie — szukam dalej',
+    body: `${v.greeting}\n\ndziękuję za dzisiejsze oglądanie i szczerą opinię. Skoro ta nieruchomość nie była „tą”, poszukam czegoś lepiej dopasowanego.\n\nNowe propozycje pojawią się w panelu — przy każdej wystarczy kliknąć „Chcę obejrzeć”, „Do przemyślenia” albo „Nie pasuje”.\n\nPanel: ${params.portalUrl}\n\n${signoff}`,
   };
 }
 

@@ -1448,7 +1448,7 @@ export default function SellerMarketingCard({
                 }}
               >
                 {portalNote.trim() ||
-                  `Twoja nieruchomość jest widoczna na ${portalPreset}. Link do ogłoszenia znajdziesz w panelu.`}
+                  `Ogłoszenie jest już widoczne na ${portalPreset}. Link do niego jest w panelu klienta.`}
               </Text>
             </View>
           ) : null}

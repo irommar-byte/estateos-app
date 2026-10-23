@@ -510,12 +510,13 @@ export default function AgencyClientCreateScreen() {
       'Twój agent';
     const prepLabels = CLIENT_PREP_ITEMS.filter((item) => prepItems.includes(item.id)).map((item) => item.label);
     const subject = meetingAt
-      ? `Spotkanie ${formatPolishDateTime(meetingAt, { weekday: false, year: false })} · ${agencyName}`
-      : `${agentName} · wizytówka ${agencyName}`;
+      ? `Potwierdzenie spotkania — ${formatPolishDateTime(meetingAt, { weekday: false, year: false })}`
+      : `${agentName} — dane kontaktowe`;
     return {
       to: form.email.trim(),
       subject,
-      clientFirstName: form.firstName.trim() || 'Kliencie',
+      clientFirstName: form.firstName.trim(),
+      salutation,
       agentName,
       agentTitle: membership?.titleLabel || membership?.agentTitle || 'Agent nieruchomości',
       agencyName,
@@ -581,6 +582,8 @@ export default function AgencyClientCreateScreen() {
         salutation,
         // Gdy klient ma e-mail, agent przed chwilą zatwierdził podgląd wiadomości powitalnej.
         approved: Boolean(form.email.trim()),
+        // Dokładnie ten tekst, który agent widział w podglądzie.
+        cardIntro: startsAt ? CLIENT_MEETING_EMAIL_INTRO : CLIENT_CARD_EMAIL_INTRO,
         forceCreate,
         ...(type === 'SELLER'
           ? {

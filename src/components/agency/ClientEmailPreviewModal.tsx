@@ -10,18 +10,22 @@ import {
 import SafeModal from '../SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { capitalizeSentence, capitalizeWords, formatPolishDateTime } from '../../lib/polishText';
+import { capitalizeSentence, formatPolishDateTime } from '../../lib/polishText';
+import { buildClientVoice } from '../../lib/clientVoice';
 
+// Te same teksty wysyła serwer (agencyClientBusinessCard) — podgląd = treść maila.
 export const CLIENT_MEETING_EMAIL_INTRO =
-  'Umówiliśmy się na spotkanie. Termin jest ustalony — szczegóły i listę przygotowań znajdziesz poniżej.';
+  'Dziękuję za rozmowę — potwierdzam nasze spotkanie. Poniżej termin i krótka lista rzeczy, które warto przygotować.';
 
 export const CLIENT_CARD_EMAIL_INTRO =
-  'Przesyłam moją wizytówkę EstateOS™ — w razie pytań o nieruchomości jestem do dyspozycji.';
+  'Przesyłam swoje dane kontaktowe, żeby zawsze były pod ręką. W każdej sprawie dotyczącej nieruchomości proszę dzwonić lub pisać — chętnie pomogę.';
 
 export type ClientEmailPreviewData = {
   to: string;
   subject: string;
   clientFirstName: string;
+  /** 'PAN' | 'PANI' — forma, którą agent wybrał przy kliencie. */
+  salutation?: string | null;
   agentName: string;
   agentTitle: string;
   agencyName: string;
@@ -53,7 +57,11 @@ export default function ClientEmailPreviewModal({
   onConfirm,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const greetingName = capitalizeWords(data?.clientFirstName || 'Kliencie');
+  const greeting = buildClientVoice({
+    firstName: data?.clientFirstName,
+    salutation: data?.salutation,
+    agentName: data?.agentName,
+  }).greeting.replace(/,$/, '');
   const comment = data?.emailComment ? capitalizeSentence(data.emailComment) : '';
   const prep = (data?.prepLabels || []).filter(Boolean);
 
@@ -82,8 +90,8 @@ export default function ClientEmailPreviewModal({
 
           <View style={styles.mailShadow}>
             <View style={styles.mailHero}>
-              <Text style={styles.mailHeroKicker}>Wizytówka agenta</Text>
-              <Text style={styles.mailHeroTitle}>Witaj {greetingName}</Text>
+              <Text style={styles.mailHeroKicker}>{data?.meetingAt ? 'Potwierdzenie spotkania' : 'Dane kontaktowe'}</Text>
+              <Text style={styles.mailHeroTitle}>{greeting}</Text>
             </View>
             <View style={[styles.mailBody, { backgroundColor: isDark ? '#1C1C1E' : '#fff' }]}>
               <View style={styles.agentRow}>
@@ -137,8 +145,8 @@ export default function ClientEmailPreviewModal({
               ) : null}
 
               <Text style={styles.attachHint}>
-                W załączniku znajdziesz wizytówkę vCard
-                {data?.meetingAt ? ' oraz plik kalendarza (.ics).' : '.'}
+                W załączniku jest wizytówka do zapisania w kontaktach
+                {data?.meetingAt ? ' oraz plik kalendarza — termin spotkania trafi do telefonu jednym kliknięciem.' : '.'}
               </Text>
             </View>
           </View>
