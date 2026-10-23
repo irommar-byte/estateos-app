@@ -6,8 +6,8 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
-  useColorScheme,
 } from 'react-native';
+import { useResolvedTheme } from '../store/useThemeStore';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -27,7 +27,7 @@ export default function PasskeyLaunchPrompt({ ready, onUsePassword }: Props) {
   const { t } = useI18n();
   const token = useAuthStore((s) => s.token);
   const loginWithPasskey = useAuthStore((s) => s.loginWithPasskey);
-  const scheme = useColorScheme();
+  const scheme = useResolvedTheme();
   const isDark = scheme === 'dark';
 
   const [eligible, setEligible] = useState(false);

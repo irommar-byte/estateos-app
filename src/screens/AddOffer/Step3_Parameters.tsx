@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, Platform, KeyboardAvoidingView, Animated, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, Platform, Animated, Pressable } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -307,14 +308,14 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
   const wheelHintLabel = t('addOffer.step3.wheelHint');
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.container, { backgroundColor: theme.background }]}>
-      <ScrollView
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <KeyboardAwareScrollView
         ref={scrollRef}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="interactive"
+        bottomOffset={32}
       >
         <View style={{ marginTop: 50 }} />
         <AddOfferStepper currentStep={3} draft={draft} theme={theme} navigation={navigation} />
@@ -523,8 +524,8 @@ export default function Step3_Parameters({ theme }: { theme: any }) {
           }
         />
         <View style={{ height: 200 }} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 

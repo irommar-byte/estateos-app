@@ -5,8 +5,8 @@ import {
   StyleSheet,
   Text,
   View,
-  useColorScheme,
 } from 'react-native';
+import { useResolvedTheme } from '../store/useThemeStore';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useI18n } from '../i18n';
@@ -24,7 +24,7 @@ type Step = 'enjoy' | 'stars' | 'thanks';
 
 export default function AppRatingPromptModal({ visible, onClose }: Props) {
   const { t } = useI18n();
-  const scheme = useColorScheme();
+  const scheme = useResolvedTheme();
   const isDark = scheme === 'dark';
   const [step, setStep] = useState<Step>('enjoy');
   const [selectedStars, setSelectedStars] = useState(0);

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   findNodeHandle,
   LayoutAnimation,
   Linking,
@@ -15,6 +14,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1515,17 +1515,14 @@ export default function AgencyClientDetailScreen() {
         </Pressable>
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
+      <View style={{ flex: 1 }}>
+        <KeyboardAwareScrollView
           ref={pageScrollRef}
           scrollEnabled={!isSigning && !chatFocused}
           nestedScrollEnabled
           keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
+          keyboardDismissMode="interactive"
+          bottomOffset={24}
           contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 240 }}
         >
           {!client ? (
@@ -3720,8 +3717,8 @@ export default function AgencyClientDetailScreen() {
               )}
             </>
           )}
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </View>
       <EkwBookViewerModal
         visible={ekwViewerKw !== null}
         landRegistryNumber={ekwViewerKw}

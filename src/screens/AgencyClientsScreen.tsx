@@ -6,6 +6,7 @@ import {
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,6 +31,28 @@ import {
 } from '../lib/crmPersonGroups';
 import { loadCrmPersonOrder, saveCrmPersonOrder } from '../lib/crmClientListOrder';
 import TodayShowingsRail from '../components/agency/TodayShowingsRail';
+import { fetchAgentToday, type AgentToday } from '../services/agentTodayService';
+
+/** Jedno zdanie „co czeka na agenta” per klient — z ekranu „Dziś”. */
+function buildWaitingReasons(today: AgentToday): Map<number, string> {
+  const reasons = new Map<number, string>();
+  const put = (clientId: number, reason: string) => {
+    if (!reasons.has(clientId)) reasons.set(clientId, reason);
+  };
+  for (const row of today.ownerCalls) put(row.clientId, `Zadzwoń do właściciela: ${row.offer?.title || 'oferta'}`);
+  for (const row of today.replies) put(row.clientId, row.title);
+  for (const row of today.approvals) put(row.clientId, `Do akceptacji: ${row.offer?.title || 'propozycja asystenta'}`);
+  return reasons;
+}
+
+function normalizeSearch(value: string): string {
+  return value
+    .toLocaleLowerCase('pl-PL')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ł/g, 'l')
+    .trim();
+}
 
 const clientsCacheKey = (userId: number) => `@estateos_crm_clients_v1_${userId}`;
 
@@ -114,7 +137,9 @@ export default function AgencyClientsScreen() {
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState<'ALL' | 'BUYER' | 'SELLER'>('ALL');
+  const [filter, setFilter] = useState<'ALL' | 'BUYER' | 'SELLER' | 'WAITING'>('ALL');
+  const [query, setQuery] = useState('');
+  const [waiting, setWaiting] = useState<Map<number, string>>(new Map());
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -144,7 +169,8 @@ export default function AgencyClientsScreen() {
       else if (!clientsRef.current.length) setLoading(true);
       else setRefreshing(true);
       try {
-        const res = await fetchAgencyClients(token);
+        const [res, today] = await Promise.all([fetchAgencyClients(token), fetchAgentToday(token)]);
+        if (today.ok) setWaiting(buildWaitingReasons(today.today));
         if (!res.ok) {
           Alert.alert('Klienci', res.message);
           return;
@@ -185,8 +211,28 @@ export default function AgencyClientsScreen() {
 
   const visible = useMemo(() => {
     const grouped = groupCrmClientsByPerson(clients);
-    const scoped =
-      filter === 'ALL' ? grouped : grouped.filter((group) => group.types.includes(filter));
+    const byRole =
+      filter === 'ALL'
+        ? grouped
+        : filter === 'WAITING'
+          ? grouped.filter((group) => group.ids.some((id) => waiting.has(id)))
+          : grouped.filter((group) => group.types.includes(filter));
+    const needle = normalizeSearch(query);
+    const needleDigits = query.replace(/\D/g, '');
+    const scoped = !needle
+      ? byRole
+      : byRole.filter((group) =>
+          group.members.some((row) => {
+            const haystack = normalizeSearch(
+              [row.firstName, row.lastName, row.email, row.sellerCity, row.buyerCity, `#${row.id}`, String(row.id)]
+                .filter(Boolean)
+                .join(' '),
+            );
+            if (haystack.includes(needle)) return true;
+            const phoneDigits = String(row.phone || '').replace(/\D/g, '');
+            return needleDigits.length >= 3 && phoneDigits.includes(needleDigits);
+          }),
+        );
     const ordered = applyCrmPersonOrder(scoped, personOrder);
     const withPres = ordered.filter((g) =>
       g.members.some(
@@ -204,7 +250,12 @@ export default function AgencyClientsScreen() {
       return new Date(aStart).getTime() - new Date(bStart).getTime();
     });
     return [...withPres, ...without];
-  }, [clients, filter, personOrder]);
+  }, [clients, filter, personOrder, query, waiting]);
+
+  const waitingCount = useMemo(
+    () => groupCrmClientsByPerson(clients).filter((group) => group.ids.some((id) => waiting.has(id))).length,
+    [clients, waiting],
+  );
 
   const toggleSelection = (ids: number[]) => {
     setSelectedIds((prev) => {
@@ -345,6 +396,18 @@ export default function AgencyClientsScreen() {
             <Text style={{ color: colors.secondary, marginTop: 4, fontSize: 13 }}>
               {client.email || client.phone || 'Brak kontaktu'}
             </Text>
+            {(() => {
+              const reason = item.ids.map((id) => waiting.get(id)).find(Boolean);
+              if (!reason) return null;
+              return (
+                <View style={[styles.waitingRow, { backgroundColor: isDark ? 'rgba(255,159,10,0.14)' : '#FFF4E5' }]}>
+                  <View style={styles.waitingDot} />
+                  <Text style={[styles.waitingText, { color: isDark ? '#FFB340' : '#C25E00' }]} numberOfLines={1}>
+                    {reason}
+                  </Text>
+                </View>
+              );
+            })()}
 
             {showMeeting && meetingClient?.upcomingMeetingStartsAt ? (
               <MeetingCountdownBadge
@@ -453,6 +516,19 @@ export default function AgencyClientsScreen() {
           <Text style={[styles.navKicker, { color: colors.secondary }]}>SEKCJA CRM</Text>
           <Text style={[styles.navTitle, { color: colors.text }]}>Moi klienci</Text>
         </View>
+        <Pressable
+          onPress={() => navigation.navigate('AgencyToday')}
+          hitSlop={8}
+          style={styles.navBtn}
+          accessibilityLabel="Dziś"
+        >
+          <Ionicons name="sunny" size={24} color="#FF9F0A" />
+          {waitingCount ? (
+            <View style={styles.navBadge}>
+              <Text style={styles.navBadgeText}>{waitingCount > 9 ? '9+' : waitingCount}</Text>
+            </View>
+          ) : null}
+        </Pressable>
         <Pressable onPress={() => navigation.navigate('CapturePortalLead')} hitSlop={8} style={styles.navBtn}>
           <Ionicons name="mail-unread-outline" size={24} color="#FF9F0A" />
         </Pressable>
@@ -461,10 +537,33 @@ export default function AgencyClientsScreen() {
         </Pressable>
       </View>
 
+      <View style={styles.searchWrap}>
+        <View style={[styles.searchBox, { backgroundColor: isDark ? '#1C1C1E' : 'rgba(118,118,128,0.12)' }]}>
+          <Ionicons name="search" size={17} color={colors.secondary} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Szukaj: imię, telefon, e-mail, miasto"
+            placeholderTextColor={colors.secondary}
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            clearButtonMode="never"
+            style={[styles.searchInput, { color: colors.text }]}
+          />
+          {query ? (
+            <Pressable onPress={() => setQuery('')} hitSlop={10} accessibilityLabel="Wyczyść">
+              <Ionicons name="close-circle" size={17} color={colors.secondary} />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+
       <View style={styles.filtersRow}>
         <View style={styles.filters}>
           {([
             ['ALL', 'Wszyscy'],
+            ...(waitingCount ? [['WAITING', `Czekają · ${waitingCount}`] as const] : []),
             ['BUYER', 'Kupujący'],
             ['SELLER', 'Sprzedający'],
           ] as const).map(([id, label]) => (
@@ -520,10 +619,12 @@ export default function AgencyClientsScreen() {
 
       <DraggableFlatList
         data={visible}
-        extraData={`${selectMode}:${[...selectedIds].join(',')}:${isDark}:${filter}`}
+        extraData={`${selectMode}:${[...selectedIds].join(',')}:${isDark}:${filter}:${waiting.size}`}
         keyExtractor={(item) => item.key}
         onDragEnd={({ data }) => persistOrder(data)}
-        activationDistance={selectMode ? 10_000 : 12}
+        activationDistance={selectMode || query.trim() ? 10_000 : 12}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         renderItem={renderCard}
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 160 }}
         ListFooterComponent={<View style={{ height: 48 }} />}
@@ -558,7 +659,7 @@ export default function AgencyClientsScreen() {
             </View>
           ) : (
             <Text style={{ color: colors.secondary, textAlign: 'center', marginTop: 40 }}>
-              Brak klientów w tej grupie.
+              {query.trim() ? `Nikt nie pasuje do „${query.trim()}”.` : 'Brak klientów w tej grupie.'}
             </Text>
           )
         }
@@ -581,9 +682,38 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
   },
   navBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  navBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 2,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800' },
+  searchWrap: { paddingHorizontal: 16, paddingTop: 12 },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 10, height: 40 },
+  searchInput: { flex: 1, fontSize: 16, paddingVertical: 0 },
+  waitingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  waitingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FF9F0A' },
+  waitingText: { color: '#C25E00', fontSize: 12, fontWeight: '700', flexShrink: 1 },
   navKicker: { fontSize: 10, fontWeight: '800', letterSpacing: 1.3 },
   navTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.4, marginTop: 1 },
-  filtersRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 16 },
+  filtersRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 10 },
   filters: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   selectToggle: {
     borderRadius: 999,

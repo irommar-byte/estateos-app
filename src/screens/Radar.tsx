@@ -2,7 +2,8 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import NumericKeyboardAccessory from '../components/NumericKeyboardAccessory';
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Audio } from 'expo-av';
-import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, useColorScheme, LayoutAnimation, UIManager, TextInput } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Image, Pressable, Platform, ScrollView, Modal, Switch, Animated, LayoutAnimation, UIManager, TextInput } from 'react-native';
+import { useResolvedTheme } from '../store/useThemeStore';
 import { Marker } from 'react-native-maps';
 import { RadarMapView } from '../components/MapGestureHost';
 import { AppleMapClusterMarker } from '../components/radar/AppleMapClusterMarker';
@@ -62,7 +63,7 @@ export default function Radar({ theme, route }: any) {
 
   const navigation = useNavigation<any>();
   const { user, isRadarActive, setRadarActive, token } = useAuthStore() as any;
-  const colorScheme = useColorScheme();
+  const colorScheme = useResolvedTheme();
   const isDark = theme?.glass === 'dark' || theme?.dark || colorScheme === 'dark';
 
   const mapRef = useRef<any>(null);

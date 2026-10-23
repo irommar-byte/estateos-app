@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../../store/useAuthStore';
 import { fetchAgencyClients, type AgencyClientListItem } from '../../services/agencyClientService';
+import { fetchAgentToday } from '../../services/agentTodayService';
 import { crmEventClientId, useCrmSchedule, type CrmScheduleEvent } from '../../hooks/useCrmSchedule';
 import { onCrmClientsChanged } from '../../lib/crmClientsEvents';
 import TitaniumHomeKeyBackdrop from '../profile/TitaniumHomeKeyBackdrop';
@@ -213,6 +214,7 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
   const { events } = useCrmSchedule();
   const [clients, setClients] = useState<AgencyClientListItem[]>([]);
   const [expanded, setExpanded] = useState(false);
+  const [todayWaiting, setTodayWaiting] = useState<number | null>(null);
 
   const palette = useMemo(() => crmGoldPalette(isDark), [isDark]);
   const companyBrand = useMemo(
@@ -226,8 +228,12 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
 
   const loadClients = useCallback(async () => {
     if (!token) return;
-    const res = await fetchAgencyClients(token);
+    const [res, today] = await Promise.all([fetchAgencyClients(token), fetchAgentToday(token)]);
     if (res.ok) setClients(res.clients);
+    if (today.ok) {
+      const c = today.today.counts;
+      setTodayWaiting(c.ownerCalls + c.approvals + c.replies);
+    }
   }, [token]);
 
   useFocusEffect(
@@ -452,6 +458,37 @@ export default function ProfileCrmSection({ isDark, isAgency }: Props) {
               </View>
             </View>
           ) : null}
+
+          {/* „Dziś” — wszystko, co czeka na ruch agenta, w jednym miejscu */}
+          <View style={styles.todayWrap}>
+            <InsetMetalRecess
+              isDark={isDark}
+              variant="gold"
+              contentStyle={styles.todayContent}
+              onPress={() => {
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                navigation.navigate('AgencyToday');
+              }}
+            >
+              <Ionicons name="sunny" size={20} color={palette.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.todayTitle, { color: palette.text }]}>Dziś</Text>
+                <Text style={[styles.todayHint, { color: palette.secondary }]} numberOfLines={1}>
+                  {todayWaiting == null
+                    ? 'Plan dnia i sprawy do załatwienia'
+                    : todayWaiting === 0
+                      ? 'Nic nie czeka na Twój ruch'
+                      : `${todayWaiting} ${todayWaiting === 1 ? 'sprawa czeka' : todayWaiting < 5 ? 'sprawy czekają' : 'spraw czeka'} na Ciebie`}
+                </Text>
+              </View>
+              {todayWaiting ? (
+                <View style={[styles.todayBadge, { backgroundColor: palette.attention }]}>
+                  <Text style={styles.todayBadgeText}>{todayWaiting > 99 ? '99+' : todayWaiting}</Text>
+                </View>
+              ) : null}
+              <Ionicons name="chevron-forward" size={18} color={palette.muted} />
+            </InsetMetalRecess>
+          </View>
 
           {/* Always visible — also when the gold panel is collapsed */}
           <View style={styles.actionsRow}>
@@ -750,7 +787,13 @@ const styles = StyleSheet.create({
   taskTitle: { flexShrink: 1, fontSize: 14, fontWeight: '700' },
   taskDetail: { fontSize: 11.5, fontWeight: '500', marginTop: 3 },
   wellContent: { padding: 12 },
-  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  todayWrap: { marginTop: 18 },
+  todayContent: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 14 },
+  todayTitle: { fontSize: 17, fontWeight: '800' },
+  todayHint: { fontSize: 12, marginTop: 1 },
+  todayBadge: { minWidth: 24, height: 24, borderRadius: 12, paddingHorizontal: 7, alignItems: 'center', justifyContent: 'center' },
+  todayBadgeText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   actionFlex: { flex: 1 },
   actionContent: {
     flexDirection: 'row',
