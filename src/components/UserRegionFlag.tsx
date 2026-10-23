@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Platform, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { Animated, Platform, StyleSheet, Text, View } from 'react-native';
+import { useResolvedTheme } from '../store/useThemeStore';
 import { BlurView } from 'expo-blur';
 import type { CountryCode } from 'libphonenumber-js';
 import { flagEmojiFromIso2, inferCountryFromPhone } from '../utils/phoneRegions';
@@ -27,7 +28,7 @@ export default function UserRegionFlag({
   animated = true,
   isDark: isDarkProp,
 }: Props) {
-  const systemScheme = useColorScheme();
+  const systemScheme = useResolvedTheme();
   const isDark = isDarkProp ?? systemScheme === 'dark';
   const iso = useMemo(() => {
     const raw = String(phone || '').trim();

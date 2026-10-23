@@ -9,7 +9,6 @@ import {
   Switch,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Dimensions,
   useColorScheme,
@@ -19,6 +18,7 @@ import {
   UIManager,
   PanResponder,
 } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -2490,18 +2490,15 @@ export default function EditOfferScreen({ route }: any) {
         </View>
       </BlurView>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
+      <View style={{ flex: 1 }}>
+        <KeyboardAwareScrollView
           ref={mainScrollRef}
           scrollEnabled={!isDraggingGallery}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="none"
-          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode="interactive"
+          bottomOffset={96}
         >
           {/* ====== HERO „TWOJE OKNO EDYCJI" ====== */}
           <View style={[styles.heroCard, { backgroundColor: cardBgElevated, borderColor }]}>
@@ -3940,13 +3937,19 @@ export default function EditOfferScreen({ route }: any) {
 
           {/* Bufor pod sticky save */}
           <View style={{ height: 96 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
+      </View>
 
-      {/* ====== STICKY SAVE BAR ====== */}
+      {/* ====== STICKY SAVE BAR — jedzie nad klawiaturą ====== */}
+      <KeyboardStickyView
+        style={styles.stickyDock}
+        offset={{ closed: 0, opened: Platform.OS === 'ios' ? 22 : 0 }}
+        pointerEvents="box-none"
+      >
       <View
         style={[
           styles.stickyBar,
+          styles.stickyBarInDock,
           { backgroundColor: isDark ? 'rgba(20,20,22,0.85)' : 'rgba(255,255,255,0.92)' },
         ]}
         pointerEvents="box-none"
@@ -3986,6 +3989,7 @@ export default function EditOfferScreen({ route }: any) {
           )}
         </Pressable>
       </View>
+      </KeyboardStickyView>
     </View>
   );
 }
@@ -5152,6 +5156,15 @@ const styles = StyleSheet.create({
   locLegendSub: { fontSize: 11, color: '#8E8E93', lineHeight: 14, marginTop: 2 },
 
   /* ===== STICKY SAVE BAR ===== */
+  stickyDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  stickyBarInDock: {
+    position: 'relative',
+  },
   stickyBar: {
     position: 'absolute',
     left: 0,

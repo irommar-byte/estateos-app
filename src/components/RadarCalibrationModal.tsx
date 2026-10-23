@@ -13,9 +13,9 @@ import {
   UIManager,
   KeyboardAvoidingView,
   Keyboard,
-  useColorScheme,
   InteractionManager,
 } from 'react-native';
+import { useResolvedTheme } from '../store/useThemeStore';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { OFFER_YEAR_BUILT_MIN } from '../lib/offerYearBuilt';
@@ -265,7 +265,7 @@ export default function RadarCalibrationModal({
 }: Props) {
   
   const { t, locale } = useI18n();
-  const systemTheme = useColorScheme();
+  const systemTheme = useResolvedTheme();
   const isDark = systemTheme === 'dark';
   const COLORS = useMemo(() => getColors(isDark), [isDark]);
   const dateLocale = localeToDateFormat(locale);

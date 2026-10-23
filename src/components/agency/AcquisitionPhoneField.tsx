@@ -20,6 +20,7 @@ export default function AcquisitionPhoneField({
   label = 'TELEFON',
   /** Stały kraj początkowy — dla nowych klientów CRM zawsze PL. */
   defaultCountryIso = 'PL' as CountryCode,
+  inputRef,
 }: {
   value: string;
   onChange: (e164OrDisplay: string) => void;
@@ -27,6 +28,8 @@ export default function AcquisitionPhoneField({
   disabled?: boolean;
   label?: string;
   defaultCountryIso?: CountryCode;
+  /** Pozwala przejść do pola telefonu z poprzedniego pola („Dalej” na klawiaturze). */
+  inputRef?: React.Ref<TextInput>;
 }) {
   const fallbackIso = defaultCountryIso || getDeviceRegionCountry();
   const parsed = parseStoredPhoneToLine(value, fallbackIso);
@@ -71,9 +74,12 @@ export default function AcquisitionPhoneField({
           <Ionicons name="chevron-down" size={14} color={colors.secondary} />
         </Pressable>
         <TextInput
+          ref={inputRef}
           editable={!disabled}
           value={national}
           keyboardType="phone-pad"
+          textContentType="telephoneNumber"
+          autoComplete="tel"
           placeholder="123 456 789"
           placeholderTextColor={colors.secondary}
           onChangeText={(text) => emit(iso, text)}

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, InteractionManager, useColorScheme } from 'react-native';
+import { Alert, InteractionManager } from 'react-native';
+import { useResolvedTheme } from '../../store/useThemeStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import InvestorProUpsellModal from './InvestorProUpsellModal';
@@ -23,7 +24,7 @@ import { useLaunchPromptSlot } from '../../hooks/useLaunchPromptSlot';
 
 export default function InvestorProUpsellHost() {
   const { t } = useI18n();
-  const scheme = useColorScheme();
+  const scheme = useResolvedTheme();
   const isDark = scheme === 'dark';
   const user = useAuthStore((s) => s.user);
   const token = useAuthStore((s) => s.token);

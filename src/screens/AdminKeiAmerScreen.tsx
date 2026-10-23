@@ -5,7 +5,6 @@ import {
   Animated,
   Easing,
   Keyboard,
-  KeyboardAvoidingView,
   Linking,
   Platform,
   Pressable,
@@ -17,6 +16,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -705,11 +705,7 @@ export default function AdminKeiAmerScreen() {
   }, []);
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: colors.bg }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
-    >
+    <View style={[styles.root, { backgroundColor: colors.bg }]}>
       <View style={[styles.navBar, { paddingTop: insets.top + 8, borderBottomColor: colors.separator }]}>
         <Pressable
           onPress={() => {
@@ -732,11 +728,11 @@ export default function AdminKeiAmerScreen() {
         </Pressable>
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+        keyboardDismissMode="interactive"
+        bottomOffset={96}
         refreshControl={
           <RefreshControl
             refreshing={previewLoading}
@@ -1292,9 +1288,10 @@ export default function AdminKeiAmerScreen() {
             ))}
           </View>
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 12, borderTopColor: colors.separator }]}>
+      <KeyboardStickyView style={styles.bottomDock} offset={{ closed: 0, opened: insets.bottom }}>
+      <View style={[styles.bottomBar, styles.bottomBarInDock, { paddingBottom: insets.bottom + 12, borderTopColor: colors.separator }]}>
         {Platform.OS === 'ios' ? (
           <BlurView intensity={80} tint={colors.isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
         ) : (
@@ -1337,8 +1334,9 @@ export default function AdminKeiAmerScreen() {
           </Pressable>
         )}
       </View>
+      </KeyboardStickyView>
       <NumericKeyboardAccessory isDark={colors.isDark} />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -1447,6 +1445,15 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   pager: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 8 },
   pageBtn: { minWidth: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  bottomDock: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  bottomBarInDock: {
+    position: 'relative',
+  },
   bottomBar: {
     position: 'absolute',
     left: 0,

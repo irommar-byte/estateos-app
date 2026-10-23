@@ -2,10 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -15,6 +14,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import * as Contacts from 'expo-contacts';
+import KeyboardFormLayout from '../components/forms/KeyboardFormLayout';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import { createAgencyClient, previewPortalListing } from '../services/agencyClientService';
@@ -52,6 +54,32 @@ import { parsePesel } from '../lib/pesel';
 
 const DRAFT_KEY = '@eos_agency_client_create_draft';
 
+type Salutation = 'PAN' | 'PANI';
+
+/** Męskie imiona zakończone na „a” — wyjątki od reguły „-a = Pani”. */
+const MALE_NAMES_ENDING_A = new Set(['kuba', 'barnaba', 'bonawentura', 'kosma', 'jarema', 'sasza', 'misza', 'grisza', 'dima', 'luca', 'nikita', 'ilja']);
+
+/** Podpowiedź formy grzecznościowej: PESEL ma pierwszeństwo, potem polska reguła końcówki imienia. */
+function guessSalutation(firstName: string, pesel: string): Salutation | null {
+  const fromPesel = parsePesel(pesel);
+  if (fromPesel) return fromPesel.gender === 'K' ? 'PANI' : 'PAN';
+  const name = firstName.trim().toLocaleLowerCase('pl-PL').split(/\s+/)[0] || '';
+  if (name.length < 2) return null;
+  return name.endsWith('a') && !MALE_NAMES_ENDING_A.has(name) ? 'PANI' : 'PAN';
+}
+
+/** Numer z książki adresowej → E.164 (domyślnie Polska). */
+function normalizeContactPhone(raw: string): string {
+  const trimmed = raw.trim();
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return '';
+  if (trimmed.startsWith('+')) return `+${digits}`;
+  if (digits.startsWith('00')) return `+${digits.slice(2)}`;
+  if (digits.length === 9) return `+48${digits}`;
+  if (digits.length === 11 && digits.startsWith('48')) return `+${digits}`;
+  return trimmed;
+}
+
 type LookupMatch = {
   id: number;
   firstName: string;
@@ -70,6 +98,15 @@ export default function AgencyClientCreateScreen() {
   const membership = useAuthStore((s) => s.agencyMembership);
   const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
   const [type, setType] = useState<'BUYER' | 'SELLER'>('SELLER');
+  const [salutation, setSalutation] = useState<Salutation | null>(null);
+  const [salutationTouched, setSalutationTouched] = useState(false);
+  const [phoneFieldKey, setPhoneFieldKey] = useState(0);
+  const [enableAssistant, setEnableAssistant] = useState(true);
+  const quickRef = useRef(false);
+  const lastNameRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
+  const peselRef = useRef<TextInput>(null);
   const [busy, setBusy] = useState(false);
   const [alsoSearching, setAlsoSearching] = useState(false);
   const [duplicateMatches, setLookupMatches] = useState<LookupMatch[]>([]);
@@ -195,6 +232,14 @@ export default function AgencyClientCreateScreen() {
   }, [form, type, alsoSearching, address, prepItems, buyerFilters]);
 
   const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  const phoneDigitCount = form.phone.replace(/\D/g, '').length;
+  const hasContact = phoneDigitCount >= 9 || isValidEmail(form.email.trim());
+
+  // Forma grzecznościowa podpowiada się sama, dopóki agent jej nie zmieni ręcznie.
+  useEffect(() => {
+    if (salutationTouched) return;
+    setSalutation(guessSalutation(form.firstName, form.pesel));
+  }, [form.firstName, form.pesel, salutationTouched]);
 
   const totalSteps = type === 'SELLER' ? 5 : 4;
 
@@ -232,9 +277,9 @@ export default function AgencyClientCreateScreen() {
     if (wizardStep === 2) {
       if (!form.firstName.trim() || !form.lastName.trim()) return false;
       if (form.email.trim() && !isValidEmail(form.email.trim())) return false;
-      if (form.phone.replace(/\D/g, '').length > 0 && form.phone.replace(/\D/g, '').length < 9) return false;
+      if (phoneDigitCount > 0 && phoneDigitCount < 9) return false;
       if (form.pesel.trim() && !parsePesel(form.pesel)) return false;
-      return true;
+      return hasContact;
     }
     if (type === 'SELLER' && wizardStep === 3) {
       return Boolean(address.lat && address.lng && address.address.trim());
@@ -259,7 +304,13 @@ export default function AgencyClientCreateScreen() {
         return;
       }
       if (wizardStep === 2) {
-        Alert.alert('Dane kontaktowe', 'Uzupełnij imię, nazwisko i poprawny telefon z prefiksem kraju.');
+        if (!form.firstName.trim() || !form.lastName.trim()) {
+          Alert.alert('Dane klienta', 'Uzupełnij imię i nazwisko.');
+        } else if (phoneDigitCount > 0 && phoneDigitCount < 9) {
+          Alert.alert('Telefon', 'Numer telefonu jest niepełny.');
+        } else {
+          Alert.alert('Kontakt', 'Podaj telefon albo e-mail — bez kontaktu nie poprowadzisz sprawy.');
+        }
         return;
       }
       if (type === 'SELLER' && wizardStep === 3) {
@@ -280,7 +331,44 @@ export default function AgencyClientCreateScreen() {
       void submit();
       return;
     }
+    Keyboard.dismiss();
+    void Haptics.selectionAsync();
     setWizardStep((s) => Math.min(totalSteps, s + 1));
+  };
+
+  const chooseType = (next: 'BUYER' | 'SELLER') => {
+    void Haptics.selectionAsync();
+    setType(next);
+    // Wybór typu od razu prowadzi dalej — jeden dotyk zamiast dwóch.
+    setTimeout(() => setWizardStep(2), 180);
+  };
+
+  const pickFromContacts = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        const permission = await Contacts.requestPermissionsAsync();
+        if (permission.status !== 'granted') {
+          Alert.alert('Kontakty', 'Zezwól EstateOS na dostęp do Kontaktów w ustawieniach telefonu.');
+          return;
+        }
+      }
+      const contact = await Contacts.presentContactPickerAsync();
+      if (!contact) return;
+      const phone = contact.phoneNumbers?.find((row) => row.isPrimary)?.number || contact.phoneNumbers?.[0]?.number || '';
+      const email = contact.emails?.find((row) => row.isPrimary)?.email || contact.emails?.[0]?.email || '';
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setForm((current) => ({
+        ...current,
+        firstName: contact.firstName?.trim() || current.firstName,
+        lastName: contact.lastName?.trim() || current.lastName,
+        phone: phone ? normalizeContactPhone(phone) : current.phone,
+        email: email ? email.trim().toLowerCase() : current.email,
+      }));
+      // Pole telefonu trzyma własny stan kraju i numeru — odświeżamy je po imporcie.
+      setPhoneFieldKey((key) => key + 1);
+    } catch {
+      Alert.alert('Kontakty', 'Nie udało się otworzyć Kontaktów.');
+    }
   };
 
   const goBack = () => {
@@ -288,6 +376,7 @@ export default function AgencyClientCreateScreen() {
       navigation.goBack();
       return;
     }
+    Keyboard.dismiss();
     setWizardStep((s) => Math.max(1, s - 1));
   };
 
@@ -347,17 +436,23 @@ export default function AgencyClientCreateScreen() {
     return () => clearTimeout(t);
   }, [form.email, form.phone, form.pesel, token]);
 
-  const submit = async () => {
+  const submit = async (quick = false) => {
     if (!token) return;
+    quickRef.current = quick;
+    Keyboard.dismiss();
     if (!form.firstName.trim() || !form.lastName.trim()) {
       Alert.alert('Klient', 'Imię i nazwisko są wymagane.');
       return;
     }
-    if (type === 'SELLER' && !form.meetingAt.trim()) {
+    if (!hasContact) {
+      Alert.alert('Kontakt', 'Podaj telefon albo e-mail klienta.');
+      return;
+    }
+    if (!quick && type === 'SELLER' && !form.meetingAt.trim()) {
       Alert.alert('Termin spotkania', 'Ustal termin i godzinę spotkania — klient dostanie maila z kalendarzem.');
       return;
     }
-    if ((type === 'BUYER' || alsoSearching) && !clientRadarSurveyReady(buyerFilters)) {
+    if (!quick && (type === 'BUYER' || alsoSearching) && !clientRadarSurveyReady(buyerFilters)) {
       Alert.alert('Ankieta radaru', clientRadarSurveyHint(buyerFilters) || 'Uzupełnij parametry poszukiwań.');
       return;
     }
@@ -483,6 +578,7 @@ export default function AgencyClientCreateScreen() {
         phone: form.phone.trim() || null,
         pesel: form.pesel.trim() || null,
         notes: form.internalNotes.trim() || null,
+        salutation,
         forceCreate,
         ...(type === 'SELLER'
           ? {
@@ -503,11 +599,16 @@ export default function AgencyClientCreateScreen() {
                     prepItems,
                   }
                 : null,
-              ...(alsoSearching ? { buyerFilters: { ...buyerFilters, pushNotifications: false } } : {}),
+              ...(alsoSearching && clientRadarSurveyReady(buyerFilters)
+                ? { buyerFilters: { ...buyerFilters, pushNotifications: false } }
+                : {}),
             }
-          : {
-              buyerFilters: { ...buyerFilters, pushNotifications: false },
-            }),
+          : clientRadarSurveyReady(buyerFilters) && !quickRef.current
+            ? {
+                buyerFilters: { ...buyerFilters, pushNotifications: false },
+                intelligenceEnabled: enableAssistant,
+              }
+            : {}),
       });
 
       if (!res.ok) {
@@ -567,26 +668,35 @@ export default function AgencyClientCreateScreen() {
     }
   };
 
-  const field = (
-    key: keyof typeof form,
-    label: string,
-    keyboardType: 'default' | 'email-address' | 'phone-pad' | 'numeric' = 'default',
-    formatter?: (val: string) => string
-  ) => (
-    <View style={{ marginBottom: 12 }}>
-      <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>{label}</Text>
-      <TextInput
-        value={form[key]}
-        onChangeText={(value) => {
-          const formatted = formatter ? formatter(value) : value;
-          setForm((current) => ({ ...current, [key]: formatted }));
-        }}
-        keyboardType={keyboardType}
-        autoCapitalize={keyboardType === 'email-address' ? 'none' : 'words'}
-        placeholderTextColor={colors.secondary}
-        style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
-      />
-    </View>
+  const footerButtons = (
+    <>
+      <Pressable onPress={goBack} style={[styles.footerBtn, styles.footerGhost, { borderColor: colors.border, backgroundColor: colors.card }]}>
+        <Text style={[styles.footerBtnText, { color: colors.text }]}>{wizardStep === 1 ? 'Anuluj' : 'Wstecz'}</Text>
+      </Pressable>
+      <Pressable
+        disabled={busy}
+        onPress={() => (wizardStep >= totalSteps ? void submit() : goNext())}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.footerBtn,
+          { backgroundColor: colors.accent, opacity: busy ? 0.7 : !canGoNext() ? 0.45 : pressed ? 0.85 : 1 },
+        ]}
+      >
+        {busy ? (
+          <ActivityIndicator color="#000" />
+        ) : (
+          <Text style={[styles.footerBtnText, { color: '#052e16' }]} numberOfLines={2}>
+            {wizardStep >= totalSteps
+              ? duplicateMatches.length > 0 && !ignoreDuplicateWarning
+                ? 'Dodaj mimo duplikatu'
+                : form.email.trim()
+                  ? 'Podgląd maila'
+                  : 'Dodaj klienta'
+              : 'Dalej'}
+          </Text>
+        )}
+      </Pressable>
+    </>
   );
 
   return (
@@ -616,16 +726,12 @@ export default function AgencyClientCreateScreen() {
         <View style={{ width: 44 }} />
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        style={{ flex: 1 }}
+      <KeyboardFormLayout
+        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+        footerBackgroundColor={colors.bg}
+        footerBorderColor={colors.border}
+        footer={footerButtons}
       >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
-          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
-        >
           <AgencyClientCreateStepper
             step={wizardStep}
             total={totalSteps}
@@ -638,7 +744,8 @@ export default function AgencyClientCreateScreen() {
             {wizardStep === 1 ? (
               <View style={{ gap: 12 }}>
                 <Pressable
-                  onPress={() => setType('SELLER')}
+                  onPress={() => chooseType('SELLER')}
+                  accessibilityRole="button"
                   style={[
                     styles.typeCard,
                     {
@@ -654,7 +761,8 @@ export default function AgencyClientCreateScreen() {
                   </Text>
                 </Pressable>
                 <Pressable
-                  onPress={() => setType('BUYER')}
+                  onPress={() => chooseType('BUYER')}
+                  accessibilityRole="button"
                   style={[
                     styles.typeCard,
                     {
@@ -674,18 +782,147 @@ export default function AgencyClientCreateScreen() {
 
             {wizardStep === 2 ? (
               <>
-                {field('firstName', 'IMIĘ')}
-                {field('lastName', 'NAZWISKO')}
+                <Pressable
+                  onPress={() => void pickFromContacts()}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.contactsBtn,
+                    { borderColor: colors.border, backgroundColor: colors.input, opacity: pressed ? 0.75 : 1 },
+                  ]}
+                >
+                  <View style={styles.contactsIcon}>
+                    <Ionicons name="person-add" size={18} color="#fff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: 15 }}>Wybierz z Kontaktów</Text>
+                    <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }}>
+                      Imię, nazwisko, telefon i e-mail uzupełnią się same
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                </Pressable>
+
+                <View style={styles.nameRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.secondary }]}>IMIĘ</Text>
+                    <TextInput
+                      value={form.firstName}
+                      onChangeText={(value) => setForm((current) => ({ ...current, firstName: value }))}
+                      placeholder="Anna"
+                      placeholderTextColor={colors.secondary}
+                      textContentType="givenName"
+                      autoComplete="given-name"
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      submitBehavior="submit"
+                      onSubmitEditing={() => lastNameRef.current?.focus()}
+                      style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.secondary }]}>NAZWISKO</Text>
+                    <TextInput
+                      ref={lastNameRef}
+                      value={form.lastName}
+                      onChangeText={(value) => setForm((current) => ({ ...current, lastName: value }))}
+                      placeholder="Kowalska"
+                      placeholderTextColor={colors.secondary}
+                      textContentType="familyName"
+                      autoComplete="family-name"
+                      autoCapitalize="words"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      submitBehavior="submit"
+                      onSubmitEditing={() => phoneRef.current?.focus()}
+                      style={[styles.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
+                    />
+                  </View>
+                </View>
+
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={[styles.fieldLabel, { color: colors.secondary }]}>ZWROT W WIADOMOŚCIACH</Text>
+                  <View style={[styles.segment, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                    {(['PANI', 'PAN'] as const).map((value) => {
+                      const active = salutation === value;
+                      return (
+                        <Pressable
+                          key={value}
+                          onPress={() => {
+                            void Haptics.selectionAsync();
+                            setSalutationTouched(true);
+                            setSalutation(value);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: active }}
+                          style={[styles.segmentBtn, active && { backgroundColor: colors.card, ...styles.segmentBtnActive }]}
+                        >
+                          <Text style={{ color: active ? colors.text : colors.secondary, fontWeight: active ? '800' : '600', fontSize: 14 }}>
+                            {value === 'PANI' ? 'Pani' : 'Pan'}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 6 }}>
+                    {salutationTouched
+                      ? 'Asystent i szablony będą pisać tą formą.'
+                      : 'Dobrane automatycznie po imieniu lub PESEL — popraw, jeśli trzeba.'}
+                  </Text>
+                </View>
+
+                <AcquisitionPhoneField
+                  key={phoneFieldKey}
+                  inputRef={phoneRef}
+                  value={form.phone}
+                  onChange={(phone) => setForm((current) => ({ ...current, phone }))}
+                  isDark={isDark}
+                  defaultCountryIso="PL"
+                />
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={[styles.fieldLabel, { color: colors.secondary }]}>E-MAIL</Text>
+                  <TextInput
+                    ref={emailRef}
+                    value={form.email}
+                    onChangeText={(value) => setForm((current) => ({ ...current, email: value }))}
+                    placeholder="anna.kowalska@gmail.com"
+                    keyboardType="email-address"
+                    textContentType="emailAddress"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    submitBehavior="submit"
+                    onSubmitEditing={() => peselRef.current?.focus()}
+                    placeholderTextColor={colors.secondary}
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: colors.input,
+                        color: colors.text,
+                        borderColor:
+                          form.email.trim() && !isValidEmail(form.email.trim()) ? '#FF3B30' : colors.border,
+                      },
+                    ]}
+                  />
+                </View>
+                {form.firstName.trim() && form.lastName.trim() && !hasContact ? (
+                  <Text style={{ color: colors.warning, fontSize: 12, fontWeight: '700', marginTop: -4, marginBottom: 12 }}>
+                    Podaj telefon albo e-mail — przynajmniej jeden kontakt jest wymagany.
+                  </Text>
+                ) : null}
                 <View style={{ marginBottom: 12 }}>
                   <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
                     PESEL (OPCJONALNIE)
                   </Text>
                   <TextInput
+                    ref={peselRef}
                     value={form.pesel}
                     onChangeText={(value) =>
                       setForm((current) => ({ ...current, pesel: value.replace(/[^\d]/g, '').slice(0, 11) }))
                     }
                     keyboardType="number-pad"
+                    textContentType="none"
                     maxLength={11}
                     placeholder="11 cyfr"
                     placeholderTextColor={colors.secondary}
@@ -714,31 +951,6 @@ export default function AgencyClientCreateScreen() {
                     </Text>
                   ) : null}
                 </View>
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>E-MAIL</Text>
-                  <TextInput
-                    value={form.email}
-                    onChangeText={(value) => setForm((current) => ({ ...current, email: value }))}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    placeholderTextColor={colors.secondary}
-                    style={[
-                      styles.input,
-                      {
-                        backgroundColor: colors.input,
-                        color: colors.text,
-                        borderColor:
-                          form.email.trim() && !isValidEmail(form.email.trim()) ? '#FF3B30' : colors.border,
-                      },
-                    ]}
-                  />
-                </View>
-                <AcquisitionPhoneField
-                  value={form.phone}
-                  onChange={(phone) => setForm((current) => ({ ...current, phone }))}
-                  isDark={isDark}
-                  defaultCountryIso="PL"
-                />
                 {type === 'SELLER' ? (
                   <View style={{ marginTop: 4 }}>
                     <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>LINK DO OGŁOSZENIA KLIENTA</Text>
@@ -790,6 +1002,19 @@ export default function AgencyClientCreateScreen() {
                       ))}
                     </View>
                   </View>
+                ) : null}
+                {canGoNext() ? (
+                  <Pressable
+                    onPress={() => void submit(true)}
+                    disabled={busy}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.quickSave, { borderColor: colors.border, opacity: pressed ? 0.6 : 1 }]}
+                  >
+                    <Ionicons name="flash" size={16} color={colors.accent} />
+                    <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13, flex: 1 }}>
+                      Zapisz teraz — {type === 'SELLER' ? 'adres i spotkanie' : 'kryteria poszukiwań'} uzupełnisz na karcie klienta
+                    </Text>
+                  </Pressable>
                 ) : null}
               </>
             ) : null}
@@ -1038,6 +1263,11 @@ export default function AgencyClientCreateScreen() {
                 {form.pesel ? (
                   <Text style={{ color: colors.secondary, fontSize: 13 }}>PESEL {form.pesel}</Text>
                 ) : null}
+                {salutation ? (
+                  <Text style={{ color: colors.secondary, fontSize: 13 }}>
+                    Zwrot: {salutation === 'PANI' ? 'Pani' : 'Pan'} {form.firstName.trim()}
+                  </Text>
+                ) : null}
                 {type === 'SELLER' ? (
                   <>
                     <Text style={{ color: colors.secondary, fontSize: 13 }}>{address.address || '—'}</Text>
@@ -1079,44 +1309,63 @@ export default function AgencyClientCreateScreen() {
                     ) : null}
                   </>
                 ) : null}
+
+                <View style={[styles.nextCard, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                  <Text style={[styles.fieldLabel, { color: colors.secondary, marginBottom: 10 }]}>PO ZAPISANIU</Text>
+                  {(type === 'BUYER'
+                    ? [
+                        {
+                          icon: 'mail-outline' as const,
+                          text: form.email.trim()
+                            ? 'Klient dostanie e-mail z Twoją wizytówką i linkiem do prywatnego panelu.'
+                            : 'Bez e-maila — link do prywatnego panelu wyślesz SMS-em z karty klienta.',
+                        },
+                        {
+                          icon: 'sparkles-outline' as const,
+                          text: enableAssistant
+                            ? 'Asystent EstateOS™ Intelligence zacznie dobierać oferty z bazy. Przez pierwsze 7 dni każdą propozycję zatwierdzasz Ty.'
+                            : 'Asystent wyłączony — włączysz go na karcie klienta.',
+                        },
+                      ]
+                    : [
+                        {
+                          icon: 'calendar-outline' as const,
+                          text: form.email.trim()
+                            ? 'Klient dostanie e-mail z potwierdzeniem spotkania i Twoją wizytówką.'
+                            : 'Termin spotkania zapisze się na karcie klienta.',
+                        },
+                        {
+                          icon: 'document-text-outline' as const,
+                          text: 'Na spotkaniu poprowadzisz pozyskanie krok po kroku — aż do podpisu umowy.',
+                        },
+                      ]
+                  ).map((row) => (
+                    <View key={row.icon} style={styles.nextRow}>
+                      <Ionicons name={row.icon} size={17} color={colors.accent} style={{ marginTop: 1 }} />
+                      <Text style={{ color: colors.text, fontSize: 13, lineHeight: 18, flex: 1 }}>{row.text}</Text>
+                    </View>
+                  ))}
+                  {type === 'BUYER' ? (
+                    <Pressable
+                      onPress={() => {
+                        void Haptics.selectionAsync();
+                        setEnableAssistant((value) => !value);
+                      }}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: enableAssistant }}
+                      style={[styles.assistantToggle, { borderTopColor: colors.border }]}
+                    >
+                      <Text style={{ color: colors.text, fontWeight: '800', fontSize: 14, flex: 1 }}>Włącz asystenta od razu</Text>
+                      <View style={[styles.toggleTrack, { backgroundColor: enableAssistant ? colors.accent : colors.border }]}>
+                        <View style={[styles.toggleKnob, { transform: [{ translateX: enableAssistant ? 20 : 0 }] }]} />
+                      </View>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
             ) : null}
           </View>
-        </ScrollView>
-        <View
-          style={[
-            styles.footerBar,
-            {
-              paddingBottom: Math.max(12, insets.bottom),
-              backgroundColor: colors.bg,
-              borderTopColor: colors.border,
-            },
-          ]}
-        >
-          <Pressable onPress={goBack} style={[styles.footerBtn, styles.footerGhost, { borderColor: colors.border, backgroundColor: colors.card }]}>
-            <Text style={[styles.footerBtnText, { color: colors.text }]}>{wizardStep === 1 ? 'Anuluj' : 'Wstecz'}</Text>
-          </Pressable>
-          <Pressable
-            disabled={busy}
-            onPress={() => (wizardStep >= totalSteps ? void submit() : goNext())}
-            style={[styles.footerBtn, { backgroundColor: colors.accent }]}
-          >
-            {busy ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={[styles.footerBtnText, { color: '#052e16' }]} numberOfLines={2}>
-                {wizardStep >= totalSteps
-                  ? duplicateMatches.length > 0 && !ignoreDuplicateWarning
-                    ? 'Dodaj mimo duplikatu'
-                    : form.email.trim()
-                      ? 'Podgląd maila'
-                      : 'Dodaj klienta'
-                  : 'Dalej'}
-              </Text>
-            )}
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+      </KeyboardFormLayout>
     </View>
   );
 }
@@ -1161,14 +1410,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     gap: 8,
-  },
-  footerBar: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   footerBtn: {
     flex: 1,
@@ -1219,7 +1460,7 @@ const styles = StyleSheet.create({
   priceInput: { flex: 1, fontSize: 22, fontWeight: '900', letterSpacing: -0.4 },
   priceSuffix: { fontSize: 18, fontWeight: '800', color: '#166534', marginLeft: 8 },
   input: {
-    height: 44,
+    height: 48,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
@@ -1245,6 +1486,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 4,
+  },
+  fieldLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  nameRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  contactsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+  },
+  contactsIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: '#007AFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segment: { flexDirection: 'row', borderRadius: 12, borderWidth: 1, padding: 3, marginTop: 4 },
+  segmentBtn: { flex: 1, height: 36, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  segmentBtnActive: {
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
+  },
+  quickSave: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginTop: 8,
+  },
+  nextCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginTop: 10 },
+  nextRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  assistantToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+    marginTop: 2,
+  },
+  toggleTrack: { width: 51, height: 31, borderRadius: 16, padding: 2, justifyContent: 'center' },
+  toggleKnob: {
+    width: 27,
+    height: 27,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
   importBtn: {
     marginTop: 8,

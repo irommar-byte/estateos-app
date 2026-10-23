@@ -31,6 +31,7 @@ import * as Notifications from "expo-notifications";
 
 import { navigationRef, flushNavigation } from './navigationRef';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 
 import {
   NavigationContainer,
@@ -119,6 +120,7 @@ import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
 import AgencyClientsScreen from './src/screens/AgencyClientsScreen';
 import AgencyClientCreateScreen from './src/screens/AgencyClientCreateScreen';
 import AgencyClientDetailScreen from './src/screens/AgencyClientDetailScreen';
+import AgencyTodayScreen from './src/screens/AgencyTodayScreen';
 import CapturePortalLeadScreen from './src/screens/CapturePortalLeadScreen';
 import PresentationVisitWizardScreen from './src/screens/PresentationVisitWizardScreen';
 import ClientPortalScreen from './src/screens/ClientPortalScreen';
@@ -1294,6 +1296,10 @@ type PushNavigationTarget =
       params: { clientId: number | string };
     }
   | {
+      screen: 'AgencyToday';
+      params?: Record<string, never>;
+    }
+  | {
       screen: 'ClientPortal';
       params: { portalToken: string };
     }
@@ -1385,6 +1391,13 @@ const parsePushTargetFromResponse = (
     baseData: response?.notification?.request?.content?.data,
     triggerPayload: (response as any)?.notification?.request?.trigger?.payload,
   });
+  // Propozycje asystenta do akceptacji i telefony do właścicieli → ekran „Dziś”.
+  if (
+    String(data.screen || data.route || '') === 'AgencyToday' ||
+    String(data.kind || '').toUpperCase() === 'INTELLIGENCE_APPROVAL'
+  ) {
+    return { screen: 'AgencyToday', params: {} };
+  }
   const targetTypeNorm = String(firstDefined(data.targetType, data.entity, data.notificationType) || '')
     .trim()
     .toUpperCase();
@@ -1954,6 +1967,7 @@ export default function App() {
   return (
     <>
       <SafeAreaProvider>
+      <KeyboardProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <I18nProvider>
         <BonusCouponNotifyBootstrap />
@@ -2068,6 +2082,11 @@ export default function App() {
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen
+              name="AgencyToday"
+              component={AgencyTodayScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
               name="AgencyClients"
               component={AgencyClientsScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
@@ -2136,6 +2155,7 @@ export default function App() {
         </I18nProvider>
         <NumericKeyboardAccessory isDark={resolvedTheme === 'dark'} />
       </GestureHandlerRootView>
+      </KeyboardProvider>
       </SafeAreaProvider>
 
     </>

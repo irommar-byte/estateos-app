@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useResolvedTheme } from '../../store/useThemeStore';
 import { Sparkles } from 'lucide-react-native';
 import { navigateDiscoveryHref } from '../../lib/discovery/navigateDiscoveryHref';
 
@@ -27,7 +28,7 @@ export default function DiscoveryIntelligenceWhisper({
   style,
   isDark: isDarkProp,
 }: Props) {
-  const schemeDark = useColorScheme() === 'dark';
+  const schemeDark = useResolvedTheme() === 'dark';
   const isDark = isDarkProp ?? schemeDark;
   const line = String(body || '').trim();
   if (!line) return null;
