@@ -419,6 +419,8 @@ export async function completePresentationVisit(params: {
       subject: `Potwierdzenie oglądania — ${address} — ${viewingAtLabel}`,
       html: buildAttendanceClientEmailHtml({
         firstName: clientFirst,
+        clientId: client.id,
+        salutation: client.salutation,
         address,
         whenLabel: viewingAtLabel,
         agentName,
@@ -481,7 +483,7 @@ export async function resendAttendanceEmail(params: {
 }) {
   const client = await prisma.agencyClient.findFirst({
     where: { id: params.clientId, agencyUserId: params.agencyUserId, status: 'ACTIVE' },
-    select: { email: true, firstName: true },
+    select: { id: true, email: true, firstName: true, salutation: true },
   });
   if (!client?.email) {
     return { ok: false as const, status: 400, error: 'Brak e-maila na karcie klienta.' };
@@ -507,6 +509,8 @@ export async function resendAttendanceEmail(params: {
     subject: `Potwierdzenie oglądania — ${params.address} — ${params.whenLabel}`,
     html: buildAttendanceClientEmailHtml({
       firstName: client.firstName,
+      clientId: client.id,
+      salutation: client.salutation,
       address: params.address,
       whenLabel: params.whenLabel,
       agentName: identity.agentName,

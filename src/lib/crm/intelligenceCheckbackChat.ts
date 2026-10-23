@@ -123,7 +123,7 @@ export function mapChatTextToCheckbackOption(
 export function buildCheckbackChoicePrompt(options: CheckbackOption[]): string {
   const labels = options.map((item) => `• ${item.label}`).join('\n');
   return [
-    'Żeby dobrze zrozumieć Twoją odpowiedź, wybierz proszę jedną z opcji poniżej (albo napisz krótko „tak” albo „nie”).',
+    'Chcę mieć pewność, że dobrze rozumiem odpowiedź — proszę wybrać jedną z opcji poniżej albo napisać krótko „tak” lub „nie”.',
     labels,
   ].join('\n');
 }

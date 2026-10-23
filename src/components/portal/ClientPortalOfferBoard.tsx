@@ -363,7 +363,7 @@ export default function ClientPortalOfferBoard({
             <p className="mt-1 text-sm font-semibold leading-relaxed text-[var(--eos-text)]">{direction.summary}</p>
             {intelligenceEnabled ? (
               <p className="mt-1 text-[12px] text-[var(--eos-muted)]">
-                Asystent dobiera jedną pewną ofertę na raz i uczy się z Twoich reakcji — nie z czatu.
+                Propozycje przychodzą pojedynczo — tylko takie, które naprawdę pasują. Najwięcej mówią nam Twoje oceny przy ofertach.
               </p>
             ) : null}
           </div>

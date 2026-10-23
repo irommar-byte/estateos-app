@@ -5,10 +5,10 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { MapPin, Radar, Sparkles } from 'lucide-react';
 
 const STEPS = [
-  'Skanuję aktywne ogłoszenia…',
-  'Porównuję z Twoimi kryteriami…',
-  'Liczy dopasowanie Intelligence…',
-  'Przygotowuję pierwszą propozycję…',
+  'Przeglądamy aktywne ogłoszenia…',
+  'Porównujemy je z Twoimi kryteriami…',
+  'Sprawdzamy ceny i okolicę…',
+  'Przygotowujemy pierwszą propozycję…',
 ] as const;
 
 type Props = {
@@ -64,7 +64,7 @@ export default function ClientPortalOfferSearchPanel({ unscoredCount = 0, compac
       </div>
 
       <p className="relative mt-5 text-sm font-semibold text-[var(--eos-text)]">
-        Intelligence przeszukuje rynek pod Twoje kryteria
+        Szukamy ofert pod Twoje kryteria
       </p>
       <p className="relative mt-2 min-h-[2.5rem] text-sm leading-relaxed text-[var(--eos-muted)]">
         {unscoredCount > 0

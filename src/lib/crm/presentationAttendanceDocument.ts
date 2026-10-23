@@ -1,5 +1,6 @@
 import { escapeAcquisitionHtml } from '@/lib/crm/acquisitionDocument';
 import { buildAppleClientEmailHtml } from '@/lib/email/appleClientEmail';
+import { buildClientVoice } from '@/lib/crm/clientVoice';
 
 export type AttendanceDocInput = {
   documentId: string;
@@ -139,14 +140,34 @@ export function buildAttendanceClientEmailHtml(params: {
   agentTitle?: string | null;
   avatarUrl?: string | null;
   companyLogoUrl?: string | null;
+  clientId?: number | null;
+  salutation?: string | null;
 }): string {
+  const voice = buildClientVoice({
+    clientId: params.clientId,
+    firstName: params.firstName,
+    salutation: params.salutation,
+    agentName: params.agentName,
+  });
+  const { a, c } = voice;
+  const thanks = voice.pick('attendance-thanks', [
+    'Dziękuję za wspólne oglądanie.',
+    'Dziękuję za dzisiejsze spotkanie przy oglądaniu.',
+    'Dziękuję, że znalazł się czas na oglądanie.',
+  ], params.whenLabel);
+  const ask = voice.pick('attendance-ask', [
+    `${a('Jestem ciekaw', 'Jestem ciekawa')} ${c('Pani wrażeń', 'Pana wrażeń', 'wrażeń')} — co się podobało, a co nie? Nawet krótka odpowiedź pomoże mi zaplanować kolejne kroki.`,
+    `Proszę dać znać, jak ${c('Pani ocenia', 'Pan ocenia', 'wypada')} to miejsce po zobaczeniu na żywo — od tego zależy, co zaproponuję dalej.`,
+  ], params.whenLabel);
   return buildAppleClientEmailHtml({
     eyebrow: params.agencyName,
     title: 'Potwierdzenie oglądania',
     greetingName: params.firstName,
+    voice,
     bodyHtml: `
-      <p style="margin:0 0 12px;">w załączeniu przesyłamy kopię potwierdzenia oglądania nieruchomości.</p>
-      <p style="margin:0;font-size:13px;color:#6b7280;">Dokument jest wyłącznie potwierdzeniem obecności na oglądaniu — nie stanowi umowy pośrednictwa ani oferty kupna.</p>
+      <p style="margin:0 0 12px;">${escapeAcquisitionHtml(thanks)} W załączniku przesyłam kopię potwierdzenia oglądania.</p>
+      <p style="margin:0 0 12px;">${escapeAcquisitionHtml(ask)}</p>
+      <p style="margin:0;font-size:13px;color:#6b7280;">Dokument potwierdza wyłącznie obecność na oglądaniu — nie jest umową pośrednictwa ani ofertą kupna.</p>
     `,
     highlightHtml: `<div style="margin:18px 0;padding:18px 20px;border-radius:18px;background:#f8fafc;border:1px solid #e5e7eb;">
       <p style="margin:0 0 8px;font-size:15px;font-weight:800;color:#111827;">${escapeAcquisitionHtml(params.address)}</p>
@@ -162,7 +183,6 @@ export function buildAttendanceClientEmailHtml(params: {
       companyLogoUrl: params.companyLogoUrl || null,
       companyUrl: null,
     },
-    footerNote: 'EstateOS™ · potwierdzenie obecności na oglądaniu',
   });
 }
 

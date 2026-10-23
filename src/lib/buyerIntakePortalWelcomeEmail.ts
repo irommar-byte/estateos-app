@@ -2,6 +2,7 @@ import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { prisma } from '@/lib/prisma';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
+import { buildClientVoice } from '@/lib/crm/clientVoice';
 
 function escapeHtml(value: string): string {
   return value
@@ -12,8 +13,7 @@ function escapeHtml(value: string): string {
 }
 
 function firstNameFrom(fullName: string): string {
-  const part = fullName.trim().split(/\s+/)[0];
-  return part || 'Kliencie';
+  return fullName.trim().split(/\s+/)[0] || '';
 }
 
 export function buildBuyerIntakePortalWelcomeEmailHtml(params: {
@@ -23,13 +23,14 @@ export function buildBuyerIntakePortalWelcomeEmailHtml(params: {
   portalUrl: string;
   intelligenceStarted: boolean;
 }): string {
-  const firstName = escapeHtml(firstNameFrom(params.clientFirstName));
+  const voice = buildClientVoice({ firstName: firstNameFrom(params.clientFirstName), agentName: params.agentName });
+  const hello = escapeHtml(voice.greeting.replace(/,$/, ''));
   const agentName = escapeHtml(params.agentName);
   const agencyName = escapeHtml(params.agencyName);
   const portalUrl = escapeHtml(params.portalUrl);
   const intro = params.intelligenceStarted
-    ? 'EstateOS Intelligence już przeszukuje rynek pod Twoje kryteria — pierwsza propozycja czeka w panelu.'
-    : 'Agent i system już pracują nad dopasowaniem ofert pod Twoje kryteria.';
+    ? 'Pierwsza propozycja czeka już w panelu.'
+    : 'Pierwsze propozycje pojawią się w panelu, gdy tylko znajdę coś wartego uwagi.';
 
   return `
 <!DOCTYPE html>
@@ -41,23 +42,22 @@ export function buildBuyerIntakePortalWelcomeEmailHtml(params: {
       <table role="presentation" width="100%" style="max-width:560px;background:#fff;border-radius:20px;padding:32px 28px;border:1px solid rgba(0,0,0,0.06);">
         <tr><td>
           <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#10b981;">Panel wyszukiwania</p>
-          <h1 style="margin:0 0 14px;font-size:26px;font-weight:800;line-height:1.2;color:#0f172a;">Witaj, ${firstName}</h1>
+          <h1 style="margin:0 0 14px;font-size:26px;font-weight:800;line-height:1.2;color:#0f172a;">${hello}</h1>
           <p style="margin:0 0 16px;font-size:16px;line-height:1.55;color:#475569;">
-            Rejestracja zakończona. ${intro}
+            Dziękuję za wypełnienie ankiety — mam wszystko, czego potrzebuję, żeby zacząć szukać. ${intro}
           </p>
-          <p style="margin:0 0 10px;font-size:14px;line-height:1.55;color:#334155;">
-            <strong>${agentName}</strong> (${agencyName}) nadzoruje proces — a poniżej masz swój prywatny panel:
+          <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#334155;">
+            Przy każdej ofercie wystarczy kliknąć <strong>Chcę obejrzeć</strong>, <strong>Do przemyślenia</strong> albo <strong>Nie pasuje</strong>.
+            Po kilku takich odpowiedziach będę dokładnie wiedzieć, czego szukać — i nie będę zawracać głowy ofertami, które nie pasują.
           </p>
-          <ul style="margin:0 0 20px;padding:0 0 0 18px;font-size:14px;line-height:1.6;color:#475569;">
-            <li style="margin-bottom:6px;">Tu wracaj, gdy chcesz sprawdzić propozycje</li>
-            <li style="margin-bottom:6px;">Reaguj: <strong>Chcę oglądać</strong>, <strong>Do przemyślenia</strong> lub <strong>Nie pasuje</strong></li>
-            <li>Od reakcji zależy, co Intelligence wyśle jako następne</li>
-          </ul>
           <p style="margin:0 0 18px;text-align:center;">
-            <a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:13px;letter-spacing:0.06em;text-transform:uppercase;">Otwórz panel klienta</a>
+            <a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:13px;letter-spacing:0.06em;text-transform:uppercase;">Otwórz panel</a>
           </p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Pozdrawiam serdecznie,</p>
+          <p style="margin:0;font-size:16px;font-weight:800;color:#111827;">${agentName}</p>
+          <p style="margin:2px 0 18px;font-size:13px;color:#6b7280;">${agencyName}</p>
           <p style="margin:0;font-size:12px;line-height:1.5;color:#94a3b8;text-align:center;">
-            Zapisz ten link — to Twoje stałe wejście do wyszukiwania. Usługa dla kupujących jest bezpłatna.
+            Ten link to stałe wejście do panelu — warto go zachować. Dla kupujących usługa jest bezpłatna.
           </p>
         </td></tr>
       </table>
@@ -93,7 +93,7 @@ export async function sendBuyerIntakePortalWelcomeEmail(params: {
 
   return sendTransactionalEmail({
     to: email,
-    subject: `${firstNameFrom(params.clientFirstName)}, Twój panel wyszukiwania — EstateOS`,
+    subject: 'Dziękuję za ankietę — link do panelu',
     html: buildBuyerIntakePortalWelcomeEmailHtml({
       clientFirstName: params.clientFirstName,
       agentName,

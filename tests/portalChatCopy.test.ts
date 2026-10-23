@@ -25,8 +25,8 @@ test('client sees numbered next steps instead of the internal handoff log', () =
   });
   assert.equal(presented.visible, true);
   assert.equal(presented.kind, 'client_step');
-  assert.match(presented.content, /Co teraz zrób:/);
-  assert.match(presented.content, /obejrzeć/i);
+  assert.match(presented.content, /oglądanie/i);
+  assert.match(presented.content, /termin/i);
   assert.doesNotMatch(presented.content, /Klient kliknął/);
   assert.doesNotMatch(presented.content, /wstrzymuję automatyczne/i);
 });
@@ -55,8 +55,8 @@ test('agent-only notes are hidden from the client viewer', () => {
 
 test('new client handoff copy is a concrete next step', () => {
   const body = buildHandoffClientMessage('viewing');
-  assert.match(body, /1\. /);
   assert.match(body, /termin/i);
+  assert.doesNotMatch(body, /Co teraz zrób|Agent dobierze/);
   assert.doesNotMatch(body, /Klient kliknął/);
 });
 

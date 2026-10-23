@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { loadClientVoice } from "@/lib/crm/clientVoice";
 import { buildAppleClientEmailHtml, loadAppleClientEmailIdentity } from "@/lib/email/appleClientEmail";
 import { deliverToClient, emailStep } from "@/lib/crm/clientOutbox";
 import { Prisma } from "@prisma/client";
@@ -251,8 +252,10 @@ async function sellerClientEmailHtml(params: {
   message: string;
   ctaLabel: string;
   ctaHref: string;
+  clientId?: number | null;
 }): Promise<string> {
   const identity = await loadAppleClientEmailIdentity(params.agencyUserId);
+  const voice = params.clientId ? await loadClientVoice(params.clientId) : null;
   const paragraphs = String(params.message || "")
     .split(/\n{2,}/)
     .map((part) => part.trim())
@@ -262,7 +265,8 @@ async function sellerClientEmailHtml(params: {
   return buildAppleClientEmailHtml({
     eyebrow: params.eyebrow,
     title: params.title,
-    greetingName: params.firstName?.trim() || "Państwo",
+    greetingName: params.firstName?.trim() || "",
+    voice,
     bodyHtml: paragraphs,
     identity,
     ctas: [{ label: params.ctaLabel, href: params.ctaHref, variant: "primary" }],
@@ -426,11 +430,12 @@ async function deliverMarketingNotification(activityId: number, approved?: boole
             subject: activity.title || "Aktualizacja promocji oferty",
             html: await sellerClientEmailHtml({
               agencyUserId: activity.client.agencyUserId,
+              clientId: activity.clientId,
               firstName: activity.client.firstName,
-              eyebrow: "Promocja Twojej oferty",
+              eyebrow: "Promocja nieruchomości",
               title: activity.title || "Aktualizacja promocji oferty",
               message: activity.body || "",
-              ctaLabel: "Zobacz w panelu klienta",
+              ctaLabel: "Zobacz szczegóły",
               ctaHref: "{{portalUrl}}",
             }),
           }
@@ -649,7 +654,7 @@ export async function addExternalPortalListing(params: {
       ? params.note.trim()
       : groupName
         ? `Ogłoszenie jest widoczne na Facebooku w grupie „${groupName}”.`
-        : `Twoja nieruchomość jest widoczna na ${params.preview.siteName}. Link do ogłoszenia znajdziesz w panelu.`,
+        : `Ogłoszenie jest już widoczne na ${params.preview.siteName}. Link do niego jest w panelu klienta.`,
     visibleToClient: params.visibleToClient === true,
     metadata: {
       portal: params.portal || params.preview.host,
@@ -875,14 +880,15 @@ export async function upsertSellerNextStep(params: {
       email: owned.email
         ? {
             to: owned.email,
-            subject: `${currentStep.slice(0, 80)} · aktualizacja sprzedaży`,
+            subject: `Co słychać w sprzedaży: ${currentStep.slice(0, 80)}`,
             html: await sellerClientEmailHtml({
               agencyUserId: owned.agencyUserId,
+              clientId: params.clientId,
               firstName: owned.firstName,
-              eyebrow: "Sprzedaż Twojej nieruchomości",
+              eyebrow: "Sprzedaż nieruchomości",
               title: currentStep,
               message: params.clientMessage || nextAction,
-              ctaLabel: "Otwórz panel klienta",
+              ctaLabel: "Szczegóły w panelu",
               ctaHref: portalUrl,
             }),
           }
@@ -970,18 +976,19 @@ export async function createClientDecisionRequest(params: {
       approved: params.approved,
     clientId: params.clientId,
     visibleToClient: true,
-    title: "Potrzebujemy Twojej decyzji",
+    title: "Prośba o decyzję",
     body: title,
     tag: `decision-${row.id}`,
     notificationType: "client_decision",
     email: owned.email
       ? {
           to: owned.email,
-          subject: `Prosimy o decyzję: ${title.slice(0, 80)}`,
+          subject: `Proszę o decyzję: ${title.slice(0, 80)}`,
           html: await sellerClientEmailHtml({
             agencyUserId: owned.agencyUserId,
+            clientId: params.clientId,
             firstName: owned.firstName,
-            eyebrow: "Potrzebna Twoja decyzja",
+            eyebrow: "Prośba o decyzję",
             title,
             message: clientMessage,
             ctaLabel: "Odpowiedz w panelu",

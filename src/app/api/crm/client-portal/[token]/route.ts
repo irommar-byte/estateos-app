@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { deliverChatToClient } from '@/lib/crm/clientOutbox';
 import { prisma } from '@/lib/prisma';
+import { mirrorPortalFeedbackToDiscovery } from '@/lib/crm/discoveryBridge';
 import { buildPortalSyncVersion } from '@/lib/crm/portalSyncVersion';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
 import { loadPresentationOfferPreview } from '@/lib/crm/presentationOfferPreview';
@@ -871,7 +872,6 @@ export async function POST(req: Request, ctx: RouteCtx) {
       agencyUserId: client.agencyUserId,
       channel: 'manual',
       matchScore: topMatch.score,
-      customMessage: `Pierwsza propozycja pod Twoje kryteria — dopasowanie ${topMatch.score}%.`,
       intelligence: {
         reason: `EstateOS™ Intelligence · dopasowanie ${topMatch.score}%`,
       },
@@ -1044,6 +1044,15 @@ export async function POST(req: Request, ctx: RouteCtx) {
         matchId,
         offerId: match.offerId,
       },
+    });
+
+    void mirrorPortalFeedbackToDiscovery({
+      linkedUserId: client.linkedUserId,
+      matchId,
+      offerId: match.offerId,
+      sentiment: parsed.sentiment,
+      phrases: parsed.phrases,
+      note: parsed.note,
     });
 
     const feedbackChatMessage = clientFeedbackChatMessage(stored, match.offer.title);

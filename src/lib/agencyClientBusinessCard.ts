@@ -6,9 +6,10 @@ import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { formatAgentTitle } from '@/lib/agentProfile';
 import { formatMeetingWhenPl } from '@/lib/datetime/warsaw';
 import { buildCalendarIcs } from '@/lib/crm/calendarLinks';
+import { buildClientVoice, type ClientVoice } from '@/lib/crm/clientVoice';
 
 export const CLIENT_MEETING_EMAIL_INTRO =
-  'Umówiliśmy się na spotkanie. Termin jest ustalony — szczegóły i listę przygotowań znajdziesz poniżej.';
+  'Dziękuję za rozmowę — potwierdzam nasze spotkanie. Poniżej termin i krótka lista rzeczy, które warto przygotować.';
 
 function siteBase(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || 'https://estateos.pl').replace(/\/$/, '');
@@ -83,7 +84,9 @@ function buildBusinessCardHtml(params: {
   portalUrl?: string | null;
   message?: string | null;
   meetingHtml?: string | null;
+  voice?: ClientVoice;
 }) {
+  const voice = params.voice || buildClientVoice({ firstName: params.clientName, agentName: params.agentName });
   const avatar = params.avatarUrl
     ? `<img src="${escapeHtml(params.avatarUrl)}" width="88" height="88" alt="" style="display:block;width:88px;height:88px;border-radius:999px;object-fit:cover;border:3px solid #10b981;" />`
     : `<div style="width:88px;height:88px;border-radius:999px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;font-size:32px;font-weight:800;line-height:88px;text-align:center;">${escapeHtml(params.agentName.charAt(0).toUpperCase())}</div>`;
@@ -110,15 +113,20 @@ function buildBusinessCardHtml(params: {
 
   const note = params.message?.trim()
     ? `<p style="margin:0 0 20px;color:#374151;line-height:1.6;">${escapeHtml(params.message.trim())}</p>`
-    : `<p style="margin:0 0 20px;color:#374151;line-height:1.6;">Przesyłam moją wizytówkę EstateOS™ — w razie pytań o nieruchomości jestem do dyspozycji.</p>`;
+    : `<p style="margin:0 0 20px;color:#374151;line-height:1.6;">${escapeHtml(
+        voice.pick('card-note', [
+          'Przesyłam swoje dane kontaktowe, żeby zawsze były pod ręką. W każdej sprawie dotyczącej nieruchomości proszę dzwonić lub pisać — chętnie pomogę.',
+          'Poniżej moje dane kontaktowe. Wystarczy jedno kliknięcie w załącznik, żeby zapisać mnie w telefonie — i w razie pytań po prostu zadzwonić.',
+        ]),
+      )}</p>`;
 
   return `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f7;padding:32px 16px;">
     <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:28px;overflow:hidden;border:1px solid #e5e7eb;box-shadow:0 24px 60px rgba(15,23,42,0.08);">
       <div style="background:linear-gradient(135deg,#0b1220 0%,#102a23 55%,#0f766e 100%);padding:28px 28px 36px;">
         <div style="margin-bottom:22px;">${logo}</div>
-        <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.55);">Wizytówka agenta</p>
-        <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15;color:#fff;letter-spacing:-0.03em;">Witaj ${escapeHtml(capitalizePl(params.clientName))}</h1>
+        <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.55);">${params.meetingHtml ? 'Potwierdzenie spotkania' : 'Dane kontaktowe'}</p>
+        <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15;color:#fff;letter-spacing:-0.03em;">${escapeHtml(voice.greeting.replace(/,$/, ''))}</h1>
       </div>
       <div style="padding:0 28px 28px;">
         <div style="margin-top:-28px;background:#fff;border:1px solid #e5e7eb;border-radius:24px;padding:22px;box-shadow:0 12px 30px rgba(15,23,42,0.06);">
@@ -140,9 +148,9 @@ function buildBusinessCardHtml(params: {
           <div style="margin-top:22px;">
             ${ctaPrimary}${ctaPortal}
           </div>
-          <p style="margin:18px 0 0;font-size:12px;color:#9ca3af;">W załączniku znajdziesz wizytówkę vCard${params.meetingHtml ? ' oraz plik kalendarza (.ics) — dodaj spotkanie jednym kliknięciem, żeby przypomniało' : ' — możesz dodać mnie do kontaktów jednym kliknięciem'}.</p>
+          <p style="margin:18px 0 0;font-size:12px;color:#9ca3af;">W załączniku jest wizytówka do zapisania w kontaktach${params.meetingHtml ? ' oraz plik kalendarza — termin spotkania trafi do telefonu jednym kliknięciem' : ''}.</p>
         </div>
-        <p style="margin:18px 0 0;text-align:center;font-size:11px;color:#9ca3af;">EstateOS™ · profesjonalna obsługa nieruchomości</p>
+        <p style="margin:18px 0 0;text-align:center;font-size:11px;color:#9ca3af;">${escapeHtml(params.agencyName)} · EstateOS™</p>
       </div>
     </div>
   </div>`;
@@ -222,7 +230,13 @@ export async function sendAgencyClientBusinessCard(params: {
     : null;
   const companyUrl = company?.slug ? `${siteBase()}/firma/${company.slug}` : company?.website || null;
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : null;
-  const clientName = client.firstName?.trim() || 'Kliencie';
+  const clientName = client.firstName?.trim() || '';
+  const voice = buildClientVoice({
+    clientId: client.id,
+    firstName: client.firstName,
+    salutation: client.salutation,
+    agentName,
+  });
 
   const meeting = params.meeting;
   const prepList = (params.prepLabels || []).filter(Boolean);
@@ -256,6 +270,7 @@ export async function sendAgencyClientBusinessCard(params: {
     portalUrl,
     message: params.customMessage || (params.meeting ? CLIENT_MEETING_EMAIL_INTRO : undefined),
     meetingHtml,
+    voice,
   });
 
   const vcard = buildAgentVcard({
@@ -282,8 +297,8 @@ export async function sendAgencyClientBusinessCard(params: {
   const cardDelivery = await deliverToClient({ agencyUserId: params.agencyUserId, clientId: client.id, category: 'card', source: params.meeting ? 'card_meeting' : 'card', approved: params.approved, steps: [emailStep({
     to: client.email,
     subject: meeting
-      ? `Spotkanie ${formatMeetingWhenPl(meeting.startsAt)} · ${agencyName}`
-      : `${agentName} · wizytówka ${agencyName}`,
+      ? `Potwierdzenie spotkania — ${formatMeetingWhenPl(meeting.startsAt)}`
+      : `${agentName} — dane kontaktowe`,
     html,
     attachments: [
       {

@@ -119,7 +119,7 @@ export async function proposeOpenHouseToSeller(params: {
   const title = (params.title || `Dzień otwarty — ${when}`).slice(0, 255);
   const clientMessage =
     (params.clientMessage?.trim() ||
-      `Proponuję dzień otwartych drzwi ${when}. Potwierdź termin, żebym mógł opublikować wydarzenie na ogłoszeniu.`) +
+      `Proponuję dzień otwartych drzwi: ${when}. Taki dzień zwykle przyciąga kilku kupujących naraz i skraca czas sprzedaży. Proszę o potwierdzenie terminu — wtedy opublikuję wydarzenie w ogłoszeniu.`) +
     `\n\nOferta: ${owned.offer.title}`;
 
   const decision = await createClientDecisionRequest({
@@ -136,8 +136,8 @@ export async function proposeOpenHouseToSeller(params: {
   await upsertSellerNextStep({
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
-    currentStep: 'Dzień otwarty — czekamy na Twoją zgodę',
-    nextAction: `Potwierdź termin: ${when}`,
+    currentStep: 'Dzień otwarty — czekam na akceptację terminu',
+    nextAction: `Proszę o potwierdzenie terminu: ${when}`,
     clientMessage: params.clientMessage?.trim() || clientMessage,
     dueAt: startsAt,
     visibleToClient: true,
@@ -213,9 +213,9 @@ export async function proposeAuctionToSeller(params: {
   const title = (params.title || `Licytacja — od ${formatMoney(startPrice)}`).slice(0, 255);
   const clientMessage =
     (params.clientMessage?.trim() ||
-      `Proponuję licytację na Twoim ogłoszeniu.\nStart: ${formatWhen(startsAt.toISOString())}\nKoniec: ${formatWhen(endsAt.toISOString())}\nCena startowa: ${formatMoney(startPrice)}${
+      `Proponuję licytację w ogłoszeniu — przy kilku zainteresowanych to dobry sposób, żeby kupujący sami podbili cenę.\nStart: ${formatWhen(startsAt.toISOString())}\nKoniec: ${formatWhen(endsAt.toISOString())}\nCena startowa: ${formatMoney(startPrice)}${
         reservePrice ? `\nCena rezerwowa: ${formatMoney(reservePrice)}` : ''
-      }.\n\nPotwierdź warunki, żebym mógł opublikować licytację.`) +
+      }.\n\nProszę o akceptację warunków — wtedy uruchomię licytację. Chętnie też wszystko omówię telefonicznie.`) +
     `\n\nOferta: ${owned.offer.title}`;
 
   const decision = await createClientDecisionRequest({
@@ -232,8 +232,8 @@ export async function proposeAuctionToSeller(params: {
   await upsertSellerNextStep({
     clientId: params.clientId,
     agencyUserId: params.agencyUserId,
-    currentStep: 'Licytacja — czekamy na Twoją zgodę',
-    nextAction: `Potwierdź warunki: od ${formatMoney(startPrice)}, ${when}`,
+    currentStep: 'Licytacja — czekam na akceptację warunków',
+    nextAction: `Proszę o akceptację warunków: od ${formatMoney(startPrice)}, ${when}`,
     clientMessage: params.clientMessage?.trim() || clientMessage,
     dueAt: startsAt,
     visibleToClient: true,
@@ -376,7 +376,7 @@ export async function startOpenHouseForSeller(params: {
   const title = (params.title || `Dzień otwarty — ${when}`).slice(0, 255);
   const clientMessage =
     (params.clientMessage?.trim() ||
-      `Na Twoim ogłoszeniu uruchomiono dzień otwartych drzwi ${when}.`) +
+      `W ogłoszeniu ruszył dzień otwartych drzwi: ${when}. Po wydarzeniu dam znać, ilu kupujących przyszło i jakie mieli wrażenia.`) +
     `\n\nOferta: ${owned.offer.title}`;
   const payload: SellerEventProposalPayload = {
     source: 'crm_plan',
@@ -431,7 +431,7 @@ export async function startOpenHouseForSeller(params: {
   await notifyOwnerAboutStartedEvent({
     clientId: params.clientId,
     notifyOwner,
-    title: 'Dzień otwarty na Twoim ogłoszeniu',
+    title: 'Dzień otwarty w ogłoszeniu',
     body: clientMessage,
     tag: `open-house-started-${published.eventId}`,
   });
@@ -477,7 +477,7 @@ export async function startAuctionForSeller(params: {
   const title = (params.title || `Licytacja — od ${formatMoney(startPrice)}`).slice(0, 255);
   const clientMessage =
     (params.clientMessage?.trim() ||
-      `Na Twoim ogłoszeniu uruchomiono licytację.\nStart: ${formatWhen(startsAt.toISOString())}\nKoniec: ${formatWhen(endsAt.toISOString())}\nCena startowa: ${formatMoney(startPrice)}${
+      `W ogłoszeniu ruszyła licytacja.\nStart: ${formatWhen(startsAt.toISOString())}\nKoniec: ${formatWhen(endsAt.toISOString())}\nCena startowa: ${formatMoney(startPrice)}${
         reservePrice ? `\nCena rezerwowa: ${formatMoney(reservePrice)}` : ''
       }.`) + `\n\nOferta: ${owned.offer.title}`;
   const payload: SellerEventProposalPayload = {
@@ -531,7 +531,7 @@ export async function startAuctionForSeller(params: {
   await notifyOwnerAboutStartedEvent({
     clientId: params.clientId,
     notifyOwner,
-    title: 'Licytacja na Twoim ogłoszeniu',
+    title: 'Licytacja w ogłoszeniu',
     body: clientMessage,
     tag: `auction-started-${published.eventId}`,
   });

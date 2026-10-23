@@ -9,7 +9,7 @@ import {
 import type { MarketRealitySnapshot } from '@/lib/crm/buyerMarketReality';
 import { formatPln, formatPpsm } from '@/lib/market/format';
 import { buildRichAgentFollowUpLetter, lessonBitsToRichFacts } from '@/lib/crm/agentOfferFollowUp';
-import { appendOfferEvaluationSteps } from '@/lib/crm/portalChatCopy';
+import { buildClientVoice, withChatLead, type ClientVoice } from '@/lib/crm/clientVoice';
 
 export type DialogueTurnKind =
   | 'offer'
@@ -60,20 +60,28 @@ export function buildOfferDialogueTurn(params: {
   district?: string | null;
   calibrating?: boolean;
   agentFirstName?: string | null;
+  voice?: ClientVoice;
 }): DialogueTurn {
   const next = params.nextOffer;
-  const loc = [params.city ?? next?.city, params.district ?? next?.district].filter(Boolean).join(', ');
+  const loc = [params.district ?? next?.district, params.city ?? next?.city].filter(Boolean).join(', ');
+  const voice = params.voice || buildClientVoice({ agentName: params.agentFirstName });
+  const { a, c } = voice;
+  const salt = next?.id ?? null;
 
   if (params.calibrating) {
-    const lead = params.agentFirstName ? `${params.agentFirstName} — ` : '';
     const body = [
-      `${lead}Dzień dobry.`,
-      loc
-        ? `Wysyłam pierwszą propozycję z ${loc}, wybraną na podstawie Twojej ankiety i aktualnej puli rynkowej.`
-        : 'Wysyłam pierwszą propozycję dopasowaną do Twojej ankiety — chcę sprawdzić, czy kierunek poszukiwań jest właściwy.',
-      'Proszę o szczerą ocenę: co pasuje, a co należy skorygować. Każda uwaga pomoże mi precyzyjniej dobierać kolejne oferty.',
+      voice.greeting,
+      voice.pick('calibrate-1', [
+        `Na początek ${a('wybrałem', 'wybrałam')} jedną ofertę${loc ? ` (${loc})` : ''}, która najlepiej odpowiada temu, o czym rozmawialiśmy.`,
+        `Zaczynam od jednej propozycji${loc ? ` — ${loc}` : ''}. Zanim wyślę więcej, chcę mieć pewność, że dobrze ${a('zrozumiałem', 'zrozumiałam')}, czego ${c('Pani szuka', 'Pan szuka', 'szukamy')}.`,
+        `Przesyłam pierwszą ofertę${loc ? ` z okolicy: ${loc}` : ''}. Traktuję ją trochę jak próbę kierunku — po ${c('Pani ocenie', 'Pana ocenie', 'ocenie')} będę wiedzieć, jak szukać dalej.`,
+      ], salt),
+      voice.pick('calibrate-2', [
+        `Wystarczy jedno kliknięcie: „Chcę obejrzeć”, „Do przemyślenia” albo „Nie pasuje”. A jeśli coś przeszkadza — proszę dopisać jedno zdanie, co dokładnie.`,
+        `${c('Proszę mi szczerze powiedzieć,', 'Proszę mi szczerze powiedzieć,', 'Proszę o szczerą ocenę:')} co się podoba, a co nie. Nawet krótka uwaga oszczędzi nam niepotrzebnych oglądań.`,
+      ], salt),
     ].join('\n\n');
-    return { kind: 'offer', body: appendOfferEvaluationSteps(body), facts: ['kalibracja ankiety'] };
+    return { kind: 'offer', body, facts: ['kalibracja ankiety'] };
   }
 
   const facts: string[] = [];
@@ -81,8 +89,9 @@ export function buildOfferDialogueTurn(params: {
 
   if (params.prevOffer && params.prevFeedback && next) {
     const vs = compareLessonToNext(params.prevOffer, params.prevFeedback, next);
-    lessonBits = vs ? lessonBitsToRichFacts(vs, next) : [];
-    facts.push(...lessonBits);
+    // Fakty (pełne zdania) — do zapisu i podglądu; surowe „bity” — do listu agenta.
+    facts.push(...(vs ? lessonBitsToRichFacts(vs, next) : []));
+    lessonBits = vs ? vs.split(' · ').map((bit) => bit.trim()).filter(Boolean) : [];
   }
 
   if (!facts.length && params.reasons?.length) {
@@ -121,34 +130,33 @@ export function buildOfferDialogueTurn(params: {
         reasons: params.reasons || [],
         city: params.city,
         district: params.district,
+        voice,
       })
-    : buildFirstOfferLetter({
-        agentFirstName: params.agentFirstName,
-        loc,
-        facts,
-        next,
-      });
+    : buildFirstOfferLetter({ voice, loc, facts, salt });
 
-  return { kind: 'offer', body: appendOfferEvaluationSteps(body), facts };
+  return { kind: 'offer', body, facts };
 }
 
 function buildFirstOfferLetter(params: {
-  agentFirstName?: string | null;
+  voice: ClientVoice;
   loc: string;
   facts: string[];
-  next?: OfferLike | null;
+  salt: string | number | null;
 }): string {
-  const name = String(params.agentFirstName || '').trim();
-  const lead = name ? `Dzień dobry — tu ${name}, Twój agent nieruchomości.` : 'Dzień dobry.';
-  const middle =
-    params.facts.length > 0
-      ? params.facts.join(' ')
-      : params.loc
-        ? `Wybrałem nieruchomość z ${params.loc}, ponieważ najlepiej odpowiada Twojej ankiecie i dotychczasowym preferencjom.`
-        : 'Wybrałem nieruchomość, która najlepiej odpowiada Twojej ankiecie i dotychczasowym preferencjom.';
-  const close =
-    'Proszę o spokojne zapoznanie się z opisem i ocenę — na tej podstawie przygotuję kolejne propozycje.';
-  return [lead, middle, close].join('\n\n');
+  const { voice, loc, facts, salt } = params;
+  const { a, c } = voice;
+  const why = facts.length
+    ? `${voice.pick('first-why', ['Dlaczego właśnie ta?', 'Co mnie w niej przekonało:', 'Kilka powodów, dla których ją wysyłam:'], salt)} ${facts.join(' ')}`
+    : voice.pick('first-generic', [
+        `${a('Wybrałem', 'Wybrałam')} ją${loc ? ` (${loc})` : ''}, bo spośród aktualnych ofert najlepiej łączy ${c('Pani kryteria', 'Pana kryteria', 'ustalone kryteria')} z tym, co ${c('do tej pory się Pani podobało', 'do tej pory się Panu podobało', 'do tej pory się podobało')}.`,
+        `Spośród tego, co jest teraz na rynku${loc ? ` (${loc})` : ''}, ta oferta wydała mi się najbliższa ${c('Pani oczekiwaniom', 'Pana oczekiwaniom', 'oczekiwaniom')}.`,
+      ], salt);
+  const close = voice.pick('first-close', [
+    `${c('Proszę dać znać, co Pani o niej myśli', 'Proszę dać znać, co Pan o niej myśli', 'Proszę o krótką opinię')} — na tej podstawie przygotuję kolejne propozycje.`,
+    `Jeśli się spodoba, umówmy oglądanie. Jeśli nie — proszę napisać, czego brakuje.`,
+    `${a('Jestem ciekaw', 'Jestem ciekawa')} ${c('Pani zdania', 'Pana zdania', 'opinii')}.`,
+  ], salt);
+  return [voice.greeting, why, close].join('\n\n');
 }
 
 /** Wrapper zachowujący stary kontrakt pickIntelligenceOffer. */
@@ -161,6 +169,7 @@ export function clientFacingWhyFromDialogue(params: {
   prevFeedbackRaw?: string | null;
   nextOffer?: OfferLike | null;
   agentFirstName?: string | null;
+  voice?: ClientVoice;
 }): string {
   const prevFeedback = params.prevFeedbackRaw
     ? parseClientOfferFeedback(params.prevFeedbackRaw)
@@ -174,53 +183,42 @@ export function clientFacingWhyFromDialogue(params: {
     prevFeedback,
     nextOffer: params.nextOffer,
     agentFirstName: params.agentFirstName,
+    voice: params.voice,
   }).body;
 }
 
 export function buildConfidenceDialogueTurn(params: {
   phrase: string;
   agentFirstName?: string | null;
+  voice?: ClientVoice;
 }): DialogueTurn {
-  const lead = agentLead(params.agentFirstName);
+  const voice = params.voice || buildClientVoice({ agentName: params.agentFirstName });
+  const { a, c } = voice;
   const phrase = params.phrase;
-  let question = '';
-  if (phrase === 'Za drogo') {
-    question =
-      'Kilka razy sygnalizowałeś „za drogo”. Czy dobrze rozumiem, że szukamy taniej niż ostatnie propozycje, które odrzuciłeś? Chcę to potwierdzić, zanim zawężę dalsze propozycje.';
-  } else if (phrase === 'Brak balkonu') {
-    question =
-      'Kilka razy zaznaczałeś brak balkonu. Czy dobrze rozumiem, że balkon lub loggia ma być obowiązkowo? Od tego zależy, jak restrykcyjnie będę filtrował kolejne oferty.';
-  } else if (phrase === 'Nie ta dzielnica') {
-    question =
-      'Kilka razy odrzucałeś dzielnicę. Czy dobrze rozumiem, że lokalizacja z ostatnich propozycji nie wchodzi w grę i mam ją wykluczyć z poszukiwań?';
-  } else if (phrase === 'Za stare') {
-    question =
-      'Kilka razy sygnalizowałeś, że mieszkanie jest za stare. Czy dobrze rozumiem, że interesują Cię wyłącznie budynki od wskazanego roku — i mam to traktować jako twardy warunek?';
-  } else if (phrase === 'Za mało pokoi') {
-    question =
-      'Kilka razy zaznaczałeś, że zależy Ci na większej liczbie pokoi. Czy dobrze rozumiem minimalną liczbę pokoi, której nie chcesz schodzić poniżej?';
-  } else if (phrase === 'Brak parkingu') {
-    question =
-      'Kilka razy zaznaczałeś brak parkingu. Czy miejsce postojowe ma być obowiązkowe w każdej kolejnej propozycji?';
-  } else if (phrase === 'Brak windy') {
-    question =
-      'Kilka razy zaznaczałeś brak windy. Czy winda ma być obowiązkowa w każdej kolejnej propozycji?';
-  } else if (phrase === 'Brak ogrodu') {
-    question =
-      'Kilka razy zaznaczałeś brak ogrodu. Czy ogród ma być obowiązkowy w każdej kolejnej propozycji?';
-  } else if (phrase === 'Za mały metraż') {
-    question =
-      'Kilka razy sygnalizowałeś za mały metraż. Czy podnieść minimalny metraż i traktować to jako twardy warunek?';
-  } else if (phrase === 'Za duży metraż') {
-    question =
-      'Kilka razy sygnalizowałeś za duży metraż. Czy obniżyć maksymalny metraż i traktować to jako twardy warunek?';
-  } else {
-    question = `Chcę upewnić się co do Twojej ostatniej uwagi: „${phrase}”. Czy dobrze ją interpretuję?`;
-  }
+  const QUESTIONS: Record<string, string> = {
+    'Za drogo': `kilka ostatnich propozycji było ${c('dla Pani ', 'dla Pana ', '')}za drogich. Czy dobrze rozumiem, że mam szukać wyraźnie taniej niż one?`,
+    'Brak balkonu': `brak balkonu przeszkadzał już przy kilku ofertach. Czy balkon albo loggia to warunek konieczny? Jeśli tak, nie będę już pokazywać mieszkań bez niego.`,
+    'Nie ta dzielnica': `okolica kilka razy nie pasowała. Czy mam zupełnie pominąć tę część miasta w dalszych poszukiwaniach?`,
+    'Za stare': `przy kilku ofertach budynek okazał się za stary. Czy mam pokazywać tylko nowsze budynki — bez wyjątków?`,
+    'Za mało pokoi': `kilka razy pokoi było za mało. Czy liczba pokoi, o której ${c('Pani pisała', 'Pan pisał', 'była mowa')}, to absolutne minimum?`,
+    'Brak parkingu': `brak miejsca parkingowego przeszkadzał już kilka razy. Czy parking ma być obowiązkowy w każdej kolejnej propozycji?`,
+    'Brak windy': `brak windy przeszkadzał już kilka razy. Czy winda ma być obowiązkowa w każdej kolejnej propozycji?`,
+    'Brak ogrodu': `brak ogrodu przeszkadzał już kilka razy. Czy ogród ma być warunkiem koniecznym?`,
+    'Za mały metraż': `kilka mieszkań okazało się za małych. Czy mam podnieść minimalny metraż i trzymać się go bez wyjątków?`,
+    'Za duży metraż': `kilka mieszkań okazało się za dużych. Czy mam obniżyć maksymalny metraż i trzymać się go bez wyjątków?`,
+  };
+  const known = Boolean(QUESTIONS[phrase]);
+  const core = QUESTIONS[phrase] || `chcę się upewnić, że dobrze rozumiem uwagę „${phrase}”. Czy to warunek, którego mam się trzymać przy każdej kolejnej propozycji?`;
+  const prefaces = [
+    'Zanim wyślę kolejną propozycję — jedno pytanie: ',
+    `Jedno szybkie pytanie, żebym nie ${a('szukał', 'szukała')} na ślepo: `,
+    ...(known ? [`${a('Zauważyłem', 'Zauważyłam')}, że `] : []),
+  ];
+  const question = withChatLead(voice, `${voice.pick('confidence-preface', prefaces, phrase)}${core}`);
 
   return {
     kind: 'confidence',
-    body: `${lead}${question}`,
+    body: question,
     facts: [phrase],
     checkbackType: `confirm_${phrase.replace(/\s+/g, '_').toLowerCase()}`,
     lockKey:
@@ -247,7 +245,7 @@ export function buildConfidenceDialogueTurn(params: {
                           : undefined,
     options: [
       { id: 'yes', label: 'Tak, zgadza się' },
-      { id: 'no', label: 'Nie — poprawię' },
+      { id: 'no', label: 'Nie, to nie tak' },
     ],
   };
 }
@@ -260,9 +258,11 @@ function agentLead(firstName?: string | null): string {
 export function buildMarketRealityDialogueTurn(params: {
   snapshot: MarketRealitySnapshot;
   agentFirstName?: string | null;
+  voice?: ClientVoice;
 }): DialogueTurn {
   const s = params.snapshot;
-  const lead = agentLead(params.agentFirstName);
+  const voice = params.voice || buildClientVoice({ agentName: params.agentFirstName });
+  const { a, c } = voice;
   const implied = formatPpsm(s.impliedPpsm);
   const p25 = s.p25Ppsm != null ? formatPpsm(s.p25Ppsm) : '—';
   const median = s.medianPpsm != null ? formatPpsm(s.medianPpsm) : '—';
@@ -271,13 +271,16 @@ export function buildMarketRealityDialogueTurn(params: {
     s.suggestedMaxPrice != null ? formatPln(s.suggestedMaxPrice) : null;
 
   const body = [
-    `${lead}Kilka razy sygnalizowałeś „za drogo”, a sprawdziłem to na tle realnych transakcji notarialnych (GUGiK RCN).`,
-    `W ${s.districtLabel} (${s.periodDays} dni, ${s.txnCount} aktów) mediana to ${median}, dolny kwartyl ${p25}.`,
-    `Przy ${s.area} m² i budżecie ${budget} wychodzi ok. ${implied} — to poniżej dolnego kwartyla rynku.`,
+    withChatLead(
+      voice,
+      `przy kilku propozycjach padło „za drogo”, więc ${a('sprawdziłem', 'sprawdziłam')}, za ile naprawdę sprzedają się mieszkania w tej okolicy — na podstawie transakcji notarialnych z rejestru cen (GUGiK RCN).`,
+    ),
+    `W ${s.districtLabel} w ostatnich ${s.periodDays} dniach (${s.txnCount} aktów) mediana wyniosła ${median}, a co czwarte mieszkanie sprzedano poniżej ${p25}.`,
+    `Przy ${s.area} m² i budżecie ${budget} wychodzi ok. ${implied} — mniej niż płacono za najtańsze mieszkania w tej okolicy. Dlatego tak trudno o trafione oferty.`,
     s.rcnLagNote,
     suggested
-      ? `Realistycznie bliżej rynku to ok. ${suggested}. Czy idziemy dalej w obecnym budżecie, czy pokazać oferty bliżej rynku?`
-      : 'Czy na pewno idziemy dalej w tym budżecie, czy chcesz zostawić go bez zmian?',
+      ? `Realnie bliżej rynku jest ok. ${suggested}. Szukamy dalej w obecnym budżecie, czy mam pokazać też oferty bliżej rynku?`
+      : `Czy ${c('zostaje Pani', 'zostaje Pan', 'zostajemy')} przy tym budżecie?`,
   ]
     .filter(Boolean)
     .join(' ');
@@ -305,9 +308,14 @@ function suggestedMaxPriceOption(s: MarketRealitySnapshot): boolean {
 export function buildRelaxBalconyDialogueTurn(params: {
   agentFirstName?: string | null;
   rejectCount: number;
+  voice?: ClientVoice;
 }): DialogueTurn {
-  const lead = agentLead(params.agentFirstName);
-  const body = `${lead}Szukamy już dłużej z balkonem w Twoim budżecie i lokalizacji — takich ofert prawie nie ma. Czy na pewno balkon musi być obowiązkowy, czy mogę pokazać mieszkanie bez balkonu, jeśli reszta pasuje?`;
+  const voice = params.voice || buildClientVoice({ agentName: params.agentFirstName });
+  const { c } = voice;
+  const body = withChatLead(
+    voice,
+    `od dłuższego czasu szukam z balkonem ${c('w Pani budżecie i okolicy', 'w Pana budżecie i okolicy', 'w tym budżecie i okolicy')} — takich ofert praktycznie teraz nie ma. Czy mogę pokazać też mieszkanie bez balkonu, jeśli cała reszta będzie pasować?`,
+  );
 
   return {
     kind: 'relax_criterion',
@@ -316,7 +324,7 @@ export function buildRelaxBalconyDialogueTurn(params: {
     checkbackType: 'relax_requireBalcony',
     lockKey: 'requireBalcony',
     options: [
-      { id: 'keep_balcony', label: 'Zostawiam balkon — szukaj dalej' },
+      { id: 'keep_balcony', label: 'Balkon zostaje — proszę szukać dalej' },
       { id: 'allow_without_balcony', label: 'Może być bez balkonu' },
     ],
   };

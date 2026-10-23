@@ -2,6 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
 import { getBestUserAvatarUrl } from '@/lib/userAvatar';
 import { formatAgentTitle } from '@/lib/agentProfile';
+import { buildClientVoice, type ClientVoice } from '@/lib/crm/clientVoice';
+import { emailSignoff } from '@/lib/crm/clientCopy';
 
 export function escapeEmailHtml(value: string): string {
   return String(value || '')
@@ -115,9 +117,13 @@ export function buildAppleClientEmailHtml(params: {
   highlightHtml?: string | null;
   footerNote?: string | null;
   includeAgentCard?: boolean;
+  /** Głos agenta: powitanie z wołaczem (Pani Anno / Panie Tomaszu) i podpis. */
+  voice?: ClientVoice | null;
 }): string {
   const e = escapeEmailHtml;
   const identity = params.identity;
+  // Bez głosu (np. mail agent → agent) — neutralne „Dzień dobry,”; nie zgadujemy formy z nazwy biura.
+  const voice = params.voice || buildClientVoice({ agentName: identity.agentName });
   const logoUrl = identity.companyLogoUrl || estateOsEmailLogoUrl();
   const logo = `<img src="${e(logoUrl)}" height="28" alt="${e(identity.agencyName)}" style="display:block;height:28px;max-width:180px;object-fit:contain;" />`;
 
@@ -182,17 +188,17 @@ export function buildAppleClientEmailHtml(params: {
         <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15;color:#ffffff;letter-spacing:-0.03em;">${e(params.title)}</h1>
       </div>
       <div style="padding:28px;">
-        <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#374151;">Dzień dobry ${e(params.greetingName)},</p>
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.55;color:#374151;">${e(voice.greeting)}</p>
         <div style="font-size:15px;line-height:1.65;color:#374151;">${params.bodyHtml}</div>
         ${params.highlightHtml || ''}
         ${ctaHtml ? `<div style="margin:22px 0 0;">${ctaHtml}</div>` : ''}
         ${agentCard}
         <div style="margin-top:26px;padding-top:18px;border-top:1px solid #f3f4f6;">
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Pozdrawiam serdecznie,</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">${e(emailSignoff(voice, params.title))}</p>
           <p style="margin:0;font-size:16px;font-weight:800;color:#111827;">${e(identity.agentName)}</p>
           <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">${e(identity.agencyName)}</p>
         </div>
-        <p style="margin:22px 0 0;text-align:center;font-size:11px;color:#9ca3af;">${e(params.footerNote || 'EstateOS™ · profesjonalna obsługa nieruchomości')}</p>
+        <p style="margin:22px 0 0;text-align:center;font-size:11px;color:#9ca3af;">${e(params.footerNote || `${identity.agencyName} · EstateOS™`)}</p>
       </div>
     </div>
   </div>

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { buildClientVoice } from '@/lib/crm/clientVoice';
 import { deliverToClient, emailStep } from '@/lib/crm/clientOutbox';
 import { JOURNEY_ACTIVITY, resolvePresentation } from '@/lib/crm/clientJourney';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
@@ -73,9 +74,16 @@ async function buildVisitPrepPacket(params: {
     : null;
 
   const identity = await loadAppleClientEmailIdentity(params.agencyUserId);
+  const voice = buildClientVoice({
+    clientId: client.id,
+    firstName: client.firstName,
+    salutation: client.salutation,
+    agentName: identity.agentName,
+  });
 
   const when = new Date(slot.startsAt);
   const whenLabel = when.toLocaleString('pl-PL', {
+    timeZone: 'Europe/Warsaw',
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -83,6 +91,7 @@ async function buildVisitPrepPacket(params: {
     minute: '2-digit',
   });
   const whenShort = when.toLocaleString('pl-PL', {
+    timeZone: 'Europe/Warsaw',
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -104,20 +113,31 @@ async function buildVisitPrepPacket(params: {
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : 'https://estateos.pl';
 
   const parkingCustom = String(params.parkingNote || '').trim();
-  const intro =
-    'Przypominamy o umówionym oglądaniu. Termin, adres i mapa są poniżej — prosimy o punktualność.';
+  const salt = `${slot.startsAt}`;
+  const intro = voice.pick('visit-prep-intro', [
+    'Przypominam o naszym oglądaniu. Poniżej termin, adres i mapa — żeby dojazd był jak najprostszy.',
+    'Do zobaczenia już niedługo! Poniżej wszystko, czego potrzeba: termin, adres i mapa dojazdu.',
+    'Krótko przed oglądaniem przesyłam najważniejsze informacje — termin, adres i mapę.',
+  ], salt);
+  const onSite = voice.pick('visit-prep-onsite', [
+    'Będę czekać na miejscu. Gdyby coś się zmieniło, proszę zadzwonić albo napisać — przełożymy bez problemu.',
+    'Gdyby coś wypadło albo był problem z dojazdem, proszę po prostu dać znać — telefonicznie albo w panelu.',
+  ], salt);
+  const agentFirst = voice.agentFirstName || identity.agentName;
+  const smsHello = voice.vocative ? `Dzień dobry, ${voice.vocative}!` : 'Dzień dobry!';
 
-  const sms = `Oglądanie: ${whenShort}, ${address}. Szczegóły: ${portalUrl} — ${identity.agentName}`;
-  const subject = `Oglądanie · ${whenShort} · ${address}`;
-  const plainBody = `Dzień dobry ${client.firstName},\n\n${intro}\n\n${whenLabel}\n${offer?.title || ''}\n${address}\nMapa: ${mapUrl}\nPanel: ${portalUrl}\n\n${identity.agentName}`;
+  const sms = `${smsHello} Przypominam o oglądaniu: ${whenShort}, ${address}. Mapa i szczegóły: ${portalUrl} Do zobaczenia, ${agentFirst}`;
+  const subject = `Przypomnienie: oglądanie ${whenShort}`;
+  const plainBody = `${voice.greeting}\n\n${intro}\n\n${whenLabel}\n${offer?.title || ''}\n${address}\nMapa: ${mapUrl}\nPanel: ${portalUrl}\n\n${onSite}\n\n${identity.agentName}`;
 
   const emailHtml = buildAppleClientEmailHtml({
     eyebrow: identity.agencyName,
-    title: 'Pakiet przed wizytą',
+    title: 'Do zobaczenia na oglądaniu',
     greetingName: client.firstName,
+    voice,
     bodyHtml: `
       <p style="margin:0 0 12px;">${escapeEmailHtml(intro)}</p>
-      <p style="margin:0 0 12px;">Na miejscu spotkacie się z agentem. W razie potrzeby napisz w panelu — odpowiemy od razu.</p>
+      <p style="margin:0 0 12px;">${escapeEmailHtml(onSite)}</p>
       ${
         parkingCustom
           ? `<p style="margin:0;font-size:13px;color:#6b7280;">Parking: ${escapeEmailHtml(parkingCustom)}</p>`
@@ -132,8 +152,7 @@ async function buildVisitPrepPacket(params: {
       <p style="margin:10px 0 0;"><a href="${escapeEmailHtml(mapUrl)}" style="color:#047857;font-weight:700;text-decoration:none;">Otwórz mapę</a></p>
     </div>`,
     identity,
-    ctas: [{ label: 'Otwórz panel klienta', href: portalUrl, variant: 'primary' }],
-    footerNote: 'EstateOS™ · pakiet przed wizytą',
+    ctas: [{ label: 'Szczegóły w panelu', href: portalUrl, variant: 'primary' }],
   });
 
   const preview: ClientOutboundPreview = {

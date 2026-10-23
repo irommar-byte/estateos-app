@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { buildClientVoice, loadClientVoice } from '@/lib/crm/clientVoice';
 import { deliverChatToClient } from '@/lib/crm/clientOutbox';
 import {
   learnFromFeedback,
@@ -268,6 +269,12 @@ export async function detectExtremeCheckback(params: {
   const locks = parseIntelligenceLocks(client.intelligenceLockedFields, client.buyerPreference);
   const pref = client.buyerPreference;
   const minLearns = client.intelligenceMinLearns || 3;
+  const voice = buildClientVoice({
+    clientId: client.id,
+    firstName: client.firstName,
+    salutation: client.salutation,
+    agentName: params.agentFirstName,
+  });
   if (taste.learnCount < minLearns) return null;
 
   const market = await shouldTriggerMarketRealityCheckback({
@@ -278,7 +285,7 @@ export async function detectExtremeCheckback(params: {
     taste,
   });
   if (market.trigger && market.snapshot && !(await isOnCooldown(params.clientId, 'market_reality'))) {
-    return buildMarketRealityDialogueTurn({ snapshot: market.snapshot, agentFirstName: params.agentFirstName });
+    return buildMarketRealityDialogueTurn({ snapshot: market.snapshot, agentFirstName: params.agentFirstName, voice });
   }
 
   const requireBalcony = Boolean(pref.requireBalcony || locks.requireBalcony);
@@ -297,6 +304,7 @@ export async function detectExtremeCheckback(params: {
           Boolean(preview.pick.skipReason?.includes('próg'));
         if (stuck) {
           return buildRelaxBalconyDialogueTurn({
+            voice,
             agentFirstName: params.agentFirstName,
             rejectCount: maturity.rejectCount,
           });
@@ -308,7 +316,7 @@ export async function detectExtremeCheckback(params: {
   for (const phrase of CONFIRM_PHRASES) {
     const type = `confirm_${phrase.replace(/\s+/g, '_').toLowerCase()}`;
     if (phraseCount(taste, phrase) >= 2 && !(await isOnCooldown(params.clientId, type))) {
-      return buildConfidenceDialogueTurn({ phrase, agentFirstName: params.agentFirstName });
+      return buildConfidenceDialogueTurn({ phrase, agentFirstName: params.agentFirstName, voice });
     }
   }
 
@@ -506,6 +514,7 @@ export async function respondToIntelligenceCheckback(params: {
   const ack = checkbackAckForClient({
     optionId: params.optionId,
     handedToAgent: Boolean(agentNote),
+    voice: await loadClientVoice(params.clientId),
   });
 
   await deliverChatToClient({
@@ -546,7 +555,7 @@ export function feedbackRequestsHandoff(feedback: {
   if (
     /(oglad|prezentac|spotkan|zadzwon|telefon|umow|zobacz|chce zobaczyc|chce zobacz)/.test(normalized)
   ) {
-    return 'Widzę, że chcesz przejść do oglądania albo rozmowy — przekazuję to agentowi.';
+    return 'Klient chce umówić oglądanie albo rozmowę — skontaktuj się z nim.';
   }
   if (
     /(sprawdz|dowiedz|dopytaj|zapytaj|potwierdz|czy mozna|czy jest|dokupic|dostepnosc)/.test(normalized)

@@ -9,6 +9,7 @@ import {
 import { serializeClientOfferFeedback } from '../src/lib/crm/clientPortalFeedback';
 import { shouldTriggerMarketRealityCheckback, buildBuyerMarketRealitySnapshot } from '../src/lib/crm/buyerMarketReality';
 import { learnFromFeedback, phraseCount } from '../src/lib/crm/clientIntelligence';
+import { buildClientVoice } from '../src/lib/crm/clientVoice';
 
 test('buildOfferDialogueTurn references last objection and lesson bits', () => {
   const turn = buildOfferDialogueTurn({
@@ -39,18 +40,21 @@ test('buildOfferDialogueTurn references last objection and lesson bits', () => {
     },
     reasons: [],
     calibrating: false,
+    voice: buildClientVoice({ clientId: 5, firstName: 'Tomasz', salutation: 'PAN', agentName: 'Anna', now: new Date('2026-10-23T08:00:00Z') }),
   });
-  assert.match(turn.body, /Anna/);
+  assert.match(turn.body, /^Dzień dobry, Panie Tomaszu,/);
   assert.match(turn.body, /Za stare|2000|star/i);
   assert.match(turn.body, /balkon/i);
-  assert.match(turn.body, /Co teraz zrób:/);
+  assert.doesNotMatch(turn.body, /Co teraz zrób|Intelligence|uczy się|uczą się|napisałeś|odrzuciłeś/);
+  assert.doesNotMatch(turn.body, /\b(Zapamiętałem|Wziąłem|szukałem|Przejrzałem|Wybrałem|wdzięczny|ciekaw )\b/);
   assert.ok(turn.body.split('\n\n').length >= 3, 'expected multi-paragraph agent letter');
 });
 
 test('buildConfidenceDialogueTurn asks before changing criteria', () => {
   const turn = buildConfidenceDialogueTurn({ phrase: 'Za drogo', agentFirstName: 'Jan' });
   assert.equal(turn.kind, 'confidence');
-  assert.match(turn.body, /za drogo/i);
+  assert.match(turn.body, /za drog/i);
+  assert.doesNotMatch(turn.body, /sygnalizowałeś|odrzuciłeś/);
   assert.equal(turn.options?.length, 2);
 });
 
@@ -84,6 +88,7 @@ test('buildMarketRealityDialogueTurn includes RCN facts', () => {
 test('buildRelaxBalconyDialogueTurn offers explicit lock relaxation choice', () => {
   const turn = buildRelaxBalconyDialogueTurn({ rejectCount: 6 });
   assert.match(turn.body, /balkon/i);
+  assert.doesNotMatch(turn.body, /Twoim/);
   assert.ok(turn.options?.some((o) => o.id === 'allow_without_balcony'));
   assert.equal(turn.lockKey, 'requireBalcony');
 });
@@ -130,4 +135,14 @@ test('buildBuyerMarketRealitySnapshot returns null outside Warsaw', async () => 
     minArea: 45,
   });
   assert.equal(snap, null);
+});
+
+test('calibrating letter greets with vocative and never mentions the machine', () => {
+  const turn = buildOfferDialogueTurn({
+    calibrating: true,
+    nextOffer: { id: 9, city: 'Warszawa', district: 'Wola' },
+    voice: buildClientVoice({ clientId: 9, firstName: 'Anna', agentName: 'Marian' }),
+  });
+  assert.match(turn.body, /Pani Anno,/);
+  assert.doesNotMatch(turn.body, /Intelligence|ankiety|Twoj/);
 });

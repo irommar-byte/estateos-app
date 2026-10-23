@@ -7,6 +7,16 @@ import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { absolutizeMediaUrl } from '@/lib/offerShareLanding';
 import { appendPresentationQuery } from '@/lib/offerPresentingAgent';
 import { DISLIKE_PHRASES, LIKE_PHRASES } from '@/lib/crm/clientPortalFeedback';
+import { buildClientVoice, type ClientVoice } from '@/lib/crm/clientVoice';
+import {
+  EMAIL_REACTION_COPY,
+  emailSignoff,
+  ensureGreeting,
+  offerEmailCopy,
+  offerPushCopy,
+  portalBlockCopy,
+  reminderCopy,
+} from '@/lib/crm/clientCopy';
 import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
@@ -139,17 +149,17 @@ function buildOfferCardHtml(offer: OfferBrief, portalToken?: string | null): str
           ${
             portalToken
               ? `<div style="margin-top:18px;padding-top:16px;border-top:1px solid #f3f4f6;">
-                  <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#059669;">Po zdjęciach — czemu tak?</p>
-                  ${emailChip(portalReactUrl(portalToken, offer.id, 'like'), 'Chcę oglądać', '#10b981', '#052e1c')}
+                  <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#059669;">${EMAIL_REACTION_COPY.likeHeader}</p>
+                  ${emailChip(portalReactUrl(portalToken, offer.id, 'like'), EMAIL_REACTION_COPY.likeMain, '#10b981', '#052e1c')}
                   ${LIKE_PHRASES.slice(0, 3)
                     .map((phrase) => emailChip(portalReactUrl(portalToken, offer.id, 'like', phrase), phrase, '#ecfdf5', '#065f46'))
                     .join('')}
-                  <p style="margin:10px 0 8px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#be123c;">Czemu nie?</p>
-                  ${emailChip(portalReactUrl(portalToken, offer.id, 'dislike'), 'Odłóż', '#e11d48', '#ffffff')}
+                  <p style="margin:10px 0 8px;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#be123c;">${EMAIL_REACTION_COPY.dislikeHeader}</p>
+                  ${emailChip(portalReactUrl(portalToken, offer.id, 'dislike'), EMAIL_REACTION_COPY.dislikeMain, '#e11d48', '#ffffff')}
                   ${DISLIKE_PHRASES.slice(0, 3)
                     .map((phrase) => emailChip(portalReactUrl(portalToken, offer.id, 'dislike', phrase), phrase, '#fff1f2', '#9f1239'))
                     .join('')}
-                  <p style="margin:8px 0 0;font-size:12px;line-height:1.5;color:#6b7280;">Otwiera panel z zaznaczoną odpowiedzią — możesz dopisać szczegóły i wysłać agentowi.</p>
+                  <p style="margin:8px 0 0;font-size:12px;line-height:1.5;color:#6b7280;">${EMAIL_REACTION_COPY.note}</p>
                 </div>`
               : ''
           }
@@ -168,6 +178,9 @@ function buildEmailHtml(params: {
   portalToken?: string | null;
   agentPhone?: string | null;
   agentEmail?: string | null;
+  voice?: ClientVoice;
+  eyebrow?: string;
+  headline?: string;
 }) {
   const {
     agencyName,
@@ -181,13 +194,20 @@ function buildEmailHtml(params: {
     agentEmail,
   } = params;
 
-  const eyebrow =
-    offers.length === 1 ? 'Propozycja specjalnie dla Ciebie' : 'Propozycje specjalnie dla Ciebie';
-  const count = offers.length;
-  const countLabel =
-    count === 1 ? '1 ofertę' : count < 5 ? `${count} oferty` : `${count} ofert`;
-  const headline =
-    count === 1 ? `Witaj ${clientName}` : `Witaj ${clientName} — wybrałem ${countLabel}`;
+  const voice = params.voice || buildClientVoice({ firstName: clientName, agentName });
+  const defaults = offerEmailCopy(voice, { count: offers.length, firstTitle: offers[0]?.title });
+  const eyebrow = params.eyebrow || defaults.eyebrow;
+  const headline = params.headline || defaults.headline;
+  const portalCopy = portalBlockCopy(voice);
+  const introHtml = ensureGreeting(intro, voice)
+    .split(/\n{2,}/)
+    .map((para) => para.trim())
+    .filter(Boolean)
+    .map(
+      (para) =>
+        `<p style="margin:0 0 14px;color:#374151;font-size:15px;line-height:1.65;">${escapeHtml(para).replace(/\n/g, '<br />')}</p>`,
+    )
+    .join('');
 
   const offerBlocks = offers.map((offer) => buildOfferCardHtml(offer, portalToken)).join('');
 
@@ -195,9 +215,9 @@ function buildEmailHtml(params: {
     ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:4px 0 0;background:#f8fafc;border:1px solid #e5e7eb;border-radius:18px;">
         <tr>
           <td style="padding:18px 20px;">
-            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;">Twój prywatny panel klienta</p>
-            <p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:#6b7280;">Otwórz ten sam link na iPhonie — aplikacja EstateOS pokaże prywatny panel od agenta, zapamięta go na urządzeniu i wyśle powiadomienia jak zwykle z aplikacji (nie tylko z Safari).</p>
-            <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px;">Otwórz panel klienta</a>
+            <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;">${escapeHtml(portalCopy.title)}</p>
+            <p style="margin:0 0 14px;font-size:13px;line-height:1.55;color:#6b7280;">${escapeHtml(portalCopy.body)}</p>
+            <a href="${escapeHtml(portalUrl)}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:12px 18px;border-radius:999px;font-weight:800;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;margin:0 0 8px;">${escapeHtml(portalCopy.cta)}</a>
           </td>
         </tr>
       </table>`
@@ -221,11 +241,11 @@ function buildEmailHtml(params: {
         <h1 style="margin:8px 0 0;font-size:26px;line-height:1.15;color:#ffffff;letter-spacing:-0.03em;">${escapeHtml(headline)}</h1>
       </div>
       <div style="padding:28px;">
-        <p style="margin:0 0 22px;color:#374151;font-size:15px;line-height:1.65;">${escapeHtml(intro)}</p>
+        <div style="margin:0 0 10px;">${introHtml}</div>
         ${offerBlocks}
         ${portalBlock}
         <div style="margin-top:26px;padding-top:20px;border-top:1px solid #f3f4f6;">
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Pozdrawiam serdecznie,</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">${escapeHtml(emailSignoff(voice))}</p>
           <p style="margin:0;font-size:16px;font-weight:800;color:#111827;">${escapeHtml(agentName)}</p>
           <p style="margin:4px 0 0;font-size:13px;color:#6b7280;">${escapeHtml(agencyName)}</p>
           ${
@@ -234,7 +254,7 @@ function buildEmailHtml(params: {
               : ''
           }
         </div>
-        <p style="margin:22px 0 0;text-align:center;font-size:11px;color:#9ca3af;">EstateOS™ · oferta przygotowana indywidualnie dla Ciebie</p>
+        <p style="margin:22px 0 0;text-align:center;font-size:11px;color:#9ca3af;">${escapeHtml(agencyName)} · EstateOS™</p>
       </div>
     </div>
   </div>`;
@@ -307,20 +327,25 @@ export async function buildAgencyClientEmailPreview(params: {
 
   const agentName = resolveSellerPersonName(agent) || agent.name || 'Twój agent';
   const agencyName = agent.companyName?.trim() || 'EstateOS';
-  const clientName = `${client.firstName}`.trim() || 'Kliencie';
+  const clientName = `${client.firstName}`.trim() || 'Klient';
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : null;
 
   const offerBriefs: OfferBrief[] = ordered.map(toOfferBrief);
-  const defaultIntro =
-    offerBriefs.length === 1
-      ? `Wybrałem dla Ciebie jedną nieruchomość, która — moim zdaniem — szczególnie pasuje do Twoich oczekiwań. Zerknij proszę na zdjęcia i szczegóły poniżej.`
-      : `Przygotowałem dla Ciebie ${offerBriefs.length} starannie dobrane propozycje. Każda z nich może być kolejnym krokiem w poszukiwaniach — poniżej znajdziesz zdjęcia i kluczowe informacje.`;
+  const voice = buildClientVoice({
+    clientId: client.id,
+    firstName: client.firstName,
+    salutation: client.salutation,
+    agentName,
+  });
+  // Sól wersji: kolejne wysyłki do tego samego klienta dostają inne sformułowania.
+  const copy = offerEmailCopy(voice, {
+    count: offerBriefs.length,
+    firstTitle: offerBriefs[0]?.title,
+    salt: offerIds.join('-'),
+  });
 
-  const intro = params.customMessage?.trim() || defaultIntro;
-  const subject =
-    offerBriefs.length === 1
-      ? `${agentName}: nowa propozycja — ${offerBriefs[0].title}`
-      : `${agentName}: ${offerBriefs.length} nowych propozycji dla Ciebie`;
+  const intro = params.customMessage?.trim() || copy.intro;
+  const subject = copy.subject;
 
   const html = buildEmailHtml({
     agencyName,
@@ -332,12 +357,18 @@ export async function buildAgencyClientEmailPreview(params: {
     portalToken: client.portalToken,
     agentPhone: agent.phone,
     agentEmail: agent.email,
+    voice,
+    eyebrow: copy.eyebrow,
+    headline: copy.headline,
   });
 
   return {
     subject,
     html,
     intro,
+    voice,
+    eyebrow: copy.eyebrow,
+    headline: copy.headline,
     agentName,
     agencyName,
     clientName,
@@ -521,7 +552,7 @@ export async function notifyAgencyClientAboutOffer(params: {
       ...(wantsEmail
         ? [
             emailStep({
-              from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
+              from: `"${preview.agentName} · ${preview.agencyName}" <powiadomienia@estateos.pl>`,
               to: preview.clientEmail as string,
               replyTo: preview.agentEmail || undefined,
               subject: preview.subject,
@@ -533,8 +564,7 @@ export async function notifyAgencyClientAboutOffer(params: {
         kind: 'push' as const,
         clientId: params.clientId,
         payload: {
-          title: preview.offers[0]?.title ? `Nowa propozycja: ${preview.offers[0].title}` : 'Nowa propozycja od agenta',
-          body: 'Otwórz panel klienta — zdjęcia, szczegóły i ocena czekają w aplikacji.',
+          ...offerPushCopy(preview.voice, { count: 1, firstTitle: preview.offers[0]?.title, agentName: preview.agentName }),
           tag: `estateos-client-offer-${params.clientId}-${params.offerId}`,
           url: preview.portalUrl || undefined,
         },
@@ -596,7 +626,9 @@ export async function notifyAgencyClientAboutOffer(params: {
     await sendNotification({
       userId: params.agencyUserId,
       type: 'CRM_EVENT',
-      title: `Intelligence wysłało: ${preview.offers[0]?.title || 'ofertę'}`,
+      title: delivery.queued
+        ? `Propozycja czeka na akceptację: ${preview.offers[0]?.title || 'oferta'}`
+        : `Asystent wysłał propozycję: ${preview.offers[0]?.title || 'oferta'}`,
       body: delivery.queued
         ? `${preview.clientName}: mail czeka na Twoją akceptację w „Dziś”.`
         : emailSent
@@ -699,11 +731,11 @@ export async function notifyAgencyClientAboutOffers(params: {
     kind: 'push' as const,
     clientId: params.clientId,
     payload: {
-      title:
-        toSend.length === 1
-          ? `Nowa propozycja: ${preview.offers.find((o) => o.id === toSend[0])?.title || 'oferta'}`
-          : `${toSend.length} nowe propozycje od agenta`,
-      body: 'Otwórz panel klienta w aplikacji — ocena i zdjęcia są w jednym miejscu.',
+      ...offerPushCopy(preview.voice, {
+        count: toSend.length,
+        firstTitle: preview.offers.find((o) => o.id === toSend[0])?.title,
+        agentName: preview.agentName,
+      }),
       tag: `estateos-client-offers-${params.clientId}`,
       url: preview.portalUrl || undefined,
     },
@@ -724,6 +756,8 @@ export async function notifyAgencyClientAboutOffers(params: {
       portalToken: client?.portalToken,
       agentPhone: preview.agentPhone,
       agentEmail: preview.agentEmail,
+      voice: preview.voice,
+      ...(sendOffers.length === preview.offers.length ? { eyebrow: preview.eyebrow, headline: preview.headline } : {}),
     });
     const delivery = await deliverToClient({
       agencyUserId: params.agencyUserId,
@@ -733,7 +767,7 @@ export async function notifyAgencyClientAboutOffers(params: {
       approved: params.approved,
       steps: [
         emailStep({
-          from: `"${preview.agencyName}" <powiadomienia@estateos.pl>`,
+          from: `"${preview.agentName} · ${preview.agencyName}" <powiadomienia@estateos.pl>`,
           to: preview.clientEmail,
           replyTo: preview.agentEmail || undefined,
           subject: preview.subject,
@@ -844,6 +878,7 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
         select: {
           id: true,
           firstName: true,
+          salutation: true,
           email: true,
           portalToken: true,
           agencyUserId: true,
@@ -881,17 +916,26 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
 
     const agentName = resolveSellerPersonName(agent) || agent.name || 'Twój agent';
     const agencyName = agent.companyName?.trim() || 'EstateOS';
-    const clientName = first.client.firstName?.trim() || 'Kliencie';
+    const clientName = first.client.firstName?.trim() || 'Klient';
     const portalUrl = buildPortalUrl(first.client.portalToken);
     const briefs = rows.slice(0, 4).map((row) => toOfferBrief(row.offer));
     const waiting = rows.length;
-    const intro =
-      waiting === 1
-        ? `Czekam jeszcze na Twoją opinię przy tej propozycji. Zerknij na zdjęcia i od razu zaznacz, czemu tak albo czemu nie — to uczy kolejne dopasowania.`
-        : `Czekają ${waiting} propozycje bez odpowiedzi. Po zdjęciach zaznacz czemu tak / czemu nie — agent i EstateOS™ Intelligence uczą się z każdej reakcji.`;
+    const voice = buildClientVoice({
+      clientId,
+      firstName: first.client.firstName,
+      salutation: first.client.salutation,
+      agentName,
+    });
+    const copy = reminderCopy(voice, {
+      waiting,
+      firstTitle: first.offer.title,
+      agentName,
+      salt: rows.map((row) => row.offerId).join('-'),
+    });
+    const intro = copy.intro;
 
     let via: 'email' | 'portal' = 'portal';
-    const reminderTitle = waiting === 1 ? 'Czekamy na Twoją opinię' : `${waiting} propozycje czekają na odpowiedź`;
+    const reminderTitle = copy.pushTitle;
     const reminderSteps: OutboxStep[] = [];
     if (first.client.email) {
       const html = buildEmailHtml({
@@ -904,16 +948,16 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
         portalToken: first.client.portalToken,
         agentPhone: agent.phone,
         agentEmail: agent.email,
+        voice,
+        eyebrow: copy.eyebrow,
+        headline: copy.headline,
       });
       reminderSteps.push(
         emailStep({
-          from: `"${agencyName}" <powiadomienia@estateos.pl>`,
+          from: `"${agentName} · ${agencyName}" <powiadomienia@estateos.pl>`,
           to: first.client.email,
           replyTo: agent.email || undefined,
-          subject:
-            waiting === 1
-              ? `${agentName}: przypomnienie — czekam na Twoją opinię`
-              : `${agentName}: przypomnienie — ${waiting} propozycje czekają na odpowiedź`,
+          subject: copy.subject,
           html,
         }),
       );
@@ -925,7 +969,7 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
         kind: 'notify',
         userId: first.client.linkedUserId,
         title: reminderTitle,
-        body: 'Otwórz panel klienta i zaznacz, czemu tak albo czemu nie.',
+        body: copy.pushBody,
         data: {
           kind: 'CLIENT_PORTAL',
           portalToken: first.client.portalToken,
@@ -940,7 +984,7 @@ export async function remindPendingClientFeedback(): Promise<{ scanned: number; 
       clientId,
       payload: {
         title: reminderTitle,
-        body: 'Otwórz panel klienta i zaznacz, czemu tak albo czemu nie.',
+        body: copy.pushBody,
         tag: `estateos-client-feedback-${clientId}`,
         url: portalUrl,
         native: !first.client.linkedUserId,

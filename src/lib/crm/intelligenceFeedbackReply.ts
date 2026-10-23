@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { loadClientVoice } from '@/lib/crm/clientVoice';
 import { deliverChatToClient } from '@/lib/crm/clientOutbox';
 import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
 import { sendIntelligenceOffer, pickIntelligenceOffer } from '@/lib/crm/clientIntelligenceRun';
@@ -73,7 +74,7 @@ export async function handleIntelligenceAfterFeedback(params: {
       clientId: params.clientId,
       agencyUserId: params.agencyUserId,
       from: 'agent',
-      content: buildHandoffClientMessage(clientKind),
+      content: buildHandoffClientMessage(clientKind, await loadClientVoice(params.clientId)),
       activityMetadata: {
         audience: 'both',
         kind: 'client_step',

@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { loadAppleClientEmailIdentity } from "@/lib/email/appleClientEmail";
+import { buildClientVoice } from "@/lib/crm/clientVoice";
+import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
 import { deliverToClient, emailStep, withOutboxResponse } from "@/lib/crm/clientOutbox";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -328,15 +330,22 @@ async function handlePOST(req: Request, ctx: RouteCtx) {
     let termsDelivery: Awaited<ReturnType<typeof deliverToClient>> | null = null;
     if (action === "send_preview" && client.email) {
       const links = portalLinks(client);
+      const acqIdentity = await loadAppleClientEmailIdentity(agencyUserId);
+      const acqVoice = buildClientVoice({
+        clientId: client.id,
+        firstName: client.firstName,
+        salutation: client.salutation,
+        agentName: acqIdentity.agentName,
+      });
       termsDelivery = await deliverToClient({ agencyUserId, clientId, category: "documents", source: "acquisition_terms_preview", approved: body.approved === true, steps: [emailStep({
         to: client.email,
-        subject: `Warunki współpracy do zapoznania · ${client.agencyUser.companyName || "EstateOS"}`,
+        subject: "Umowa i warunki współpracy — przed naszym spotkaniem",
         html: buildAcquisitionClientEmailHtml({
-          identity: await loadAppleClientEmailIdentity(agencyUserId),
+          identity: acqIdentity,
+          voice: acqVoice,
           firstName: client.firstName,
-          title: "Przygotowanie do spotkania",
-          intro:
-            "Agent przygotował umowę i warunki współpracy. Otwórz dokument w przeglądarce — szczegóły i listę rzeczy na spotkanie znajdziesz też w panelu klienta.",
+          title: "Przed naszym spotkaniem",
+          intro: `Przesyłam umowę i warunki współpracy, żeby ${acqVoice.c("mogła Pani", "mógł Pan", "można było")} spokojnie zapoznać się z nimi przed spotkaniem. Gdyby coś było niejasne, chętnie wszystko wyjaśnię — telefonicznie albo na miejscu.`,
           portalUrl: links.portalUrl,
           documentUrl: links.documentUrl,
           documentLabel: "Otwórz warunki współpracy",
@@ -411,6 +420,13 @@ async function handlePOST(req: Request, ctx: RouteCtx) {
     });
 
     const links = portalLinks(client);
+    const acqIdentity = await loadAppleClientEmailIdentity(agencyUserId);
+    const acqVoice = buildClientVoice({
+      clientId: client.id,
+      firstName: client.firstName,
+      salutation: client.salutation,
+      agentName: acqIdentity.agentName,
+    });
     const paperLinks = (form.paperContracts || [])
       .map((file) => {
         const href = publicAssetUrl(file.url);
@@ -421,12 +437,13 @@ async function handlePOST(req: Request, ctx: RouteCtx) {
       .join("");
     const copyDelivery = await deliverToClient({ agencyUserId, clientId, category: "documents", source: "acquisition_signed_copy", approved: body.approved === true, steps: [emailStep({
       to: signerEmail,
-      subject: `Podpisana umowa i karta nieruchomości · ${client.agencyUser.companyName || "EstateOS"}`,
+      subject: "Kopia podpisanej umowy",
       html: buildAcquisitionClientEmailHtml({
-          identity: await loadAppleClientEmailIdentity(agencyUserId),
+        identity: acqIdentity,
+        voice: acqVoice,
         firstName: client.firstName,
-        title: "Dokument został podpisany",
-        intro: `Umowa została utrwalona ${signedAt.toLocaleString("pl-PL")}. Otwórz ją w przeglądarce — to publiczny link EstateOS, nie załącznik z poczty.`,
+        title: "Umowa podpisana — dziękuję",
+        intro: `Dziękuję za podpisanie umowy — cieszę się na wspólną pracę. Kopia podpisanego dokumentu (${formatMeetingWhenPl(signedAt)}) jest pod linkiem poniżej.`,
         portalUrl: links.portalUrl,
         documentUrl: links.documentUrl,
         documentLabel: "Otwórz podpisaną umowę",

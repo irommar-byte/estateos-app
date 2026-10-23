@@ -944,8 +944,8 @@ export function clientFacingWhyLine(params: {
   if (params.calibrating) {
     const loc = [params.city, params.district].filter(Boolean).join(', ');
     return loc
-      ? `Wysyłam tę nieruchomość z ${loc}, bo najlepiej pasuje do Twojej ankiety — daj znać, czy kierunek jest dobry.`
-      : 'Wysyłam tę nieruchomość, bo najlepiej pasuje do Twojej ankiety — daj znać, czy kierunek jest dobry.';
+      ? `Przesyłam ofertę (${loc}), która najlepiej odpowiada temu, o czym rozmawialiśmy. Proszę dać znać, czy to dobry kierunek.`
+      : 'Przesyłam ofertę, która najlepiej odpowiada temu, o czym rozmawialiśmy. Proszę dać znać, czy to dobry kierunek.';
   }
 
   const mapped = params.reasons
@@ -964,8 +964,8 @@ export function clientFacingWhyLine(params: {
   if (mapped) return String(mapped);
   const loc = [params.city, params.district].filter(Boolean).join(', ');
   return loc
-    ? `Wybrałem tę nieruchomość z ${loc}, bo najlepiej pasuje do Twoich kryteriów i dotychczasowych reakcji.`
-    : 'Wybrałem tę nieruchomość, bo najlepiej pasuje do Twoich kryteriów i dotychczasowych reakcji.';
+    ? `Ta oferta (${loc}) najlepiej łączy ustalone kryteria z tym, co do tej pory się podobało.`
+    : 'Ta oferta najlepiej łączy ustalone kryteria z tym, co do tej pory się podobało.';
 }
 
 export function parseIntelligencePatch(raw: unknown): Partial<{

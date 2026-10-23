@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { buildClientVoice } from '@/lib/crm/clientVoice';
 import { generatePortalToken, buildPortalUrl } from '@/lib/agencyClientNotify';
 import { ensureAgencyClientLinkedUser } from '@/lib/crm/linkedUser';
 import { findDuplicateAgencyClients } from '@/lib/crm/clientDuplicate';
@@ -240,17 +241,18 @@ export async function capturePortalLead(input: CapturePortalLeadInput) {
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : 'https://estateos.pl';
   const agentName = agency?.name || 'Agent';
   const agencyName = agency?.companyName || 'EstateOS';
-  const welcomeSms = `Dzień dobry ${client.firstName}, tu ${agentName} (${agencyName}). Dziękuję za zainteresowanie: ${offer.title}. Zaraz prześlę propozycje terminów oglądania.${agency?.phone ? ` Tel. ${agency.phone}` : ''}`;
+  const voice = buildClientVoice({ clientId: client.id, firstName: client.firstName, agentName });
+  const smsHello = voice.vocative ? `Dzień dobry, ${voice.vocative}` : 'Dzień dobry';
+  const welcomeSms = `${smsHello}, tu ${agentName} (${agencyName}). Dziękuję za zainteresowanie: ${offer.title}. Za chwilę prześlę propozycje terminów oglądania.${agency?.phone ? ` Tel. ${agency.phone}` : ''}`;
   const welcomeEmailSubject = `Oglądanie: ${offer.title}`;
-  const welcomeEmailBody = `Dzień dobry ${client.firstName},
+  const welcomeEmailBody = `${voice.greeting}
 
 dziękuję za wiadomość w sprawie oferty:
 ${offer.title}${offer.city ? ` · ${offer.city}` : ''}${offer.price != null ? ` · ${Math.round(Number(offer.price)).toLocaleString('pl-PL')} zł` : ''}
 
-Jestem ${agentName} z ${agencyName}. Chętnie pokażę nieruchomość i odpowiem na pytania na miejscu.
+Nazywam się ${agentName} (${agencyName}) i chętnie pokażę tę nieruchomość — na miejscu odpowiem też na wszystkie pytania.
 
-W kolejnej wiadomości prześlę 2–3 propozycje terminów.
-Prywatny panel (terminy, ofertówka, kolejne propozycje):
+W kolejnej wiadomości prześlę 2–3 propozycje terminów. Wszystko, łącznie z terminami, będzie też w prywatnym panelu:
 ${portalUrl}
 
 Pozdrawiam serdecznie,

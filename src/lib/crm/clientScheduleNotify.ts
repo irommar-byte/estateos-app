@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma';
+import { buildClientVoice } from '@/lib/crm/clientVoice';
+import { formatMeetingWhenPl } from '@/lib/datetime/warsaw';
 import { deliverToClient, emailStep } from '@/lib/crm/clientOutbox';
 import { sendTransactionalEmail } from '@/lib/email/transactional';
 import { buildAcquisitionIcs } from '@/lib/agencyClientBusinessCard';
@@ -46,7 +48,9 @@ async function composeClientScheduleMail(params: ScheduleMailParams) {
   const client = await prisma.agencyClient.findFirst({
     where: { id: params.clientId, status: 'ACTIVE' },
     select: {
+      id: true,
       firstName: true,
+      salutation: true,
       email: true,
       type: true,
       portalToken: true,
@@ -63,10 +67,18 @@ async function composeClientScheduleMail(params: ScheduleMailParams) {
         : 'buyer';
 
   const identity = await loadAppleClientEmailIdentity(client.agencyUserId);
+  const voice = buildClientVoice({
+    clientId: client.id,
+    firstName: client.firstName,
+    salutation: client.salutation,
+    agentName: identity.agentName,
+  });
+  const { a, c } = voice;
   const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : siteBase();
   const slots = (params.proposedSlots?.length ? params.proposedSlots : [params.startsAt]).filter(Boolean);
-  const when = slots.map((slot) => slot.toLocaleString('pl-PL')).join(' · ');
-  const whenPrimary = slots[0]?.toLocaleString('pl-PL') || when;
+  const when = slots.map((slot) => formatMeetingWhenPl(slot)).join(' · ');
+  const whenPrimary = slots[0] ? formatMeetingWhenPl(slots[0]) : when;
+  const saltKey = `${params.kind}:${params.mode}:${params.startsAt.toISOString()}`;
 
   let offerTitle = params.offerTitle || null;
   let address =
@@ -88,35 +100,47 @@ async function composeClientScheduleMail(params: ScheduleMailParams) {
   }
   address = formatVisitAddress(address) || address;
 
-  const noun = params.kind === 'meeting' ? 'spotkania' : 'prezentacji';
+  const noun = params.kind === 'meeting' ? 'spotkania' : 'oglądania';
   const offerUrl = offerId ? `${siteBase()}/oferta/${offerId}` : null;
 
   // —— Sprzedający: krótka nota ——
   if (audience === 'seller' && params.kind === 'presentation') {
     const title =
       params.mode === 'confirmed'
-        ? 'Pokaz u Twojej nieruchomości — potwierdzony'
+        ? 'Pokaz potwierdzony'
         : params.mode === 'changed'
           ? 'Zmiana terminu pokazu'
-          : 'Propozycja pokazu u Twojej nieruchomości';
-    const subject = `${title} · ${whenPrimary} · ${identity.agencyName}`;
+          : 'Planowany pokaz nieruchomości';
+    const subject =
+      params.mode === 'confirmed'
+        ? `Pokaz potwierdzony — ${whenPrimary}`
+        : params.mode === 'changed'
+          ? `Nowy termin pokazu — ${whenPrimary}`
+          : `Pokaz nieruchomości — ${whenPrimary}`;
+    const sellerLead =
+      params.mode === 'confirmed'
+        ? voice.pick('seller-show-confirmed', [
+            `Potwierdzam pokaz${offerTitle ? ` nieruchomości <strong>${escapeEmailHtml(offerTitle)}</strong>` : ''} — kupujący jest umówiony.`,
+            `Mamy umówiony pokaz${offerTitle ? ` nieruchomości <strong>${escapeEmailHtml(offerTitle)}</strong>` : ''}. Wszystko jest potwierdzone.`,
+          ], saltKey)
+        : params.mode === 'changed'
+          ? `Termin pokazu${offerTitle ? ` nieruchomości <strong>${escapeEmailHtml(offerTitle)}</strong>` : ''} się zmienił — nowy termin jest poniżej.`
+          : `Umawiam pokaz${offerTitle ? ` nieruchomości <strong>${escapeEmailHtml(offerTitle)}</strong>` : ''} z zainteresowanym kupującym.`;
     const html = buildAppleClientEmailHtml({
       eyebrow: identity.agencyName,
       title,
       greetingName: client.firstName,
+      voice,
       bodyHtml: `
-          <p style="margin:0 0 12px;">${escapeEmailHtml(identity.agentName)} ${
-            params.mode === 'confirmed' ? 'potwierdza' : 'informuje o'
-          } terminie pokazu${offerTitle ? ` oferty <strong>${escapeEmailHtml(offerTitle)}</strong>` : ''}.</p>
+          <p style="margin:0 0 12px;">${sellerLead}</p>
           ${address ? `<p style="margin:0 0 12px;">Adres: ${escapeEmailHtml(address)}</p>` : ''}
-          <p style="margin:0;font-size:13px;color:#6b7280;">To informacja dla właściciela — nie musisz nic potwierdzać. Szczegóły w panelu.</p>
+          <p style="margin:0;font-size:13px;color:#6b7280;">${c('Nie musi Pani niczego potwierdzać', 'Nie musi Pan niczego potwierdzać', 'Nie trzeba niczego potwierdzać')} — daję znać, żeby wszystko było jasne. Po pokazie dam znać, jak poszło.</p>
         `,
       highlightHtml: `<div style="margin:18px 0;padding:18px 20px;border-radius:18px;background:#f8fafc;border:1px solid #e5e7eb;">
           <p style="margin:0;font-size:20px;font-weight:900;color:#111827;">${escapeEmailHtml(whenPrimary)}</p>
         </div>`,
       identity,
       ctas: [{ label: 'Otwórz panel', href: portalUrl, variant: 'primary' }],
-      footerNote: 'EstateOS™ · pokaz u Twojej nieruchomości',
     });
     const preview: ClientOutboundPreview = {
       kind: 'schedule',
@@ -143,20 +167,35 @@ async function composeClientScheduleMail(params: ScheduleMailParams) {
   }
 
   // —— Kupujący / spotkanie ——
+  const isShowing = params.kind === 'presentation';
   const title =
     params.mode === 'confirmed'
-      ? `Potwierdzenie ${noun}`
+      ? isShowing ? 'Do zobaczenia na oglądaniu' : 'Spotkanie potwierdzone'
       : params.mode === 'changed'
-        ? `Nowy termin ${noun}`
+        ? isShowing ? 'Nowy termin oglądania' : 'Nowy termin spotkania'
         : params.listingAgentCopy
-          ? 'Prosimy o termin u agenta wystawiającego'
-          : `Propozycja ${noun}`;
+          ? 'Proszę o wybór godziny'
+          : isShowing ? 'Termin oglądania do wyboru' : 'Propozycja spotkania';
 
+  const offerBit = offerTitle ? ` <strong>${escapeEmailHtml(offerTitle)}</strong>` : '';
   const intro = params.listingAgentCopy
-    ? `${escapeEmailHtml(identity.agentName)} prosi Cię o wybór godziny. Pokaz uzgadniamy z agentem wystawiającym nieruchomość.`
-    : params.mode === 'confirmed' && params.kind === 'presentation'
-      ? `${escapeEmailHtml(identity.agentName)} potwierdza termin oglądania. Wszystko jest ustalone — szczegóły poniżej.`
-      : `${escapeEmailHtml(identity.agentName)} ${params.mode === 'confirmed' ? 'potwierdza' : 'przesyła'} termin ${noun}.`;
+    ? `Ustalam pokaz${offerBit} z agentem, który prowadzi tę nieruchomość. Proszę wybrać godzinę, która najbardziej pasuje — resztę uzgodnię po swojej stronie.`
+    : params.mode === 'confirmed' && isShowing
+      ? voice.pick('buyer-show-confirmed', [
+          `Potwierdzam oglądanie${offerBit}. Wszystko jest ustalone — poniżej termin i adres.`,
+          `Mamy to — oglądanie${offerBit} jest potwierdzone. Do zobaczenia na miejscu.`,
+          `Oglądanie${offerBit} jest umówione. Cieszę się, że ${c('Pani je zobaczy', 'Pan je zobaczy', 'możemy je zobaczyć')}.`,
+        ], saltKey)
+      : params.mode === 'confirmed'
+        ? `Potwierdzam nasze spotkanie. Termin i miejsce są poniżej.`
+        : params.mode === 'changed'
+          ? `Termin ${noun}${offerBit} się zmienił — nowy jest poniżej. Jeśli ${c('Pani nie pasuje', 'Panu nie pasuje', 'nie pasuje')}, proszę dać znać.`
+          : isShowing
+            ? voice.pick('buyer-show-proposed', [
+                `${a('Przygotowałem', 'Przygotowałam')} ${slots.length > 1 ? 'kilka terminów' : 'termin'} oglądania${offerBit}. ${slots.length > 1 ? 'Wystarczy kliknąć ten, który najbardziej pasuje.' : 'Jeśli pasuje — wystarczy jedno kliknięcie.'}`,
+                `Proponuję ${slots.length > 1 ? 'kilka terminów' : 'termin'} oglądania${offerBit}. ${slots.length > 1 ? 'Proszę wybrać najwygodniejszy' : 'Proszę dać znać, czy pasuje'} — a jeśli żaden nie odpowiada, chętnie dopasuję się do innego.`,
+              ], saltKey)
+            : `Proponuję termin spotkania. Jeśli ${c('Pani nie pasuje', 'Panu nie pasuje', 'nie pasuje')}, proszę zaproponować inny — dopasuję się.`;
 
   const ics = buildAcquisitionIcs({
     title: `${params.kind === 'meeting' ? 'Spotkanie' : 'Prezentacja'} · ${identity.agencyName}`,
@@ -185,17 +224,17 @@ async function composeClientScheduleMail(params: ScheduleMailParams) {
   const idCardNote =
     params.mode === 'confirmed' && params.kind === 'presentation'
       ? `<div style="margin:18px 0;padding:16px 18px;border-radius:18px;background:#fff7ed;border:1px solid #fed7aa;">
-          <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#c2410c;">Prosimy zabrać</p>
-          <p style="margin:8px 0 0;font-size:15px;line-height:1.55;color:#9a3412;font-weight:700;">Dowód tożsamości</p>
-          <p style="margin:6px 0 0;font-size:13px;line-height:1.5;color:#9a3412;">Na miejscu potwierdzimy obecność na oglądaniu (dokument potwierdzenia — nie umowa pośrednictwa).</p>
+          <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#c2410c;">Proszę zabrać</p>
+          <p style="margin:8px 0 0;font-size:15px;line-height:1.55;color:#9a3412;font-weight:700;">Dowód osobisty</p>
+          <p style="margin:6px 0 0;font-size:13px;line-height:1.5;color:#9a3412;">Na miejscu podpiszemy krótkie potwierdzenie oglądania — to nie jest umowa pośrednictwa, tylko standardowy dokument z wizyty.</p>
         </div>`
       : '';
 
   const ctas =
     params.mode === 'proposed' && slots.length > 0
       ? [
-          ...slots.map((slot, index) => ({
-            label: `Termin ${index + 1}: ${slot.toLocaleString('pl-PL')}`,
+          ...slots.map((slot) => ({
+            label: formatMeetingWhenPl(slot),
             href: `${portalUrl}${portalUrl.includes('?') ? '&' : '?'}pickSlot=${encodeURIComponent(slot.toISOString())}`,
             variant: 'dark' as const,
           })),
@@ -207,7 +246,7 @@ async function composeClientScheduleMail(params: ScheduleMailParams) {
         ]
       : [
           {
-            label: 'Otwórz panel / dodaj do kalendarza',
+            label: 'Szczegóły i kalendarz',
             href: portalUrl,
             variant: 'primary' as const,
           },
@@ -220,33 +259,40 @@ async function composeClientScheduleMail(params: ScheduleMailParams) {
     params.mode === 'confirmed' && params.kind === 'presentation'
       ? `
     <p style="margin:0 0 12px;">${intro}</p>
-    <p style="margin:0 0 12px;">Termin jest u Ciebie, u agenta w CRM i w załączniku kalendarza (.ics).</p>
+    <p style="margin:0 0 12px;">W załączniku jest plik do kalendarza — jednym kliknięciem termin trafi do telefonu.</p>
     ${idCardNote}
-    <p style="margin:0;font-size:13px;color:#6b7280;">Do zobaczenia na miejscu. W razie problemów z dojazdem napisz w panelu — agent dostanie powiadomienie od razu.</p>
+    <p style="margin:0;font-size:13px;color:#6b7280;">${voice.pick('buyer-show-ps', [
+      `Gdyby coś się zmieniło albo pojawił się problem z dojazdem, proszę dać znać — telefonicznie albo w panelu.`,
+      `Jeśli coś wypadnie, proszę po prostu napisać albo zadzwonić — przełożymy bez problemu.`,
+    ], saltKey)}</p>
   `
       : `
     <p style="margin:0 0 12px;">${intro}</p>
-    ${params.reason ? `<p style="margin:0 0 12px;color:#6b7280;">Powód: ${escapeEmailHtml(params.reason)}</p>` : ''}
+    ${params.reason ? `<p style="margin:0 0 12px;color:#6b7280;">${escapeEmailHtml(params.reason)}</p>` : ''}
     ${params.notes && params.mode !== 'confirmed' ? `<p style="margin:0 0 12px;">${escapeEmailHtml(params.notes)}</p>` : ''}
-    <p style="margin:0;font-size:13px;color:#6b7280;">W panelu możesz potwierdzić termin albo zaproponować inną godzinę. W załączniku znajdziesz plik kalendarza (.ics).</p>
+    <p style="margin:0;font-size:13px;color:#6b7280;">${params.mode === 'proposed' ? 'Termin można potwierdzić jednym kliknięciem albo zaproponować inny. ' : ''}W załączniku jest plik do kalendarza.</p>
   `;
 
-  const subject = `${title} · ${whenPrimary} · ${identity.agencyName}`;
+  const subject =
+    params.mode === 'confirmed'
+      ? `${isShowing ? 'Oglądanie potwierdzone' : 'Spotkanie potwierdzone'} — ${whenPrimary}`
+      : params.mode === 'changed'
+        ? `${isShowing ? 'Nowy termin oglądania' : 'Nowy termin spotkania'} — ${whenPrimary}`
+        : isShowing
+          ? `${slots.length > 1 ? 'Terminy oglądania do wyboru' : 'Termin oglądania'}${offerTitle ? ` — ${offerTitle}` : ''}`
+          : `Propozycja spotkania — ${whenPrimary}`;
   const html = buildAppleClientEmailHtml({
     eyebrow: identity.agencyName,
     title,
     greetingName: client.firstName,
+    voice,
     bodyHtml,
     highlightHtml,
     identity,
     ctas,
-    footerNote:
-      params.mode === 'confirmed' && params.kind === 'presentation'
-        ? 'EstateOS™ · potwierdzenie oglądania'
-        : 'EstateOS™ · termin prezentacji',
   });
 
-  const plainSlots = slots.map((slot) => slot.toLocaleString('pl-PL')).join('\n');
+  const plainSlots = slots.map((slot) => formatMeetingWhenPl(slot)).join('\n');
   const bodyPreview = [
     `Do: ${client.email}`,
     title,
@@ -361,7 +407,7 @@ export async function emailGuestAgencyPresentation(params: {
 }): Promise<void> {
   const to = String(params.to || '').trim().toLowerCase();
   if (!to.includes('@')) return;
-  const when = params.startsAt.toLocaleString('pl-PL');
+  const when = formatMeetingWhenPl(params.startsAt);
   const visitor = [params.visitorName, params.visitorPhone].filter(Boolean).join(' · ');
   const offerHref = params.offerId ? `${siteBase()}/oferta/${params.offerId}` : params.portalUrl;
   await sendTransactionalEmail({
@@ -414,7 +460,7 @@ export async function emailListingAgentShowingRequest(params: {
 }): Promise<void> {
   const to = String(params.to || '').trim().toLowerCase();
   if (!to.includes('@')) return;
-  const when = params.slots.map((slot) => slot.toLocaleString('pl-PL')).join(' · ');
+  const when = params.slots.map((slot) => formatMeetingWhenPl(slot)).join(' · ');
   const requester = [params.requestingAgentName, params.requestingPhone].filter(Boolean).join(' · ');
   const offerHref = params.offerId ? `${siteBase()}/oferta/${params.offerId}` : params.portalUrl;
   await sendTransactionalEmail({

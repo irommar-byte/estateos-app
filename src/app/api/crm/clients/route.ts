@@ -13,7 +13,7 @@ import { generatePortalToken } from '@/lib/agencyClientNotify';
 import { parsePesel } from '@/lib/pesel';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
 import { sendNotification } from '@/lib/core/notification.core';
-import { sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
+import { CLIENT_MEETING_EMAIL_INTRO, sendAgencyClientBusinessCard } from '@/lib/agencyClientBusinessCard';
 import { normalizePrepItemIds, prepItemLabels } from '@/lib/crm/clientJourney';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { ensureAgencyClientLinkedUser } from '@/lib/crm/linkedUser';
@@ -371,9 +371,13 @@ async function handlePOST(req: Request) {
       approved: body.approved === true,
       clientId: client.id,
       agencyUserId,
-      customMessage: meetingPayload
-        ? 'Umówiliśmy się na spotkanie. Termin jest ustalony — szczegóły i listę przygotowań znajdziesz poniżej.'
-        : undefined,
+      // Aplikacja przysyła dokładnie ten tekst, który agent widział w podglądzie.
+      customMessage:
+        typeof body.cardIntro === 'string' && body.cardIntro.trim()
+          ? body.cardIntro.trim().slice(0, 800)
+          : meetingPayload
+            ? CLIENT_MEETING_EMAIL_INTRO
+            : undefined,
       meeting: meetingPayload
         ? {
             startsAt: meetingPayload.startsAt,

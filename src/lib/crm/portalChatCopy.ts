@@ -1,4 +1,6 @@
-/** Copy Live Chat: klient dostaje konkretne kroki, agent — instrukcję operacyjną. */
+/** Copy Live Chat: klient dostaje ludzką odpowiedź agenta, agent — instrukcję operacyjną. */
+
+import { buildClientVoice, withChatLead, type ClientVoice } from '@/lib/crm/clientVoice';
 
 export type PortalChatAudience = 'client' | 'agent' | 'both';
 export type PortalChatKind = 'chat' | 'client_step' | 'agent_note' | 'checkback';
@@ -42,7 +44,8 @@ export function looksLikeInternalHandoff(content: string): boolean {
     /wstrzymuję automatyczne dokładanie/i.test(text) ||
     /wybierz termin prezentacji/i.test(text) ||
     /Klient prosi o sprawdzenie/i.test(text) ||
-    /przekazuję to agentowi/i.test(text)
+    /przekazuję to agentowi/i.test(text) ||
+    /Klient chce umówić/i.test(text)
   );
 }
 
@@ -62,10 +65,9 @@ export function appendOfferEvaluationSteps(body: string): string {
   return `${text}\n\n${offerEvaluationNextStepsBlock()}`;
 }
 
+/** Pytanie z szybkimi odpowiedziami — przyciski są pod wiadomością, więc nie dopisujemy instrukcji. */
 export function wrapCheckbackQuestion(body: string): string {
-  const text = String(body || '').trim();
-  if (/Wybierz jedną odpowiedź poniżej/i.test(text)) return text;
-  return `${text}\n\nWybierz jedną odpowiedź poniżej.`;
+  return String(body || '').trim();
 }
 
 export function handoffClientKindFromReason(reason: string): HandoffClientKind {
@@ -74,38 +76,30 @@ export function handoffClientKindFromReason(reason: string): HandoffClientKind {
   return 'contact';
 }
 
-export function buildHandoffClientMessage(kind: HandoffClientKind): string {
+function voiceOrNeutral(voice?: ClientVoice | null): ClientVoice {
+  return voice || buildClientVoice({});
+}
+
+export function buildHandoffClientMessage(kind: HandoffClientKind, voice?: ClientVoice | null): string {
+  const v = voiceOrNeutral(voice);
+  const { c } = v;
   if (kind === 'viewing') {
     return [
-      'Rozumiem — chcesz obejrzeć tę ofertę.',
-      '',
-      'Co teraz zrób:',
-      '1. Agent dobierze termin pokazu.',
-      '2. Dostaniesz propozycję daty tutaj i na e-mail.',
-      '3. Potwierdzasz albo proponujesz inną godzinę.',
-      '',
-      'Na razie nie wysyłam kolejnych mieszkań — skupiamy się na tym oglądaniu.',
-      'Jeśli masz konkretną datę lub godzinę, napisz ją poniżej.',
-    ].join('\n');
+      withChatLead(v, v.pick('handoff-viewing-1', ['świetnie, w takim razie umówmy oglądanie.', 'bardzo się cieszę — umówmy oglądanie.', 'doskonale, to umawiamy oglądanie.'])),
+      `Odezwę się z propozycją terminu — ${c('zobaczy ją Pani', 'zobaczy ją Pan', 'pojawi się')} tutaj i w mailu, a potwierdzenie to jedno kliknięcie. Jeśli ${c('ma Pani', 'ma Pan', 'są')} dogodne dni lub godziny, proszę je tu napisać.`,
+      'Do tego czasu wstrzymuję nowe propozycje, żebyśmy mogli skupić się na tej jednej.',
+    ].join('\n\n');
   }
   if (kind === 'detail') {
     return [
-      'Przekazałem Twoje pytanie agentowi.',
-      '',
-      'Co teraz zrób:',
-      '1. Agent sprawdzi ten szczegół oferty.',
-      '2. Odpowiedź wróci tutaj, w tym czacie.',
-      '3. Ty nic więcej nie musisz teraz robić — chyba że chcesz dopisać kontekst.',
-    ].join('\n');
+      withChatLead(v, v.pick('handoff-detail-1', ['dziękuję za pytanie — sprawdzę to i odpiszę tutaj.', 'dobre pytanie. Sprawdzę szczegóły i wrócę z odpowiedzią w tej rozmowie.'])),
+      'Jeśli jest coś jeszcze, co warto wiedzieć, proszę śmiało dopisać.',
+    ].join('\n\n');
   }
   return [
-    'Przekazuję to agentowi, żebyście mogli umówić oglądanie albo rozmowę.',
-    '',
-    'Co teraz zrób:',
-    '1. Agent skontaktuje się z propozycją terminu.',
-    '2. Czekaj na wiadomość tutaj.',
-    '3. Jeśli masz preferowane godziny — napisz je poniżej.',
-  ].join('\n');
+    withChatLead(v, v.pick('handoff-contact-1', ['dziękuję, odezwę się, żeby ustalić oglądanie albo krótką rozmowę.', 'dziękuję — skontaktuję się, żeby umówić oglądanie lub rozmowę.'])),
+    'Jeśli są godziny, które pasują najbardziej, proszę je tu napisać.',
+  ].join('\n\n');
 }
 
 export function buildHandoffAgentNote(reason: string, agentFirstName?: string | null): string {
@@ -115,36 +109,30 @@ export function buildHandoffAgentNote(reason: string, agentFirstName?: string | 
   return `${lead}${String(reason || '').trim()} ${pause}`.trim();
 }
 
-export function rewriteInternalHandoffForClient(content: string): string {
-  return buildHandoffClientMessage(handoffClientKindFromReason(stripAgentLead(content)));
+export function rewriteInternalHandoffForClient(content: string, voice?: ClientVoice | null): string {
+  return buildHandoffClientMessage(handoffClientKindFromReason(stripAgentLead(content)), voice);
 }
 
-export function checkbackAckForClient(params: { optionId: string; handedToAgent: boolean }): string {
+export function checkbackAckForClient(params: { optionId: string; handedToAgent: boolean; voice?: ClientVoice | null }): string {
+  const v = voiceOrNeutral(params.voice);
+  const { a } = v;
   if (params.optionId === 'no') {
-    return [
-      'Dzięki — poprawię zrozumienie.',
-      '',
-      'Co teraz zrób:',
-      '1. Przy następnej ofercie doprecyzuj, co zmienić.',
-      '2. Albo napisz to od razu tutaj, jednym zdaniem.',
-    ].join('\n');
+    return v.pick('ack-no', [
+      `Dziękuję, że ${v.c('Pani poprawiła', 'Pan poprawił', 'to prostujemy')} — wolę dopytać, niż szukać w złą stronę. Proszę napisać jednym zdaniem, jak to jest naprawdę, a poprawię kryteria.`,
+      `Rozumiem, w takim razie ${a('źle to odczytałem', 'źle to odczytałam')}. Proszę napisać krótko, o co dokładnie chodzi — dopasuję do tego dalsze poszukiwania.`,
+    ]);
   }
   if (params.handedToAgent) {
-    return [
-      'Dzięki. Agent dostał Twoją wiadomość.',
-      '',
-      'Co teraz zrób:',
-      '1. Czekaj na odpowiedź agenta w tym czacie.',
-      '2. Ja szukam dalej w ustalonych kryteriach — nic więcej nie musisz teraz robić.',
-    ].join('\n');
+    return v.pick('ack-handoff', [
+      'Dziękuję, mam tę odpowiedź. Odpiszę tutaj najszybciej, jak to możliwe.',
+      'Dziękuję — przyjrzę się temu osobiście i wrócę z odpowiedzią w tej rozmowie.',
+    ]);
   }
-  return [
-    'Dzięki — biorę to pod uwagę i szukam dalej.',
-    '',
-    'Co teraz zrób:',
-    '1. Oceń kolejną ofertę, gdy się pojawi.',
-    '2. Jeśli chcesz coś dopisać już teraz — napisz poniżej.',
-  ].join('\n');
+  return v.pick('ack-yes', [
+    'Dziękuję, zapisuję to i szukam dalej z uwzględnieniem tej odpowiedzi.',
+    `Dziękuję, to dla mnie ważna informacja. Kolejne propozycje będą już ją uwzględniać.`,
+    `Świetnie, ${a('zanotowałem', 'zanotowałam')}. Wracam do szukania.`,
+  ]);
 }
 
 export type PresentedPortalChat = {

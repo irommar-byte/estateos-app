@@ -111,7 +111,7 @@ export function resolvePortalNow(input: PortalNowInput): NowState {
       tone: "action",
       eyebrow: "Do zrobienia",
       title: `Oceń ${n} ${plural(n, "nową propozycję", "nowe propozycje", "nowych propozycji")}`,
-      body: "Kliknij „Podoba mi się”, „Nie” albo „Chcę obejrzeć”. Każda ocena uczy, czego szukasz.",
+      body: `Kliknij „Chcę obejrzeć”, „Do przemyślenia” albo „Nie pasuje”. Po każdej ocenie ${agentFirst} lepiej wie, czego szukasz.`,
       cta: { label: "Zobacz propozycje", target: "portal-offers" },
     };
   }

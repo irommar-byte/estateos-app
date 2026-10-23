@@ -407,8 +407,12 @@ export async function sendPortalChat(params: {
       },
     }).catch(() => {});
   } else if (notifyTarget === 'client') {
+    // Jak w komunikatorze: nadawcą powiadomienia jest konkretna osoba, nie „system”.
+    const sender = await prisma.user
+      .findUnique({ where: { id: params.agencyUserId }, select: { name: true } })
+      .catch(() => null);
     await sendClientPortalWebPush(params.clientId, {
-      title: 'Nowa wiadomość od Twojego agenta',
+      title: sender?.name?.trim() || 'Wiadomość od agenta',
       body: body.slice(0, 160),
       tag: `estateos-client-chat-${params.clientId}`,
       native: !contactMirrored,

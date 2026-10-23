@@ -155,7 +155,7 @@ export default function ClientPortalMatchCard({
             <span className={badge.className}>{badge.label}</span>
             {match.intelligenceSent ? (
               <span className="eos-intel-kicker text-[9px] font-black uppercase tracking-[0.14em]">
-                Intelligence
+                Wybrane dla Ciebie
               </span>
             ) : null}
             {saved.agentReply ? (

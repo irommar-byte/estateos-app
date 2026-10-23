@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma';
+import { discoveryScoreAdjustment, loadClientDiscoverySignal } from '@/lib/crm/discoveryBridge';
+import { buildClientVoice } from '@/lib/crm/clientVoice';
 import { notifyAgencyClientAboutOffer, remindPendingClientFeedback } from '@/lib/agencyClientNotify';
 import { refreshAgencyClientMatches } from '@/lib/agencyClientMatching';
 import { listInactiveImportedOfferIds, refreshOfferSourceStatusIfStale } from '@/lib/offerPrivateNotes';
@@ -76,6 +78,8 @@ const OFFER_SELECT = {
   hasParking: true,
   isFurnished: true,
   floor: true,
+  propertyType: true,
+  transactionType: true,
 } as const;
 
 type OfferRow = {
@@ -95,6 +99,8 @@ type OfferRow = {
   hasParking: boolean | null;
   isFurnished: boolean | null;
   floor: number | string | null;
+  propertyType?: string | null;
+  transactionType?: string | null;
 };
 
 export type IntelligencePick = {
@@ -317,6 +323,8 @@ export async function pickIntelligenceOffer(
     reasons: string[];
   };
   const deadSourceIds = await listInactiveImportedOfferIds(matches.map((row) => row.offerId));
+  // Profil zachowań ze strony (jeśli klient ma konto i profil jest pewny) — mała korekta wyniku.
+  const discoverySignal = await loadClientDiscoverySignal(client.linkedUserId);
   const excluded = new Set(options.excludeOfferIds || []);
   let best: Cand | null = null;
   let considered = 0;
@@ -341,6 +349,13 @@ export async function pickIntelligenceOffer(
         minArea: client.buyerPreference.minArea,
       },
     });
+    if (adjusted.score > 0 && discoverySignal) {
+      const web = discoveryScoreAdjustment(discoverySignal, row.offer);
+      if (web.delta) {
+        adjusted.score = Math.max(1, Math.min(100, adjusted.score + web.delta));
+        if (web.reason) adjusted.reasons = [...adjusted.reasons, web.reason].slice(0, 6);
+      }
+    }
     const passesStructural = adjusted.score > 0;
     if (!passesStructural) continue;
     if (adjusted.score < minScore && !relaxScore) continue;
@@ -440,6 +455,12 @@ export async function pickIntelligenceOffer(
     district: best.district,
     calibrating,
     agentFirstName,
+    voice: buildClientVoice({
+      clientId,
+      firstName: client.firstName,
+      salutation: client.salutation,
+      agentName: agentFirstName || client.agencyUser?.name,
+    }),
   }).body;
   const clientWhy = dialogueWhy || clientFacingWhyLine({
     reasons: best.reasons,
