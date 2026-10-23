@@ -52,6 +52,7 @@ import IntelligenceAssistantCard, {
   DEFAULT_INTELLIGENCE_SETTINGS,
 } from '../components/agency/IntelligenceAssistantCard';
 import SellerMarketingCard from '../components/agency/SellerMarketingCard';
+import ClientAutoSendCard from '../components/agency/ClientAutoSendCard';
 import ClientPersonHub from '../components/agency/ClientPersonHub';
 import ClientPersonCard from '../components/agency/ClientPersonCard';
 import ClientPresentationComposer from '../components/agency/ClientPresentationComposer';
@@ -422,7 +423,7 @@ export default function AgencyClientDetailScreen() {
   const [guestVisitorName, setGuestVisitorName] = useState('');
   const [presentationFocus, setPresentationFocus] = useState(false);
   const [outboundPreview, setOutboundPreview] = useState<ClientOutboundPreview | null>(null);
-  const [outboundBusy, setOutboundBusy] = useState(false);
+  const [outboundBusy] = useState(false);
   const [outboundLogOpen, setOutboundLogOpen] = useState(false);
   const outboundConfirmRef = useRef<null | (() => Promise<void>)>(null);
   const pageScrollRef = useRef<ScrollView>(null);
@@ -1554,6 +1555,7 @@ export default function AgencyClientDetailScreen() {
               ) : null}
 
               {crmLevel !== 'project' ? (
+                <>
                 <ClientPersonHub
                   selling={relatedProjects.selling}
                   buying={relatedProjects.buying}
@@ -1593,6 +1595,14 @@ export default function AgencyClientDetailScreen() {
                     scrollToPresentation();
                   }}
                 />
+                <ClientAutoSendCard
+                  token={token}
+                  clientId={clientId}
+                  value={client.autoSendCategories}
+                  colors={colors}
+                  onChanged={() => void load()}
+                />
+                </>
               ) : (
               <>
               {client.type === 'SELLER' ? (
@@ -2925,6 +2935,8 @@ export default function AgencyClientDetailScreen() {
                     }
                     const payload = {
                       action: 'propose_presentation' as const,
+                      // Agent zobaczy podgląd i zatwierdzi go przed wysłaniem (openOutboundPreview).
+                      approved: true,
                       startsAt: slots[0],
                       startsAtList: slots,
                       offerId: Number(presentationOfferId),
@@ -2998,6 +3010,8 @@ export default function AgencyClientDetailScreen() {
                     }
                     const payload = {
                       action: 'propose_presentation' as const,
+                      // Agent zobaczy podgląd i zatwierdzi go przed wysłaniem (openOutboundPreview).
+                      approved: true,
                       confirmed: true,
                       startsAt,
                       startsAtList: [startsAt],
@@ -3743,14 +3757,12 @@ export default function AgencyClientDetailScreen() {
         onConfirm={() => {
           const run = outboundConfirmRef.current;
           if (!run) return;
-          setOutboundBusy(true);
-          void run()
-            .catch(() => {})
-            .finally(() => {
-              setOutboundBusy(false);
-              setOutboundPreview(null);
-              outboundConfirmRef.current = null;
-            });
+          // Najpierw zamykamy podgląd, potem wysyłamy — komunikat o wyniku nie znika razem z arkuszem.
+          outboundConfirmRef.current = null;
+          setOutboundPreview(null);
+          setTimeout(() => {
+            void run().catch(() => {});
+          }, 380);
         }}
       />
     </View>

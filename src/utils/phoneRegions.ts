@@ -1,9 +1,51 @@
 import {
   AsYouType,
+  Metadata,
   getCountryCallingCode,
   parsePhoneNumberFromString,
   type CountryCode,
 } from 'libphonenumber-js';
+
+/** Polskie nazwy krajów — Hermes nie ma Intl.DisplayNames, więc lista pokazywała same kody (AL, AT…). */
+const COUNTRY_NAMES_PL: Record<string, string> = {
+  AL: 'Albania', AT: 'Austria', BA: 'Bośnia i Hercegowina', BE: 'Belgia', BG: 'Bułgaria', CH: 'Szwajcaria',
+  CY: 'Cypr', CZ: 'Czechy', DE: 'Niemcy', DK: 'Dania', EE: 'Estonia', ES: 'Hiszpania', FI: 'Finlandia',
+  FR: 'Francja', GB: 'Wielka Brytania', GR: 'Grecja', HR: 'Chorwacja', HU: 'Węgry', IE: 'Irlandia',
+  IS: 'Islandia', IT: 'Włochy', LI: 'Liechtenstein', LT: 'Litwa', LU: 'Luksemburg', LV: 'Łotwa',
+  MD: 'Mołdawia', ME: 'Czarnogóra', MK: 'Macedonia Północna', MT: 'Malta', NL: 'Holandia', NO: 'Norwegia',
+  PL: 'Polska', PT: 'Portugalia', RO: 'Rumunia', RS: 'Serbia', SE: 'Szwecja', SI: 'Słowenia', SK: 'Słowacja',
+  UA: 'Ukraina', US: 'Stany Zjednoczone',
+};
+
+/** Najczęstsze kraje klientów — na górze listy. */
+export const PRIORITY_PHONE_COUNTRIES: CountryCode[] = ['PL', 'DE', 'GB', 'UA', 'US'];
+
+export function countryNamePl(iso: string): string {
+  return COUNTRY_NAMES_PL[String(iso || '').toUpperCase()] || String(iso || '');
+}
+
+/**
+ * Maksymalna długość numeru krajowego (bez kierunkowego) — numery komórkowe i stacjonarne,
+ * których realnie używają klienci. Dla pozostałych krajów: najdłuższa długość z metadanych.
+ */
+const MAX_NATIONAL_DIGITS: Record<string, number> = {
+  PL: 9, UA: 9, CZ: 9, SK: 9, FR: 9, ES: 9, NL: 9, BE: 9, PT: 9, RO: 9, HU: 9, IE: 9, SE: 9, CH: 9,
+  HR: 9, BG: 9, GB: 10, US: 10, IT: 10, GR: 10, FI: 10, DE: 11, AT: 13, LT: 8, LV: 8, EE: 8, NO: 8,
+  DK: 8, SI: 8, CY: 8, MT: 8, LU: 9, IS: 7,
+};
+
+export function maxNationalDigits(iso: CountryCode): number {
+  const fixed = MAX_NATIONAL_DIGITS[iso];
+  if (fixed) return fixed;
+  try {
+    const metadata = new Metadata();
+    metadata.selectNumberingPlan(iso);
+    const lengths = metadata.numberingPlan?.possibleLengths() || [];
+    return lengths.length ? Math.max(...lengths) : 15;
+  } catch {
+    return 15;
+  }
+}
 
 /**
  * Kraje dostępne przy numerze telefonu: UE + EFTA + UK + US + wybrane kraje europejskie spoza UE.
@@ -66,10 +108,12 @@ export function dialCodeFor(iso: CountryCode): string {
 export function countryLabelInOwnLanguage(iso: CountryCode): string {
   try {
     const dn = new Intl.DisplayNames([iso], { type: 'region' });
-    return dn.of(iso) || iso;
+    const label = dn.of(iso);
+    if (label && label !== iso) return label;
   } catch {
-    return iso;
+    /* Hermes: brak Intl.DisplayNames */
   }
+  return countryNamePl(iso);
 }
 
 /** Nazwa kraju w języku tego państwa, wielkimi literami (np. POLSKA, DEUTSCHLAND). */
@@ -89,12 +133,7 @@ export function countryLabelInOwnLanguageUpper(iso: string): string {
 
 /** Etykieta do sortowania listy (polski — stabilne sortowanie dla użytkownika PL). */
 export function countryLabelSortPl(iso: CountryCode): string {
-  try {
-    const dn = new Intl.DisplayNames(['pl-PL'], { type: 'region' });
-    return dn.of(iso) || iso;
-  } catch {
-    return iso;
-  }
+  return countryNamePl(iso);
 }
 
 export function getDeviceRegionCountry(): CountryCode {
@@ -227,11 +266,14 @@ export function parseStoredPhoneToLine(phone?: string | null, fallbackIso: Count
   return { iso: fallbackIso, nationalDigits: '' };
 }
 
+/** Numer krajowy sformatowany na bieżąco (np. „501 234 567”), przycięty do długości dla kraju. */
 export function formatNationalAsYouType(iso: CountryCode, nationalDigits: string): string {
-  const d = String(nationalDigits || '').replace(/\D/g, '');
-  const fmt = new AsYouType(iso);
-  fmt.input(d);
-  return fmt.getChars() || '';
+  const d = String(nationalDigits || '')
+    .replace(/\D/g, '')
+    .slice(0, maxNationalDigits(iso));
+  if (!d) return '';
+  // input() zwraca sformatowany tekst; getChars() oddawał same cyfry — stąd brak odstępów.
+  return new AsYouType(iso).input(d) || d;
 }
 
 export function buildE164FromNational(iso: CountryCode, nationalDigits: string) {

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import SafeModal from '../SafeModal';
 
 export type ClientOutboundPreview = {
   kind?: string;
@@ -37,7 +38,7 @@ export default function ClientOutboundPreviewSheet({
   if (!preview) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
+    <SafeModal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={busy ? undefined : onCancel} />
         <View style={[styles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -97,7 +98,7 @@ export default function ClientOutboundPreviewSheet({
           </View>
         </View>
       </View>
-    </Modal>
+    </SafeModal>
   );
 }
 

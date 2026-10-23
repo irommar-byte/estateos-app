@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Image,
-  Modal,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import SafeModal from '../SafeModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
@@ -26,7 +26,7 @@ function pathFromStrokes(strokes: Point[][]) {
     .join(' ');
 }
 
-function SignatureCanvas({
+export function SignatureCanvas({
   disabled,
   isDark,
   height,
@@ -250,7 +250,7 @@ export default function SignaturePad({
         )}
       </Pressable>
 
-      <Modal
+      <SafeModal
         visible={open}
         animationType="slide"
         presentationStyle="fullScreen"
@@ -311,7 +311,7 @@ export default function SignaturePad({
             />
           </View>
         </View>
-      </Modal>
+      </SafeModal>
     </View>
   );
 }

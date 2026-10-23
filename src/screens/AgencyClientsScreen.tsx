@@ -39,6 +39,7 @@ function buildWaitingReasons(today: AgentToday): Map<number, string> {
   const put = (clientId: number, reason: string) => {
     if (!reasons.has(clientId)) reasons.set(clientId, reason);
   };
+  for (const row of today.outbox || []) put(row.clientId, `Do wysłania: ${row.subject || row.categoryLabel}`);
   for (const row of today.ownerCalls) put(row.clientId, `Zadzwoń do właściciela: ${row.offer?.title || 'oferta'}`);
   for (const row of today.replies) put(row.clientId, row.title);
   for (const row of today.approvals) put(row.clientId, `Do akceptacji: ${row.offer?.title || 'propozycja asystenta'}`);

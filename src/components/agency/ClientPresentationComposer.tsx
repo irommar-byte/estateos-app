@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import SafeModal from '../SafeModal';
 import { Image } from 'expo-image';
 import type { AgencyClientMatch, AgencyShowingCard, ManagedOfferOption } from '../../services/agencyClientService';
 import { searchCrmOffersForPresentation } from '../../services/agencyClientService';
@@ -568,7 +568,7 @@ export default function ClientPresentationComposer({
             />
           ) : null}
 
-          <Modal visible={pickerOpen} animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
+          <SafeModal visible={pickerOpen} animationType="slide" transparent onRequestClose={() => setPickerOpen(false)}>
             <View style={styles.modalBackdrop}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => setPickerOpen(false)} />
               <View style={[styles.modalSheet, { backgroundColor: colors.card }]}>
@@ -640,7 +640,7 @@ export default function ClientPresentationComposer({
                 </Pressable>
               </View>
             </View>
-          </Modal>
+          </SafeModal>
         </View>
       ) : null}
 

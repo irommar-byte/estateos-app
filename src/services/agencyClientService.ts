@@ -1,11 +1,17 @@
 import { API_URL } from '../config/network';
+import { emitOutboxQueued, type QueuedOutboxSummary } from '../lib/outboxEvents';
 
 function authHeaders(token: string) {
   return { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' };
 }
 
 async function parseJson(res: Response) {
-  return res.json().catch(() => ({}));
+  const json = await res.json().catch(() => ({}));
+  // Serwer odłożył wiadomość do klienta do akceptacji — pokaż agentowi podgląd od razu.
+  if (json && Array.isArray(json.outbox) && json.outbox.length) {
+    emitOutboxQueued(json.outbox as QueuedOutboxSummary[]);
+  }
+  return json;
 }
 
 export type AgencyClientListItem = {
@@ -253,6 +259,9 @@ export type AgencyClientDetail = AgencyClientListItem & {
   matches: AgencyClientMatch[];
   nextStep?: AgencyClientNextStep | null;
   portalUnreadCount?: number;
+  /** Rodzaje wiadomości wychodzące do klienta bez akceptacji agenta. */
+  autoSendCategories?: string[];
+  salutation?: 'PAN' | 'PANI' | null;
   intelligence?: {
     enabled: boolean;
     intervalHours: number;
@@ -501,6 +510,7 @@ export async function proposeClientOffers(
       action: 'notify_offers',
       offerIds,
       channel: 'email',
+      approved: true,
       allowResend: Boolean(opts?.allowResend),
     }),
   });
@@ -513,6 +523,7 @@ export async function proposeClientOffers(
         action: 'notify_offer',
         offerId: offerIds[0],
         channel: 'email',
+        approved: true,
         allowResend: Boolean(opts?.allowResend),
       }),
     });
@@ -916,6 +927,7 @@ export async function sendVisitPrepPacket(token: string, clientId: number, parki
   return postAgencyClientAction(token, clientId, {
     action: 'send_visit_prep_packet',
     parkingNote: parkingNote || null,
+    approved: true,
   });
 }
 
