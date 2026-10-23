@@ -1,3 +1,4 @@
+import { parseSalutation } from '@/lib/crm/intelligenceSchedule';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
@@ -183,6 +184,9 @@ export async function POST(req: Request) {
   if (body.phone && !phoneRaw) {
     return NextResponse.json({ error: 'Telefon musi być w formacie międzynarodowym, np. +48501234567.' }, { status: 400 });
   }
+  if (!emailRaw && !phoneRaw) {
+    return NextResponse.json({ error: 'Podaj telefon albo e-mail klienta — bez kontaktu nie da się prowadzić sprawy.' }, { status: 400 });
+  }
   const peselRaw = body.pesel ? String(body.pesel).trim() : null;
   if (peselRaw && !parsePesel(peselRaw)) {
     return NextResponse.json({ error: 'Nieprawidłowy PESEL.' }, { status: 400 });
@@ -230,6 +234,10 @@ export async function POST(req: Request) {
       emailVerifiedAt: body.emailVerified === true ? new Date() : null,
       phoneVerifiedAt: body.phoneVerified === true ? new Date() : null,
       notes: body.notes ? String(body.notes).trim() : null,
+      salutation: parseSalutation(body.salutation),
+      // Asystent można włączyć od razu przy dodaniu — tylko gdy są kryteria poszukiwań.
+      // Nowy klient startuje w trybie TRIAL (7 dni z akceptacją agenta).
+      intelligenceEnabled: body.intelligenceEnabled === true && Boolean(body.buyerFilters),
       portalToken: generatePortalToken(),
       ...(type === 'SELLER'
         ? {

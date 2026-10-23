@@ -119,3 +119,11 @@ export function parseSalutation(raw: unknown): ClientSalutation | null {
   const value = String(raw ?? '').trim().toUpperCase();
   return value === 'PAN' || value === 'PANI' ? value : null;
 }
+
+/** Następna próba telefonu: za 3 godziny w ciągu dnia, a po 17:00 — jutro o 9:00 (czas polski). */
+export function nextOwnerCallAttempt(now: Date = new Date()): Date {
+  const parts = warsawParts(now);
+  if (parts.hour < 17) return new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  const tomorrowStart = warsawDayStart(new Date(now.getTime() + 24 * 60 * 60 * 1000));
+  return new Date(tomorrowStart.getTime() + 9 * 60 * 60 * 1000);
+}

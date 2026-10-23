@@ -3,6 +3,7 @@ import { sendNotification } from '@/lib/core/notification.core';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
 import { withMysqlNamedLock } from '@/lib/crm/mysqlNamedLock';
 import type { IntelligencePick } from '@/lib/crm/clientIntelligenceRun';
+import { nextOwnerCallAttempt } from '@/lib/crm/intelligenceSchedule';
 
 /**
  * Propozycje asystenta czekające na decyzję agenta (tryb „z akceptacją”
@@ -170,7 +171,14 @@ export async function createIntelligenceApproval(params: {
     type: 'CRM_EVENT',
     title: expired ? 'Oferta spoza internetu — zadzwoń do właściciela' : 'Asystent ma propozycję do akceptacji',
     body: `${who} · ${title}`,
-    data: crmAgentPushData(params.clientId, { kind: INTELLIGENCE_APPROVAL_KIND, activityId: row.id, offerId }),
+    // Otwiera w aplikacji ekran „Dziś”, gdzie agent decyduje jednym dotykiem.
+    data: crmAgentPushData(params.clientId, {
+      kind: INTELLIGENCE_APPROVAL_KIND,
+      activityId: row.id,
+      offerId,
+      screen: 'AgencyToday',
+      route: 'AgencyToday',
+    }),
     idempotencyKey: `intelligence-approval-${row.id}`,
   }).catch(() => {});
 
@@ -264,4 +272,107 @@ async function skipUnlocked(params: {
     },
   });
   return { ok: true };
+}
+
+export type OwnerCallOutcome = 'available' | 'sold' | 'no_answer';
+
+/**
+ * Wynik rozmowy z właścicielem oferty, której ogłoszenie zniknęło z portali:
+ * - available → propozycja od razu idzie do klienta,
+ * - sold → propozycja odpada u wszystkich klientów, oferta wypada z bazy,
+ * - no_answer → przypomnienie o kolejnej próbie.
+ */
+export async function recordOwnerCallOutcome(params: {
+  agencyUserId: number;
+  activityId: number;
+  outcome: OwnerCallOutcome;
+  note?: string | null;
+}): Promise<{ ok: boolean; error?: string; sent?: boolean; snoozedUntil?: string; skippedOthers?: number }> {
+  const row = await prisma.agencyClientActivity.findFirst({
+    where: { id: params.activityId, agencyUserId: params.agencyUserId, kind: INTELLIGENCE_APPROVAL_KIND },
+    select: { id: true, clientId: true, offerId: true, metadata: true },
+  });
+  if (!row) return { ok: false, error: 'Nie znaleziono propozycji.' };
+  const m = meta(row.metadata);
+  if (m.status !== 'pending') return { ok: false, error: 'Ta propozycja została już rozpatrzona.' };
+
+  const calls = Array.isArray(m.ownerCalls) ? [...(m.ownerCalls as unknown[])] : [];
+  calls.push({
+    at: new Date().toISOString(),
+    outcome: params.outcome,
+    by: params.agencyUserId,
+    note: params.note ? String(params.note).slice(0, 300) : null,
+  });
+
+  if (params.outcome === 'no_answer') {
+    const snoozedUntil = nextOwnerCallAttempt();
+    await prisma.agencyClientActivity.update({
+      where: { id: row.id },
+      data: { metadata: { ...m, ownerCalls: calls, snoozedUntil: snoozedUntil.toISOString() } as object },
+    });
+    return { ok: true, snoozedUntil: snoozedUntil.toISOString() };
+  }
+
+  if (params.outcome === 'available') {
+    await prisma.agencyClientActivity.update({
+      where: { id: row.id },
+      data: { metadata: { ...m, ownerCalls: calls, ownerConfirmedAt: new Date().toISOString() } as object },
+    });
+    const approved = await approveIntelligenceApproval({
+      clientId: row.clientId,
+      agencyUserId: params.agencyUserId,
+      activityId: row.id,
+    });
+    return approved.ok ? { ok: true, sent: true } : { ok: false, error: approved.error };
+  }
+
+  // sold — ta oferta nie wróci do żadnego klienta.
+  await prisma.agencyClientActivity.update({
+    where: { id: row.id },
+    data: {
+      metadata: {
+        ...m,
+        ownerCalls: calls,
+        status: 'skipped' satisfies ApprovalStatus,
+        agentStatus: 'done',
+        decidedAt: new Date().toISOString(),
+        decidedBy: params.agencyUserId,
+        skipReason: 'Właściciel: nieruchomość sprzedana.',
+      } as object,
+    },
+  });
+  let skippedOthers = 0;
+  if (row.offerId) {
+    const others = await prisma.agencyClientActivity.findMany({
+      where: { kind: INTELLIGENCE_APPROVAL_KIND, offerId: row.offerId, id: { not: row.id } },
+      select: { id: true, metadata: true },
+    });
+    for (const other of others) {
+      const om = meta(other.metadata);
+      if (om.status !== 'pending') continue;
+      await prisma.agencyClientActivity.update({
+        where: { id: other.id },
+        data: {
+          metadata: {
+            ...om,
+            status: 'skipped' satisfies ApprovalStatus,
+            agentStatus: 'done',
+            decidedAt: new Date().toISOString(),
+            skipReason: 'Właściciel: nieruchomość sprzedana.',
+          } as object,
+        },
+      });
+      skippedOthers += 1;
+    }
+    const [offer, actor] = await Promise.all([
+      prisma.offer.findUnique({ where: { id: row.offerId }, select: { userId: true, status: true } }),
+      prisma.user.findUnique({ where: { id: params.agencyUserId }, select: { role: true } }),
+    ]);
+    const canArchive =
+      offer && (String(actor?.role || '').toUpperCase() === 'ADMIN' || offer.userId === params.agencyUserId);
+    if (canArchive && offer.status === 'ACTIVE') {
+      await prisma.offer.update({ where: { id: row.offerId }, data: { status: 'ARCHIVED' } });
+    }
+  }
+  return { ok: true, skippedOthers };
 }
