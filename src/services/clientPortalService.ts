@@ -450,3 +450,30 @@ export async function restoreLinkedClientPortals(authToken: string): Promise<str
     return null;
   }
 }
+
+/** Wejście klienta do aplikacji: 6-cyfrowy kod zaproszenia od agenta → token panelu. */
+export async function redeemClientInviteCode(code: string): Promise<string> {
+  const digits = String(code || '').replace(/\D/g, '');
+  if (digits.length !== 6) throw new Error('Kod ma 6 cyfr.');
+  const { response, data } = await mobileFetchJson<{ portalToken?: string; error?: string }>(
+    `${API_URL}/api/crm/client-portal/redeem`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: digits }),
+    },
+  );
+  if (!response.ok || !data?.portalToken) {
+    throw new Error(data?.error || 'Nie udało się otworzyć panelu. Spróbuj ponownie.');
+  }
+  return String(data.portalToken);
+}
+
+/** Wyciąga 6-cyfrowy kod z linku zaproszenia (QR) albo z wpisanego tekstu. */
+export function extractInviteCode(raw: string): string | null {
+  const text = String(raw || '').trim();
+  const fromLink = text.match(/\/app\/kod\/(\d{6})(?:[/?#]|$)/i);
+  if (fromLink?.[1]) return fromLink[1];
+  const bare = text.replace(/\s/g, '');
+  return /^\d{6}$/.test(bare) ? bare : null;
+}

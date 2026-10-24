@@ -15,6 +15,8 @@ export const AUTO_SEND_CATEGORIES: Array<{ key: string; label: string }> = [
   { key: 'documents', label: 'Dokumenty i umowy' },
   { key: 'card', label: 'Wizytówka i powitanie' },
   { key: 'decision', label: 'Prośby o decyzję' },
+  { key: 'alert', label: 'Alerty o ulubionych ofertach (zmiana ceny)' },
+  { key: 'digest', label: 'Piątkowe podsumowanie tygodnia' },
 ];
 
 type Colors = { card: string; text: string; secondary: string; border: string; accent: string };

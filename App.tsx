@@ -134,7 +134,11 @@ import AddCarListingScreen from './src/screens/AddCarListingScreen';
 import MarketExploreShell from './src/navigation/MarketExploreShell';
 import EcosystemVerticalTransition from './src/components/ecosystem/EcosystemVerticalTransition';
 import { extractIdFromDeeplink, extractPortalTokenFromDeeplink } from './src/utils/deeplinkParse';
-import { rememberPortalSession } from './src/lib/clientPortalSession';
+import { getActivePortalToken, rememberPortalSession } from './src/lib/clientPortalSession';
+import EntryGateScreen from './src/screens/EntryGateScreen';
+import { INVITE_ONLY_ENTRY } from './src/lib/entryGate';
+import { extractInviteCode, redeemClientInviteCode } from './src/services/clientPortalService';
+import { registerClientPortalPushIfPossible } from './src/hooks/usePushNotifications';
 import { isClientPortalPushKind } from './src/lib/clientPortalPushTarget';
 import {
   extractPushDealAndOfferIds,
@@ -1826,6 +1830,11 @@ export default function App() {
   }, []);
 
   const [isSplashVisible, setSplashVisible] = useState(true);
+  /** Tymczasowa otoczka wejścia: agent (logowanie) albo klient (QR / 6-cyfrowy kod). */
+  const authUser = useAuthStore((state) => state.user);
+  const [entryGate, setEntryGate] = useState<'checking' | 'show' | 'hidden'>(INVITE_ONLY_ENTRY ? 'checking' : 'hidden');
+  const clientAutoOpenRef = useRef(false);
+  const autoOpenPortalTokenRef = useRef<string | null>(null);
   const pendingPushTargetRef = useRef<PushNavigationTarget | null>(null);
   const handledResponseKeysRef = useRef<Record<string, number>>({});
   const lastNavigationKeyRef = useRef<{ key: string; at: number } | null>(null);
@@ -1867,9 +1876,31 @@ export default function App() {
     return true;
   }, []);
 
+  /** Tryb klienta: otwórz panel z tokenu (po kodzie / QR / linku) i zapamiętaj sesję. */
+  const openClientPortal = useCallback(
+    (portalToken: string) => {
+      void rememberPortalSession({ token: portalToken });
+      setEntryGate('hidden');
+      void registerClientPortalPushIfPossible({ prompt: true });
+      const target: PushNavigationTarget = { screen: 'ClientPortal', params: { portalToken } };
+      if (!navigateFromPushTarget(target)) pendingPushTargetRef.current = target;
+    },
+    [navigateFromPushTarget],
+  );
+
   const handleIncomingLink = useCallback(
     (url: string | null) => {
       if (!url) return;
+
+      if (/\/app\/kod\/\d{6}/.test(url)) {
+        const inviteCode = extractInviteCode(url);
+        if (inviteCode) {
+          void redeemClientInviteCode(inviteCode)
+            .then(openClientPortal)
+            .catch((e) => Alert.alert('Kod zaproszenia', e instanceof Error ? e.message : 'Nie udało się otworzyć panelu.'));
+          return;
+        }
+      }
 
       const estateAction = parseEstateDeeplinkAction(url);
       if (estateAction) {
@@ -1901,8 +1932,49 @@ export default function App() {
         pendingPushTargetRef.current = target;
       }
     },
-    [navigateFromPushTarget]
+    [navigateFromPushTarget, openClientPortal]
   );
+
+  useEffect(() => {
+    if (!INVITE_ONLY_ENTRY) return;
+    if (authUser) {
+      setEntryGate('hidden');
+      return;
+    }
+    let alive = true;
+    void (async () => {
+      const [storedAuth, portalToken] = await Promise.all([
+        AsyncStorage.getItem('mobile_token').catch(() => null),
+        getActivePortalToken(),
+      ]);
+      if (!alive) return;
+      if (storedAuth) {
+        // Sesja agenta jest właśnie przywracana.
+        setEntryGate('hidden');
+        return;
+      }
+      if (portalToken) {
+        setEntryGate('hidden');
+        if (!clientAutoOpenRef.current) {
+          clientAutoOpenRef.current = true;
+          autoOpenPortalTokenRef.current = portalToken;
+        }
+        return;
+      }
+      setEntryGate('show');
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [authUser]);
+
+  useEffect(() => {
+    if (isSplashVisible || !autoOpenPortalTokenRef.current) return;
+    const portalToken = autoOpenPortalTokenRef.current;
+    autoOpenPortalTokenRef.current = null;
+    const target: PushNavigationTarget = { screen: 'ClientPortal', params: { portalToken } };
+    if (!navigateFromPushTarget(target)) pendingPushTargetRef.current = target;
+  }, [isSplashVisible, entryGate, navigateFromPushTarget]);
 
   const handleNotificationResponse = useCallback(
     (response: Notifications.NotificationResponse | null) => {
@@ -1975,7 +2047,7 @@ export default function App() {
         <BonusCouponNotifyBootstrap />
         {isSplashVisible && <AppleSplashScreen onFinish={() => setSplashVisible(false)} />}
         <PasskeyLaunchPrompt
-          ready={!isSplashVisible}
+          ready={!isSplashVisible && entryGate === 'hidden'}
           onUsePassword={(savedEmail) => {
             if (!navigationRef.isReady()) return;
             (navigationRef as any).navigate('MainTabs', {
@@ -2153,6 +2225,17 @@ export default function App() {
         {!isSplashVisible ? <AppRatingPromptHost /> : null}
         {!isSplashVisible ? <InvestorProUpsellHost /> : null}
         {!isSplashVisible ? <AgencyPendingGate /> : null}
+        {!isSplashVisible && entryGate === 'show' ? (
+          <EntryGateScreen
+            onAgent={() => {
+              setEntryGate('hidden');
+              if (navigationRef.isReady()) {
+                (navigationRef as any).navigate('MainTabs', { screen: 'Profil', params: { authIntent: 'login' } });
+              }
+            }}
+            onClientToken={openClientPortal}
+          />
+        ) : null}
         </View>
         </I18nProvider>
         <NumericKeyboardAccessory isDark={resolvedTheme === 'dark'} />

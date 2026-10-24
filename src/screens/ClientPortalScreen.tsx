@@ -49,6 +49,23 @@ import SellerPortalView from '../components/clientPortal/SellerPortalView';
 import PortalScheduleCard from '../components/clientPortal/PortalScheduleCard';
 import ClientPortalAgentReplyInbox from '../components/clientPortal/ClientPortalAgentReplyInbox';
 import { collectAgentOfferReplies } from '../utils/clientPortalFeedback';
+import { luxPalette, LUX_SERIF, plnFormat, sentimentOf } from '../components/clientPortal/lux/luxTheme';
+import type { LuxMatch, LuxPortal } from '../components/clientPortal/lux/types';
+import { luxAction } from '../components/clientPortal/lux/luxApi';
+import LuxHeader from '../components/clientPortal/lux/LuxHeader';
+import LuxAxis, { type LuxStage } from '../components/clientPortal/lux/LuxAxis';
+import LuxTools, { type LuxTool } from '../components/clientPortal/lux/LuxTools';
+import LuxOfferCard from '../components/clientPortal/lux/LuxOfferCard';
+import LuxOfferSheet from '../components/clientPortal/lux/LuxOfferSheet';
+import LuxCompareSheet from '../components/clientPortal/lux/LuxCompareSheet';
+import LuxBookingSheet, { type BookingOffer } from '../components/clientPortal/lux/LuxBookingSheet';
+import LuxPartnerSheet from '../components/clientPortal/lux/LuxPartnerSheet';
+import LuxAreaSheet from '../components/clientPortal/lux/LuxAreaSheet';
+import LuxCostSheet from '../components/clientPortal/lux/LuxCostSheet';
+import LuxDocuments from '../components/clientPortal/lux/LuxDocuments';
+import { LuxReferral, LuxReview } from '../components/clientPortal/lux/LuxReviewReferral';
+import { LuxBuyerOffers, LuxCompetition, LuxNetSheet, LuxSellerStats, LuxShowingFeedback } from '../components/clientPortal/lux/LuxSeller';
+import { LuxButton, LuxCard, LuxChip, LuxKicker } from '../components/clientPortal/lux/LuxUI';
 
 const LIKE_PHRASES = ['Świetna lokalizacja', 'Podoba mi się układ', 'Dobry metraż', 'Pasuje do budżetu'];
 const DISLIKE_PHRASES = ['Za drogo', 'Brak balkonu', 'Nie ta dzielnica', 'Za mało pokoi'];
@@ -103,6 +120,39 @@ export default function ClientPortalScreen() {
   const autoLinkAttempted = useRef(false);
   const loadSeq = useRef(0);
   const linkInFlight = useRef(false);
+
+  // ── Panel „lux” (jak na www) ──
+  const [sheetMatchId, setSheetMatchId] = useState<number | null>(null);
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [partnerOpen, setPartnerOpen] = useState(false);
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingOfferId, setBookingOfferId] = useState<number | null>(null);
+  const [areaOpen, setAreaOpen] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [netOpen, setNetOpen] = useState(false);
+  const [offerFilter, setOfferFilter] = useState<'all' | 'new' | 'fav' | 'like' | 'maybe' | 'dislike'>('all');
+  const scrollRef = useRef<ScrollView | null>(null);
+  const sectionY = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!portalToken) return;
+    void AsyncStorage.getItem(`eos-compare:${portalToken}`)
+      .then((raw) => {
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) setCompareIds(parsed.map(Number).filter(Number.isFinite).slice(0, 4));
+      })
+      .catch(() => null);
+  }, [portalToken]);
+
+  const toggleCompare = (matchId: number) => {
+    setCompareIds((prev) => {
+      const next = prev.includes(matchId) ? prev.filter((id) => id !== matchId) : [...prev, matchId].slice(-4);
+      void AsyncStorage.setItem(`eos-compare:${portalToken}`, JSON.stringify(next)).catch(() => null);
+      return next;
+    });
+  };
+
 
   useEffect(() => {
     stacksInitialized.current = false;
@@ -524,358 +574,561 @@ export default function ClientPortalScreen() {
     );
   }
 
-  const visibleStacks = OFFER_STACKS.filter((stack) => stacks[stack.id].length > 0);
+  const lp = luxPalette(isDark);
+  const lux = portal as unknown as LuxPortal | null;
+  if (!lux) return null;
 
-  if (portal?.type === 'SELLER') {
-    return (
-      <SellerPortalView
-        portal={portal}
-        portalToken={portalToken}
-        isDark={isDark}
-        colors={colors}
-        insetsTop={insets.top}
-        refreshing={refreshing}
-        onRefresh={() => void load('refresh')}
-        onOpenChat={openChat}
-        canChat={canChat}
-        canInteract={canInteract}
-        accountSection={renderAccountSection()}
-        pushSection={renderPushRow()}
-        onBack={() => navigation.goBack()}
-      />
-    );
-  }
+  const isPartner = lux.viewer?.role === 'partner';
+  const partnerName = lux.viewer?.role === 'partner' ? lux.viewer.name : null;
+  const agentFirst = (lux.agentName || '').split(' ')[0] || lux.agentName || 'Agent';
+  const permissions = lux.permissions;
+  const matches = lux.matches || [];
+  const sheetMatch = matches.find((m) => m.id === sheetMatchId) || null;
+  const compareMatches = compareIds.map((id) => matches.find((m) => m.id === id)).filter(Boolean) as LuxMatch[];
+  const ratedCount = matches.filter((m) => sentimentOf(m.clientFeedback)).length;
+  const favoriteCount = matches.filter((m) => m.favorite).length;
+  const likedOffers: BookingOffer[] = matches
+    .filter((m) => sentimentOf(m.clientFeedback) === 'like' || m.favorite)
+    .map((m) => ({ offerId: m.offer.id, title: m.offer.title }));
+  const bookingOffers: BookingOffer[] = likedOffers.length ? likedOffers : matches.map((m) => ({ offerId: m.offer.id, title: m.offer.title }));
+  const presentationPendingFuture =
+    lux.presentation?.status === 'pending' && new Date(lux.presentation.startsAt).getTime() > Date.now();
+  const canSelfBook = lux.type === 'BUYER' && !isPartner && permissions?.selfBooking !== false && matches.length > 0 && !presentationPendingFuture;
+  const seller = lux.seller || null;
+  const listPrice = Number(lux.listing?.price || 0);
+  const openBuyerOffers = seller?.buyerOffers.filter((o) => o.status === 'OPEN') || [];
+  const favoritePrice = Number(matches.find((m) => m.favorite)?.offer.price || matches[0]?.offer.price || 0);
+  const documents = lux.documents || [];
+  const criteria = lux.searchCriteria || null;
+  const unreadReplies = collectAgentOfferReplies(portal?.matches || []).filter((r: { unread?: boolean }) => r.unread).length;
+
+  const scrollTo = (key: string) => {
+    const y = sectionY.current[key];
+    if (y != null) scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
+  };
+  const onSection = (key: string) => (e: { nativeEvent: { layout: { y: number } } }) => {
+    sectionY.current[key] = e.nativeEvent.layout.y;
+  };
+  const silentReload = () => void load('silent');
+
+  const toggleFavorite = async (match: LuxMatch) => {
+    try {
+      await luxAction(portalToken, 'toggle_favorite', { matchId: match.id, favorite: !match.favorite });
+      silentReload();
+    } catch (e) {
+      Alert.alert('Ulubione', e instanceof Error ? e.message : 'Nie udało się.');
+    }
+  };
+
+  const rateFromSheet = async (match: LuxMatch, sentiment: 'like' | 'maybe' | 'dislike', note: string) => {
+    try {
+      if (isPartner) {
+        await luxAction(portalToken, 'partner_feedback', { matchId: match.id, sentiment, note });
+      } else {
+        let prev: { liked?: string; disliked?: string; phrases?: string[]; note?: string } = {};
+        try {
+          prev = match.clientFeedback ? JSON.parse(match.clientFeedback) : {};
+        } catch {
+          prev = {};
+        }
+        await luxAction(portalToken, 'submit_feedback', {
+          matchId: match.id,
+          sentiment,
+          liked: String(prev.liked || ''),
+          disliked: String(prev.disliked || ''),
+          phrases: Array.isArray(prev.phrases) ? prev.phrases.map(String) : [],
+          note: note || String(prev.note || ''),
+        });
+      }
+      await load('silent');
+    } catch (e) {
+      Alert.alert('Ocena', e instanceof Error ? e.message : 'Nie udało się zapisać oceny.');
+    }
+  };
+
+  const openListing = (offerId: number) =>
+    navigation.navigate('OfferDetail', { offer: { id: offerId }, id: offerId, offerId });
+
+  const presentationCard = lux.presentation ? (
+    <PortalScheduleCard
+      portalToken={portalToken}
+      kind="presentation"
+      slot={lux.presentation}
+      role={lux.type}
+      canInteract={canInteract && !isPartner}
+      isDark={isDark}
+      colors={colors}
+      onDone={silentReload}
+    />
+  ) : null;
+
+  const checkbackCard =
+    lux.pendingCheckback && canInteract && !isPartner ? (
+      <LuxCard palette={lp} style={{ borderColor: lp.accent, borderWidth: 1 }}>
+        <LuxKicker palette={lp}>Pytanie od {agentFirst}</LuxKicker>
+        <Text style={{ color: lp.ink, fontWeight: '700', fontSize: 17, marginTop: 8, lineHeight: 23 }}>{lux.pendingCheckback.body}</Text>
+        <View style={{ marginTop: 12, gap: 8 }}>
+          {lux.pendingCheckback.options.map((option) => (
+            <LuxButton key={option.id} palette={lp} variant="ghost" label={option.label} onPress={() => void answerCheckback(option.id)} />
+          ))}
+        </View>
+      </LuxCard>
+    ) : null;
+
+  const bookingCta = canSelfBook ? (
+    <LuxButton
+      palette={lp}
+      label={`Wybierz termin z kalendarza ${agentFirst}`}
+      onPress={() => {
+        setBookingOfferId(null);
+        setBookingOpen(true);
+      }}
+      icon={<Ionicons name="calendar" size={16} color={isDark ? '#000' : '#D8C3A0'} />}
+    />
+  ) : null;
+
+  const documentsCard =
+    permissions?.documents !== false && documents.length ? (
+      <View onLayout={onSection('documents')}>
+        <LuxDocuments
+          token={portalToken}
+          documents={documents}
+          summary={lux.documentsSummary}
+          palette={lp}
+          agentFirst={agentFirst}
+          canUpload={!isPartner && canInteract}
+          onChanged={silentReload}
+        />
+      </View>
+    ) : null;
+
+  // ── Oś kupującego ──
+  const phase = lux.purchase?.phase;
+  const buyerStageIndex =
+    phase === 'closed' ? 6 : phase === 'negotiating' ? 3 : lux.presentation || likedOffers.length ? 2 : matches.length || criteria ? 1 : 0;
+  const stateFor = (i: number, current: number): LuxStage['state'] => (i < current ? 'done' : i === current ? 'current' : 'future');
+  const link = (label: string, onPress: () => void) => (
+    <Text onPress={onPress} style={{ color: lp.accent, fontWeight: '800' }}>
+      {label}
+    </Text>
+  );
+  const buyerStages: LuxStage[] = [
+    {
+      id: 'criteria',
+      label: 'Kryteria',
+      state: stateFor(0, buyerStageIndex),
+      summary: (
+        <Text style={{ fontSize: 13, color: lp.muted, lineHeight: 18 }}>
+          {criteria
+            ? [criteria.location, criteria.maxBudget ? `do ${criteria.maxBudget}` : null, criteria.minRooms ? `od ${criteria.minRooms} pok.` : null].filter(Boolean).join(' · ')
+            : `${agentFirst} ustala z Tobą, czego szukamy.`}
+          {!isPartner && criteria ? ' · ' : ''}
+          {!isPartner && criteria ? link(lux.searchPolygon ? 'obszar na mapie ✓' : 'narysuj obszar', () => setAreaOpen(true)) : null}
+        </Text>
+      ),
+    },
+    {
+      id: 'proposals',
+      label: matches.length ? `Propozycje · ${ratedCount} ${ratedCount === 1 ? 'oceniona' : 'ocenionych'}` : 'Propozycje',
+      state: stateFor(1, buyerStageIndex),
+      summary: matches.length ? (
+        <Text style={{ fontSize: 13, color: lp.muted }}>
+          {favoriteCount ? `${favoriteCount} ulubionych · ` : ''}
+          {link('zobacz wszystkie', () => scrollTo('offers'))}
+          {compareIds.length >= 2 ? ' · ' : ''}
+          {compareIds.length >= 2 ? link('porównaj', () => setCompareOpen(true)) : null}
+        </Text>
+      ) : (
+        'Pierwsze propozycje pojawią się tutaj — dostaniesz powiadomienie.'
+      ),
+      content: checkbackCard,
+    },
+    {
+      id: 'viewings',
+      label: 'Oglądania',
+      state: stateFor(2, buyerStageIndex),
+      summary: lux.presentation
+        ? `${new Date(lux.presentation.startsAt).getTime() < Date.now() ? 'Ostatnie' : 'Najbliższe'}: ${new Date(lux.presentation.startsAt).toLocaleString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}`
+        : 'Gdy coś się spodoba — umówimy oglądanie.',
+      content:
+        presentationCard || bookingCta ? (
+          <>
+            {presentationCard}
+            {bookingCta}
+          </>
+        ) : undefined,
+    },
+    {
+      id: 'offer',
+      label: 'Oferta i negocjacje',
+      state: stateFor(3, buyerStageIndex),
+      summary: lux.purchase && lux.purchase.phase !== 'viewed' ? `${lux.purchase.title} · ${lux.purchase.statusLabel}` : 'Propozycja ceny, odpowiedź sprzedającego, warunki.',
+      content: lux.purchase ? (
+        <LuxCard palette={lp} style={{ marginBottom: 0 }}>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: lp.ink }}>{lux.purchase.title}</Text>
+          {lux.purchase.address ? <Text style={{ fontSize: 13, color: lp.muted, marginTop: 2 }}>{lux.purchase.address}</Text> : null}
+          <Text style={{ fontFamily: LUX_SERIF, fontSize: 24, color: lp.ink, marginTop: 8 }}>{lux.purchase.price ? plnFormat(lux.purchase.price) : 'Cena do uzgodnienia'}</Text>
+          <Text style={{ fontSize: 13, fontWeight: '800', color: lp.accent, marginTop: 4 }}>{lux.purchase.statusLabel}</Text>
+        </LuxCard>
+      ) : undefined,
+    },
+    {
+      id: 'contract',
+      label: 'Umowa, kredyt, notariusz',
+      state: stateFor(4, buyerStageIndex),
+      summary: lux.documentsSummary?.required
+        ? `Dokumenty: ${lux.documentsSummary.done} z ${lux.documentsSummary.required}`
+        : 'Lista dokumentów i terminy w jednym miejscu.',
+      content: buyerStageIndex < 3 ? documentsCard || undefined : undefined,
+    },
+    {
+      id: 'keys',
+      label: 'Klucze',
+      state: phase === 'closed' ? 'done' : stateFor(5, buyerStageIndex),
+      summary: phase === 'closed' ? 'Gratulacje — nieruchomość jest Twoja.' : 'Protokół przekazania i stany liczników.',
+    },
+  ];
+
+  // ── Oś sprzedającego ──
+  const signed = lux.acquisition?.status === 'SIGNED';
+  const listingStatus = String(lux.listing?.status || '').toUpperCase();
+  const listingLive = listingStatus === 'ACTIVE' || listingStatus === 'PUBLISHED';
+  const listingSold = ['SOLD', 'ARCHIVED'].includes(listingStatus);
+  const accepted = seller?.buyerOffers.find((o) => o.status === 'ACCEPTED' || o.clientResponse === 'accept') || null;
+  const sellerDone = [signed, Boolean(lux.listing), listingLive || listingSold, Boolean(accepted) || listingSold, listingSold, listingSold, listingSold];
+  const firstOpen = sellerDone.findIndex((d) => !d);
+  const sellerCurrent = firstOpen === -1 ? 7 : firstOpen;
+  const sellerStages: LuxStage[] = [
+    { id: 'agreement', label: 'Umowa i wycena', state: stateFor(0, sellerCurrent), summary: signed ? 'Umowa podpisana' : `${agentFirst} przygotowuje umowę.` },
+    { id: 'prep', label: 'Przygotowanie', state: stateFor(1, sellerCurrent), summary: lux.listing ? 'Zdjęcia, rzut i opis gotowe.' : 'Sesja zdjęciowa, rzut i opis.' },
+    {
+      id: 'publish',
+      label: 'Publikacja',
+      state: stateFor(2, sellerCurrent),
+      summary: listingLive ? `Aktywne${lux.activeChannels?.length ? ` na ${lux.activeChannels.length + 1} portalach` : ''}` : lux.listing?.statusLabel || 'Ogłoszenie trafi na portale po akceptacji.',
+    },
+    {
+      id: 'viewings',
+      label: 'Oglądania i oferty',
+      state: stateFor(3, sellerCurrent),
+      summary: seller?.stats
+        ? `${seller.stats.showings} ${seller.stats.showings === 1 ? 'oglądanie' : 'oglądań'} · ${openBuyerOffers.length} ${openBuyerOffers.length === 1 ? 'oferta' : 'ofert'} do decyzji`
+        : 'Pokazy i oferty kupujących.',
+      content: openBuyerOffers.length ? (
+        <LuxButton palette={lp} label={`Zobacz oferty kupujących (${openBuyerOffers.length})`} onPress={() => scrollTo('buyerOffers')} />
+      ) : undefined,
+    },
+    {
+      id: 'preliminary',
+      label: 'Umowa przedwstępna',
+      state: stateFor(4, sellerCurrent),
+      summary: accepted ? `Przyjęta oferta: ${accepted.buyerLabel} · ${plnFormat(accepted.amount)}` : 'Zadatek, terminy, warunki kredytu kupującego.',
+    },
+    {
+      id: 'deed',
+      label: 'Akt notarialny',
+      state: stateFor(5, sellerCurrent),
+      summary: lux.documentsSummary?.required ? `Dokumenty: ${lux.documentsSummary.done} z ${lux.documentsSummary.required}` : 'Dokumenty do sprzedaży i termin u notariusza.',
+      content: documentsCard ? <LuxButton palette={lp} variant="ghost" label="Lista dokumentów" onPress={() => scrollTo('documents')} /> : undefined,
+    },
+    { id: 'handover', label: 'Przekazanie mieszkania', state: stateFor(6, sellerCurrent), summary: 'Protokół, liczniki, klucze.' },
+  ];
+
+  const stages = lux.type === 'BUYER' ? buyerStages : sellerStages;
+  const current = stages.find((s) => s.state === 'current');
+  const doneCount = stages.filter((s) => s.state === 'done').length;
+  const headline =
+    lux.type === 'BUYER'
+      ? ({ criteria: 'Ustalamy, czego szukamy.', proposals: matches.length ? 'Wybieramy najlepsze propozycje.' : 'Szukamy dla Ciebie.', viewings: 'Jesteśmy na etapie oglądań.', offer: 'Negocjujemy warunki.', contract: 'Dopinamy formalności.', keys: 'Klucze są Twoje.' } as Record<string, string>)[current?.id || 'keys']
+      : ({ agreement: 'Zaczynamy współpracę.', prep: 'Przygotowujemy ogłoszenie.', publish: 'Ogłoszenie trafia na rynek.', viewings: 'Sprzedaż trwa.', preliminary: 'Mamy kupującego.', deed: 'Przed aktem notarialnym.', handover: 'Przekazanie mieszkania.' } as Record<string, string>)[current?.id || 'handover'] || 'Sprzedane.';
+  const finished = lux.type === 'BUYER' ? phase === 'closed' : listingSold;
+
+  const filters: Array<[typeof offerFilter, string, number]> = [
+    ['all', 'Wszystkie', matches.length],
+    ['new', 'Do oceny', matches.filter((m) => !sentimentOf(m.clientFeedback)).length],
+    ['fav', 'Ulubione', favoriteCount],
+    ['like', 'Chcę obejrzeć', matches.filter((m) => sentimentOf(m.clientFeedback) === 'like').length],
+    ['maybe', 'Może', matches.filter((m) => sentimentOf(m.clientFeedback) === 'maybe').length],
+    ['dislike', 'Nie pasuje', matches.filter((m) => sentimentOf(m.clientFeedback) === 'dislike').length],
+  ];
+  const visibleMatches = matches.filter((m) => {
+    const s = sentimentOf(m.clientFeedback);
+    if (offerFilter === 'all') return s !== 'dislike';
+    if (offerFilter === 'new') return !s;
+    if (offerFilter === 'fav') return Boolean(m.favorite);
+    return s === offerFilter;
+  });
+
+  const docsTool: LuxTool[] =
+    documents.length && !isPartner
+      ? [{ key: 'docs', title: 'Dokumenty', description: lux.documentsSummary?.missing ? `Brakuje ${lux.documentsSummary.missing}` : 'Komplet', icon: 'document-text-outline', onPress: () => scrollTo('documents'), badge: lux.documentsSummary?.missing ? String(lux.documentsSummary.missing) : undefined }]
+      : [];
+  const chatTool: LuxTool = { key: 'chat', title: 'Rozmowa', description: `Napisz do ${agentFirst}`, icon: 'chatbubble-ellipses-outline', onPress: openChat };
+  const buyerTools: LuxTool[] = [
+    {
+      key: 'compare',
+      title: 'Porównanie',
+      description: compareIds.length ? `${compareIds.length} ${compareIds.length === 1 ? 'oferta' : 'oferty'} obok siebie` : 'Zaznacz „Porównaj” przy ofertach',
+      icon: 'git-compare-outline',
+      onPress: () => (compareIds.length >= 2 ? setCompareOpen(true) : scrollTo('offers')),
+      badge: compareIds.length ? String(compareIds.length) : undefined,
+    },
+    ...(!isPartner && criteria
+      ? [{ key: 'area', title: 'Moje kryteria', description: lux.searchPolygon ? 'Obszar na mapie zapisany' : 'Narysuj obszar na mapie', icon: 'map-outline' as const, onPress: () => setAreaOpen(true) }]
+      : []),
+    ...(canSelfBook
+      ? [{ key: 'booking', title: 'Umów oglądanie', description: `Wolne terminy ${agentFirst}`, icon: 'calendar-outline' as const, onPress: () => { setBookingOfferId(null); setBookingOpen(true); } }]
+      : []),
+    { key: 'calc', title: 'Rata i koszty', description: 'Kredyt, podatek, notariusz, prowizja', icon: 'calculator-outline', onPress: () => setCalcOpen(true) },
+    ...(!isPartner && permissions?.partnerAccess !== false
+      ? [{ key: 'partner', title: 'Druga osoba', description: lux.companions?.length ? `${lux.companions.map((c) => c.name).join(', ')} ma dostęp` : 'Wybierajcie razem', icon: 'people-outline' as const, onPress: () => setPartnerOpen(true) }]
+      : []),
+    ...docsTool,
+    chatTool,
+  ];
+  const sellerTools: LuxTool[] = [
+    ...(seller ? [{ key: 'net', title: 'Ile na rękę', description: 'Po prowizji, podatku i kredycie', icon: 'calculator-outline' as const, onPress: () => setNetOpen(true) }] : []),
+    ...(openBuyerOffers.length ? [{ key: 'offers', title: 'Oferty kupujących', description: `${openBuyerOffers.length} do decyzji`, icon: 'cash-outline' as const, onPress: () => scrollTo('buyerOffers'), badge: String(openBuyerOffers.length) }] : []),
+    ...(lux.listing?.id ? [{ key: 'listing', title: 'Ogłoszenie', description: 'Zobacz, co widzą kupujący', icon: 'home-outline' as const, onPress: () => openListing(Number(lux.listing?.id)) }] : []),
+    ...docsTool,
+    chatTool,
+  ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={[styles.header, { paddingTop: insets.top + 6, borderBottomColor: colors.border }]}>
-        <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.headerBtn}>
-          <Ionicons name="chevron-back" size={24} color={colors.green} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.secondary, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
-            {portal?.agencyName || 'EstateOS'}
-          </Text>
-          <Text style={{ color: colors.text, fontSize: 22, fontWeight: '700' }} numberOfLines={1}>
-            Panel
-          </Text>
-          <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }} numberOfLines={1}>
-            {portal?.clientName} · {portal?.agentName}
+    <View style={{ flex: 1, backgroundColor: lp.bg }}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ paddingBottom: insets.bottom + (compareIds.length ? 96 : 40) }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} tintColor={lp.accent} />}
+      >
+        <LuxHeader
+          insetsTop={insets.top}
+          onBack={() => navigation.goBack()}
+          greeting={lux.greeting || `Dzień dobry, ${lux.clientFirstName || lux.clientName}`}
+          headline={headline}
+          done={doneCount}
+          total={stages.length}
+          agencyName={lux.agencyName}
+          agencyLogo={lux.agencyLogo}
+          agentName={lux.agentName}
+          agentPhoto={lux.agentPhoto}
+          agentTitle={lux.agentTitle}
+          agentPhone={lux.agentPhone || lux.agencyPhone || null}
+          partnerName={partnerName}
+          onChat={openChat}
+          unread={unreadReplies}
+        >
+          {lux.type === 'SELLER' ? (
+            <>
+              {lux.listing ? (
+                <Pressable onPress={() => openListing(Number(lux.listing?.id))} style={styles.luxListing}>
+                  {lux.listing.imageUrl ? <Image source={{ uri: lux.listing.imageUrl }} style={{ width: 76, height: 76, borderRadius: 14 }} /> : null}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#F6F3EE', fontSize: 15, fontWeight: '700' }} numberOfLines={1}>
+                      {lux.listing.title}
+                    </Text>
+                    <Text style={{ fontFamily: LUX_SERIF, color: '#F6F3EE', fontSize: 20, marginTop: 2 }}>{lux.listing.price ? plnFormat(lux.listing.price) : 'Cena na zapytanie'}</Text>
+                    <Text style={{ color: '#BDB6AA', fontSize: 12, marginTop: 2 }}>{lux.listing.statusLabel || ''}</Text>
+                  </View>
+                </Pressable>
+              ) : null}
+              {seller ? <LuxSellerStats stats={seller.stats} /> : null}
+            </>
+          ) : null}
+        </LuxHeader>
+
+        <View style={{ padding: 16, paddingTop: 20 }}>
+          {renderAccountSection()}
+          {renderPushRow()}
+
+          <LuxAxis title={lux.type === 'BUYER' ? 'Droga do kluczy' : 'Droga do aktu'} stages={stages} palette={lp} />
+
+          {lux.type === 'BUYER' && !isPartner ? (
+            <ClientPortalAgentReplyInbox
+              portalToken={portalToken}
+              replies={collectAgentOfferReplies(portal?.matches || [])}
+              canInteract={canInteract}
+              colors={colors}
+              onOpenOffer={(matchId) => setSheetMatchId(matchId)}
+              onDone={silentReload}
+            />
+          ) : null}
+
+          {lux.type === 'BUYER' && buyerStageIndex !== 1 ? checkbackCard : null}
+
+          {lux.type === 'SELLER' && seller ? (
+            <View onLayout={onSection('buyerOffers')}>
+              <LuxBuyerOffers seller={seller} listPrice={listPrice} token={portalToken} palette={lp} agentFirst={agentFirst} onChanged={silentReload} />
+            </View>
+          ) : null}
+
+          {lux.type === 'BUYER' ? (
+            <View onLayout={onSection('offers')} style={{ marginTop: 8 }}>
+              <LuxKicker palette={lp}>Propozycje</LuxKicker>
+              <Text style={{ fontFamily: LUX_SERIF, fontSize: 26, color: lp.ink, marginTop: 4 }}>
+                {matches.length ? `${matches.length} ${matches.length === 1 ? 'oferta' : 'ofert'} dla Ciebie` : 'Szukamy dla Ciebie'}
+              </Text>
+              {matches.length ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 14 }}>
+                  {filters
+                    .filter(([id, , count]) => id === 'all' || count > 0)
+                    .map(([id, label, count]) => (
+                      <LuxChip key={id} palette={lp} label={`${label} · ${count}`} on={offerFilter === id} onPress={() => setOfferFilter(id)} />
+                    ))}
+                </ScrollView>
+              ) : (
+                <Text style={{ fontSize: 14, color: lp.muted, marginTop: 8, marginBottom: 14, lineHeight: 20 }}>
+                  {agentFirst} wybiera oferty pod Twoje kryteria. Pierwsza pojawi się tutaj — dostaniesz powiadomienie.
+                </Text>
+              )}
+              {visibleMatches.map((m) => (
+                <LuxOfferCard
+                  key={m.id}
+                  match={m}
+                  palette={lp}
+                  inCompare={compareIds.includes(m.id)}
+                  onOpen={() => setSheetMatchId(m.id)}
+                  onToggleFavorite={() => void toggleFavorite(m)}
+                  onToggleCompare={() => toggleCompare(m.id)}
+                  canFavorite={!isPartner && canInteract}
+                />
+              ))}
+            </View>
+          ) : null}
+
+          {lux.type === 'BUYER' ? (buyerStageIndex >= 3 ? documentsCard : null) : documentsCard}
+
+          {lux.type === 'SELLER' && seller ? (
+            <>
+              <LuxShowingFeedback seller={seller} palette={lp} agentFirst={agentFirst} recommendation={lux.sellerNextStep?.clientMessage || null} />
+              <LuxCompetition seller={seller} palette={lp} />
+            </>
+          ) : null}
+
+          <LuxTools kicker="Narzędzia" title={lux.type === 'BUYER' ? 'Żeby wybrać pewnie' : 'Wszystko o sprzedaży'} tools={lux.type === 'BUYER' ? buyerTools : sellerTools} palette={lp} />
+
+          {lux.type === 'SELLER' && portal ? (
+            <View style={{ marginBottom: 6 }}>
+              <LuxKicker palette={lp}>Szczegóły sprzedaży</LuxKicker>
+              <View style={{ height: 10 }} />
+              <SellerPortalView
+                portal={portal}
+                portalToken={portalToken}
+                isDark={isDark}
+                colors={colors}
+                insetsTop={0}
+                refreshing={false}
+                onRefresh={silentReload}
+                onOpenChat={openChat}
+                canChat={canChat}
+                canInteract={canInteract && !isPartner}
+                accountSection={null}
+                pushSection={null}
+                onBack={() => navigation.goBack()}
+                embedded
+              />
+            </View>
+          ) : null}
+
+          {finished && !isPartner ? (
+            <LuxReview token={portalToken} palette={lp} agentFirst={agentFirst} review={lux.review} reviewLink={lux.reviewLink} onChanged={silentReload} />
+          ) : null}
+          <LuxReferral token={portalToken} palette={lp} agentFirst={agentFirst} />
+
+          <Pressable onPress={openChat} style={[styles.luxChat, { backgroundColor: isDark ? '#161617' : '#000' }]}>
+            <Ionicons name="chatbubble-ellipses" size={20} color="#D8C3A0" />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#F6F3EE', fontSize: 16, fontWeight: '800' }}>Masz pytanie? Napisz</Text>
+              <Text style={{ color: '#8C877D', fontSize: 13, marginTop: 2 }}>{agentFirst} odpowie tutaj — dostaniesz powiadomienie.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#8C877D" />
+          </Pressable>
+
+          <Text style={{ textAlign: 'center', color: lp.muted, fontSize: 12, marginTop: 22 }}>
+            {lux.agencyName} · panel klienta EstateOS{isPartner ? ' · widok drugiej osoby' : ''}
           </Text>
         </View>
-        <Pressable
-          onPress={canChat ? openChat : undefined}
-          disabled={!canChat}
-          hitSlop={8}
-          style={[styles.headerBtn, !canChat ? { opacity: 0.35 } : null]}
-        >
-          <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.green} />
-        </Pressable>
-      </View>
+      </ScrollView>
 
-      {pulse ? (
-        <View style={[styles.pulseBar, { backgroundColor: colors.tint, borderBottomColor: colors.border }]}>
-          {pulse.busy ? <ActivityIndicator size="small" color={colors.green} style={{ marginRight: 8 }} /> : null}
-          <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 }}>
-              {pulse.badge.toUpperCase()}
+      {lux.type === 'BUYER' && compareIds.length ? (
+        <View style={[styles.compareBar, { bottom: insets.bottom + 14 }]} pointerEvents="box-none">
+          <Pressable onPress={() => (compareIds.length >= 2 ? setCompareOpen(true) : scrollTo('offers'))} style={styles.compareBtn}>
+            <Ionicons name="git-compare" size={16} color="#D8C3A0" />
+            <Text style={{ color: '#D8C3A0', fontWeight: '800', fontSize: 14 }}>
+              {compareIds.length >= 2 ? `Porównaj ${compareIds.length} oferty` : 'Wybierz jeszcze jedną do porównania'}
             </Text>
-            <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600', marginTop: 2 }}>{pulse.title}</Text>
-            <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }} numberOfLines={2}>
-              {pulse.body}
-            </Text>
-          </View>
-          {pulse.cta ? (
-            <Pressable onPress={() => setOpenStacks((prev) => (prev.includes('new') ? prev : [...prev, 'new']))}>
-              <Text style={{ color: colors.green, fontWeight: '700', fontSize: 12 }}>{pulse.cta}</Text>
-            </Pressable>
-          ) : null}
+          </Pressable>
         </View>
       ) : null}
 
-      <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 32 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load('refresh')} />}
-      >
-        {portal?.presentation ? (
-          <PortalScheduleCard
-            portalToken={portalToken}
-            kind="presentation"
-            slot={portal.presentation}
-            role={portal.type}
-            canInteract={canInteract}
-            isDark={isDark}
-            colors={colors}
-            onDone={() => void load('silent')}
-          />
-        ) : null}
-
-        {portal?.type === 'BUYER' && portal.purchase ? (
-          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
-            <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 }}>
-              {portal.purchase.phase === 'closed'
-                ? 'TWOJA NIERUCHOMOŚĆ'
-                : portal.purchase.phase === 'negotiating'
-                  ? 'TRANSAKCJA'
-                  : 'PO OGLĄDANIU'}
-            </Text>
-            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 6 }}>
-              {portal.purchase.title}
-            </Text>
-            {portal.purchase.address ? (
-              <Text style={{ color: colors.secondary, marginTop: 4 }}>{portal.purchase.address}</Text>
-            ) : null}
-            <Text style={{ color: colors.green, fontWeight: '800', marginTop: 8 }}>
-              {portal.purchase.price ? formatCurrencyPLN(portal.purchase.price) : 'Cena do uzgodnienia'}
-            </Text>
-            <Text style={{ color: colors.text, fontWeight: '700', marginTop: 6 }}>{portal.purchase.statusLabel}</Text>
-            <Text style={{ color: colors.secondary, marginTop: 6, lineHeight: 18 }}>
-              {portal.purchase.phase === 'closed'
-                ? 'Ta oferta jest kupiona. Akt i klucze domyka agent.'
-                : portal.purchase.phase === 'negotiating'
-                  ? 'Pokaz już był. Trwa rozmowa o cenie — zakup zamknie się przy akcie.'
-                  : 'Oglądanie się odbyło. To jeszcze nie zakup. Kolejny krok to rezerwacja i cena.'}
-            </Text>
-          </ProfileCardShell>
-        ) : null}
-
-        {portal?.type === 'BUYER' && portal.journey?.length ? (
-          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
-            <Text style={{ color: colors.gold, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 }}>PROCES ZAKUPU</Text>
-            <Text style={{ color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 6 }}>
-              {(portal.journey.find((stage) => stage.current) || portal.journey[portal.journey.length - 1]).label}
-            </Text>
-            <Text style={{ color: colors.secondary, marginTop: 6, lineHeight: 18 }}>
-              {(portal.journey.find((stage) => stage.current) || portal.journey[portal.journey.length - 1]).hint}
-            </Text>
-            <Text style={{ color: colors.secondary, marginTop: 8, fontSize: 12 }}>
-              {portal.journey.filter((stage) => stage.done).length}/{portal.journey.length} etapów
-            </Text>
-          </ProfileCardShell>
-        ) : null}
-
-        {guideOpen && portal?.type === 'BUYER' ? (
-          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ padding: 16 }}>
-            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>Jak to działa</Text>
-            <Text style={{ color: colors.secondary, marginTop: 6, lineHeight: 18 }}>
-              {portal.intelligenceEnabled
-                ? 'Oferty lądują tutaj. Oceń każdą: chcę oglądać, do przemyślenia albo nie pasuje. Asystent uczy się z odpowiedzi.'
-                : 'Tu pojawiają się tylko oferty, które agent świadomie wyśle. Oceń każdą — agent zobaczy to w CRM.'}
-            </Text>
-            <Pressable
-              onPress={() => {
-                setGuideOpen(false);
-                void AsyncStorage.setItem(`estateos_buyer_onboard_${portalToken.slice(-12)}`, '1');
-              }}
-              style={{ marginTop: 10 }}
-            >
-              <Text style={{ color: colors.green, fontWeight: '800' }}>Rozumiem</Text>
-            </Pressable>
-          </ProfileCardShell>
-        ) : null}
-
-        {renderAccountSection()}
-        {renderPushRow()}
-
-        {portal ? (
-          <ClientPortalAgentReplyInbox
-            portalToken={portalToken}
-            replies={collectAgentOfferReplies(portal.matches || [])}
-            canInteract={canInteract}
-            colors={colors}
-            onOpenOffer={(matchId) => {
-              setOpenMatchIds((prev) => (prev.includes(matchId) ? prev : [...prev, matchId]));
-              setOpenStacks((prev) => (prev.includes('new') ? prev : [...prev, 'new']));
-            }}
-            onDone={() => void load('silent')}
-          />
-        ) : null}
-
-        {portal?.pendingCheckback && canInteract ? (
-          <ProfileCardShell isDark={isDark} style={{ marginBottom: 12, borderWidth: 1, borderColor: colors.gold }}>
-            <Text style={{ color: colors.gold, fontWeight: '800', fontSize: 11, letterSpacing: 0.5 }}>
-              WYMAGA TWOJEJ ODPOWIEDZI
-            </Text>
-            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 17, marginTop: 8 }}>
-              {portal.pendingCheckback.body}
-            </Text>
-            <View style={{ marginTop: 12, gap: 8 }}>
-              {portal.pendingCheckback.options.map((option) => (
-                <Pressable
-                  key={option.id}
-                  onPress={() => answerCheckback(option.id)}
-                  style={[styles.choiceBtn, { borderColor: colors.gold }]}
-                >
-                  <Text style={{ color: colors.text, fontWeight: '600' }}>{option.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </ProfileCardShell>
-        ) : null}
-
-        <View style={styles.pillRow}>
-          {[
-            ['Nowe', stacks.new.length, colors.green],
-            ['Oglądać', stacks.like.length, colors.green],
-            ['Może', stacks.maybe.length, '#FF9500'],
-            ['Nie', stacks.dislike.length, '#FF3B30'],
-          ].map(([label, value, tone]) => (
-            <View key={String(label)} style={[styles.pill, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={{ color: String(tone), fontWeight: '800', fontSize: 16 }}>{value}</Text>
-              <Text style={{ color: colors.secondary, fontSize: 11 }}>{label}</Text>
-            </View>
-          ))}
-        </View>
-
-        {visibleStacks.length === 0 ? (
-          <ProfileCardShell isDark={isDark} faceStyle={{ padding: 16 }}>
-            <Text style={{ color: colors.text, fontWeight: '600' }}>Brak ofert w panelu</Text>
-            <Text style={{ color: colors.secondary, marginTop: 6 }}>
-              Gdy agent wyśle propozycję, pojawi się tutaj — dostaniesz powiadomienie.
-            </Text>
-          </ProfileCardShell>
-        ) : null}
-
-        {visibleStacks.map((stack) => {
-          const items = stacks[stack.id];
-          const open = openStacks.includes(stack.id);
-          return (
-            <ProfileCardShell key={stack.id} isDark={isDark} style={{ marginBottom: 12 }} faceStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8 }}>
-              <Pressable onPress={() => toggleStack(stack.id)} style={styles.stackHead}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>
-                    {stack.title} · {items.length}
-                  </Text>
-                  <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 2 }}>{stack.hint}</Text>
-                </View>
-                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.secondary} />
-              </Pressable>
-
-              {open
-                ? items.map((match, index) => {
-                    const expanded = openMatchIds.includes(match.id);
-                    const phrases = stack.id === 'new' ? [...LIKE_PHRASES, ...DISLIKE_PHRASES] : [];
-                    const selected = pendingPhrases[match.id] || [];
-                    const isLast = index === items.length - 1;
-                    return (
-                      <View
-                        key={match.id}
-                        style={[
-                          styles.matchRow,
-                          !isLast ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border } : null,
-                        ]}
-                      >
-                        <Pressable onPress={() => toggleMatch(match.id)} style={styles.matchHead}>
-                          {match.offer.imageUrl ? (
-                            <Image source={{ uri: match.offer.imageUrl }} style={styles.thumb} />
-                          ) : (
-                            <View style={[styles.thumb, { backgroundColor: colors.border }]} />
-                          )}
-                          <View style={{ flex: 1 }}>
-                            <Text style={{ color: colors.text, fontWeight: '600', fontSize: 15 }} numberOfLines={2}>
-                              {match.offer.title}
-                            </Text>
-                            <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }}>
-                              {[match.offer.city, match.offer.district].filter(Boolean).join(' · ')}
-                            </Text>
-                            <Text style={{ color: colors.text, fontWeight: '700', marginTop: 4 }}>
-                              {formatCurrencyPLN(match.offer.price)}
-                              {match.score ? ` · ${match.score}%` : ''}
-                            </Text>
-                          </View>
-                          <Ionicons
-                            name={expanded ? 'chevron-up' : 'chevron-down'}
-                            size={16}
-                            color={colors.secondary}
-                          />
-                        </Pressable>
-
-                        {expanded ? (
-                          <View style={{ marginTop: 12 }}>
-                            {match.clientWhy ? (
-                              <Text style={{ color: colors.secondary, marginBottom: 8, fontSize: 13 }}>
-                                {match.clientWhy}
-                              </Text>
-                            ) : null}
-                            <Pressable
-                              onPress={() =>
-                                navigation.navigate('OfferDetail', {
-                                  offer: { id: match.offer.id },
-                                  id: match.offer.id,
-                                  offerId: match.offer.id,
-                                })
-                              }
-                              style={{ marginBottom: 10 }}
-                            >
-                              <Text style={{ color: colors.green, fontWeight: '700' }}>Zobacz ogłoszenie</Text>
-                            </Pressable>
-                            {stack.id === 'new' && canInteract ? (
-                              <>
-                                <View style={styles.phraseWrap}>
-                                  {phrases.map((phrase) => {
-                                    const on = selected.includes(phrase);
-                                    return (
-                                      <Pressable
-                                        key={phrase}
-                                        onPress={() =>
-                                          setPendingPhrases((prev) => {
-                                            const current = prev[match.id] || [];
-                                            const next = on
-                                              ? current.filter((p) => p !== phrase)
-                                              : [...current, phrase];
-                                            return { ...prev, [match.id]: next };
-                                          })
-                                        }
-                                        style={[
-                                          styles.phraseChip,
-                                          {
-                                            borderColor: on ? colors.green : colors.border,
-                                            backgroundColor: on ? colors.tint : 'transparent',
-                                          },
-                                        ]}
-                                      >
-                                        <Text style={{ color: colors.text, fontSize: 12 }}>{phrase}</Text>
-                                      </Pressable>
-                                    );
-                                  })}
-                                </View>
-                                <View style={styles.rateRow}>
-                                  <Pressable
-                                    onPress={() => rateMatch(match, 'like')}
-                                    style={[styles.rateBtn, { backgroundColor: colors.green }]}
-                                  >
-                                    <Text style={styles.rateBtnText}>Chcę oglądać</Text>
-                                  </Pressable>
-                                  <Pressable
-                                    onPress={() => rateMatch(match, 'maybe')}
-                                    style={[styles.rateBtn, { backgroundColor: '#FF9500' }]}
-                                  >
-                                    <Text style={styles.rateBtnText}>Może</Text>
-                                  </Pressable>
-                                  <Pressable
-                                    onPress={() => rateMatch(match, 'dislike')}
-                                    style={[styles.rateBtn, { backgroundColor: '#FF3B30' }]}
-                                  >
-                                    <Text style={styles.rateBtnText}>Nie</Text>
-                                  </Pressable>
-                                </View>
-                              </>
-                            ) : null}
-                          </View>
-                        ) : null}
-                      </View>
-                    );
-                  })
-                : null}
-            </ProfileCardShell>
-          );
-        })}
-      </ScrollView>
+      {sheetMatch ? (
+        <LuxOfferSheet
+          match={sheetMatch}
+          palette={lp}
+          onClose={() => setSheetMatchId(null)}
+          isPartner={isPartner}
+          inCompare={compareIds.includes(sheetMatch.id)}
+          onToggleCompare={() => toggleCompare(sheetMatch.id)}
+          onToggleFavorite={() => void toggleFavorite(sheetMatch)}
+          onRate={(s, note) => rateFromSheet(sheetMatch, s, note)}
+          onBook={() => {
+            setBookingOfferId(sheetMatch.offer.id);
+            setSheetMatchId(null);
+            setTimeout(() => setBookingOpen(true), 350);
+          }}
+          canBook={canSelfBook}
+          onOpenListing={() => {
+            const id = sheetMatch.offer.id;
+            setSheetMatchId(null);
+            setTimeout(() => openListing(id), 300);
+          }}
+        />
+      ) : null}
+      <LuxCompareSheet
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        matches={compareMatches}
+        palette={lp}
+        onOpenOffer={(m) => {
+          setCompareOpen(false);
+          setTimeout(() => setSheetMatchId(m.id), 350);
+        }}
+        onRemove={toggleCompare}
+      />
+      <LuxPartnerSheet open={partnerOpen} onClose={() => setPartnerOpen(false)} token={portalToken} companions={lux.companions || []} palette={lp} onChanged={silentReload} />
+      <LuxBookingSheet
+        open={bookingOpen}
+        onClose={() => setBookingOpen(false)}
+        token={portalToken}
+        offers={bookingOffers}
+        initialOfferId={bookingOfferId}
+        agentName={agentFirst}
+        palette={lp}
+        onBooked={silentReload}
+      />
+      <LuxAreaSheet
+        open={areaOpen}
+        onClose={() => setAreaOpen(false)}
+        token={portalToken}
+        initial={lux.searchPolygon || null}
+        criteriaEditAllowed={Boolean(permissions?.criteriaEdit)}
+        agentName={agentFirst}
+        palette={lp}
+        onSaved={silentReload}
+      />
+      <LuxCostSheet open={calcOpen} onClose={() => setCalcOpen(false)} initialPrice={favoritePrice} palette={lp} />
+      {seller ? (
+        <LuxNetSheet open={netOpen} onClose={() => setNetOpen(false)} seller={seller} defaultPrice={listPrice} token={portalToken} palette={lp} onSaved={silentReload} />
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  luxListing: { flexDirection: 'row', gap: 12, marginTop: 16, padding: 10, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(216,195,160,0.18)' },
+  luxChat: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 16, borderRadius: 22, marginTop: 4 },
+  compareBar: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
+  compareBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#000', borderRadius: 999, paddingHorizontal: 20, paddingVertical: 14, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 16, shadowOffset: { width: 0, height: 10 } },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     paddingHorizontal: 12,

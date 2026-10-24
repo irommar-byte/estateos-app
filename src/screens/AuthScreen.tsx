@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
+import { INVITE_ONLY_ENTRY } from '../lib/entryGate';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as FileSystem from 'expo-file-system';
@@ -649,7 +650,7 @@ export default function AuthScreen({
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
-  const [isLogin, setIsLogin] = useState(() => (authIntent === 'register' ? false : true));
+  const [isLogin, setIsLogin] = useState(() => (authIntent === 'register' && !INVITE_ONLY_ENTRY ? false : true));
   const [isForgotModalVisible, setIsForgotModalVisible] = useState(false);
   /**
    * Role dostępne przy rejestracji:
@@ -775,7 +776,7 @@ export default function AuthScreen({
   }, [isLogin]);
 
   useEffect(() => {
-    if (authIntent === 'register') setIsLogin(false);
+    if (authIntent === 'register' && !INVITE_ONLY_ENTRY) setIsLogin(false);
     else if (authIntent === 'login') setIsLogin(true);
   }, [authIntent]);
 
@@ -1418,6 +1419,7 @@ export default function AuthScreen({
             </View>
           )}
 
+          {!INVITE_ONLY_ENTRY ? (
           <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsLogin(!isLogin); }} style={{ marginTop: 25, alignItems: 'center' }}>
             <Text style={{ color: theme.subtitle, fontSize: 15 }}>
               {isLogin ? `${t('auth.noAccount')} ` : `${t('auth.haveAccount')} `}
@@ -1426,6 +1428,7 @@ export default function AuthScreen({
               </Text>
             </Text>
           </Pressable>
+          ) : null}
 
         </ScrollView>
       </FormShell>
