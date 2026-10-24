@@ -30,5 +30,10 @@ export async function uploadPortalDocument(
     body: form,
   });
   const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!res.ok) throw new Error(String(json.error || 'Nie udało się wysłać pliku.'));
+  if (!res.ok) {
+    if (json.error) throw new Error(String(json.error));
+    if (res.status === 413) throw new Error('Plik jest za duży — limit to 20 MB. Zrób zdjęcie zamiast skanu albo wyślij strony osobno.');
+    if (res.status >= 500) throw new Error(`Serwer chwilowo nie odpowiada (błąd ${res.status}). To nie wina pliku — spróbuj za minutę.`);
+    throw new Error(`Serwer odrzucił plik (kod ${res.status}). Spróbuj ponownie albo napisz do agenta.`);
+  }
 }

@@ -16,7 +16,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { SvgXml } from 'react-native-svg';
+import { Image } from 'expo-image';
 import { API_URL } from '../../config/network';
+import ClientDocumentPreview, { documentKind, type PreviewableDocument } from './ClientDocumentPreview';
+import ContactPdfThumbnail from '../messaging/ContactPdfThumbnail';
+import { normalizeContactMediaUrl } from '../../utils/contactAttachment';
 
 type Colors = { card: string; text: string; secondary: string; border: string; accent: string };
 type Sentiment = 'like' | 'maybe' | 'dislike' | null;
@@ -24,16 +28,24 @@ type Sentiment = 'like' | 'maybe' | 'dislike' | null;
 type ToolDocument = {
   key: string;
   label: string;
+  /** komentarz pod nazwą pola — co dokładnie, skąd wziąć */
+  hint?: string | null;
   required: boolean;
-  status: 'missing' | 'uploaded' | 'accepted' | 'rejected';
+  custom?: boolean;
+  status: 'missing' | 'uploaded' | 'accepted' | 'rejected' | 'na';
   fileName: string | null;
   fileUrl: string | null;
+  mimeType?: string | null;
   note: string | null;
+  uploadedAt?: string | null;
 };
+
+type DocTemplate = { id: number; label: string; hint: string | null; required: boolean };
 
 type Tools = {
   documents?: ToolDocument[];
-  documentsSummary?: { required: number; done: number; missing: number; toReview: number };
+  documentsSummary?: { total?: number; required: number; done: number; missing: number; toReview: number };
+  documentTemplates?: DocTemplate[];
   permissions: Record<string, boolean>;
   portalUrl: string | null;
   appInvite: { code: string; link: string; qrSvg?: string } | null;
@@ -81,6 +93,7 @@ const DOC_STATUS: Record<string, { label: string; color: string }> = {
   uploaded: { label: 'do sprawdzenia', color: '#FF9F0A' },
   accepted: { label: 'gotowe', color: '#34C759' },
   rejected: { label: 'do poprawy', color: '#FF453A' },
+  na: { label: 'klient: nie dotyczy', color: '#8E8E93' },
 };
 
 const SENT: Record<string, { label: string; color: string }> = {
@@ -118,6 +131,10 @@ export default function ClientPortalToolsCard({
   const [offerKind, setOfferKind] = useState<'accept' | 'counter' | 'reject' | null>(null);
   const [feedbackTags, setFeedbackTags] = useState<string[]>([]);
   const [newDoc, setNewDoc] = useState('');
+  const [newDocHint, setNewDocHint] = useState('');
+  const [newDocRequired, setNewDocRequired] = useState(true);
+  const [newDocTemplate, setNewDocTemplate] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<ToolDocument | null>(null);
   const isSeller = clientType === 'SELLER';
 
   const endpoint = `${API_URL}/api/crm/clients/${clientId}/portal-tools`;
@@ -269,77 +286,191 @@ export default function ClientPortalToolsCard({
             </View>
           ))}
 
-          {tools?.documents?.length ? (
+          {tools?.documents ? (
             <View style={[styles.section, { borderColor: colors.border }]}>
               <Text style={[styles.kicker, { color: colors.secondary }]}>
-                DOKUMENTY · {tools.documentsSummary?.done ?? 0}/{tools.documentsSummary?.required ?? tools.documents.length}
+                DOKUMENTY ·{' '}
+                {tools.documentsSummary?.missing
+                  ? `BRAKUJE ${tools.documentsSummary.missing} Z ${tools.documentsSummary.total ?? tools.documents.length}`
+                  : `KOMPLET ${tools.documents.length} Z ${tools.documents.length}`}
+                {tools.documentsSummary?.toReview ? ` · ${tools.documentsSummary.toReview} DO SPRAWDZENIA` : ''}
               </Text>
               {tools.documents.map((doc) => {
                 const st = DOC_STATUS[doc.status] || DOC_STATUS.missing;
+                const fileUrl = doc.fileUrl ? normalizeContactMediaUrl(doc.fileUrl) : null;
+                const kind = documentKind(doc);
+                const removeDoc = () =>
+                  Alert.alert(
+                    'Usunąć z listy?',
+                    `„${doc.label}” zniknie z panelu klienta${doc.fileUrl ? ' razem z dołączonym plikiem' : ''}, a licznik się zmniejszy.`,
+                    [
+                      { text: 'Anuluj', style: 'cancel' },
+                      { text: 'Usuń', style: 'destructive', onPress: () => void act(`doc-${doc.key}`, { action: 'remove_document', itemKey: doc.key }) },
+                    ],
+                  );
+                const editHint = () => {
+                  if (Platform.OS !== 'ios') return;
+                  Alert.prompt(
+                    'Komentarz pod nazwą',
+                    `Co dokładnie klient ma dołączyć do „${doc.label}”? Zobaczy to pod tytułem pola.`,
+                    (hint) => void act(`doc-${doc.key}`, { action: 'update_document', itemKey: doc.key, hint: hint ?? '' }),
+                    'plain-text',
+                    doc.hint || '',
+                  );
+                };
                 return (
-                  <View key={doc.key} style={[styles.ratingRow, { alignItems: 'flex-start' }]}>
+                  <View key={doc.key} style={[styles.docRow, { borderColor: colors.border }]}>
+                    {fileUrl ? (
+                      <Pressable onPress={() => setPreviewDoc(doc)} style={styles.docThumb} accessibilityLabel={`Podgląd: ${doc.label}`}>
+                        {kind === 'image' ? (
+                          <Image source={{ uri: fileUrl }} style={StyleSheet.absoluteFill} contentFit="cover" />
+                        ) : kind === 'pdf' ? (
+                          <ContactPdfThumbnail url={fileUrl} width={46} height={58} onPress={() => setPreviewDoc(doc)} />
+                        ) : (
+                          <Ionicons name="document-text" size={22} color={colors.secondary} />
+                        )}
+                      </Pressable>
+                    ) : (
+                      <View style={[styles.docThumb, { borderColor: colors.border, borderWidth: 1, borderStyle: 'dashed', backgroundColor: 'transparent' }]}>
+                        <Ionicons name={doc.status === 'na' ? 'remove' : 'add'} size={18} color={colors.secondary} />
+                      </View>
+                    )}
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.body, { color: colors.text }]}>
-                        {doc.label}
-                        {!doc.required ? <Text style={{ color: colors.secondary }}> · opcjonalny</Text> : null}
-                      </Text>
-                      <Text style={[styles.small, { color: st.color, fontWeight: '700' }]}>{st.label}</Text>
-                      {doc.fileUrl ? (
-                        <Pressable onPress={() => void Linking.openURL(doc.fileUrl as string)} hitSlop={6}>
-                          <Text style={[styles.small, { color: '#0A84FF' }]} numberOfLines={1}>
-                            {doc.fileName || 'Otwórz plik'}
+                      <Pressable onLongPress={editHint} delayLongPress={350}>
+                        <Text style={[styles.body, { color: colors.text, fontWeight: '700' }]}>
+                          {doc.label}
+                          {!doc.required ? <Text style={{ color: colors.secondary, fontWeight: '400' }}> · jeśli dotyczy</Text> : null}
+                        </Text>
+                        {doc.hint ? <Text style={[styles.small, { color: colors.secondary }]}>{doc.hint}</Text> : null}
+                      </Pressable>
+                      <Text style={[styles.small, { color: st.color, fontWeight: '700', marginTop: 2 }]}>{st.label}</Text>
+                      {doc.status === 'rejected' && doc.note ? (
+                        <Text style={[styles.small, { color: '#FF453A' }]}>Twoja uwaga: {doc.note}</Text>
+                      ) : null}
+                      {fileUrl ? (
+                        <Pressable onPress={() => setPreviewDoc(doc)} hitSlop={6}>
+                          <Text style={[styles.small, { color: '#0A84FF', fontWeight: '600' }]} numberOfLines={1}>
+                            Podgląd · {doc.fileName || 'plik'}
                           </Text>
                         </Pressable>
                       ) : null}
+                      {doc.status === 'uploaded' ? (
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+                          <Pressable
+                            onPress={() => void act(`doc-${doc.key}`, { action: 'review_document', itemKey: doc.key, status: 'accepted' })}
+                            style={[styles.btn, { backgroundColor: '#34C759', paddingHorizontal: 12 }]}
+                          >
+                            <Ionicons name="checkmark" size={15} color="#fff" />
+                            <Text style={[styles.btnText, { color: '#fff' }]}>Akceptuj</Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => {
+                              const reject = (note?: string) =>
+                                void act(`doc-${doc.key}`, { action: 'review_document', itemKey: doc.key, status: 'rejected', note: note || null });
+                              if (Platform.OS === 'ios') {
+                                Alert.prompt('Do poprawy', 'Co klient ma poprawić? Zobaczy to w panelu i dostanie powiadomienie.', (note) => reject(note));
+                              } else {
+                                reject();
+                              }
+                            }}
+                            style={[styles.btn, { borderColor: colors.border, borderWidth: 1, paddingHorizontal: 12 }]}
+                          >
+                            <Text style={[styles.btnText, { color: colors.text }]}>Do poprawy</Text>
+                          </Pressable>
+                        </View>
+                      ) : null}
                     </View>
-                    {doc.status === 'uploaded' ? (
-                      <View style={{ flexDirection: 'row', gap: 6 }}>
-                        <Pressable
-                          onPress={() => void act(`doc-${doc.key}`, { action: 'review_document', itemKey: doc.key, status: 'accepted' })}
-                          style={[styles.btn, { backgroundColor: '#34C759', paddingHorizontal: 10 }]}
-                        >
-                          <Text style={[styles.btnText, { color: '#fff' }]}>OK</Text>
+                    <View style={{ gap: 12, alignItems: 'center', paddingTop: 2 }}>
+                      {Platform.OS === 'ios' ? (
+                        <Pressable onPress={editHint} hitSlop={10} accessibilityLabel={`Komentarz: ${doc.label}`}>
+                          <Ionicons name="create-outline" size={18} color={colors.secondary} />
                         </Pressable>
-                        <Pressable
-                          onPress={() => {
-                            const reject = (note?: string) =>
-                              void act(`doc-${doc.key}`, { action: 'review_document', itemKey: doc.key, status: 'rejected', note: note || null });
-                            if (Platform.OS === 'ios') {
-                              Alert.prompt('Do poprawy', 'Co klient ma poprawić? Zobaczy to w panelu i dostanie powiadomienie.', (note) => reject(note));
-                            } else {
-                              reject();
-                            }
-                          }}
-                          style={[styles.btn, { borderColor: colors.border, borderWidth: 1, paddingHorizontal: 10 }]}
-                        >
-                          <Text style={[styles.btnText, { color: colors.text }]}>Popraw</Text>
-                        </Pressable>
-                      </View>
-                    ) : doc.key.startsWith('custom_') && doc.status === 'missing' ? (
-                      <Pressable onPress={() => void act(`doc-${doc.key}`, { action: 'remove_document', itemKey: doc.key })} hitSlop={10}>
+                      ) : null}
+                      <Pressable onPress={removeDoc} hitSlop={10} accessibilityLabel={`Usuń: ${doc.label}`}>
                         <Ionicons name="trash-outline" size={18} color={colors.secondary} />
                       </Pressable>
-                    ) : null}
+                    </View>
                   </View>
                 );
               })}
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+
+              {tools.documentTemplates?.length ? (
+                <>
+                  <Text style={[styles.small, { color: colors.secondary, marginTop: 12, fontWeight: '700' }]}>
+                    TWOJE ZAPISANE POLA — dotknij, by dodać · przytrzymaj, by usunąć
+                  </Text>
+                  <View style={styles.chips}>
+                    {tools.documentTemplates
+                      .filter((t) => !tools.documents?.some((d) => d.label.trim().toLowerCase() === t.label.trim().toLowerCase()))
+                      .map((t) => (
+                        <Pressable
+                          key={t.id}
+                          onPress={() => void act(`tpl-${t.id}`, { action: 'add_document', label: t.label, hint: t.hint, required: t.required })}
+                          onLongPress={() =>
+                            Alert.alert('Usunąć zapisane pole?', `„${t.label}” zniknie z Twoich szablonów (u klientów zostaje).`, [
+                              { text: 'Anuluj', style: 'cancel' },
+                              { text: 'Usuń', style: 'destructive', onPress: () => void act(`tpl-${t.id}`, { action: 'delete_document_template', templateId: t.id }) },
+                            ])
+                          }
+                          style={[styles.chip, { borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 4 }]}
+                        >
+                          <Ionicons name="add" size={13} color={colors.text} />
+                          <Text style={[styles.chipText, { color: colors.text }]}>{t.label}</Text>
+                        </Pressable>
+                      ))}
+                  </View>
+                </>
+              ) : null}
+
+              <View style={[styles.addBox, { borderColor: colors.border }]}>
+                <Text style={[styles.small, { color: colors.secondary, fontWeight: '700' }]}>NOWE POLE NA LIŚCIE</Text>
                 <TextInput
                   value={newDoc}
                   onChangeText={setNewDoc}
-                  placeholder="Dodaj dokument do listy"
+                  placeholder="Nazwa, np. Zaświadczenie ze spółdzielni"
                   placeholderTextColor={colors.secondary}
-                  style={[styles.input, { color: colors.text, borderColor: colors.border, flex: 1 }]}
+                  style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                 />
+                <TextInput
+                  value={newDocHint}
+                  onChangeText={setNewDocHint}
+                  placeholder="Komentarz pod tytułem (opcjonalnie) — skąd wziąć, co ma zawierać"
+                  placeholderTextColor={colors.secondary}
+                  multiline
+                  style={[styles.input, { color: colors.text, borderColor: colors.border, minHeight: 64, textAlignVertical: 'top' }]}
+                />
+                <View style={styles.permRow}>
+                  <Text style={[styles.body, { color: colors.text, flex: 1 }]}>Obowiązkowy (bez „jeśli dotyczy”)</Text>
+                  <Switch value={newDocRequired} onValueChange={setNewDocRequired} />
+                </View>
+                <View style={styles.permRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.body, { color: colors.text }]}>Zapisz na zawsze jako szablon</Text>
+                    <Text style={[styles.small, { color: colors.secondary }]}>Dodasz je jednym dotknięciem u kolejnych klientów</Text>
+                  </View>
+                  <Switch value={newDocTemplate} onValueChange={setNewDocTemplate} />
+                </View>
                 <Pressable
                   onPress={async () => {
-                    const ok = await act('doc-add', { action: 'add_document', label: newDoc });
-                    if (ok) setNewDoc('');
+                    const ok = await act('doc-add', {
+                      action: 'add_document',
+                      label: newDoc,
+                      hint: newDocHint.trim() || null,
+                      required: newDocRequired,
+                      saveAsTemplate: newDocTemplate,
+                    });
+                    if (ok) {
+                      setNewDoc('');
+                      setNewDocHint('');
+                      setNewDocRequired(true);
+                      setNewDocTemplate(false);
+                    }
                   }}
-                  disabled={!newDoc.trim()}
-                  style={[styles.btn, { backgroundColor: colors.text, marginTop: 8, opacity: newDoc.trim() ? 1 : 0.4 }]}
+                  disabled={!newDoc.trim() || busy === 'doc-add'}
+                  style={[styles.btn, { backgroundColor: colors.text, marginTop: 6, justifyContent: 'center', opacity: newDoc.trim() ? 1 : 0.4 }]}
                 >
-                  <Ionicons name="add" size={16} color={colors.card} />
+                  {busy === 'doc-add' ? <ActivityIndicator color={colors.card} /> : <Ionicons name="add" size={16} color={colors.card} />}
+                  <Text style={[styles.btnText, { color: colors.card }]}>Dodaj do listy klienta</Text>
                 </Pressable>
               </View>
             </View>
@@ -542,6 +673,43 @@ export default function ClientPortalToolsCard({
           ) : null}
         </View>
       ) : null}
+      <ClientDocumentPreview
+        doc={previewDoc as PreviewableDocument | null}
+        onClose={() => setPreviewDoc(null)}
+        footer={
+          previewDoc?.status === 'uploaded' ? (
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <Pressable
+                onPress={() => {
+                  const doc = previewDoc;
+                  setPreviewDoc(null);
+                  if (doc) void act(`doc-${doc.key}`, { action: 'review_document', itemKey: doc.key, status: 'accepted' });
+                }}
+                style={[styles.btn, { backgroundColor: '#34C759', flex: 1, justifyContent: 'center' }]}
+              >
+                <Ionicons name="checkmark" size={16} color="#fff" />
+                <Text style={[styles.btnText, { color: '#fff' }]}>Akceptuj</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const doc = previewDoc;
+                  if (!doc) return;
+                  const reject = (note?: string) => {
+                    setPreviewDoc(null);
+                    void act(`doc-${doc.key}`, { action: 'review_document', itemKey: doc.key, status: 'rejected', note: note || null });
+                  };
+                  if (Platform.OS === 'ios') Alert.prompt('Do poprawy', 'Co klient ma poprawić?', (note) => reject(note));
+                  else reject();
+                }}
+                style={[styles.btn, { backgroundColor: 'rgba(255,255,255,0.12)', flex: 1, justifyContent: 'center' }]}
+              >
+                <Text style={[styles.btnText, { color: '#fff' }]}>Do poprawy</Text>
+              </Pressable>
+            </View>
+          ) : null
+        }
+      />
+
     </View>
   );
 }
@@ -604,4 +772,15 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   chipText: { fontSize: 13, fontWeight: '600' },
+  docRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  docThumb: {
+    width: 46,
+    height: 58,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(127,127,127,0.12)',
+  },
+  addBox: { marginTop: 14, borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 12 },
 });

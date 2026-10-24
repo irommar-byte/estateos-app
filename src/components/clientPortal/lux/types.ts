@@ -46,7 +46,7 @@ export type LuxDocument = {
   label: string;
   hint: string | null;
   required: boolean;
-  status: 'missing' | 'uploaded' | 'accepted' | 'rejected';
+  status: 'missing' | 'uploaded' | 'accepted' | 'rejected' | 'na';
   fileName: string | null;
   fileUrl: string | null;
   note: string | null;
@@ -107,7 +107,7 @@ export type LuxPortal = Omit<ClientPortalPayload, 'matches'> & {
   searchPolygon?: Array<[number, number]> | null;
   seller?: LuxSeller | null;
   documents?: LuxDocument[];
-  documentsSummary?: { required: number; done: number; missing: number; toReview: number };
+  documentsSummary?: { total?: number; required: number; done: number; missing: number; toReview: number };
   review?: { rating: number; comment: string | null; at: string } | null;
   reviewLink?: string;
   agencyLogo?: string | null;

@@ -14,6 +14,7 @@ const STATUS: Record<LuxDocument['status'], { label: string; icon: keyof typeof 
   uploaded: { label: 'Wysłane — agent sprawdza', icon: 'time-outline', tone: '#C98A1B' },
   accepted: { label: 'Gotowe', icon: 'checkmark-circle', tone: '#2F9E6A' },
   rejected: { label: 'Do poprawy', icon: 'alert-circle', tone: '#C2412D' },
+  na: { label: 'Nie dotyczy', icon: 'remove-circle-outline', tone: '#8C877D' },
 };
 
 type Picked = { uri: string; name: string; type: string };
@@ -70,7 +71,7 @@ export default function LuxDocuments({
 }: {
   token: string;
   documents: LuxDocument[];
-  summary?: { required: number; done: number; missing: number; toReview: number };
+  summary?: { total?: number; required: number; done: number; missing: number; toReview: number };
   palette: LuxPalette;
   agentFirst: string;
   canUpload: boolean;
@@ -96,13 +97,13 @@ export default function LuxDocuments({
     }
   };
 
-  const required = summary?.required ?? documents.filter((d) => d.required).length;
+  const required = summary?.total ?? summary?.required ?? documents.length;
   const done = summary?.done ?? 0;
 
   return (
     <LuxCard palette={palette}>
       <LuxKicker palette={palette}>Dokumenty</LuxKicker>
-      <LuxTitle palette={palette}>{summary?.missing ? `Brakuje ${summary.missing} z ${required}` : 'Komplet dokumentów'}</LuxTitle>
+      <LuxTitle palette={palette}>{summary?.missing ? `Brakuje ${summary.missing} z ${required}` : `Komplet — ${required} z ${required}`}</LuxTitle>
       <View style={[styles.progress, { backgroundColor: palette.cardAlt }]}>
         <View style={{ width: `${required ? Math.round((done / required) * 100) : 100}%`, height: '100%', backgroundColor: palette.good, borderRadius: 3 }} />
       </View>
@@ -110,7 +111,7 @@ export default function LuxDocuments({
         Wystarczy zdjęcie telefonem. {agentFirst} sprawdzi każdy dokument i da znać, jeśli coś trzeba poprawić.
       </Text>
       {documents.map((doc) => {
-        const st = STATUS[doc.status];
+        const st = STATUS[doc.status] || STATUS.missing;
         return (
           <View key={doc.key} style={[styles.row, { borderTopColor: palette.border }]}>
             <Ionicons name={st.icon} size={22} color={st.tone} />
@@ -121,7 +122,7 @@ export default function LuxDocuments({
               </Text>
               <Text style={{ fontSize: 12, color: st.tone, marginTop: 2, fontWeight: '700' }}>{st.label}</Text>
               {doc.status === 'rejected' && doc.note ? <Text style={{ fontSize: 12, color: palette.bad, marginTop: 2 }}>{doc.note}</Text> : null}
-              {doc.status === 'missing' && doc.hint ? <Text style={{ fontSize: 12, color: palette.muted, marginTop: 2, lineHeight: 16 }}>{doc.hint}</Text> : null}
+              {doc.hint ? <Text style={{ fontSize: 12, color: palette.muted, marginTop: 2, lineHeight: 16 }}>{doc.hint}</Text> : null}
               {doc.fileName && doc.fileUrl ? (
                 <Pressable onPress={() => void Linking.openURL(doc.fileUrl as string)} hitSlop={6}>
                   <Text style={{ fontSize: 12, color: palette.accent, marginTop: 3 }} numberOfLines={1}>
@@ -130,7 +131,7 @@ export default function LuxDocuments({
                 </Pressable>
               ) : null}
             </View>
-            {canUpload && doc.status !== 'accepted' ? (
+            {canUpload && doc.status !== 'accepted' && doc.status !== 'na' ? (
               busyKey === doc.key ? (
                 <ActivityIndicator color={palette.accent} />
               ) : (
