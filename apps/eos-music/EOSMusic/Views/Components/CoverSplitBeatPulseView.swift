@@ -13,89 +13,81 @@ final class DJConsoleLampEngine {
         var eos: Double = 0
         var out: Double = 0
         var clip: Double = 0
+        /// Tempo z odstępów między stopami (0 = jeszcze nieznane).
+        var bpm: Int = 0
+        /// Mierniki L/R: szybki wzrost, opadanie ~1,5 poziomu/s jak w sprzęcie.
+        var left: Double = 0
+        var right: Double = 0
     }
 
-    private var prevBeat = 0.0
-    private var prevMid = 0.0
-    private var prevHigh = 0.0
-    private var beatFlashUntil: CFTimeInterval = 0
-    private var rytmFlashUntil: CFTimeInterval = 0
-    private var bassFlashUntil: CFTimeInterval = 0
-    private var trebleFlashUntil: CFTimeInterval = 0
-    private var clipHoldUntil: CFTimeInterval = 0
-    private var beatCount = 0
-    private var clipArm = 0
-    private var recentBeat: [Double] = []
+    private var leftHold = 0.0
+    private var rightHold = 0.0
+    private var lastProcess = 0.0
 
+    private var lastKickAt: Double = 0
+    private var kickIntervals: [Double] = []
+    private var bpm = 0
+    private var clipSince: Double = 0
+
+    /// Diody liczone z dokładnych momentów uderzeń (wątek audio) + opóźnienia wyjścia.
+    /// BEAT = stopa, RYTM = werbel/klaśnięcie, BASS = poziom basu + błysk na stopę, HI = hi-hat.
     func process(
         frame: MusicPlaybackEngine.AudioReactiveFrame,
         isPlaying: Bool,
         onServer: Bool = false
     ) -> Output {
         let now = CACurrentMediaTime()
-        let eos: Double = onServer ? 0.42 : 0
+        let eos: Double = onServer ? 0.55 : 0
         guard isPlaying else {
-            prevBeat = 0
-            prevMid = 0
-            prevHigh = 0
-            beatCount = 0
-            clipArm = 0
-            recentBeat.removeAll(keepingCapacity: true)
-            return Output(beat: 0, rytm: 0, bass: 0, treble: 0, eos: eos, out: 0, clip: 0)
+            kickIntervals.removeAll()
+            bpm = 0
+            return Output(eos: eos)
         }
 
-        let beat = frame.beat
-        let mid = frame.mid
-        let high = frame.treble
-        let bassEnv = frame.bass
-        recentBeat.append(beat)
-        if recentBeat.count > 36 { recentBeat.removeFirst(recentBeat.count - 36) }
-        let peak = max(recentBeat.max() ?? beat, 0.08)
-        let floor = max(0.10, min(0.34, peak * 0.38))
-        let delta = max(0.05, peak * 0.20)
-
-        let rising = beat > prevBeat + delta && beat > floor
-        let midPulse = mid > prevMid + delta * 0.55 && mid > floor * 0.72
-        let highSpark = high > prevHigh + delta * 0.42 && high > floor * 0.55
-        let bassThump = bassEnv > 0.62 && beat > prevBeat
-        prevBeat = beat
-        prevMid = mid
-        prevHigh = high
-
-        if rising {
-            beatFlashUntil = now + 0.11
-            beatCount += 1
-            if beatCount % 2 == 1 {
-                rytmFlashUntil = now + 0.13
+        if frame.kickAt > 0, frame.kickAt != lastKickAt {
+            if lastKickAt > 0 {
+                let interval = frame.kickAt - lastKickAt
+                if interval > 0.25, interval < 1.5 {
+                    kickIntervals.append(interval)
+                    if kickIntervals.count > 16 { kickIntervals.removeFirst() }
+                    if kickIntervals.count >= 4 {
+                        let sorted = kickIntervals.sorted()
+                        var tempo = 60 / sorted[sorted.count / 2]
+                        while tempo < 70 { tempo *= 2 }
+                        while tempo > 180 { tempo /= 2 }
+                        bpm = Int(tempo.rounded())
+                    }
+                }
             }
-        } else if midPulse {
-            rytmFlashUntil = now + 0.12
+            lastKickAt = frame.kickAt
         }
 
-        if bassThump {
-            bassFlashUntil = now + 0.14
-        }
-        if highSpark {
-            trebleFlashUntil = now + 0.08
-        }
+        let dt = lastProcess == 0 ? 1.0 / 60 : min(0.1, now - lastProcess)
+        lastProcess = now
+        leftHold = max(frame.levelL, leftHold - dt * 1.5)
+        rightHold = max(frame.levelR, rightHold - dt * 1.5)
 
-        if frame.level > 0.93, frame.bass > 0.88 {
-            clipArm += 1
+        let kick = EOSBeatClock.pulse(eventAt: frame.kickAt, now: now, tau: 0.09)
+        let snare = EOSBeatClock.pulse(eventAt: frame.snareAt, now: now, tau: 0.08)
+        let hat = EOSBeatClock.pulse(eventAt: frame.hatAt, now: now, tau: 0.05)
+
+        if frame.level > 0.94 {
+            if clipSince == 0 { clipSince = now }
         } else {
-            clipArm = 0
-        }
-        if clipArm >= 2 {
-            clipHoldUntil = now + 0.18
+            clipSince = 0
         }
 
         return Output(
-            beat: now < beatFlashUntil ? 1 : 0,
-            rytm: now < rytmFlashUntil ? 1 : 0,
-            bass: now < bassFlashUntil ? 1 : min(1, bassEnv * 0.55),
-            treble: now < trebleFlashUntil ? 1 : 0,
+            beat: kick,
+            rytm: snare,
+            bass: min(1, max(kick, frame.bass * 0.85)),
+            treble: hat,
             eos: eos,
-            out: frame.level > 0.05 ? 0.38 : 0,
-            clip: now < clipHoldUntil ? 1 : 0
+            out: min(1, frame.level * 1.15),
+            clip: clipSince > 0 && now - clipSince > 0.08 ? 1 : 0,
+            bpm: bpm,
+            left: leftHold,
+            right: rightHold
         )
     }
 }
@@ -130,7 +122,7 @@ final class CoverBeatPulseDriver: NSObject, ObservableObject {
     func start(visualizer: PlayerAudioVisualizer, isPlaying: Bool, fps: Double) {
         self.visualizer = visualizer
         self.isPlaying = isPlaying
-        let rate = fps > 0.5 ? max(12, min(16, fps)) : 12
+        let rate = PlayerVisualMetrics.analyzerFPS(preferred: fps)
         minInterval = 1.0 / rate
         if isPlaying {
             guard displayLink == nil else { return }
@@ -205,7 +197,6 @@ struct CoverSplitBeatPulseView: View {
         Group {
             if live {
                 animatedCover
-                    .drawingGroup(opaque: false)
             } else {
                 staticCover
             }
@@ -252,8 +243,6 @@ struct CoverSplitBeatPulseView: View {
                     )
                 )
                 .frame(width: canvasSize * 1.42, height: canvasSize * 1.42)
-                .scaleEffect(1 + CGFloat(pulse.bass) * 0.07)
-                .blur(radius: isLight ? 20 : 14)
 
             if style == .split {
                 HStack(spacing: 0) {
@@ -275,7 +264,6 @@ struct CoverSplitBeatPulseView: View {
                     )
                 }
                 .frame(width: canvasSize * 1.22, height: canvasSize * 1.22)
-                .blur(radius: isLight ? 12 : 10)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius + 10, style: .continuous))
 
                 HStack(spacing: 0) {
@@ -291,14 +279,12 @@ struct CoverSplitBeatPulseView: View {
                         lineWidth: 3 + pulse.beat * 7
                     )
                     .frame(width: canvasSize * 1.08, height: canvasSize * 1.08)
-                    .blur(radius: 1.2)
                 Circle()
                     .strokeBorder(
                         ProMixerDeckView.labelAmber.opacity((isLight ? 0.22 : 0.36) * pulse.rytm * scale),
                         lineWidth: 2 + pulse.rytm * 6
                     )
                     .frame(width: canvasSize * 1.20, height: canvasSize * 1.20)
-                    .blur(radius: 1.8)
             }
 
             RoundedRectangle(cornerRadius: cornerRadius + 4, style: .continuous)
@@ -336,29 +322,13 @@ struct CoverSplitBeatPulseView: View {
                 .blendMode(.plusLighter)
                 .allowsHitTesting(false)
             }
-            .scaleEffect(1 + CGFloat(pulse.bass) * 0.018 * scale)
-            .brightness(pulse.beat * 0.045 * scale)
             .shadow(
-                color: ProMixerDeckView.labelGreen.opacity(isLight ? 0.16 + pulse.beat * 0.62 : 0.24 + pulse.beat * 0.72),
-                radius: 8 + pulse.beat * 26,
-                x: isLight ? -3 : -2,
-                y: 6
-            )
-            .shadow(
-                color: ProMixerDeckView.labelAmber.opacity(isLight ? 0.14 + pulse.rytm * 0.52 : 0.18 + pulse.rytm * 0.62),
-                radius: 8 + pulse.rytm * 22,
-                x: isLight ? 3 : 2,
-                y: 6
-            )
-            .shadow(
-                color: .black.opacity(isLight ? 0.10 : 0.22),
+                color: .black.opacity(isLight ? 0.12 : 0.28),
                 radius: isLight ? 16 : 12,
-                y: isLight ? 10 : 6
+                y: isLight ? 8 : 6
             )
         }
         .frame(width: canvasSize, height: canvasSize)
-        .animation(.easeOut(duration: 0.055), value: pulse.beat)
-        .animation(.easeOut(duration: 0.065), value: pulse.rytm)
     }
 
     private var coverBezel: some View {
@@ -476,5 +446,293 @@ struct CoverBeatLEDBank: View {
                 }
         }
         .accessibilityLabel("\(label) \(Int((intensity * 100).rounded()))%")
+    }
+}
+
+// MARK: - Klubowa okładka (stopa / bas / werbel / hi-hat — każdy efekt na swój sygnał)
+
+/// Okładka jak w klubie, liczona w każdej klatce (60–120 Hz) z dokładnych momentów uderzeń:
+/// • stopa  → okładka „uderza” (skala) + błysk światła od dołu,
+/// • bas    → pulsująca poświata wokół w kolorach EOS,
+/// • werbel → rozchodzący się pierścień światła + krótki biały flesz,
+/// • hi-hat → iskry na krawędzi,
+/// • lasery obracają się w tempie utworu (szybciej przy mocniejszym basie).
+struct ClubCoverView: UIViewRepresentable {
+    let artworkURL: URL?
+    var fallbackImage: UIImage?
+    let isPlaying: Bool
+    let visualizer: PlayerAudioVisualizer
+    var canvasSize: CGFloat
+    var cornerRadius: CGFloat
+    var strobe: Bool = false
+
+    func makeUIView(context: Context) -> ClubCoverUIView {
+        let view = ClubCoverUIView()
+        update(view)
+        return view
+    }
+
+    func updateUIView(_ uiView: ClubCoverUIView, context: Context) { update(uiView) }
+
+    private func update(_ view: ClubCoverUIView) {
+        view.configure(
+            artworkURL: artworkURL,
+            fallbackImage: fallbackImage,
+            isPlaying: isPlaying,
+            visualizer: visualizer,
+            canvasSize: canvasSize,
+            cornerRadius: cornerRadius,
+            strobe: strobe
+        )
+    }
+
+    static func dismantleUIView(_ uiView: ClubCoverUIView, coordinator: ()) { uiView.stop() }
+}
+
+final class ClubCoverUIView: UIView {
+    private weak var visualizer: PlayerAudioVisualizer?
+    private var isPlaying = false
+    private var strobe = false
+    private var cornerRadius: CGFloat = 16
+    private var artKey = ""
+    private var link: CADisplayLink?
+    private var laserAngle: CGFloat = 0
+    private var bassSmooth: CGFloat = 0
+    private var lastTick: CFTimeInterval = 0
+    private var lastSnareSeen: Double = 0
+    private var ringAge: CGFloat = 10
+
+    private let laserLayer = CAGradientLayer()
+    private let beamMask = CAGradientLayer()
+    private let strobeWall = CAGradientLayer()
+    private var beamsAreStrobe: Bool?
+
+    /// 16 cienkich promieni (jak lasery w klubie); w trybie strobo białe i ostrzejsze.
+    private func applyBeams(strobe: Bool) {
+        guard beamsAreStrobe != strobe else { return }
+        beamsAreStrobe = strobe
+        let accent = UIColor(EOSTheme.accent), second = UIColor(EOSTheme.accentSecondary)
+        var colors: [CGColor] = []
+        var locations: [NSNumber] = []
+        let beams = 16
+        for b in 0..<beams {
+            let start = Double(b) / Double(beams)
+            let width = strobe ? 0.012 : 0.02
+            let c = strobe ? UIColor.white : (b % 2 == 0 ? accent : second)
+            colors += [UIColor.clear.cgColor, c.withAlphaComponent(strobe ? 0.9 : 0.75).cgColor, UIColor.clear.cgColor]
+            locations += [NSNumber(value: start), NSNumber(value: start + width), NSNumber(value: start + width * 2)]
+        }
+        laserLayer.colors = colors
+        laserLayer.locations = locations
+        strobeWall.type = .radial
+        strobeWall.colors = [UIColor.white.cgColor, (strobe ? UIColor.white : accent).withAlphaComponent(0.35).cgColor, UIColor.clear.cgColor]
+        strobeWall.startPoint = CGPoint(x: 0.5, y: 0.5)
+        strobeWall.endPoint = CGPoint(x: 1, y: 1)
+    }
+    private let glowLayer = CAGradientLayer()
+    private let artLayer = CALayer()
+    private let artShadow = CALayer()
+    private let kickLight = CAGradientLayer()
+    private let flashLayer = CALayer()
+    private let ringLayer = CAShapeLayer()
+    private var sparks: [CALayer] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        let accent = UIColor(EOSTheme.accent), second = UIColor(EOSTheme.accentSecondary)
+
+        laserLayer.type = .conic
+        laserLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
+        laserLayer.endPoint = CGPoint(x: 0.5, y: 0)
+        applyBeams(strobe: false)
+        laserLayer.opacity = 0
+        // Okrągłe wygaszenie: promienie gasną miękko ku krawędzi (bez kwadratowych rogów).
+        beamMask.type = .radial
+        beamMask.colors = [UIColor.white.cgColor, UIColor.white.withAlphaComponent(0.7).cgColor, UIColor.clear.cgColor]
+        beamMask.locations = [0, 0.45, 1]
+        beamMask.startPoint = CGPoint(x: 0.5, y: 0.5)
+        beamMask.endPoint = CGPoint(x: 1, y: 1)
+        laserLayer.mask = beamMask
+        strobeWall.opacity = 0
+        strobeWall.cornerCurve = .continuous
+        layer.addSublayer(strobeWall)
+        layer.addSublayer(laserLayer)
+
+        glowLayer.type = .radial
+        glowLayer.colors = [accent.withAlphaComponent(0.85).cgColor, second.withAlphaComponent(0.4).cgColor, UIColor.clear.cgColor]
+        glowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
+        glowLayer.endPoint = CGPoint(x: 1, y: 1)
+        layer.addSublayer(glowLayer)
+
+        artShadow.shadowColor = UIColor.black.cgColor
+        artShadow.shadowOpacity = 0.55
+        artShadow.shadowRadius = 22
+        artShadow.shadowOffset = CGSize(width: 0, height: 14)
+        layer.addSublayer(artShadow)
+
+        artLayer.masksToBounds = true
+        artLayer.contentsGravity = .resizeAspectFill
+        artLayer.backgroundColor = UIColor(white: 0.12, alpha: 1).cgColor
+        artLayer.cornerCurve = .continuous
+        artShadow.addSublayer(artLayer)
+
+        kickLight.colors = [UIColor.white.withAlphaComponent(0.55).cgColor, accent.withAlphaComponent(0.25).cgColor, UIColor.clear.cgColor]
+        kickLight.startPoint = CGPoint(x: 0.5, y: 1)
+        kickLight.endPoint = CGPoint(x: 0.5, y: 0.35)
+        kickLight.opacity = 0
+        artLayer.addSublayer(kickLight)
+
+        flashLayer.backgroundColor = UIColor.white.cgColor
+        flashLayer.opacity = 0
+        artLayer.addSublayer(flashLayer)
+
+        ringLayer.fillColor = UIColor.clear.cgColor
+        ringLayer.strokeColor = UIColor.white.cgColor
+        ringLayer.lineWidth = 3
+        ringLayer.opacity = 0
+        ringLayer.shadowOpacity = 0
+        layer.addSublayer(ringLayer)
+
+        for i in 0..<14 {
+            let spark = CALayer()
+            spark.backgroundColor = (i % 2 == 0 ? UIColor.white : second).cgColor
+            spark.cornerRadius = 2.5
+            spark.bounds = CGRect(x: 0, y: 0, width: 5, height: 5)
+            spark.opacity = 0
+            layer.addSublayer(spark)
+            sparks.append(spark)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(artworkURL: URL?, fallbackImage: UIImage?, isPlaying: Bool, visualizer: PlayerAudioVisualizer,
+                   canvasSize: CGFloat, cornerRadius: CGFloat, strobe: Bool) {
+        self.visualizer = visualizer
+        self.isPlaying = isPlaying
+        self.strobe = strobe
+        applyBeams(strobe: strobe)
+        self.cornerRadius = cornerRadius
+        let key = artworkURL?.absoluteString ?? "fallback-\(fallbackImage.map { ObjectIdentifier($0).hashValue } ?? 0)"
+        if key != artKey {
+            artKey = key
+            if let fallbackImage { artLayer.contents = fallbackImage.cgImage }
+            if let artworkURL {
+                Task { [weak self] in
+                    let loaded = await ArtworkDecodeActor.shared.load(url: artworkURL, maxPixelSize: 900, allowAnimated: false, timeout: 12)
+                    await MainActor.run {
+                        guard let self, self.artKey == key, let image = loaded?.still else { return }
+                        self.artLayer.contents = image.cgImage
+                    }
+                }
+            }
+        }
+        setNeedsLayout()
+        if link == nil, window != nil { start() }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { stop() } else { start() }
+    }
+
+    func start() {
+        guard link == nil else { return }
+        let l = CADisplayLink(target: ClubWeakTarget(self), selector: #selector(ClubWeakTarget.tick(_:)))
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 60)
+        l.add(to: .main, forMode: .common)
+        link = l
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        let side = min(bounds.width, bounds.height) * 0.86
+        let art = CGRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
+        artShadow.bounds = CGRect(origin: .zero, size: art.size)
+        artShadow.position = CGPoint(x: art.midX, y: art.midY)
+        artShadow.shadowPath = UIBezierPath(roundedRect: artShadow.bounds, cornerRadius: cornerRadius).cgPath
+        artLayer.frame = artShadow.bounds
+        artLayer.cornerRadius = cornerRadius
+        kickLight.frame = artLayer.bounds
+        flashLayer.frame = artLayer.bounds
+        let big = max(bounds.width, bounds.height) * 1.5
+        laserLayer.bounds = CGRect(x: 0, y: 0, width: big, height: big)
+        laserLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        beamMask.frame = laserLayer.bounds
+        strobeWall.bounds = CGRect(x: 0, y: 0, width: big * 0.8, height: big * 0.8)
+        strobeWall.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        glowLayer.bounds = CGRect(x: 0, y: 0, width: side * 1.5, height: side * 1.5)
+        glowLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        ringLayer.frame = bounds
+        ringLayer.path = UIBezierPath(roundedRect: art, cornerRadius: cornerRadius).cgPath
+        CATransaction.commit()
+    }
+
+    fileprivate func step(_ link: CADisplayLink) {
+        let now = CACurrentMediaTime()
+        let dt = CGFloat(lastTick == 0 ? 1.0 / 60 : min(0.05, link.timestamp - lastTick))
+        lastTick = link.timestamp
+        let f = visualizer?.snapshot(isPlaying: isPlaying) ?? MusicPlaybackEngine.AudioReactiveFrame()
+        let playing = isPlaying
+
+        let kick = CGFloat(playing ? EOSBeatClock.pulse(eventAt: f.kickAt, now: now, tau: 0.11) * max(0.55, f.kickStrength) : 0)
+        let snare = CGFloat(playing ? EOSBeatClock.pulse(eventAt: f.snareAt, now: now, tau: 0.09) * max(0.5, f.snareStrength) : 0)
+        let hat = CGFloat(playing ? EOSBeatClock.pulse(eventAt: f.hatAt, now: now, tau: 0.06) : 0)
+        let bassTarget = CGFloat(playing ? f.bass : 0)
+        bassSmooth += (bassTarget - bassSmooth) * min(1, dt * (bassTarget > bassSmooth ? 18 : 5))
+
+        // Nowy werbel → pierścień startuje od krawędzi okładki
+        if playing, f.snareAt != lastSnareSeen, EOSBeatClock.pulse(eventAt: f.snareAt, now: now) > 0 {
+            lastSnareSeen = f.snareAt
+            ringAge = 0
+        }
+        ringAge += dt
+
+        laserAngle += dt * (0.35 + bassSmooth * 1.6 + kick * 2.2)
+
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        artShadow.transform = CATransform3DMakeScale(1 + kick * 0.045 + bassSmooth * 0.012, 1 + kick * 0.045 + bassSmooth * 0.012, 1)
+        kickLight.opacity = Float(kick * 0.9)
+        flashLayer.opacity = Float(snare * (strobe ? 0.55 : 0.28))
+        glowLayer.opacity = Float(0.25 + bassSmooth * 0.6 + kick * 0.35)
+        let glowScale = 0.85 + bassSmooth * 0.25 + kick * 0.12
+        glowLayer.transform = CATransform3DMakeScale(glowScale, glowScale, 1)
+        laserLayer.transform = CATransform3DMakeRotation(laserAngle, 0, 0, 1)
+        laserLayer.opacity = Float(playing ? min(0.9, 0.1 + bassSmooth * 0.35 + snare * 0.5 + (strobe ? kick * 0.4 : 0)) : 0)
+        // Strobo: ściana światła za okładką błyska dokładnie na stopę i werbel.
+        strobeWall.opacity = Float(strobe && playing ? min(1, kick * 0.85 + snare * 0.6) : 0)
+
+        let ringT = min(1, ringAge / 0.45)
+        ringLayer.opacity = Float(ringT < 1 ? (1 - ringT) * 0.9 : 0)
+        let ringScale = 1 + ringT * 0.18
+        ringLayer.transform = CATransform3DMakeScale(ringScale, ringScale, 1)
+        ringLayer.bounds = bounds
+        ringLayer.position = CGPoint(x: bounds.midX, y: bounds.midY)
+
+        let side = artShadow.bounds.width * (1 + kick * 0.045)
+        for (i, spark) in sparks.enumerated() {
+            let a = CGFloat(i) / CGFloat(sparks.count) * .pi * 2 + laserAngle * 0.4
+            let r = side * 0.5 * 1.08
+            spark.position = CGPoint(x: bounds.midX + cos(a) * r, y: bounds.midY + sin(a) * r)
+            spark.opacity = Float(hat * ((i % 3 == Int(laserAngle * 3) % 3) ? 1 : 0.35))
+        }
+        CATransaction.commit()
+    }
+}
+
+private final class ClubWeakTarget: NSObject {
+    weak var view: ClubCoverUIView?
+    init(_ view: ClubCoverUIView) { self.view = view }
+    @objc func tick(_ link: CADisplayLink) {
+        if let view { view.step(link) } else { link.invalidate() }
     }
 }

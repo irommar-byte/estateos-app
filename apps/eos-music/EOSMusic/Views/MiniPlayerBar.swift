@@ -96,10 +96,14 @@ struct MiniPlayerDock: View {
         Group {
             if showsVideo {
                 VideoMiniPlayerBar()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if showsMusic {
                 MiniPlayerBar()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.spring(response: 0.48, dampingFraction: 0.82), value: showsMusic)
+        .animation(.spring(response: 0.48, dampingFraction: 0.82), value: showsVideo)
         .frame(maxWidth: .infinity)
         .padding(.horizontal, showsVideo || showsMusic ? (isPadBottomDock ? 10 : 12) : 0)
         .padding(.top, showsVideo || showsMusic ? (isPadBottomDock ? 2 : 6) : 0)
@@ -257,6 +261,9 @@ private struct MiniPlayerContent: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var skipForwardTaps = 0
+    @State private var skipBackTaps = 0
+    @State private var openTaps = 0
 
     init(engine: MusicPlaybackEngine) {
         self.engine = engine
@@ -270,6 +277,7 @@ private struct MiniPlayerContent: View {
                 bar(track: track, showsPrevious: false)
             }
             .miniPlayerChrome(colorScheme: colorScheme, minHeight: miniHeight)
+            .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.6), trigger: openTaps)
             .trackQuickActions(
                 TrackQuickActionItem(track: track),
                 play: { engine.togglePlayPause() },
@@ -294,6 +302,7 @@ private struct MiniPlayerContent: View {
     private func bar(track: MusicPlaybackTrack, showsPrevious: Bool) -> some View {
         HStack(alignment: .center, spacing: 10) {
             Button {
+                openTaps += 1
                 app.expandPlayer()
             } label: {
                 HStack(alignment: .center, spacing: 12) {
@@ -301,10 +310,23 @@ private struct MiniPlayerContent: View {
                         ArtworkImage(
                             url: track.artworkURL,
                             size: EOSLayout.miniPlayerArt,
-                            cornerRadius: 8,
-                            fallbackImage: engine.displayArtwork
+                            cornerRadius: 10,
+                            fallbackImage: engine.displayArtwork(for: track),
+                            identity: track.id,
+                            placeholderTitle: track.title,
+                            placeholderSubtitle: track.artist
                         )
-                        .modifier(PlayerArtworkGeometry())
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.14), lineWidth: 0.5)
+                        }
+                        .shadow(color: .black.opacity(0.32), radius: 3, y: 1)
+                        // Nowa okładka „wskakuje” przy zmianie utworu zamiast podmieniać się skokowo.
+                        .id(track.id)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.82).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                         if showsActivity {
                             ProgressView()
                                 .controlSize(.mini)
@@ -312,28 +334,34 @@ private struct MiniPlayerContent: View {
                                 .background(.ultraThinMaterial, in: Circle())
                         }
                     }
+                    .animation(.spring(response: 0.42, dampingFraction: 0.78), value: track.id)
+                    // Przejście zoom startuje z samej okładki — bez kosztownego zrzutu szkła paska.
+                    .modifier(PlayerZoomSource(cornerRadius: 10))
 
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 2) {
                         MarqueeText(
                             text: track.title,
                             font: .subheadline.weight(.semibold),
                             foreground: EOSTheme.textPrimary
                         )
+                        .id("mini-title-\(track.id)")
                         MarqueeText(
                             text: artistLine(track: track),
                             font: .caption,
                             foreground: EOSTheme.textSecondary
                         )
+                        .id("mini-artist-\(track.id)")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(EOSPressableStyle(pressedScale: 0.97))
             .accessibilityLabel("\(track.title), \(artistLine(track: track))")
 
             if showsPrevious {
-                miniPlayerIconButton(systemName: "backward.fill", secondary: true) {
+                miniPlayerIconButton(systemName: "backward.fill", secondary: true, bounce: skipBackTaps) {
+                    skipBackTaps += 1
                     Task { await engine.skipPrevious() }
                 }
             }
@@ -346,7 +374,9 @@ private struct MiniPlayerContent: View {
                 engine.togglePlayPause()
             }
 
-            miniPlayerIconButton(systemName: "forward.fill", secondary: true) {
+            miniPlayerIconButton(systemName: "forward.fill", secondary: true, bounce: skipForwardTaps) {
+                skipForwardTaps += 1
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 Task { await engine.skipNext() }
             }
         }
@@ -354,7 +384,8 @@ private struct MiniPlayerContent: View {
 
     private func artistLine(track: MusicPlaybackTrack) -> String {
         let artist = track.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let position = engine.playbackQueueRows.count > 1 ? engine.queuePositionLabel : ""
+        // `playbackQueueRows` budował całą kolejkę przy każdym odświeżeniu paska.
+        let position = engine.queueCount > 1 ? engine.queuePositionLabel : ""
         if artist.isEmpty { return position }
         if position.isEmpty { return artist }
         return "\(artist) · \(position)"
@@ -367,17 +398,19 @@ private func miniPlayerIconButton(
     secondary: Bool = false,
     size: CGFloat = 40,
     disabled: Bool = false,
+    bounce: Int = 0,
     action: @escaping () -> Void
 ) -> some View {
     Button(action: action) {
         Image(systemName: systemName)
-            .font(.system(size: secondary ? 17 : 20, weight: .semibold))
+            .font(.system(size: secondary ? 17 : 21, weight: .semibold))
             .foregroundStyle(secondary ? EOSTheme.textSecondary : EOSTheme.textPrimary)
+            .contentTransition(.symbolEffect(.replace.downUp))
+            .symbolEffect(.bounce.down.byLayer, value: bounce)
             .frame(width: size, height: size)
             .contentShape(Rectangle())
-            .contentTransition(.symbolEffect(.replace))
     }
-    .buttonStyle(.plain)
+    .buttonStyle(EOSGlyphPressStyle(highlightDiameter: size + 2))
     .disabled(disabled)
 }
 
@@ -439,10 +472,29 @@ private struct TabBarHeightProbe: UIViewRepresentable {
 
 /// Subtle scale on press — Apple Music–like micro interaction.
 struct EOSPressableStyle: ButtonStyle {
+    var pressedScale: CGFloat = 0.94
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .scaleEffect(configuration.isPressed ? pressedScale : 1)
             .opacity(configuration.isPressed ? 0.85 : 1)
-            .animation(EOSMotion.snappy, value: configuration.isPressed)
+            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+/// Jak w Apple Music: przy naciśnięciu za ikoną pojawia się miękkie koło, a ikona lekko się zapada.
+struct EOSGlyphPressStyle: ButtonStyle {
+    var highlightDiameter: CGFloat = 44
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.84 : 1)
+            .background {
+                Circle()
+                    .fill(Color.primary.opacity(configuration.isPressed ? 0.12 : 0))
+                    .frame(width: highlightDiameter, height: highlightDiameter)
+                    .scaleEffect(configuration.isPressed ? 1 : 0.55)
+            }
+            .animation(.spring(response: 0.26, dampingFraction: 0.62), value: configuration.isPressed)
     }
 }

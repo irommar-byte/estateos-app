@@ -44,7 +44,29 @@ function readStore(userKey) {
 function writeStore(userKey, store) {
   ensureDir(DATA_DIR);
   const file = libraryFile(userKey);
-  fs.writeFileSync(file, JSON.stringify(store, null, 0) + "\n", { mode: 0o600 });
+  const payload = JSON.stringify(store, null, 0) + "\n";
+  if (fs.existsSync(file)) {
+    const current = fs.readFileSync(file, "utf8");
+    if (current === payload) return store;
+    try {
+      const backupDir = path.join(DATA_DIR, "backups", userKey);
+      ensureDir(backupDir);
+      fs.writeFileSync(path.join(backupDir, `${Date.now()}.json`), current, { mode: 0o600 });
+      const backups = fs
+        .readdirSync(backupDir)
+        .filter((name) => name.endsWith(".json"))
+        .sort()
+        .reverse();
+      for (const stale of backups.slice(30)) {
+        fs.unlinkSync(path.join(backupDir, stale));
+      }
+    } catch (err) {
+      console.warn("music library backup:", err?.message || err);
+    }
+  }
+  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, payload, { mode: 0o600 });
+  fs.renameSync(tmp, file);
   return store;
 }
 
@@ -189,6 +211,87 @@ function ensureDefaultFolder(store) {
   };
   store.folders.push(folder);
   return store;
+}
+
+/**
+ * Link every durable server asset back to the user's library.
+ * This repairs orphaned files without duplicating tracks already present in playlists.
+ */
+export function reconcileMusicLibraryAssets(userKey, rawAssets = []) {
+  if (!userKey) return { added: 0, linked: 0 };
+  const assets = rawAssets.filter(
+    (asset) => asset?.ready !== false && asset?.assetId && String(asset?.url || "").trim()
+  );
+  const store = readStore(userKey);
+  const assetsByURL = new Map(assets.map((asset) => [String(asset.url).trim(), asset]));
+  let changed = false;
+  let linked = 0;
+
+  for (const track of store.tracks) {
+    const asset = assetsByURL.get(track.url);
+    if (!asset) continue;
+    if (track.downloadJobId !== asset.assetId || track.serverAssetId !== asset.assetId) {
+      track.downloadJobId = asset.assetId;
+      track.serverAssetId = asset.assetId;
+      track.downloadedAt = Number(asset.acquiredAt) || track.downloadedAt || Date.now();
+      changed = true;
+      linked += 1;
+    }
+  }
+
+  const systemFolderId = "eos-server-library";
+  const representedURLs = new Set(store.tracks.map((track) => track.url));
+  const orphanAssets = assets.filter((asset) => !representedURLs.has(String(asset.url).trim()));
+  let systemFolder = store.folders.find((folder) => folder.id === systemFolderId);
+
+  if (orphanAssets.length && !systemFolder) {
+    systemFolder = {
+      id: systemFolderId,
+      name: "Serwer EOS",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    store.folders.unshift(systemFolder);
+    changed = true;
+  }
+
+  let added = 0;
+  for (const asset of orphanAssets) {
+    const track = normalizeTrack(
+      {
+        ...asset,
+        downloadJobId: asset.assetId,
+        serverAssetId: asset.assetId,
+        downloadedAt: asset.acquiredAt,
+        source: "eos-server",
+      },
+      systemFolderId
+    );
+    if (!track) continue;
+    store.tracks.push(track);
+    added += 1;
+    changed = true;
+  }
+
+  const validAssetURLs = new Set(assets.map((asset) => String(asset.url).trim()));
+  const before = store.tracks.length;
+  store.tracks = store.tracks.filter(
+    (track) => track.folderId !== systemFolderId || validAssetURLs.has(track.url)
+  );
+  if (store.tracks.length !== before) changed = true;
+
+  if (systemFolder) {
+    const hasSystemTracks = store.tracks.some((track) => track.folderId === systemFolderId);
+    if (!hasSystemTracks) {
+      store.folders = store.folders.filter((folder) => folder.id !== systemFolderId);
+      changed = true;
+    } else if (changed) {
+      systemFolder.updatedAt = Date.now();
+    }
+  }
+
+  if (changed) writeStore(userKey, store);
+  return { added, linked };
 }
 
 function normalizeMusicTitleKey(value) {

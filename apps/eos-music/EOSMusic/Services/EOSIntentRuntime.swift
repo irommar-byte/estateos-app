@@ -57,12 +57,25 @@ final class EOSIntentRuntime {
         return app
     }
 
-    func performShazamHeadless() async throws -> String {
-        let app = try await restoreSessionForIntent()
-        let status = await ShazamRecognitionCoordinator.shared.startHeadless(app: app)
+    func performShazamFromControl() async throws -> String {
+        let app = try await waitForApp(timeout: 8)
+        guard SessionStore.load() != nil else {
+            throw EOSIntentRoutingError.notLoggedIn
+        }
+        if let session = SessionStore.load() {
+            app.api.setToken(session.token)
+            if app.user == nil {
+                app.hydrateForIntent(session: session)
+            }
+        }
+        let status = await ShazamRecognitionCoordinator.shared.startFromControl(app: app)
         publishSnapshot()
         reloadControls()
         return status
+    }
+
+    func performShazamHeadless() async throws -> String {
+        try await performShazamFromControl()
     }
 
     func cancelShazam() async {

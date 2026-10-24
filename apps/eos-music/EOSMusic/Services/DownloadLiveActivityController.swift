@@ -31,7 +31,26 @@ final class DownloadLiveActivityController {
     private var movieActive = false
     private var currentBatchId = ""
     private var tokenTask: Task<Void, Never>?
+    private var lastPushToken = ""
+    private var lastActivityId = ""
+    private var lastFrequentPushes = false
     private let pipeline = DownloadActivityPublishPipeline()
+
+    func noteBatchId(_ batchId: String) {
+        guard !batchId.isEmpty else { return }
+        currentBatchId = batchId
+        guard !lastPushToken.isEmpty, !lastActivityId.isEmpty else { return }
+        NotificationCenter.default.post(
+            name: .eosLiveActivityPushToken,
+            object: nil,
+            userInfo: [
+                "token": lastPushToken,
+                "batchId": batchId,
+                "activityId": lastActivityId,
+                "frequentPushesEnabled": lastFrequentPushes
+            ]
+        )
+    }
 
     func publishMusic(
         itemProgress: Double,
@@ -46,7 +65,7 @@ final class DownloadLiveActivityController {
         batchId: String = "",
         revision: Int = 0
     ) {
-        musicActive = total > 0 && overallProgress < 0.999 && phase != "Anulowanie"
+        musicActive = total > 0 && overallProgress < 0.999 && phase != "Anulowanie" && phase != "Zakończono"
         currentBatchId = batchId
         publish(
             itemProgress: itemProgress,
@@ -97,9 +116,9 @@ final class DownloadLiveActivityController {
         if !movieActive { endNow() }
     }
 
-    func endMovie() {
+    func endMovie(immediate: Bool = false) {
         movieActive = false
-        if !musicActive { endNow() }
+        if !musicActive { endNow(immediate: immediate) }
     }
 
     private func publish(
@@ -130,9 +149,11 @@ final class DownloadLiveActivityController {
         let overall = min(1, max(0, overallProgress))
         let item = min(1, max(0, itemProgress))
         let percent = Int((overall * 100).rounded())
-        let eta = resolveETA(overall: overall, remainingCount: remainingCount, serverETA: serverETA)
-        let estimatedEnd = eta.map { Date().addingTimeInterval($0) }
-        let items = Array(currentItems.prefix(2))
+        let eta = LiveActivityLockScreenPolicy.displayETA(
+            seconds: resolveETA(overall: overall, remainingCount: remainingCount, serverETA: serverETA),
+            remainingCount: remainingCount
+        )
+        let items = Array(currentItems.prefix(BulkServerQueuePolicy.maxConcurrentServerJobs))
         let state = DownloadAttributes.ContentState(
             itemProgress: item,
             overallProgress: overall,
@@ -146,7 +167,7 @@ final class DownloadLiveActivityController {
             batchId: batchId,
             revision: revision,
             updatedAt: Date(),
-            estimatedEndDate: estimatedEnd
+            estimatedEndDate: nil
         )
         let stale = Date().addingTimeInterval(40)
         let content = ActivityContent(state: state, staleDate: stale)
@@ -212,12 +233,15 @@ final class DownloadLiveActivityController {
                 let token = tokenData.map { String(format: "%02x", $0) }.joined()
                 let frequent = Self.allowsFrequentPushes()
                 await MainActor.run {
+                    self.lastPushToken = token
+                    self.lastActivityId = activity.id
+                    self.lastFrequentPushes = frequent
                     NotificationCenter.default.post(
                         name: .eosLiveActivityPushToken,
                         object: nil,
                         userInfo: [
                             "token": token,
-                            "batchId": batchId,
+                            "batchId": self.currentBatchId.isEmpty ? batchId : self.currentBatchId,
                             "activityId": activity.id,
                             "frequentPushesEnabled": frequent
                         ]
@@ -243,9 +267,12 @@ final class DownloadLiveActivityController {
         observePushToken()
     }
 
-    private func endNow(final: DownloadAttributes.ContentState? = nil) {
+    private func endNow(final: DownloadAttributes.ContentState? = nil, immediate: Bool = false) {
+        adoptExisting()
         tokenTask?.cancel()
         tokenTask = nil
+        lastPushToken = ""
+        lastActivityId = ""
         Task { await pipeline.invalidate() }
         samples.removeAll()
         lastPublishedPercent = -1
@@ -273,7 +300,7 @@ final class DownloadLiveActivityController {
             overallProgress: 1,
             completed: 1,
             total: 1,
-            phase: "Na iPhonie",
+            phase: "Zakończono",
             title: "Zakończono",
             secondsRemaining: 0,
             isFinished: true,
@@ -286,7 +313,7 @@ final class DownloadLiveActivityController {
         Task {
             await activity.end(
                 ActivityContent(state: state, staleDate: nil),
-                dismissalPolicy: .after(Date().addingTimeInterval(20))
+                dismissalPolicy: immediate ? .immediate : .after(Date().addingTimeInterval(2.4))
             )
             for extra in extras {
                 await extra.end(nil, dismissalPolicy: .immediate)
@@ -296,6 +323,7 @@ final class DownloadLiveActivityController {
     }
 
     private func resolveETA(overall: Double, remainingCount: Int, serverETA: Double?) -> Double? {
+        if overall >= 0.999 || remainingCount <= 0 { return nil }
         let now = Date()
         samples.append((now, overall))
         samples.removeAll { now.timeIntervalSince($0.at) > 45 }
@@ -315,11 +343,9 @@ final class DownloadLiveActivityController {
                 }
             }
         }
-        if raw == nil {
-            raw = Double(max(1, remainingCount)) * 25
-        }
 
-        let minutes = max(1, Int(((raw ?? 60) / 60.0).rounded()))
+        guard let raw else { return nil }
+        let minutes = max(1, Int((raw / 60.0).rounded()))
         if let held = heldMinutes {
             if abs(minutes - held) >= 1 {
                 heldMinutes = minutes

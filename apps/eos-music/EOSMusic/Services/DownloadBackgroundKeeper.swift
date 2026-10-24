@@ -90,8 +90,12 @@ final class DownloadBackgroundKeeper: NSObject, URLSessionDownloadDelegate {
         wakeInFlight = false
         endAppTask()
         Task {
+            if let api {
+                music?.restorePersistedServerBatchIfNeeded(api: api)
+            }
             await monitor?.refreshOnce()
-            movies?.resumePersistedBatchIfNeeded()
+            music?.reconcileAfterForeground()
+            await movies?.reconcileAfterForeground()
         }
     }
 
@@ -195,7 +199,8 @@ final class DownloadBackgroundKeeper: NSObject, URLSessionDownloadDelegate {
             }
         }
         await monitor?.refreshOnce()
-        movies?.resumePersistedBatchIfNeeded()
+        music?.reconcileAfterForeground()
+        await movies?.reconcileAfterForeground()
         if hasWork {
             startKeepAliveLoop()
             scheduleWake(after: 4)
@@ -211,7 +216,8 @@ final class DownloadBackgroundKeeper: NSObject, URLSessionDownloadDelegate {
             }
         }
         await monitor?.refreshOnce()
-        movies?.resumePersistedBatchIfNeeded()
+        music?.reconcileAfterForeground()
+        await movies?.reconcileAfterForeground()
         if hasWork {
             startKeepAliveLoop()
             scheduleWake(after: 4)

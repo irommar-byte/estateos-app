@@ -150,10 +150,94 @@ final class ShazamCatalogMatcherTests: XCTestCase {
             )
         )
     }
+
+    func testCyrillicTitleIsNotStripped() {
+        XCTAssertEqual(ShazamCatalogMatcher.normalized("Новогодняя").trimmingCharacters(in: .whitespaces), "новогодняя")
+        let match = ShazamCatalogMatcher.bestSong(
+            title: "Новогодняя",
+            artist: "Diskoteka Avariya",
+            songs: [
+                SearchResultItem.catalogStub(
+                    title: "Unrelated",
+                    url: "https://music.apple.com/song/wrong",
+                    artist: "Diskoteka Avariya"
+                ),
+                SearchResultItem.catalogStub(
+                    title: "Новогодняя",
+                    url: "https://music.apple.com/song/right",
+                    artist: "Diskoteka Avariya"
+                ),
+            ]
+        )
+        XCTAssertEqual(match?.url, "https://music.apple.com/song/right")
+    }
+
+    func testRemixSuffixStillMatchesCoreTitle() {
+        let songs = [
+            SearchResultItem.catalogStub(
+                title: "Ibiza",
+                url: "https://music.apple.com/song/ibiza",
+                artist: "Francesco Diaz"
+            )
+        ]
+        let match = ShazamCatalogMatcher.bestSong(
+            title: "Ibiza (Wawa Club Mix) [feat. Beverly T.J]",
+            artist: "Francesco Diaz",
+            songs: songs
+        )
+        XCTAssertEqual(match?.url, "https://music.apple.com/song/ibiza")
+    }
+
+    func testExternalRecordingPrefersTitleAndArtistOverKaraoke() {
+        let songs = [
+            SearchResultItem.catalogStub(
+                title: "Tequila (Karaoke Version)",
+                url: "https://www.youtube.com/watch?v=karaoke",
+                artist: "Karaoke Hub"
+            ),
+            SearchResultItem.catalogStub(
+                title: "Maco Mamuko - Tequila (Official Audio)",
+                url: "https://www.youtube.com/watch?v=tequila",
+                artist: "Maco Mamuko"
+            ),
+        ]
+        let match = ShazamCatalogMatcher.bestExternalRecording(
+            title: "Tequila",
+            artist: "Maco Mamuko",
+            songs: songs
+        )
+        XCTAssertEqual(match?.url, "https://www.youtube.com/watch?v=tequila")
+    }
+
+    func testExternalRecordingStillReturnsAHitWhenChannelNameDiffers() {
+        let songs = [
+            SearchResultItem.catalogStub(
+                title: "Tequila",
+                url: "https://www.youtube.com/watch?v=topic",
+                artist: "Topic"
+            ),
+        ]
+        let match = ShazamCatalogMatcher.bestExternalRecording(
+            title: "Tequila",
+            artist: "Maco Mamuko",
+            songs: songs
+        )
+        XCTAssertEqual(match?.url, "https://www.youtube.com/watch?v=topic")
+    }
+
+    func testAppleMusicFallbackDoesNotNeedSearchHits() {
+        let fallback = ShazamCatalogMatcher.catalogFallback(
+            title: "Ibiza",
+            artist: "Francesco Diaz",
+            appleMusicID: "123456",
+            webURL: nil
+        )
+        XCTAssertEqual(fallback?.url, "https://music.apple.com/song/123456")
+    }
 }
 
 final class BulkServerQueuePolicyTests: XCTestCase {
-    func testPlaylistRunsTwoJobsAtATime() {
+    func testPlaylistRunsOneJobAtATime() {
         var completed = 0
         var inFlight = 0
         var maxInFlight = 0
@@ -183,8 +267,8 @@ final class BulkServerQueuePolicyTests: XCTestCase {
                 completed += 1
             case .done:
                 XCTAssertEqual(starts, Array(0..<total))
-                XCTAssertEqual(maxInFlight, 2)
-                XCTAssertEqual(BulkServerQueuePolicy.maxConcurrentServerJobs, 2)
+                XCTAssertEqual(maxInFlight, 1)
+                XCTAssertEqual(BulkServerQueuePolicy.maxConcurrentServerJobs, 1)
                 return
             case .cancelled:
                 XCTFail("cancelled")
@@ -193,19 +277,29 @@ final class BulkServerQueuePolicyTests: XCTestCase {
         }
     }
 
-    func testWaitsWhenTwoJobsAreInFlight() {
-        XCTAssertEqual(
-            BulkServerQueuePolicy.nextAction(completed: 3, total: 144, cancelled: false, inFlight: 2),
-            .wait
-        )
+    func testWaitsWhenTheSingleJobIsInFlight() {
         XCTAssertEqual(
             BulkServerQueuePolicy.nextAction(completed: 3, total: 144, cancelled: false, inFlight: 1),
-            .start(index: 4)
+            .wait
         )
         XCTAssertEqual(
             BulkServerQueuePolicy.nextAction(completed: 3, total: 144, cancelled: false, inFlight: 0),
             .start(index: 3)
         )
+    }
+
+    func testOverallProgressSumsLiveSlots() {
+        XCTAssertEqual(
+            BulkServerQueuePolicy.overallFraction(completed: 0, total: 99, slotProgresses: [0.22, 0.22]),
+            0.22 / 99,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            BulkServerQueuePolicy.overallFraction(completed: 10, total: 100, slotProgresses: [0.5, 0.25, 0.25]),
+            0.105,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(BulkServerQueuePolicy.overallFraction(completed: 0, total: 99, slotProgresses: []), 0)
     }
 
     func testCancelStopsTheQueueImmediately() {
@@ -216,15 +310,25 @@ final class BulkServerQueuePolicyTests: XCTestCase {
     }
 
     func testStallAtFortyThreePercentTriggersRetry() {
-        XCTAssertTrue(BulkServerQueuePolicy.isAcquireStalled(progress: 43, unchangedFor: 19))
-        XCTAssertTrue(BulkServerQueuePolicy.isAcquireStalled(progress: 22, unchangedFor: 19))
-        XCTAssertFalse(BulkServerQueuePolicy.isAcquireStalled(progress: 43, unchangedFor: 10))
-        XCTAssertFalse(BulkServerQueuePolicy.isAcquireStalled(progress: 97, unchangedFor: 120))
+        XCTAssertFalse(BulkServerQueuePolicy.isAcquireStalled(progress: 43, unchangedFor: 19))
+        XCTAssertFalse(BulkServerQueuePolicy.isAcquireStalled(progress: 43, unchangedFor: 91))
+        XCTAssertTrue(BulkServerQueuePolicy.isAcquireStalled(progress: 43, unchangedFor: 151))
+        XCTAssertFalse(BulkServerQueuePolicy.isAcquireStalled(progress: 0, unchangedFor: 30))
+        XCTAssertFalse(BulkServerQueuePolicy.isAcquireStalled(progress: 97, unchangedFor: 30))
+        XCTAssertTrue(BulkServerQueuePolicy.isAcquireStalled(progress: 97, unchangedFor: 121))
+    }
+
+    func testFinalizeCompleteAtReadyOrHundred() {
+        XCTAssertTrue(BulkServerQueuePolicy.isFinalizeComplete(progress: 97, isDurable: true, isReady: false))
+        XCTAssertTrue(BulkServerQueuePolicy.isFinalizeComplete(progress: 96, isDurable: false, isReady: true))
+        XCTAssertFalse(BulkServerQueuePolicy.isFinalizeComplete(progress: 100, isDurable: false, isReady: false))
+        XCTAssertFalse(BulkServerQueuePolicy.isFinalizeComplete(progress: 97, isDurable: false, isReady: false))
     }
 
     func testJitterDoesNotCountAsProgress() {
-        XCTAssertFalse(BulkServerQueuePolicy.isMeaningfulProgress(from: 43, to: 43.6))
-        XCTAssertTrue(BulkServerQueuePolicy.isMeaningfulProgress(from: 43, to: 47))
+        XCTAssertFalse(BulkServerQueuePolicy.isMeaningfulProgress(from: 43, to: 43.1))
+        XCTAssertTrue(BulkServerQueuePolicy.isMeaningfulProgress(from: 43, to: 43.4))
+        XCTAssertTrue(BulkServerQueuePolicy.isMeaningfulProgress(from: 86, to: 90))
     }
 
     func testJobIdAloneDoesNotSkipPlaylistTrack() {
@@ -252,6 +356,62 @@ final class BulkServerQueuePolicyTests: XCTestCase {
         XCTAssertEqual(
             BulkServerQueuePolicy.displayTotal(stickyTotal: 144, itemCount: 1, existingTotal: 0),
             144
+        )
+    }
+
+    func testLockScreenHidesLeftoverTwentySixHourETA() {
+        XCTAssertNil(
+            LiveActivityLockScreenPolicy.displayETA(seconds: 26 * 3600, remainingCount: 1)
+        )
+        XCTAssertEqual(
+            LiveActivityLockScreenPolicy.displayETA(seconds: 90, remainingCount: 1),
+            90
+        )
+        XCTAssertEqual(
+            DownloadETAFormatter.expanded(
+                LiveActivityLockScreenPolicy.displayETA(seconds: 26 * 3600, remainingCount: 1)
+            ),
+            "—"
+        )
+    }
+
+    func testPlusRemoteDoneFinishesLockScreen() {
+        XCTAssertTrue(
+            LiveActivityLockScreenPolicy.shouldFinishPlusFromRemote(
+                plusURLs: ["https://music.apple.com/song/tonight"],
+                finishedURLs: ["https://music.apple.com/song/tonight"]
+            )
+        )
+        XCTAssertFalse(
+            LiveActivityLockScreenPolicy.shouldFinishPlusFromRemote(
+                plusURLs: ["https://music.apple.com/song/tonight"],
+                finishedURLs: []
+            )
+        )
+        XCTAssertTrue(LiveActivityLockScreenPolicy.shouldDismissOrphanActivity(hasActiveWork: false))
+        XCTAssertFalse(LiveActivityLockScreenPolicy.shouldDismissOrphanActivity(hasActiveWork: true))
+    }
+
+    func testLandedMovieMustNotKeepLockScreenAlive() {
+        XCTAssertFalse(
+            MovieDownloadLockScreenPolicy.isLiveRemoteJob(isTerminal: false, alreadyLanded: true)
+        )
+        XCTAssertTrue(
+            MovieDownloadLockScreenPolicy.isLiveRemoteJob(isTerminal: false, alreadyLanded: false)
+        )
+        XCTAssertTrue(
+            MovieDownloadLockScreenPolicy.shouldDismissLandedBatch(
+                unfinishedCount: 0,
+                landedCount: 1,
+                total: 1
+            )
+        )
+        XCTAssertFalse(
+            MovieDownloadLockScreenPolicy.shouldDismissLandedBatch(
+                unfinishedCount: 1,
+                landedCount: 0,
+                total: 1
+            )
         )
     }
 }

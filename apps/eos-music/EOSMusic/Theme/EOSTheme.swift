@@ -195,26 +195,36 @@ struct PlayerVisualPolicy: Equatable {
         let timeline: Double = 0
         var reason: String?
         var scale = clampedIntensity
-        var allowStrobe = (preset == .strobe || strobeEnabled) && thermal == .nominal
+        let wantsStrobe = preset == .strobe || strobeEnabled
+        // Explicit strobe stays on through .fair. Only serious heat and Low Power kill it.
+        var allowStrobe = wantsStrobe
 
         if autoPerformance {
             if thermal == .serious {
                 fps = 6
                 scale *= 0.4
                 allowStrobe = false
-                reason = "Ciepłe urządzenie — statyczna okładka"
-            } else if thermal == .fair || lowPower {
+                reason = "Ciepłe urządzenie — bez stroboskopu"
+            } else if lowPower {
                 fps = preset == .spectrum ? 8 : 6
                 scale *= 0.62
                 allowStrobe = false
-                reason = lowPower
-                    ? "Tryb Low Power ogranicza efekty"
-                    : "Ciepłe urządzenie — tryb oszczędny"
+                reason = "Tryb Low Power ogranicza efekty"
+            } else if thermal == .fair {
+                fps = preset == .spectrum ? 8 : 6
+                scale *= 0.8
             }
-        } else if lowPower || thermal == .fair {
+        } else if lowPower {
             fps = preset == .spectrum ? 8 : 6
             scale *= 0.7
             allowStrobe = false
+        } else if thermal == .fair {
+            fps = preset == .spectrum ? 8 : 6
+            scale *= 0.85
+        }
+
+        if allowStrobe {
+            fps = max(fps, 12)
         }
 
         return PlayerVisualPolicy(
@@ -259,6 +269,9 @@ struct PlayerVisualAnalysisSync: ViewModifier {
             .onChange(of: ui.playerMixerPowered) { _, _ in sync() }
             .onChange(of: ui.playerVisualPreset) { _, _ in sync() }
             .onChange(of: ui.playerStrobeEnabled) { _, _ in sync() }
+            .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+                sync()
+            }
     }
 
     private var syncTrigger: String {
@@ -296,9 +309,10 @@ struct PlayerVisualAnalysisSync: ViewModifier {
         let surface: PlayerVisualSurface
         // Keep analysis soft-off in background — engine leaves the audio tap attached
         // while playing so switching apps does not stutter.
+        let landscapeNowPlaying = UIDevice.current.orientation.isLandscape && engine.currentTrack != nil
         if scenePhase != .active {
             surface = .none
-        } else if app.isFullPlayerPresented {
+        } else if app.isFullPlayerPresented || landscapeNowPlaying {
             surface = .full
         } else if engine.currentTrack != nil {
             surface = .mini
@@ -786,25 +800,25 @@ final class StrobeBeatDriver: ObservableObject {
         lastRhythm = smoothed
 
         if rhythmOnset || bassPulse {
-            let flashDuration = 0.048 + (1 - speed) * 0.04
+            let flashDuration = PlayerVisualMetrics.strobeWindow(speed: speed)
             flashUntil = max(flashUntil, time + flashDuration)
             lastRhythmHitAt = time
         }
 
-        let bpm = 88 + speed * 120
+        let bpm = 96 + speed * 132
         let fallbackInterval = 60.0 / bpm
         if time - lastFallbackTick >= fallbackInterval {
             lastFallbackTick = time
-            if time - lastRhythmHitAt > 0.75, level > 0.04, rhythm > 0.10 {
-                flashUntil = max(flashUntil, time + 0.052)
+            if time - lastRhythmHitAt > 0.62, level > 0.04, rhythm > 0.10 {
+                flashUntil = max(flashUntil, time + PlayerVisualMetrics.strobeWindow(speed: speed))
             }
         }
 
         guard time < flashUntil else { return 0 }
         let tail = flashUntil - time
-        let window = 0.05 + (1 - speed) * 0.04
-        let raw = min(1, tail / window)
-        return min(1, raw * raw * (1.15 + bass * 0.35))
+        let window = PlayerVisualMetrics.strobeWindow(speed: speed)
+        let raw = min(1, tail / max(0.02, window))
+        return min(1, raw * raw * (1.35 + bass * 0.4))
     }
 }
 

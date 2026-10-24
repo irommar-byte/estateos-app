@@ -65,6 +65,17 @@ final class MusicPlaybackEngine: ObservableObject {
         var peakHold: [Double] = Array(repeating: 0, count: spectrumBandCountMax)
         var energy: Double = 0
         var activeSpectrumBands: Int = spectrumBandCountStandard
+        /// Dokładne momenty uderzeń (CACurrentMediaTime) wykryte w wątku audio — UI liczy z nich
+        /// impulsy w każdej klatce, więc żadne uderzenie nie ginie między publikacjami.
+        /// Poziom lewego / prawego kanału (0…1) — mierniki L/R.
+        var levelL: Double = 0
+        var levelR: Double = 0
+        var kickAt: Double = 0
+        var snareAt: Double = 0
+        var hatAt: Double = 0
+        var kickStrength: Double = 0
+        var snareStrength: Double = 0
+        var hatStrength: Double = 0
 
         /// Płynna siła wizualna: cichy dźwięk = mała, mocny = duża (z headroomem przeciw przesterowi).
         func visualDrive(isStrong: Bool, intensity: Double = 1) -> Double {
@@ -170,6 +181,8 @@ final class MusicPlaybackEngine: ObservableObject {
     @Published private(set) var currentTrack: MusicPlaybackTrack?
     /// Embedded / hydrated cover bitmap — keeps iPad hero + mini-player from showing empty note placeholders.
     @Published private(set) var displayArtwork: UIImage?
+    /// Track id that `displayArtwork` belongs to — never reuse a previous cover on skip.
+    @Published private(set) var displayArtworkTrackID: String?
     @Published private(set) var isPlaying = false
     @Published private(set) var isLoading = false
     /// Not @Published — buffering flicker must not rebuild FullPlayer / lists.
@@ -181,12 +194,29 @@ final class MusicPlaybackEngine: ObservableObject {
     private(set) var currentTime: Double = 0
     private(set) var duration: Double = 0
     @Published var shuffleEnabled = false
-    @Published var repeatMode: RepeatMode = .all
+    @Published var repeatMode: RepeatMode = .all {
+        didSet { applyRepeatModeToPlayer() }
+    }
     @Published var errorMessage: String?
     @Published private(set) var playbackOrigin: MediaPlaybackOrigin = .unknown
     /// When true, never open network streams — local files only.
     var offlineOnly = false
     let visualizer = PlayerAudioVisualizer()
+
+    func displayArtwork(for track: MusicPlaybackTrack) -> UIImage? {
+        displayArtworkTrackID == track.id ? displayArtwork : nil
+    }
+
+    private func clearDisplayArtwork() {
+        // Każdy zapis @Published (nawet tej samej wartości) przebudowywał widoki całej aplikacji.
+        if displayArtwork != nil { displayArtwork = nil }
+        if displayArtworkTrackID != nil { displayArtworkTrackID = nil }
+    }
+
+    private func setDisplayArtwork(_ image: UIImage?, trackID: String) {
+        displayArtwork = image
+        displayArtworkTrackID = image == nil ? nil : trackID
+    }
 
     /// Live AVPlayer clock — no Combine / @Published, safe to poll from scrubber TimelineView.
     func livePlaybackTime() -> Double {
@@ -227,11 +257,12 @@ final class MusicPlaybackEngine: ObservableObject {
             case .none:
                 fps = 0
             case .mini:
-                fps = min(10, max(8, policy.analyzerFPS))
+                fps = 15
             case .full:
+                // Spektrum: 30 Hz z analizy, ekran interpoluje w 60–120 Hz (dynamika Winampa).
                 fps = needsSpectrum
-                    ? min(12, max(8, policy.analyzerFPS))
-                    : min(8, max(6, policy.analyzerFPS))
+                    ? (policy.analyzerFPS >= 8 ? 30 : 15)
+                    : (policy.analyzerFPS >= 6 ? 30 : 15)
             }
         } else {
             fps = 0
@@ -246,7 +277,9 @@ final class MusicPlaybackEngine: ObservableObject {
         if active {
             audioAnalyzer.setAnalysisEnabled(true)
             audioAnalyzer.setPublishRate(fps: fps)
-            if let item = player?.currentItem {
+            // Nie zakładaj tapu w trakcie grania — audioMix w locie ucina dźwięk na ~1 s
+            // przy otwarciu playera. Tap jest zakładany zanim AVPlayer wystartuje.
+            if let item = player?.currentItem, (player?.rate ?? 0) < 0.01, !playbackDesired {
                 audioAnalyzer.ensureAttached(to: item)
             }
         } else {
@@ -275,10 +308,9 @@ final class MusicPlaybackEngine: ObservableObject {
     }
 
     private func reattachVisualAnalysis(for item: AVPlayerItem) {
-        guard visualAnalysisEnabled, visualAnalysisFPS > 0.5 else {
-            audioAnalyzer.detach(from: item)
-            return
-        }
+        if item.audioMix != nil { return }
+        if (player?.rate ?? 0) > 0.01 || playbackDesired { return }
+        guard visualAnalysisEnabled, visualAnalysisFPS > 0.5 else { return }
         audioAnalyzer.ensureAttached(to: item)
     }
 
@@ -299,6 +331,7 @@ final class MusicPlaybackEngine: ObservableObject {
     private var player: AVQueuePlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var itemAdvanceObserver: NSKeyValueObservation?
     private var failObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
     private var rateObserver: NSKeyValueObservation?
@@ -331,6 +364,14 @@ final class MusicPlaybackEngine: ObservableObject {
     private var stalledObserver: NSObjectProtocol?
     /// True while the user/engine intends continuous playback (survives temporary rate=0 stalls).
     private var playbackDesired = false
+    private var playbackBackgroundTask: UIBackgroundTaskIdentifier = .invalid
+    private var boundItemID: ObjectIdentifier?
+    private var itemQueueIndex: [ObjectIdentifier: Int] = [:]
+    /// Podmiana elementu w kolejce — KVO nie może wtedy przestawić etykiety na chwilowy utwór.
+    private var ignoreItemChanges = false
+    private var lastHandoffAt = Date.distantPast
+    private var tapInstallPermit = 0
+    private var suppressAutoHandoffUntil = Date.distantPast
     private var activeStreamJobId: String?
     private var tokenExpiresAt: Date?
     /// Reuse play-tokens across skip/prefetch — avoids an extra RTT when the file is already on server.
@@ -351,6 +392,15 @@ final class MusicPlaybackEngine: ObservableObject {
         let url: URL
         let readyRemote: Bool
         var item: AVPlayerItem?
+        var createdAt = Date()
+
+        /// Przygotowany wcześniej element żyje krótko: po zmianie kolejki, restarcie serwera
+        /// albo zerwanym połączeniu AVPlayer potrafił na nim „grać” bez dźwięku przez minutę.
+        var isFresh: Bool {
+            guard let item else { return true }
+            if item.status == .failed || item.error != nil { return false }
+            return url.isFileURL || Date().timeIntervalSince(createdAt) < 45
+        }
     }
 
     private var prefetchedStream: PrefetchedStream?
@@ -362,6 +412,7 @@ final class MusicPlaybackEngine: ObservableObject {
         folderName = session.folderName
         sessionCollectionId = session.id.uuidString
         rebuildPlayOrder(shuffled: false, anchor: session.startIndex)
+        PlayerAudioVisualizer.current = visualizer
     }
 
     func configure(
@@ -436,6 +487,13 @@ final class MusicPlaybackEngine: ObservableObject {
         }
         audioLifecycleObservers = []
     }
+
+    /// Liczba utworów w kolejce — tanio, bez budowania wierszy kolejki.
+    var queueCount: Int { playOrder.count }
+
+    /// Czy użytkownik chce, żeby grało (prawda także podczas chwilowego buforowania i przeskoku).
+    /// UI używa tego do animacji „pauzy” okładki — bez mrugania przy zmianie utworu.
+    var isPlaybackIntended: Bool { playbackDesired }
 
     var queuePositionLabel: String {
         guard !queue.isEmpty else { return "" }
@@ -513,17 +571,20 @@ final class MusicPlaybackEngine: ObservableObject {
         finalizeListenSession()
         teardownPlayer()
         currentTrack = nil
-        displayArtwork = nil
+        clearDisplayArtwork()
         playbackOrigin = .unknown
         isPlaying = false
         isLoading = false
         isBuffering = false
         playbackDesired = false
+        endPlaybackBackgroundTask()
         streamRecoveryAttempts = 0
         continuousPlayingSince = nil
         activeStreamJobId = nil
         tokenExpiresAt = nil
         prefetchedStream = nil
+        itemQueueIndex.removeAll()
+        boundItemID = nil
         currentTime = 0
         duration = 0
         nowPlaying.deactivate()
@@ -610,6 +671,96 @@ final class MusicPlaybackEngine: ObservableObject {
         refreshNowPlaying(force: true)
     }
 
+    /// Po odblokowaniu / powrocie z tła: jeśli kolejka miała grać, nie zostawiaj ciszy.
+    func resumeIfDesiredAfterForeground() {
+        guard playbackDesired, player != nil else { return }
+        AudioSession.activateForPlayback(force: true)
+        syncDisplayedTrackToPlayer(generation: sessionGeneration)
+        if let item = player?.currentItem {
+            let elapsed = item.currentTime().seconds
+            let length = item.duration.seconds
+            if length.isFinite, elapsed.isFinite, length > 1, length - elapsed < 0.45 {
+                Task { await self.skipNext() }
+                return
+            }
+        }
+        if (player?.rate ?? 0) < 0.01 {
+            player?.play()
+        }
+        syncPlayingState()
+        refreshNowPlaying(force: true)
+        let generation = sessionGeneration
+        Task { await self.prefetchUpcoming(from: self.playOrder[safe: self.orderCursor] ?? 0, generation: generation) }
+    }
+
+    /// Trzymaj proces przy życiu na granicy utworów, gdy ekran jest zablokowany.
+    func prepareForBackground() {
+        guard playbackDesired else { return }
+        beginPlaybackBackgroundTask()
+        let generation = sessionGeneration
+        Task { await self.prefetchUpcoming(from: self.playOrder[safe: self.orderCursor] ?? 0, generation: generation) }
+    }
+
+    private func beginPlaybackBackgroundTask() {
+        guard playbackBackgroundTask == .invalid else { return }
+        playbackBackgroundTask = UIApplication.shared.beginBackgroundTask(withName: "eos-music-queue") { [weak self] in
+            Task { @MainActor in
+                self?.endPlaybackBackgroundTask()
+            }
+        }
+    }
+
+    private func endPlaybackBackgroundTask() {
+        guard playbackBackgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(playbackBackgroundTask)
+        playbackBackgroundTask = .invalid
+    }
+
+    /// Tap przed `play()`. Jeśli nie zdąży przed startem, nie zakładamy go w trakcie grania.
+    private func installTapBeforePlay(_ item: AVPlayerItem) async {
+        tapInstallPermit += 1
+        let permit = tapInstallPermit
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var resumed = false
+            let finish = {
+                if resumed { return }
+                resumed = true
+                continuation.resume()
+            }
+            Task { @MainActor in
+                await self.audioAnalyzer.installBeforePlayback(item) {
+                    self.tapInstallPermit == permit
+                }
+                finish()
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: 550_000_000)
+                await MainActor.run {
+                    if self.tapInstallPermit == permit {
+                        self.tapInstallPermit += 1
+                        self.installLateTap(item)
+                    }
+                    finish()
+                }
+            }
+        }
+    }
+
+    /// Live stream: ścieżki audio znane są dopiero po pierwszych bajtach (kilka sekund),
+    /// więc tap nie zdążał przed play() i efekty wizualne przy streamie nie działały wcale.
+    /// Zakładamy go, gdy tylko ścieżka się pojawi — póki utwór jest na samym początku.
+    private func installLateTap(_ item: AVPlayerItem) {
+        Task { @MainActor [weak self, weak item] in
+            guard let self, let item else { return }
+            await self.audioAnalyzer.installBeforePlayback(item) { [weak self] in
+                // Tylko zanim dźwięk ruszy. Podmiana audioMix na już grającym elemencie
+                // potrafiła wyciszyć cały utwór.
+                guard let self, let player = self.player, player.currentItem === item else { return false }
+                return player.timeControlStatus != .playing
+            }
+        }
+    }
+
     func seek(to seconds: Double) {
         let time = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
         player?.seek(to: time)
@@ -619,6 +770,8 @@ final class MusicPlaybackEngine: ObservableObject {
 
     func skipNext() async {
         guard !queue.isEmpty else { return }
+        suppressAutoHandoffUntil = Date().addingTimeInterval(1.2)
+        beginPlaybackBackgroundTask()
         await runSerializedPlay { [weak self] generation in
             guard let self else { return }
             if self.orderCursor < self.playOrder.count - 1 {
@@ -653,17 +806,20 @@ final class MusicPlaybackEngine: ObservableObject {
     }
 
     /// Insert tracks to play immediately after the current item (Apple Music “Play Next”).
+    ///
+    /// Pracuje na lokalnej kopii kolejki: wcześniej domknięcie `removeAll` czytało `playOrder`
+    /// w trakcie jego modyfikacji (Swift zatrzymuje wtedy aplikację), a usunięcie utworu sprzed
+    /// bieżącego przesuwało wskaźnik na zły utwór.
     func insertNext(_ tracks: [MusicPlaybackTrack]) {
         guard !tracks.isEmpty else { return }
-        let insertAt = min(orderCursor + 1, playOrder.count)
-        var offset = 0
-        for track in tracks {
-            let qi = enqueueUnique(track)
-            playOrder.removeAll { $0 == qi && playOrder.firstIndex(of: qi) != orderCursor }
-            let at = min(insertAt + offset, playOrder.count)
-            playOrder.insert(qi, at: at)
-            offset += 1
-        }
+        let result = PlayNextQueueEdit.apply(
+            playOrder: playOrder,
+            cursor: orderCursor,
+            inserting: tracks.map { enqueueUnique($0) }
+        )
+        playOrder = result.playOrder
+        orderCursor = result.cursor
+        queueRevision &+= 1
         invalidatePreparedNext()
         BluetoothMediaBrowser.shared.reloadQueue(from: self)
         let generation = sessionGeneration
@@ -679,8 +835,13 @@ final class MusicPlaybackEngine: ObservableObject {
                 playOrder.append(qi)
             }
         }
+        queueRevision &+= 1
         BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
+
+    /// Zmienia się przy każdej edycji kolejki — widok kolejki odświeża się od razu
+    /// (wcześniej przesunięty utwór „wracał”, bo lista nie wiedziała o zmianie).
+    @Published private(set) var queueRevision = 0
 
     func removeFromQueue(orderIndex: Int) {
         guard playOrder.indices.contains(orderIndex), orderIndex != orderCursor else { return }
@@ -688,8 +849,25 @@ final class MusicPlaybackEngine: ObservableObject {
         if orderIndex < orderCursor {
             orderCursor -= 1
         }
+        queueRevision &+= 1
         invalidatePreparedNext()
         BluetoothMediaBrowser.shared.reloadQueue(from: self)
+    }
+
+    /// Przesunięcie jak w `List.onMove` (indeks docelowy = „wstaw przed”, może być równy liczbie
+    /// elementów). Bieżący utwór zostaje bieżącym niezależnie od tego, co przesunięto.
+    func moveQueueItems(fromOffsets source: IndexSet, toOffset destination: Int) {
+        guard !source.isEmpty, destination >= 0, destination <= playOrder.count else { return }
+        let currentQueueIndex = playOrder.indices.contains(orderCursor) ? playOrder[orderCursor] : nil
+        playOrder.move(fromOffsets: source, toOffset: destination)
+        if let currentQueueIndex, let cursor = playOrder.firstIndex(of: currentQueueIndex) {
+            orderCursor = cursor
+        }
+        queueRevision &+= 1
+        invalidatePreparedNext()
+        BluetoothMediaBrowser.shared.reloadQueue(from: self)
+        let generation = sessionGeneration
+        Task { await self.prefetchUpcoming(from: self.playOrder[safe: self.orderCursor] ?? 0, generation: generation) }
     }
 
     func moveQueueItem(from source: Int, to destination: Int) {
@@ -703,6 +881,7 @@ final class MusicPlaybackEngine: ObservableObject {
         } else if source > orderCursor, destination <= orderCursor {
             orderCursor += 1
         }
+        queueRevision &+= 1
         invalidatePreparedNext()
         BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
@@ -739,6 +918,7 @@ final class MusicPlaybackEngine: ObservableObject {
         shuffleEnabled.toggle()
         let anchor = playOrder[safe: orderCursor] ?? 0
         rebuildPlayOrder(shuffled: shuffleEnabled, anchor: anchor)
+        queueRevision &+= 1
         BluetoothMediaBrowser.shared.reloadQueue(from: self)
     }
 
@@ -781,13 +961,13 @@ final class MusicPlaybackEngine: ObservableObject {
         cleanupObservers()
         finalizeListenSession()
 
-        let artworkWas = displayArtwork
         currentTrack = track
         beginListenSession(for: track)
-        if artworkWas == nil {
-            displayArtwork = nil
-        }
+        clearDisplayArtwork()
         playbackOrigin = .unknown
+        if let stale = prefetchedStream, stale.trackID == track.id, !stale.isFresh {
+            invalidatePreparedNext()
+        }
         let canReusePrepared = prefetchedStream?.trackID == track.id && prefetchedStream?.item != nil
         isLoading = !canReusePrepared
         isBuffering = false
@@ -841,7 +1021,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 streamOpenSignpost = nil
                 return
             }
-            loadStream(
+            await loadStream(
                 url: streamURL,
                 track: track,
                 queueIndex: index,
@@ -852,6 +1032,7 @@ final class MusicPlaybackEngine: ObservableObject {
             Task { [weak self] in
                 await self?.prefetchUpcoming(from: index, generation: generation)
             }
+            startWatchdog(track: track, queueIndex: index, generation: generation)
         } catch {
             EOSPerfLog.intervalEnd("StreamOpen", id: openSignpost)
             streamOpenSignpost = nil
@@ -861,6 +1042,43 @@ final class MusicPlaybackEngine: ObservableObject {
             setPlaybackActivity(.error, title: "Nie można odtworzyć", detail: error.localizedDescription)
             errorMessage = error.localizedDescription
             isPlaying = false
+        }
+    }
+
+    /// Utwór „gra”, a czas stoi i nie ma dźwięku — po 7 s otwórz stream od nowa
+    /// (zamiast czekać minutę na timeout AVPlayera).
+    private func isStartStuck(generation: Int) -> Bool {
+        guard generation == sessionGeneration, playbackDesired,
+              let player, let item = player.currentItem else { return false }
+        if item.status == .failed { return true }
+        let pos = item.currentTime().seconds
+        return player.timeControlStatus != .playing && (!pos.isFinite || pos < 0.5)
+    }
+
+    private func startWatchdog(track: MusicPlaybackTrack, queueIndex: Int, generation: Int) {
+        Task { @MainActor [weak self] in
+            // 1) Po 3,5 s: to samo, co robi odblokowanie ekranu — aktywna sesja audio + play().
+            //    Na zablokowanym ekranie licznik szedł, a AVPlayer stał, bo sesja była nieaktywna.
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            guard let self, self.isStartStuck(generation: generation) else { return }
+            AudioSession.activateForPlayback(force: true)
+            self.player?.play()
+            self.syncPlayingState()
+            // 2) Po kolejnych 3,5 s dalej stoi — otwórz stream od nowa (tylko trwałe kopie;
+            //    live stream ma prawo czekać na pierwsze bajty).
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            guard self.isStartStuck(generation: generation), let item = self.player?.currentItem else { return }
+            let isFile = (item.asset as? AVURLAsset)?.url.isFileURL == true
+            guard self.currentStreamIsReadyRemote || isFile else { return }
+            EOSPerfLog.stream.info("start watchdog: remount title=\(track.title, privacy: .public)")
+            self.prefetchedStream = nil
+            await self.recoverFromStreamDisruption(
+                track: track,
+                queueIndex: queueIndex,
+                generation: generation,
+                at: 0,
+                reason: "start watchdog"
+            )
         }
     }
 
@@ -962,6 +1180,24 @@ final class MusicPlaybackEngine: ObservableObject {
         let uniqueIds = knownIds.filter { seenIds.insert($0).inserted }
         let verifyKnown = forceRefresh || streamRecoveryAttempts > 0
 
+        // Utwór już leży na serwerze — graj od razu. Wcześniej najpierw szło pytanie o aktywne
+        // pobierania; po zmianie kolejności playlisty serwer kolejkował jej utwory i odtwarzacz
+        // czekał (do 10 min) na „zapis” utworu, który był gotowy od dawna.
+        if !verifyKnown {
+            for jobId in uniqueIds {
+                guard let status = try? await api.fetchJobStatus(jobId: jobId),
+                      status.isPlayableServerStream, status.isDurableServerCopy else { continue }
+                bindDurableJobId(jobId, toTrackURL: track.url)
+                playbackOrigin = .server
+                return try await authenticatedStreamURL(
+                    jobId: jobId,
+                    track: track,
+                    durable: true,
+                    forceRefresh: false
+                )
+            }
+        }
+
         // Play + „Zapis na serwer” of the same URL must share one job. A second live
         // play never gets first bytes while the NAS is busy ingesting.
         let shouldProbeActive =
@@ -970,6 +1206,18 @@ final class MusicPlaybackEngine: ObservableObject {
             || MusicDownloadService.isServerAcquireActive(track.url)
             || uniqueIds.isEmpty
         if shouldProbeActive, let active = await api.findActiveMusicJob(url: track.url), !active.jobId.isEmpty {
+            // Kolejka zapisu playlisty może trzymać „queued” dla utworu, który już jest na dysku.
+            // Serwer odda gotowy plik od ręki — nie czekaj na zadanie z kolejki.
+            if active.looksLikeFileIngest, !active.isTerminal,
+               let ensure = try? await api.startMusicPlay(url: track.url, folderId: track.folderId, trackUrl: track.url, intent: "play"),
+               ensure.ready == true, ensure.isDurableServerCopy,
+               let token = ensure.token, !token.isEmpty {
+                bindDurableJobId(ensure.jobId, toTrackURL: track.url)
+                rememberStreamToken(jobId: ensure.jobId, token: token, expiresIn: nil)
+                playbackOrigin = .server
+                setPlaybackActivity(.onServerConnecting, title: "Na serwerze EOS", detail: "Odtwarzam…")
+                return api.musicStreamURL(jobId: ensure.jobId, token: token)
+            }
             EOSPerfLog.stream.debug(
                 "reuse active server job=\(active.jobId, privacy: .public) status=\(active.status, privacy: .public) ingest=\(active.looksLikeFileIngest)"
             )
@@ -1340,7 +1588,7 @@ final class MusicPlaybackEngine: ObservableObject {
             guard generation == sessionGeneration, currentTrack?.id == track.id else { return }
             let resumeAt = livePlaybackTime()
             teardownPlayer()
-            loadStream(
+            await loadStream(
                 url: streamURL,
                 track: track,
                 queueIndex: queueIndex,
@@ -1408,21 +1656,34 @@ final class MusicPlaybackEngine: ObservableObject {
             || lower.contains("forbidden")
     }
 
-    /// Warm the next track so skip feels instant — never compete with active user downloads.
+    /// Warm the next track so the queue advances without a gap — also while the phone is locked.
     private func prefetchUpcoming(from _: Int, generation: Int) async {
-        guard generation == sessionGeneration, let api, !offlineOnly else { return }
-        guard !MusicDownloadService.hasActiveDownloads else { return }
-        let nextCursor = orderCursor + 1
+        guard generation == sessionGeneration, !offlineOnly else { return }
+        let nextCursor: Int
+        if orderCursor + 1 < playOrder.count {
+            nextCursor = orderCursor + 1
+        } else if repeatMode == .all, playOrder.count > 1 {
+            nextCursor = 0
+        } else {
+            return
+        }
         guard nextCursor >= 0, nextCursor < playOrder.count else { return }
         let qi = playOrder[nextCursor]
         guard queue.indices.contains(qi) else { return }
         let track = queue[qi]
+        if prefetchedStream?.trackID == track.id, prefetchedStream?.item != nil { return }
         guard !MusicDownloadService.isServerAcquireActive(track.url) else { return }
-        if track.isExternal { return }
         if let local = OfflineMusicStore.shared.localURL(for: track.url) {
             await preparePrefetchItem(trackID: track.id, url: local, readyRemote: false, generation: generation)
             return
         }
+        if track.isExternal {
+            if let resolver = externalFileResolver, let local = try? await resolver(track) {
+                await preparePrefetchItem(trackID: track.id, url: local, readyRemote: false, generation: generation)
+            }
+            return
+        }
+        guard let api else { return }
 
         let knownIds = [track.downloadJobId, jobLookup?(track.url), track.serverAssetId]
             .compactMap { $0 }
@@ -1456,7 +1717,9 @@ final class MusicPlaybackEngine: ObservableObject {
             if ensure.isDurableServerCopy {
                 bindDurableJobId(ensure.jobId, toTrackURL: track.url)
             }
-            if let token = ensure.token, !token.isEmpty, ensure.ready == true {
+            // Tylko trwałe kopie z serwera — prefetch streamu na żywo uruchamiał drugi
+            // yt-dlp równolegle z bieżącym utworem i blokował jego start.
+            if let token = ensure.token, !token.isEmpty, ensure.ready == true, ensure.isDurableServerCopy {
                 rememberStreamToken(jobId: ensure.jobId, token: token, expiresIn: nil)
                 let url = api.musicStreamURL(jobId: ensure.jobId, token: token)
                 await preparePrefetchItem(
@@ -1474,15 +1737,17 @@ final class MusicPlaybackEngine: ObservableObject {
         applyBufferPolicy(to: item, readyRemote: readyRemote, isRemote: !url.isFileURL)
         _ = try? await item.asset.load(.isPlayable)
         guard generation == sessionGeneration else { return }
+        await audioAnalyzer.installBeforePlayback(item)
+        guard generation == sessionGeneration else { return }
+        if let queueIndex = queue.firstIndex(where: { $0.id == trackID }) {
+            rememberQueuedItem(item, queueIndex: queueIndex)
+        }
         prefetchedStream = PrefetchedStream(trackID: trackID, url: url, readyRemote: readyRemote, item: item)
         if let player, item !== player.currentItem {
             for leftover in player.items() where leftover !== player.currentItem {
                 player.remove(leftover)
             }
             player.insert(item, after: player.currentItem)
-            if visualAnalysisEnabled {
-                audioAnalyzer.ensureAttached(to: item)
-            }
         }
     }
 
@@ -1494,6 +1759,8 @@ final class MusicPlaybackEngine: ObservableObject {
         return makePlayerItem(url: url)
     }
 
+    /// Mały bufor tylko na starcie (szybki Play). Po starcie `relaxForwardBufferAfterStart`
+    /// oddaje decyzję AVPlayerowi — inaczej 0,4 s zapasu oznaczało przerwę przy każdym wahnięciu sieci.
     private func applyBufferPolicy(to item: AVPlayerItem, readyRemote: Bool, isRemote: Bool) {
         if readyRemote {
             item.preferredForwardBufferDuration = 0.4
@@ -1502,10 +1769,33 @@ final class MusicPlaybackEngine: ObservableObject {
         }
     }
 
+    private var relaxedBufferItemID: ObjectIdentifier?
+
+    private func relaxForwardBufferAfterStart() {
+        guard let player, player.timeControlStatus == .playing, let item = player.currentItem else { return }
+        let oid = ObjectIdentifier(item)
+        guard relaxedBufferItemID != oid else { return }
+        relaxedBufferItemID = oid
+        guard let asset = item.asset as? AVURLAsset, !asset.url.isFileURL else { return }
+        // 0 = automatycznie: AVPlayer buforuje do przodu tyle, ile uzna za bezpieczne.
+        item.preferredForwardBufferDuration = 0
+        if !player.automaticallyWaitsToMinimizeStalling {
+            player.automaticallyWaitsToMinimizeStalling = true
+        }
+    }
+
+    /// „Powtarzaj utwór”: odtwarzacz nie może sam przejść do przygotowanego następnego utworu,
+    /// bo wtedy grał następny, a ekran pokazywał poprzedni (albo muzyka stawała).
+    private func applyRepeatModeToPlayer() {
+        player?.actionAtItemEnd = repeatMode == .one ? .none : .advance
+    }
+
     private func ensureQueuePlayer() -> AVQueuePlayer {
         if let player { return player }
         let created = AVQueuePlayer()
-        created.actionAtItemEnd = .advance
+        created.actionAtItemEnd = repeatMode == .one ? .none : .advance
+        created.allowsExternalPlayback = true
+        created.usesExternalPlaybackWhileExternalScreenIsActive = false
         player = created
         return created
     }
@@ -1534,42 +1824,101 @@ final class MusicPlaybackEngine: ObservableObject {
         }
     }
 
-    private func handleNaturalAdvance(generation: Int) async {
-        guard generation == sessionGeneration else { return }
-        if orderCursor < playOrder.count - 1 {
-            orderCursor += 1
-        } else if repeatMode == .all {
-            orderCursor = 0
+    private func rememberQueuedItem(_ item: AVPlayerItem, queueIndex: Int) {
+        itemQueueIndex[ObjectIdentifier(item)] = queueIndex
+    }
+
+    /// Etykieta, okładka i zamek biorą utwór z tego, co AVPlayer naprawdę gra — nie z osobnego licznika.
+    private func syncDisplayedTrackToPlayer(generation: Int) {
+        guard generation == sessionGeneration, !ignoreItemChanges else { return }
+        guard let item = player?.currentItem else { return }
+        let oid = ObjectIdentifier(item)
+        if itemQueueIndex[oid] == nil,
+           let primed = prefetchedStream,
+           primed.item === item,
+           let primedIndex = queue.firstIndex(where: { $0.id == primed.trackID }) {
+            itemQueueIndex[oid] = primedIndex
         }
-        let qi = playOrder[safe: orderCursor] ?? 0
-        guard queue.indices.contains(qi) else { return }
-        beginPlaybackTransition(queueIndex: qi)
-        let track = queue[qi]
+        guard let queueIndex = itemQueueIndex[oid], queue.indices.contains(queueIndex) else { return }
+        guard let cursor = playOrder.firstIndex(of: queueIndex) else { return }
+        boundItemID = oid
+        let track = queue[queueIndex]
+        guard currentTrack?.id != track.id || orderCursor != cursor else { return }
+        orderCursor = cursor
+        beginPlaybackTransition(queueIndex: queueIndex)
         currentTrack = track
         beginListenSession(for: track)
-        currentTime = 0
-        duration = track.duration ?? 0
+        clearDisplayArtwork()
+        supplementalNowPlayingMetadata = nil
+        let elapsed = item.currentTime().seconds
+        currentTime = elapsed.isFinite ? max(0, elapsed) : 0
+        let length = item.duration.seconds
+        duration = length.isFinite && length > 0 ? length : (track.duration ?? 0)
+        startWatchdog(track: track, queueIndex: queueIndex, generation: generation)
         isLoading = false
         refreshNowPlaying(force: true)
-        if let item = player?.currentItem, let url = (item.asset as? AVURLAsset)?.url {
-            prefetchedStream = PrefetchedStream(
-                trackID: track.id,
-                url: url,
-                readyRemote: true,
-                item: item
-            )
-            loadStream(
-                url: url,
-                track: track,
-                queueIndex: qi,
-                generation: generation,
-                resumeAt: 0,
-                readyRemote: true
-            )
-        } else {
-            refreshNowPlaying(force: true)
+        watchEnd(of: item, generation: generation)
+        let nextGeneration = sessionGeneration
+        Task { await self.prefetchUpcoming(from: queueIndex, generation: nextGeneration) }
+    }
+
+    private func watchEnd(of item: AVPlayerItem, generation: Int) {
+        if let endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
         }
-        Task { await prefetchUpcoming(from: qi, generation: generation) }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.sessionGeneration == generation else { return }
+                if self.repeatMode == .one {
+                    self.seek(to: 0)
+                    self.player?.play()
+                    self.syncPlayingState()
+                    self.refreshNowPlaying(force: true)
+                    return
+                }
+                guard !self.ignoreItemChanges else { return }
+                self.beginPlaybackBackgroundTask()
+                self.syncDisplayedTrackToPlayer(generation: generation)
+                if let current = self.player?.currentItem, current !== item {
+                    return
+                }
+                if let player = self.player, player.items().contains(where: { $0 !== item }) {
+                    try? await Task.sleep(nanoseconds: 160_000_000)
+                    guard self.sessionGeneration == generation, !self.ignoreItemChanges else { return }
+                    self.syncDisplayedTrackToPlayer(generation: generation)
+                    if let current = player.currentItem, current !== item {
+                        return
+                    }
+                }
+                await self.advanceIfPlaybackEnded(generation: generation)
+            }
+        }
+    }
+
+    /// Następny utwór startuje tylko wtedy, gdy player naprawdę stanął na końcu — bez podwójnego przeskoku.
+    private func advanceIfPlaybackEnded(generation: Int) async {
+        guard generation == sessionGeneration, playbackDesired, !ignoreItemChanges else { return }
+        guard Date().timeIntervalSince(lastHandoffAt) > 0.45 else { return }
+        if let current = player?.currentItem {
+            let elapsed = current.currentTime().seconds
+            let length = current.duration.seconds
+            let ended = length.isFinite && elapsed.isFinite && length > 1 && length - elapsed < 0.35
+            if !ended { return }
+        }
+        lastHandoffAt = Date()
+        let hasNext = orderCursor < playOrder.count - 1 || repeatMode == .all
+        guard hasNext else {
+            playbackDesired = false
+            syncPlayingState()
+            refreshNowPlaying(force: true)
+            endPlaybackBackgroundTask()
+            return
+        }
+        await skipNext()
     }
 
     private func retryOpenIfNeeded(
@@ -1671,7 +2020,7 @@ final class MusicPlaybackEngine: ObservableObject {
                     forceRefresh: false
                 )
                 guard generation == sessionGeneration else { return true }
-                loadStream(
+                await loadStream(
                     url: streamURL,
                     track: track,
                     queueIndex: queueIndex,
@@ -1738,7 +2087,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 EOSPerfLog.intervalEnd("StreamRecovery", id: recoverySignpost)
                 return true
             }
-            loadStream(
+            await loadStream(
                 url: streamURL,
                 track: track,
                 queueIndex: queueIndex,
@@ -1789,7 +2138,7 @@ final class MusicPlaybackEngine: ObservableObject {
         generation: Int,
         resumeAt: Double,
         readyRemote: Bool = false
-    ) {
+    ) async {
         guard generation == sessionGeneration else { return }
 
         if readyRemote {
@@ -1815,11 +2164,13 @@ final class MusicPlaybackEngine: ObservableObject {
 
         let queuePlayer = ensureQueuePlayer()
         queuePlayer.automaticallyWaitsToMinimizeStalling = currentStreamIsRemote && !currentStreamIsReadyRemote
+        ignoreItemChanges = true
         installItemOnQueue(item, resumeAt: resumeAt, queuePlayer: queuePlayer)
+        await installTapBeforePlay(item)
+        ignoreItemChanges = false
+        rememberQueuedItem(item, queueIndex: queueIndex)
+        guard generation == sessionGeneration else { return }
 
-        if visualAnalysisEnabled {
-            audioAnalyzer.ensureAttached(to: item)
-        }
         Task { [weak self] in
             await self?.hydratePlaybackMetadata(from: item, queueIndex: queueIndex, generation: generation)
         }
@@ -1849,6 +2200,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 guard let self, self.sessionGeneration == generation else { return }
                 self.updateBufferingState()
                 self.syncPlayingState()
+                self.relaxForwardBufferAfterStart()
             }
         }
 
@@ -1911,14 +2263,36 @@ final class MusicPlaybackEngine: ObservableObject {
                     self.syncPlayingState()
                     return
                 }
-                if self.player?.currentItem != nil,
-                   self.player?.currentItem !== item,
-                   self.orderCursor < self.playOrder.count - 1
-                    || self.repeatMode == .all {
-                    await self.handleNaturalAdvance(generation: generation)
+                guard !self.ignoreItemChanges else { return }
+                self.beginPlaybackBackgroundTask()
+                self.syncDisplayedTrackToPlayer(generation: generation)
+                if let current = self.player?.currentItem, current !== item {
                     return
                 }
-                await self.skipNext()
+                if let player = self.player, player.items().contains(where: { $0 !== item }) {
+                    try? await Task.sleep(nanoseconds: 160_000_000)
+                    guard self.sessionGeneration == generation, !self.ignoreItemChanges else { return }
+                    self.syncDisplayedTrackToPlayer(generation: generation)
+                    if let current = player.currentItem, current !== item {
+                        return
+                    }
+                }
+                await self.advanceIfPlaybackEnded(generation: generation)
+            }
+        }
+
+        rememberQueuedItem(item, queueIndex: queueIndex)
+        boundItemID = ObjectIdentifier(item)
+        itemAdvanceObserver = queuePlayer.observe(\.currentItem, options: [.new]) { [weak self] player, _ in
+            Task { @MainActor in
+                guard let self, self.sessionGeneration == generation else { return }
+                guard !self.ignoreItemChanges, self.repeatMode != .one else { return }
+                guard let current = player.currentItem else {
+                    await self.advanceIfPlaybackEnded(generation: generation)
+                    return
+                }
+                guard ObjectIdentifier(current) != self.boundItemID else { return }
+                self.syncDisplayedTrackToPlayer(generation: generation)
             }
         }
 
@@ -2117,8 +2491,10 @@ final class MusicPlaybackEngine: ObservableObject {
         if isPlaying != playing {
             isPlaying = playing
         }
+        PlayerAudioVisualizer.isPlayingNow = playing
         if playing {
-            isLoading = false
+            if isLoading { isLoading = false }
+            endPlaybackBackgroundTask()
             if continuousPlayingSince == nil {
                 continuousPlayingSince = Date()
             } else if let start = continuousPlayingSince,
@@ -2157,6 +2533,7 @@ final class MusicPlaybackEngine: ObservableObject {
             shuffleEnabled: shuffleEnabled,
             supplemental: supplementalNowPlayingMetadata,
             identity: playbackIdentity,
+            keepsSessionAlive: playbackDesired,
             force: force
         )
         // Nie przeładowuj drzewa BT przy każdym ticku czasu — NBT wtedy zostawia tylko bieżący utwór.
@@ -2176,7 +2553,7 @@ final class MusicPlaybackEngine: ObservableObject {
             transitionID: UUID()
         )
         supplementalNowPlayingMetadata = nil
-        displayArtwork = nil
+        clearDisplayArtwork()
     }
 
     private func hydratePlaybackMetadata(from item: AVPlayerItem, queueIndex: Int, generation: Int) async {
@@ -2197,13 +2574,24 @@ final class MusicPlaybackEngine: ObservableObject {
 
         guard generation == sessionGeneration, !Task.isCancelled else { return }
         queue[queueIndex] = enriched
+        if let thumb = enriched.thumbnail, !thumb.isEmpty {
+            ResolvedArtworkStore.remember(trackURL: enriched.libraryPersistURL, thumbnail: thumb)
+            if enriched.url != enriched.libraryPersistURL {
+                ResolvedArtworkStore.remember(trackURL: enriched.url, thumbnail: thumb)
+            }
+        }
         let identityStillCurrent = playbackIdentity == identity
         if identityStillCurrent, currentTrack?.id == enriched.id, playbackIdentity.queueIndex == queueIndex {
             currentTrack = enriched
-            if let art = embedded?.artwork {
-                displayArtwork = art
-            } else if displayArtwork != nil, enriched.artworkURL == nil {
-                displayArtwork = nil
+            let useEmbeddedArt = embedded?.artwork != nil
+                && TrackMetadataEnricher.shouldUseEmbeddedArtwork(
+                    expectedTitle: baseTrack.title,
+                    embeddedTitle: embedded?.title
+                )
+            if useEmbeddedArt, let art = embedded?.artwork {
+                setDisplayArtwork(art, trackID: enriched.id)
+            } else {
+                clearDisplayArtwork()
             }
             if displayArtwork == nil, let artURL = enriched.artworkURL {
                 let trackID = enriched.id
@@ -2217,7 +2605,7 @@ final class MusicPlaybackEngine: ObservableObject {
                     )
                     guard let self, let image = loaded?.still else { return }
                     guard self.playbackIdentity == keepIdentity, self.currentTrack?.id == trackID else { return }
-                    self.displayArtwork = image
+                    self.setDisplayArtwork(image, trackID: trackID)
                 }
             }
         }
@@ -2228,7 +2616,7 @@ final class MusicPlaybackEngine: ObservableObject {
                 title: nil,
                 artist: nil,
                 album: nil,
-                artwork: embedded.artwork
+                artwork: nil
             )
         } else {
             supplementalNowPlayingMetadata = embedded?.asSupplemental
@@ -2318,6 +2706,8 @@ final class MusicPlaybackEngine: ObservableObject {
         statusObserver?.invalidate()
         statusObserver = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        itemAdvanceObserver?.invalidate()
+        itemAdvanceObserver = nil
         if let failObserver { NotificationCenter.default.removeObserver(failObserver) }
         if let stalledObserver { NotificationCenter.default.removeObserver(stalledObserver) }
         endObserver = nil
@@ -2327,6 +2717,7 @@ final class MusicPlaybackEngine: ObservableObject {
 }
 
 /// Real FFT 512 — jak Nullsoft FFT w vis_classic.
+/// Wszystkie bufory są przydzielone raz — `process` działa w wątku audio bez alokacji.
 private final class WinampFFTProcessor {
     private let size = 512
     private let binCount = 256
@@ -2337,6 +2728,8 @@ private final class WinampFFTProcessor {
     private var real: [Float]
     private var imag: [Float]
     private var magnitudes: [Float]
+    /// Wynik ostatniego `process` (0…255 na bin).
+    private(set) var spectrum: [UInt8]
 
     init() {
         setup = vDSP_create_fftsetup(9, FFTRadix(kFFTRadix2))
@@ -2345,6 +2738,7 @@ private final class WinampFFTProcessor {
         real = [Float](repeating: 0, count: 256)
         imag = [Float](repeating: 0, count: 256)
         magnitudes = [Float](repeating: 0, count: 256)
+        spectrum = [UInt8](repeating: 0, count: 256)
         vDSP_hann_window(&window, vDSP_Length(size), Int32(vDSP_HANN_NORM))
     }
 
@@ -2354,45 +2748,65 @@ private final class WinampFFTProcessor {
         }
     }
 
-    func spectrumBytes(from samples: [Float], count: Int, scale: Float) -> [UInt8] {
-        guard let setup else { return [UInt8](repeating: 0, count: binCount) }
-        guard count >= 64 else { return [UInt8](repeating: 0, count: binCount) }
-        let start = max(0, count - size)
-        input.withUnsafeMutableBufferPointer { dst in
-            dst.initialize(repeating: 0)
-            let copyCount = min(size, count - start)
-            _ = samples.withUnsafeBufferPointer { src in
-                dst.baseAddress!.update(from: src.baseAddress!.advanced(by: start), count: copyCount)
+    /// Liczy widmo z `samples[0..<count]` (bierze ostatnie 512 próbek) do `spectrum`.
+    func process(samples: UnsafeBufferPointer<Float>, count: Int, scale: Float) {
+        let n = size
+        let bins = binCount
+        let fftSetup = setup
+        spectrum.withUnsafeMutableBufferPointer { out in
+            guard let fftSetup, count >= 64, let src = samples.baseAddress else {
+                out.update(repeating: 0)
+                return
             }
-        }
-        vDSP_vmul(input, 1, window, 1, &input, 1, vDSP_Length(size))
-
-        real.withUnsafeMutableBufferPointer { realBP in
-            imag.withUnsafeMutableBufferPointer { imagBP in
-                var split = DSPSplitComplex(realp: realBP.baseAddress!, imagp: imagBP.baseAddress!)
-                for index in 0..<binCount {
-                    split.realp[index] = input[index * 2]
-                    split.imagp[index] = input[index * 2 + 1]
+            let start = max(0, count - n)
+            let copyCount = min(n, count - start)
+            input.withUnsafeMutableBufferPointer { inBP in
+                window.withUnsafeBufferPointer { winBP in
+                    guard let inBase = inBP.baseAddress, let winBase = winBP.baseAddress else { return }
+                    inBP.update(repeating: 0)
+                    inBase.update(from: src.advanced(by: start), count: copyCount)
+                    vDSP_vmul(inBase, 1, winBase, 1, inBase, 1, vDSP_Length(n))
                 }
-                vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
-                var norm = Float(2.0 / Float(size))
-                vDSP_vsmul(split.realp, 1, &norm, split.realp, 1, vDSP_Length(binCount))
-                vDSP_vsmul(split.imagp, 1, &norm, split.imagp, 1, vDSP_Length(binCount))
-                vDSP_zvabs(&split, 1, &magnitudes, 1, vDSP_Length(binCount))
+                real.withUnsafeMutableBufferPointer { realBP in
+                    imag.withUnsafeMutableBufferPointer { imagBP in
+                        magnitudes.withUnsafeMutableBufferPointer { magBP in
+                            guard let realBase = realBP.baseAddress,
+                                  let imagBase = imagBP.baseAddress,
+                                  let magBase = magBP.baseAddress else { return }
+                            var split = DSPSplitComplex(realp: realBase, imagp: imagBase)
+                            for index in 0..<bins {
+                                realBase[index] = inBP[index * 2]
+                                imagBase[index] = inBP[index * 2 + 1]
+                            }
+                            vDSP_fft_zrip(fftSetup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
+                            var norm = Float(2.0 / Float(n))
+                            vDSP_vsmul(realBase, 1, &norm, realBase, 1, vDSP_Length(bins))
+                            vDSP_vsmul(imagBase, 1, &norm, imagBase, 1, vDSP_Length(bins))
+                            vDSP_zvabs(&split, 1, magBase, 1, vDSP_Length(bins))
+                        }
+                    }
+                }
             }
-        }
-
-        let invScale = max(0.08, scale)
-        return magnitudes.map { mag in
-            let compressed = log1pf(mag * 56.0 / invScale)
-            let value = Int(compressed * 108.0)
-            return UInt8(min(255, max(0, value)))
+            let invScale = max(0.08, scale)
+            magnitudes.withUnsafeBufferPointer { magBP in
+                for index in 0..<bins {
+                    let compressed = log1pf(magBP[index] * 56.0 / invScale)
+                    out[index] = UInt8(min(255, max(0, Int(compressed * 108.0))))
+                }
+            }
         }
     }
 }
 
-private final class PlayerAudioAnalyzer {
-    private struct State {
+/// Analiza PCM dla wizualizacji (wyspa, spektrum).
+///
+/// Zasady wątku audio (realtime): `consume` nigdy nie czeka na blokadę (`try()` — jeśli
+/// główny wątek akurat zmienia ustawienia, pomijamy jeden bufor), nie alokuje pamięci przy
+/// każdym buforze (stan i bufory przydzielone raz) i nie woła API systemu (głośność jest
+/// odczytywana na głównym wątku). Wcześniej kopiowanie stanu (CoW tablic), blokowanie i
+/// zapytanie o głośność w wątku audio dawały trzaski i zacięcia.
+final class PlayerAudioAnalyzer {
+    private final class AnalyzerState {
         var lowLP: Float = 0
         var midLP: Float = 0
         var prevBass: Float = 0
@@ -2401,22 +2815,37 @@ private final class PlayerAudioAnalyzer {
         var lastPeak: Float = 0
         var lastPush: CFTimeInterval = 0
         var islandBars: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.islandBarCount)
+        var islandTargets: [Float] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.islandBarCount)
         var bandTargets: [Int] = Array(repeating: 0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountMax)
         var energy: Float = 0
         var spectrumAGC: Double = 0.2
         var monoScratch: [Float] = Array(repeating: 0, count: 2048)
         var ringBuffer: [Float] = Array(repeating: 0, count: 512)
+        var fftWindow: [Float] = Array(repeating: 0, count: 512)
         var ringWrite = 0
         var ringFilled = 0
+        // Detekcja uderzeń: średnie kroczące energii pasm + ostatnie zdarzenia.
+        var bassAvg: Float = 0
+        var midAvg: Float = 0
+        var hiAvg: Float = 0
+        var prevBassE: Float = 0
+        var prevSnareE: Float = 0
+        var prevHiE: Float = 0
+        var kickAt: Double = 0
+        var snareAt: Double = 0
+        var hatAt: Double = 0
+        var kickStrength: Double = 0
+        var snareStrength: Double = 0
+        var hatStrength: Double = 0
     }
 
-    private var state = State()
+    private var state = AnalyzerState()
     private let lock = NSLock()
     private var publishHandler: ((MusicPlaybackEngine.AudioReactiveFrame) -> Void)?
     /// Target publish rate (Hz). 0 = pause publishing.
     private var targetFPS: Double = 0
     private var analysisEnabled = false
-    /// Full FFT/Goertzel only for Spectrum mixer; mini/vinyl use cheap RMS island path.
+    /// Full FFT only for Spectrum mixer; mini/vinyl use cheap RMS island path.
     private var spectrumEnabled = false
     private var activeBandCount = MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard
     private var sampleRate: Float = 44_100
@@ -2424,38 +2853,17 @@ private final class PlayerAudioAnalyzer {
     private let barTable32: [Int]
     private let barTable64: [Int]
     private let fftScale: Float = 0.95
-
-    private var barTable: [Int] {
-        activeBandCount >= MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense ? barTable64 : barTable32
-    }
+    /// Głośność systemu (0…1) — aktualizowana na głównym wątku, czytana w wątku audio.
+    private var outputVolume: Float = 1
+    private var volumeObservation: NSKeyValueObservation?
+    /// Ile buforów pominięto, bo blokada była zajęta (diagnostyka / testy).
+    private(set) var skippedBuffers = 0
 
     private static func bandCenterHz(index: Int, count: Int) -> Float {
         let minHz: Float = 55
         let maxHz: Float = 16_000
         let t = Float(index) / Float(max(1, count - 1))
         return minHz * pow(maxHz / minHz, t)
-    }
-
-    private static func goertzelMagnitude(_ samples: [Float], count: Int, targetHz: Float, sampleRate: Float) -> Float {
-        let n = min(count, samples.count)
-        guard n > 16 else { return 0 }
-        let k = Int(0.5 + Float(n) * targetHz / sampleRate)
-        guard k > 0 else { return 0 }
-        let w = 2 * Float.pi * Float(k) / Float(n)
-        let coeff = 2 * cos(w)
-        let cosW = cos(w)
-        let sinW = sin(w)
-        var s0: Float = 0
-        var s1: Float = 0
-        var s2: Float = 0
-        for index in 0..<n {
-            s0 = coeff * s1 - s2 + samples[index]
-            s2 = s1
-            s1 = s0
-        }
-        let real = s1 - s2 * cosW
-        let imag = s2 * sinW
-        return sqrt(real * real + imag * imag) / Float(n)
     }
 
     init() {
@@ -2471,18 +2879,32 @@ private final class PlayerAudioAnalyzer {
             lastBarCutHz: 16_000,
             bars: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense
         )
+        let session = AVAudioSession.sharedInstance()
+        outputVolume = session.outputVolume
+        volumeObservation = session.observe(\.outputVolume, options: [.new]) { [weak self] session, _ in
+            let volume = session.outputVolume
+            guard let self else { return }
+            self.lock.lock()
+            self.outputVolume = volume
+            self.lock.unlock()
+        }
+    }
+
+    deinit {
+        volumeObservation?.invalidate()
     }
 
     func setBandCount(_ count: Int) {
+        let fresh = AnalyzerState()
         lock.lock()
         activeBandCount = count >= MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense
             ? MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense
             : MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountStandard
-        state = State()
+        state = fresh
         lock.unlock()
     }
 
-    fileprivate func setSampleRate(_ rate: Float) {
+    func setSampleRate(_ rate: Float) {
         lock.lock()
         sampleRate = max(8_000, rate)
         lock.unlock()
@@ -2536,10 +2958,9 @@ private final class PlayerAudioAnalyzer {
         return min(1, x / (1 + x * 0.18))
     }
 
-    /// System output volume (0…1). PCM tap is post-mix at unity, so bars must follow the speaker.
-    private static func playbackVolumeGain() -> Double {
-        let volume = Double(AVAudioSession.sharedInstance().outputVolume)
-        return 0.28 + 0.82 * min(1, max(0, volume))
+    /// PCM tap is post-mix at unity, so bars must follow the speaker volume.
+    private static func playbackVolumeGain(_ volume: Float) -> Double {
+        0.28 + 0.82 * min(1, max(0, Double(volume)))
     }
 
     /// Keep headroom: quiet stays quiet, peaks can hit the top. No compression that pegs every bar.
@@ -2560,10 +2981,11 @@ private final class PlayerAudioAnalyzer {
     }
 
     func setAnalysisEnabled(_ enabled: Bool, publishEmptyOnDisable: Bool = true) {
+        let fresh: AnalyzerState? = enabled ? nil : AnalyzerState()
         lock.lock()
         analysisEnabled = enabled
-        if !enabled {
-            state = State()
+        if let fresh {
+            state = fresh
         }
         lock.unlock()
         if !enabled, publishEmptyOnDisable {
@@ -2607,6 +3029,20 @@ private final class PlayerAudioAnalyzer {
         attach(to: item, push: push)
     }
 
+    /// Zakłada audio tap zanim utwór zacznie grać. Późniejsze włączenie wizualizacji
+    /// nie dotyka `audioMix`, więc otwarcie playera nie przerywa dźwięku.
+    @MainActor
+    func installBeforePlayback(
+        _ item: AVPlayerItem,
+        shouldApply: @MainActor () -> Bool = { true }
+    ) async {
+        if item.audioMix != nil { return }
+        let tracks = (try? await item.asset.loadTracks(withMediaType: .audio)) ?? []
+        guard shouldApply(), item.audioMix == nil, let audioTrack = tracks.first else { return }
+        installTap(on: item, audioTrack: audioTrack)
+        attachedItem = item
+    }
+
     func detach(from item: AVPlayerItem?) {
         attachTask?.cancel()
         attachTask = nil
@@ -2615,9 +3051,12 @@ private final class PlayerAudioAnalyzer {
     }
 
     private func installTap(on item: AVPlayerItem, audioTrack: AVAssetTrack) {
+        // Tap trzyma silną referencję do analizatora (zwalnianą w tapFinalize) — wątek audio
+        // może jeszcze przetwarzać bufor po zmianie sesji/odtwarzacza.
+        let retained = Unmanaged.passRetained(self)
         var callbacks = MTAudioProcessingTapCallbacks(
             version: kMTAudioProcessingTapCallbacksVersion_0,
-            clientInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+            clientInfo: retained.toOpaque(),
             init: tapInit,
             finalize: tapFinalize,
             prepare: tapPrepare,
@@ -2632,7 +3071,10 @@ private final class PlayerAudioAnalyzer {
             kMTAudioProcessingTapCreationFlag_PostEffects,
             &tap
         )
-        guard status == noErr, let tap else { return }
+        guard status == noErr, let tap else {
+            retained.release()
+            return
+        }
 
         let params = AVMutableAudioMixInputParameters(track: audioTrack)
         params.setVolume(1.0, at: .zero)
@@ -2643,73 +3085,100 @@ private final class PlayerAudioAnalyzer {
     }
 
     func reset() {
+        let fresh = AnalyzerState()
         lock.lock()
-        state = State()
+        state = fresh
         lock.unlock()
     }
 
-    fileprivate func consume(_ list: UnsafeMutablePointer<AudioBufferList>, frames: CMItemCount, time: CMTime) {
+    /// Wywoływane w wątku audio (realtime) — patrz opis klasy.
+    func consume(_ list: UnsafeMutablePointer<AudioBufferList>, frames: CMItemCount, time: CMTime) {
         let frameCount = Int(frames)
         guard frameCount > 0 else { return }
 
         let buffers = UnsafeMutableAudioBufferListPointer(list)
-        guard let first = buffers.first, first.mData != nil else { return }
+        guard let first = buffers.first, let rawData = first.mData else { return }
         let channels = max(1, Int(first.mNumberChannels))
-        let samplePtr = first.mData!.assumingMemoryBound(to: Float.self)
+        let samplePtr = rawData.assumingMemoryBound(to: Float.self)
         let sampleCount = frameCount * channels
         if sampleCount <= 0 { return }
 
-        lock.lock()
+        // Nigdy nie czekaj w wątku audio — jeśli główny wątek trzyma blokadę, pomiń ten bufor.
+        guard lock.try() else {
+            skippedBuffers &+= 1
+            return
+        }
         let enabled = analysisEnabled
         let fps = targetFPS
         let wantsSpectrum = spectrumEnabled
-        lock.unlock()
-        guard enabled, fps > 0.5 else { return }
+        guard enabled, fps > 0.5 else {
+            lock.unlock()
+            return
+        }
+
+        let local = state
+        let bandCount = activeBandCount
+        let volume = outputVolume
+        let scratchCap = local.monoScratch.count
+        let ringCount = local.ringBuffer.count
+        var monoCount = 0
 
         var sumSq: Float = 0
         var lowSq: Float = 0
         var midSq: Float = 0
         var highSq: Float = 0
-
-        lock.lock()
-        var local = state
-        let bandCount = activeBandCount
-        let table = barTable
-        let sampleRateLocked = sampleRate
-        let scratchCap = local.monoScratch.count
-        var monoCount = 0
+        var leftSq: Float = 0
+        var rightSq: Float = 0
+        var lowLP = local.lowLP
+        var midLP = local.midLP
+        var ringWrite = local.ringWrite
+        var ringFilled = local.ringFilled
 
         // Downsample mono fill when we only need island RMS — still accurate enough for 5 bars.
         let step = wantsSpectrum ? channels : max(channels, channels * 2)
-        for i in stride(from: 0, to: sampleCount, by: step) {
-            var mono: Float = 0
-            for c in 0..<channels {
-                mono += samplePtr[i + c]
+        local.monoScratch.withUnsafeMutableBufferPointer { scratch in
+            local.ringBuffer.withUnsafeMutableBufferPointer { ring in
+                var i = 0
+                while i < sampleCount {
+                    var mono: Float = 0
+                    for c in 0..<channels {
+                        mono += samplePtr[i + c]
+                    }
+                    mono /= Float(channels)
+                    let l = samplePtr[i]
+                    let r = channels > 1 ? samplePtr[i + 1] : l
+                    leftSq += l * l
+                    rightSq += r * r
+
+                    if wantsSpectrum {
+                        if monoCount < scratchCap {
+                            scratch[monoCount] = mono
+                            monoCount += 1
+                        }
+                        ring[ringWrite % ringCount] = mono
+                        ringWrite &+= 1
+                        ringFilled = min(ringCount, ringFilled + 1)
+                    }
+
+                    lowLP += 0.02 * (mono - lowLP)
+                    midLP += 0.12 * (mono - midLP)
+
+                    let low = lowLP
+                    let high = mono - midLP
+                    let mid = midLP - lowLP
+
+                    sumSq += mono * mono
+                    lowSq += low * low
+                    midSq += mid * mid
+                    highSq += high * high
+                    i += step
+                }
             }
-            mono /= Float(channels)
-
-            if wantsSpectrum, monoCount < scratchCap {
-                local.monoScratch[monoCount] = mono
-                monoCount += 1
-            }
-            if wantsSpectrum {
-                local.ringBuffer[local.ringWrite % local.ringBuffer.count] = mono
-                local.ringWrite += 1
-                local.ringFilled = min(local.ringBuffer.count, local.ringFilled + 1)
-            }
-
-            local.lowLP += 0.02 * (mono - local.lowLP)
-            local.midLP += 0.12 * (mono - local.midLP)
-
-            let low = local.lowLP
-            let high = mono - local.midLP
-            let mid = local.midLP - local.lowLP
-
-            sumSq += mono * mono
-            lowSq += low * low
-            midSq += mid * mid
-            highSq += high * high
         }
+        local.lowLP = lowLP
+        local.midLP = midLP
+        local.ringWrite = ringWrite % (ringCount * 1024)
+        local.ringFilled = ringFilled
 
         let samplesUsed = Float(max(1, (sampleCount + step - 1) / step))
         let inv = 1.0 / samplesUsed
@@ -2717,6 +3186,31 @@ private final class PlayerAudioAnalyzer {
         let bass = sqrt(lowSq * inv)
         let mid = sqrt(midSq * inv)
         let treble = sqrt(highSq * inv)
+        // --- Onsety: stopa (bas), werbel (środek+góra), hi-hat (góra) — adaptacyjny próg ---
+        let nowT = CACurrentMediaTime()
+        let bassE = bass * bass
+        let snareE = mid * mid + treble * treble * 0.5
+        let hiE = treble * treble
+        if local.bassAvg == 0 { local.bassAvg = bassE; local.midAvg = snareE; local.hiAvg = hiE }
+        if bassE > local.bassAvg * 1.55, bassE > local.prevBassE, bassE > 0.00004, nowT - local.kickAt > 0.14 {
+            local.kickAt = nowT
+            local.kickStrength = Double(min(1, (bassE / max(local.bassAvg, 0.000001) - 1) / 2.5))
+        }
+        if snareE > local.midAvg * 1.7, snareE > local.prevSnareE, snareE > 0.00003, nowT - local.snareAt > 0.12 {
+            local.snareAt = nowT
+            local.snareStrength = Double(min(1, (snareE / max(local.midAvg, 0.000001) - 1) / 2.5))
+        }
+        if hiE > local.hiAvg * 1.9, hiE > local.prevHiE, hiE > 0.00001, nowT - local.hatAt > 0.07 {
+            local.hatAt = nowT
+            local.hatStrength = Double(min(1, (hiE / max(local.hiAvg, 0.000001) - 1) / 3))
+        }
+        local.bassAvg = local.bassAvg * 0.96 + bassE * 0.04
+        local.midAvg = local.midAvg * 0.96 + snareE * 0.04
+        local.hiAvg = local.hiAvg * 0.95 + hiE * 0.05
+        local.prevBassE = bassE
+        local.prevSnareE = snareE
+        local.prevHiE = hiE
+
         let bassTransient = max(0, bass - local.prevBass * 0.9)
         local.prevBass = local.prevBass * 0.74 + bass * 0.26
 
@@ -2740,15 +3234,13 @@ private final class PlayerAudioAnalyzer {
         let midNorm = Self.softNormalize(mid, gain: 10.4)
         let trebleNorm = Self.softNormalize(treble, gain: 9.8)
         let beatNorm = min(1, local.kickEnvelope * 13)
-        let targets: [Float] = [
-            min(1, bassNorm * 0.88),
-            min(1, bassNorm * 0.28 + midNorm * 0.58),
-            min(1, instantLevel * 0.82 + beatNorm * 0.14),
-            min(1, midNorm * 0.46 + trebleNorm * 0.4),
-            min(1, trebleNorm * 0.72 + beatNorm * 0.18)
-        ]
+        local.islandTargets[0] = min(1, bassNorm * 0.88)
+        local.islandTargets[1] = min(1, bassNorm * 0.28 + midNorm * 0.58)
+        local.islandTargets[2] = min(1, instantLevel * 0.82 + beatNorm * 0.14)
+        local.islandTargets[3] = min(1, midNorm * 0.46 + trebleNorm * 0.4)
+        local.islandTargets[4] = min(1, trebleNorm * 0.72 + beatNorm * 0.18)
         for index in 0..<local.islandBars.count {
-            let target = targets[index]
+            let target = local.islandTargets[index]
             var bar = local.islandBars[index]
             if target > bar {
                 let attack: Float = min(0.96, (0.42 + Float(index) * 0.04 + beatNorm * 0.1) * 2.0)
@@ -2777,39 +3269,49 @@ private final class PlayerAudioAnalyzer {
         let shouldPush = now - local.lastPush >= interval
         var publishFrame: MusicPlaybackEngine.AudioReactiveFrame?
 
-        // FFT + Goertzel only on publish ticks and only when Spectrum UI needs it.
+        // FFT only on publish ticks and only when Spectrum UI needs it.
         if shouldPush, wantsSpectrum {
-            var fftWindow = [Float](repeating: 0, count: local.ringBuffer.count)
-            if local.ringFilled >= local.ringBuffer.count {
-                let start = local.ringWrite % local.ringBuffer.count
-                for index in 0..<local.ringBuffer.count {
-                    fftWindow[index] = local.ringBuffer[(start + index) % local.ringBuffer.count]
+            let windowCount = local.fftWindow.count
+            let analyzedCount: Int
+            if local.ringFilled >= ringCount {
+                let start = local.ringWrite % ringCount
+                local.ringBuffer.withUnsafeBufferPointer { ring in
+                    local.fftWindow.withUnsafeMutableBufferPointer { window in
+                        for index in 0..<windowCount {
+                            window[index] = ring[(start + index) % ringCount]
+                        }
+                    }
                 }
-            } else if monoCount > 0 {
-                let copyCount = min(monoCount, fftWindow.count)
-                for index in 0..<copyCount {
-                    fftWindow[index] = local.monoScratch[index]
-                }
-            }
-
-            let goertzelSampleCount: Int
-            if local.ringFilled >= local.ringBuffer.count {
-                goertzelSampleCount = local.ringBuffer.count
+                analyzedCount = ringCount
             } else {
-                goertzelSampleCount = min(monoCount, fftWindow.count)
+                let copyCount = min(monoCount, windowCount)
+                local.monoScratch.withUnsafeBufferPointer { scratch in
+                    local.fftWindow.withUnsafeMutableBufferPointer { window in
+                        window.update(repeating: 0)
+                        for index in 0..<copyCount {
+                            window[index] = scratch[index]
+                        }
+                    }
+                }
+                analyzedCount = copyCount
             }
 
-            let spectrum = fft.spectrumBytes(from: fftWindow, count: goertzelSampleCount, scale: fftScale)
+            local.fftWindow.withUnsafeBufferPointer { window in
+                fft.process(samples: window, count: analyzedCount, scale: fftScale)
+            }
+            let spectrum = fft.spectrum
+            let table = activeBandCount >= MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountDense ? barTable64 : barTable32
             var low = 0
             for index in 0..<bandCount {
                 let high = min(spectrum.count, low + table[index])
-                // FFT bins only — Goertzel×N was cooking the CPU while music played.
                 let newLevel = Self.averageLevel(low: low, high: high, spectrum: spectrum)
                 local.bandTargets[index] = max(local.bandTargets[index], newLevel)
                 low = high
             }
 
-            if local.bandTargets.prefix(bandCount).max() ?? 0 < 8, instantLevel > 0.018 {
+            var maxTarget = 0
+            for index in 0..<bandCount { maxTarget = max(maxTarget, local.bandTargets[index]) }
+            if maxTarget < 8, instantLevel > 0.018 {
                 let bassLevel = Int(min(255, bassNorm * 240))
                 let midLevel = Int(min(255, midNorm * 230))
                 let trebleLevel = Int(min(255, trebleNorm * 220))
@@ -2832,6 +3334,7 @@ private final class PlayerAudioAnalyzer {
         if shouldPush {
             local.lastPush = now
 
+            // Klatka dla UI powstaje tylko na tikach publikacji (≤12/s), nie przy każdym buforze.
             var spectrumBands = Array(repeating: 0.0, count: MusicPlaybackEngine.AudioReactiveFrame.spectrumBandCountMax)
             if wantsSpectrum {
                 for index in 0..<bandCount {
@@ -2840,8 +3343,9 @@ private final class PlayerAudioAnalyzer {
                 }
             }
 
-            let volumeGain = Self.playbackVolumeGain()
-            let spectrumPeak = spectrumBands.prefix(bandCount).max() ?? 0
+            let volumeGain = Self.playbackVolumeGain(volume)
+            var spectrumPeak = 0.0
+            for index in 0..<bandCount { spectrumPeak = max(spectrumPeak, spectrumBands[index]) }
             let bassEnd = max(1, bandCount / 4)
             let midEnd = max(bassEnd + 1, bandCount * 11 / 20)
             let bassVU: Double
@@ -2857,16 +3361,17 @@ private final class PlayerAudioAnalyzer {
                 trebleVU = Double(trebleNorm)
             }
             if wantsSpectrum {
-                var peak = 0.0
-                for index in 0..<bandCount {
-                    peak = max(peak, spectrumBands[index])
-                }
                 // Slow AGC so the loudest band can reach the top while others stay independent.
-                local.spectrumAGC = max(local.spectrumAGC * 0.978, peak, 0.1)
+                local.spectrumAGC = max(local.spectrumAGC * 0.978, spectrumPeak, 0.1)
                 let denom = max(0.1, local.spectrumAGC)
                 for index in 0..<bandCount {
                     spectrumBands[index] = min(1, spectrumBands[index] / denom)
                 }
+            }
+
+            var islands = Array(repeating: 0.0, count: local.islandBars.count)
+            for index in 0..<islands.count {
+                islands[index] = Self.liftVisual(Double(local.islandBars[index]), volumeGain: volumeGain, extra: 1.0)
             }
 
             publishFrame = MusicPlaybackEngine.AudioReactiveFrame(
@@ -2875,18 +3380,26 @@ private final class PlayerAudioAnalyzer {
                 mid: Self.liftVisual(midVU, volumeGain: volumeGain, extra: 1.02),
                 treble: Self.liftVisual(trebleVU, volumeGain: volumeGain, extra: 1.02),
                 beat: min(1, Double(beatNorm)),
-                islandBars: local.islandBars.map { Self.liftVisual(Double($0), volumeGain: volumeGain, extra: 1.0) },
+                islandBars: islands,
                 spectrumBands: spectrumBands,
                 peakHold: spectrumBands,
                 energy: Self.liftVisual(Double(local.energy), volumeGain: volumeGain, extra: 1.0),
-                activeSpectrumBands: wantsSpectrum ? bandCount : 0
+                activeSpectrumBands: wantsSpectrum ? bandCount : 0,
+                levelL: Self.liftVisual(Double(min(1, sqrt(leftSq * inv) * 4.8)), volumeGain: volumeGain),
+                levelR: Self.liftVisual(Double(min(1, sqrt(rightSq * inv) * 4.8)), volumeGain: volumeGain),
+                kickAt: local.kickAt,
+                snareAt: local.snareAt,
+                hatAt: local.hatAt,
+                kickStrength: local.kickStrength,
+                snareStrength: local.snareStrength,
+                hatStrength: local.hatStrength
             )
         }
-        state = local
+        let handler = publishHandler
         lock.unlock()
 
         if let publishFrame {
-            publishHandler?(publishFrame)
+            handler?(publishFrame)
         }
     }
 }
@@ -2899,7 +3412,12 @@ private func tapInit(
     tapStorageOut.pointee = clientInfo
 }
 
-private func tapFinalize(tap: MTAudioProcessingTap) {}
+/// Zwalnia referencję przekazaną w `installTap` (passRetained).
+private func tapFinalize(tap: MTAudioProcessingTap) {
+    let storage = MTAudioProcessingTapGetStorage(tap)
+    Unmanaged<PlayerAudioAnalyzer>.fromOpaque(storage).release()
+}
+
 private func tapPrepare(tap: MTAudioProcessingTap, maxFrames: CMItemCount, processingFormat: UnsafePointer<AudioStreamBasicDescription>) {
     let storage = MTAudioProcessingTapGetStorage(tap)
     let analyzer = Unmanaged<PlayerAudioAnalyzer>.fromOpaque(storage).takeUnretainedValue()
@@ -2986,6 +3504,11 @@ final class PlaybackStatusFlags: ObservableObject {
 
 /// Thread-safe live audio frame store — UIKit polls; never triggers SwiftUI body rebuilds.
 final class PlayerAudioVisualizer: ObservableObject, @unchecked Sendable {
+    /// Wizualizator bieżącej sesji — czytany przez wskaźnik „teraz gra” w listach.
+    nonisolated(unsafe) static weak var current: PlayerAudioVisualizer?
+    /// Czy faktycznie gra (pauza = słupki stoją płasko jak w iOS).
+    nonisolated(unsafe) static var isPlayingNow = false
+
     private let lock = NSLock()
     private var latest = MusicPlaybackEngine.AudioReactiveFrame()
     private var lastLiveAt: CFTimeInterval = 0
@@ -3020,5 +3543,62 @@ final class PlayerAudioVisualizer: ObservableObject, @unchecked Sendable {
         latest = MusicPlaybackEngine.AudioReactiveFrame()
         lastLiveAt = 0
         lock.unlock()
+    }
+}
+
+/// Czysta logika „Zagraj jako następny” — testowalna bez AVPlayera.
+enum PlayNextQueueEdit {
+    struct Result: Equatable {
+        let playOrder: [Int]
+        let cursor: Int
+    }
+
+    /// - Parameters:
+    ///   - playOrder: kolejność odtwarzania (indeksy do `queue`)
+    ///   - cursor: pozycja bieżącego utworu w `playOrder`
+    ///   - inserting: indeksy utworów do wstawienia zaraz po bieżącym (w tej kolejności)
+    static func apply(playOrder: [Int], cursor: Int, inserting: [Int]) -> Result {
+        var order = playOrder
+        var current = min(max(0, cursor), max(0, order.count - 1))
+        let currentQueueIndex = order.indices.contains(current) ? order[current] : nil
+        var insertAt = order.isEmpty ? 0 : current + 1
+        for qi in inserting {
+            // Bieżący utwór zostaje tam, gdzie jest — duplikat w kolejce rozjechałby etykietę z dźwiękiem.
+            if qi == currentQueueIndex { continue }
+            if let existing = order.firstIndex(of: qi) {
+                order.remove(at: existing)
+                if existing < current { current -= 1 }
+                if existing < insertAt { insertAt -= 1 }
+            }
+            order.insert(qi, at: min(insertAt, order.count))
+            insertAt += 1
+        }
+        return Result(playOrder: order, cursor: order.isEmpty ? 0 : current)
+    }
+}
+
+
+/// Zegar efektów: impuls po uderzeniu z uwzględnieniem opóźnienia wyjścia audio
+/// (głośnik ~10 ms, Bluetooth do ~200 ms) — błysk wypada wtedy, gdy słychać uderzenie.
+enum EOSBeatClock {
+    private static var cachedLatency: Double = 0
+    private static var latencyReadAt: Double = 0
+
+    static var outputLatency: Double {
+        let now = CACurrentMediaTime()
+        if now - latencyReadAt > 1 {
+            latencyReadAt = now
+            let session = AVAudioSession.sharedInstance()
+            cachedLatency = min(0.35, max(0, session.outputLatency + session.ioBufferDuration))
+        }
+        return cachedLatency
+    }
+
+    /// 0…1: 1 w chwili słyszalnego uderzenia, zanika wykładniczo (tau sekund).
+    static func pulse(eventAt: Double, now: Double = CACurrentMediaTime(), tau: Double = 0.12) -> Double {
+        guard eventAt > 0 else { return 0 }
+        let dt = now - (eventAt + outputLatency)
+        guard dt >= 0 else { return 0 }
+        return exp(-dt / tau)
     }
 }

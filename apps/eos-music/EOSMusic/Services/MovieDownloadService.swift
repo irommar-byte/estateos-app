@@ -253,6 +253,9 @@ final class MovieDownloadService: ObservableObject {
     private var itemJobIds: [String: String] = [:]
     private var lastPersistAt: Date = .distantPast
     private var activePhoneBytes: Int64 = 0
+    private var activeDownloadedBytes: Int64 = 0
+    private var activeExpectedBytes: Int64 = 0
+    private var bytesItemIndex: Int = -1
     private var remoteVerificationInFlight = Set<String>()
 
     private func registryKey(_ url: String) -> String {
@@ -272,18 +275,49 @@ final class MovieDownloadService: ObservableObject {
     /// Resume a batch saved before app kill / long background.
     func resumePersistedBatchIfNeeded() {
         guard batchTask == nil else { return }
-        guard let snap = MovieDownloadPersistence.load() else { return }
+        guard let snap = MovieDownloadPersistence.load() else {
+            dismissOrphanMovieActivity()
+            return
+        }
         if snap.batch.isFinished || snap.batch.isCancelled {
             MovieDownloadPersistence.clear()
+            dismissOrphanMovieActivity()
             return
         }
         itemJobIds = Dictionary(uniqueKeysWithValues: snap.jobIdsByURL.map {
             (registryKey($0.key), $0.value)
         })
         cancelledItemIds = Set(snap.cancelledItemIds)
-        activeBatch = snap.batch.restore()
-        statusMessage = "Wznawiam pobieranie (\(completedCount)/\(totalCount))…"
-        batchTask = Task { await runBatch() }
+        batchTask = Task { [weak self] in
+            guard let self else { return }
+            await self.onlineMovies?.refreshDownloads()
+            var batch = snap.batch.restore()
+            self.markLandedItemsDone(&batch)
+            if self.shouldDismissLanded(batch) {
+                self.finishLandedBatch()
+                return
+            }
+            self.activeBatch = batch
+            self.statusMessage = "Wznawiam pobieranie (\(self.completedCount)/\(self.totalCount))…"
+            await self.runBatch()
+        }
+    }
+
+    /// After unlock: if MOVIES/ already has the file, drop the leftover lock-screen card.
+    func reconcileAfterForeground() async {
+        await onlineMovies?.refreshDownloads()
+        if var batch = activeBatch {
+            markLandedItemsDone(&batch)
+            if shouldDismissLanded(batch) {
+                finishLandedBatch()
+                return
+            }
+            activeBatch = batch
+        } else if !hasPersistedUnfinishedBatch {
+            dismissOrphanMovieActivity()
+        } else {
+            resumePersistedBatchIfNeeded()
+        }
     }
 
     /// Stop in-flight work and drop persisted queue (logout / account switch).
@@ -455,7 +489,7 @@ final class MovieDownloadService: ObservableObject {
         return Self.formatETA(seconds)
     }
 
-    /// Szacunek bajtów na podstawie jakości i % (gdy API nie podaje rozmiaru w locie).
+    /// Megabajty faktycznie zapisane na serwerze, nie procent razy szacunek z arkusza.
     var activeBytesLabel: String? {
         if activePhoneBytes > 0,
            activeBatch?.items.contains(where: {
@@ -464,17 +498,26 @@ final class MovieDownloadService: ObservableObject {
            }) == true {
             return "\(Self.formatBytes(Int(activePhoneBytes))) pobrano"
         }
-        guard let pct = activeItemProgress,
-              let total = activeBatch?.quality.sizeBytes,
-              total > 0 else { return nil }
-        let done = Int((Double(total) * pct / 100.0).rounded())
-        return "\(Self.formatBytes(done)) / \(Self.formatBytes(total))"
+        if let pulling = activeBatch?.items.first(where: {
+            if case .pullingPhone(let progress) = $0.state { return progress >= 0 }
+            return false
+        }), case .pullingPhone(let progress) = pulling.state, activeDownloadedBytes > 0 {
+            let total = Int(activeDownloadedBytes)
+            let pct = min(max(progress <= 1 ? progress * 100 : progress, 0), 100)
+            let done = Int((Double(total) * pct / 100).rounded())
+            return MovieDownloadQualityPolicy.progressBytesLabel(downloaded: done, expected: total)
+        }
+        guard activeDownloadedBytes > 0 else { return nil }
+        return MovieDownloadQualityPolicy.progressBytesLabel(
+            downloaded: Int(activeDownloadedBytes),
+            expected: activeExpectedBytes > 0 ? Int(activeExpectedBytes) : nil
+        )
     }
 
     var activeDetailLine: String {
         var parts: [String] = []
         if let pct = activeItemProgress {
-            parts.append(String(format: "%.0f%%", pct))
+            parts.append(String(format: "%.1f%%", pct))
         }
         if let bytes = activeBytesLabel {
             parts.append(bytes)
@@ -656,12 +699,96 @@ final class MovieDownloadService: ObservableObject {
         }
     }
 
+    private func isAlreadyLanded(url: String, title: String) -> Bool {
+        guard let downloads = onlineMovies?.downloads, !downloads.isEmpty else { return false }
+        let item = MovieDownloadQueueItem(url: url, title: title, thumbnail: nil, source: nil)
+        return verifyMovieLanded(item: item, in: downloads)
+    }
+
+    private func markLandedItemsDone(_ batch: inout MovieDownloadBatch) {
+        guard let downloads = onlineMovies?.downloads, !downloads.isEmpty else { return }
+        for index in batch.items.indices {
+            if case .pullingPhone = batch.items[index].state { continue }
+            switch batch.items[index].state {
+            case .done, .skipped, .cancelled:
+                continue
+            default:
+                break
+            }
+            if verifyMovieLanded(item: batch.items[index], in: downloads) {
+                if batch.destination == .serverAndPhone,
+                   onlineMovies?.isAvailableOffline(url: batch.items[index].url) != true {
+                    continue
+                }
+                batch.items[index].state = .done
+            }
+        }
+    }
+
+    private func unfinishedCount(in batch: MovieDownloadBatch) -> Int {
+        batch.items.filter {
+            switch $0.state {
+            case .pending, .queuedOnServer, .downloading, .pullingPhone:
+                return true
+            default:
+                return false
+            }
+        }.count
+    }
+
+    private func landedCount(in batch: MovieDownloadBatch) -> Int {
+        batch.items.filter {
+            switch $0.state {
+            case .done, .skipped:
+                return true
+            default:
+                return false
+            }
+        }.count
+    }
+
+    private func shouldDismissLanded(_ batch: MovieDownloadBatch) -> Bool {
+        MovieDownloadLockScreenPolicy.shouldDismissLandedBatch(
+            unfinishedCount: unfinishedCount(in: batch),
+            landedCount: landedCount(in: batch),
+            total: batch.items.count
+        )
+    }
+
+    private func finishLandedBatch() {
+        batchTask = nil
+        activeBatch = nil
+        statusMessage = nil
+        cancelledItemIds.removeAll()
+        itemJobIds.removeAll()
+        remoteJobIdsByURL.removeAll()
+        resetProgressTiming()
+        MovieDownloadPersistence.clear()
+        DownloadLiveActivityController.shared.endMovie(immediate: true)
+    }
+
+    private func dismissOrphanMovieActivity() {
+        if LiveActivityLockScreenPolicy.shouldDismissOrphanActivity(hasActiveWork: isRunning || hasPersistedUnfinishedBatch) {
+            DownloadLiveActivityController.shared.endMovie(immediate: true)
+        }
+    }
+
+    /// Serwer się udał — kopia na telefon jest osobnym krokiem, jak przy muzyce.
+    private func notePhonePullFailed(index: Int, item: MovieDownloadQueueItem, error: Error) {
+        guard var batch = activeBatch, batch.items.indices.contains(index) else { return }
+        batch.items[index].state = .done
+        activeBatch = batch
+        statusMessage = "«\(item.title)» jest na serwerze. Na urządzenie: \(error.localizedDescription)"
+        onlineMovies?.rememberDeviceCopyFailure(url: item.url, message: error.localizedDescription)
+        persistBatch()
+    }
+
     private func verifyMovieLanded(item: MovieDownloadQueueItem, in downloads: [MovieDownload]) -> Bool {
         if let match = downloads.first(where: { MovieURLMatching.urlsMatch($0.url, item.url) }) {
-            return match.hasLandedFile || match.hasPlayableJob
+            return match.hasLandedFile
         }
         if let matched = MovieURLMatching.download(matching: item.url, title: item.title, in: downloads) {
-            return matched.hasLandedFile || matched.hasPlayableJob
+            return matched.hasLandedFile
         }
         return false
     }
@@ -671,7 +798,12 @@ final class MovieDownloadService: ObservableObject {
             let item = batch.items[index]
             if case .failed = item.state {
                 if verifyMovieLanded(item: item, in: downloads) {
-                    batch.items[index].state = .done
+                    if batch.destination == .serverAndPhone,
+                       onlineMovies?.isAvailableOffline(url: item.url) != true {
+                        batch.items[index].state = .pending
+                    } else {
+                        batch.items[index].state = .done
+                    }
                 } else {
                     batch.items[index].state = .pending
                 }
@@ -743,13 +875,20 @@ final class MovieDownloadService: ObservableObject {
         guard var batch = activeBatch else { return }
         await onlineMovies.refreshDownloads()
         reconcileFailedItems(in: &batch, downloads: onlineMovies.downloads)
+        markLandedItemsDone(&batch)
+        if shouldDismissLanded(batch) {
+            finishLandedBatch()
+            return
+        }
         activeBatch = batch
         persistBatch()
 
-        // Submit every pending item to EOS server immediately — downloads continue when the app is closed.
+        // Sliding window: keep at most 2 jobs admitted on EOS; refill as slots free.
         await enqueueAllPendingOnServer()
 
         for index in batch.items.indices {
+            await enqueueAllPendingOnServer()
+
             if Task.isCancelled || batch.isCancelled { break }
             batch = activeBatch ?? batch
             if cancelledItemIds.contains(batch.items[index].id) {
@@ -767,8 +906,16 @@ final class MovieDownloadService: ObservableObject {
 
             resetProgressTiming()
 
-            if let existingJobId = onlineMovies.jobId(for: item.url, title: item.title),
-               verifyMovieLanded(item: item, in: onlineMovies.downloads) {
+            if verifyMovieLanded(item: item, in: onlineMovies.downloads) {
+                let existingJobId = onlineMovies.jobId(for: item.url, title: item.title)
+                    ?? itemJobIds[registryKey(item.url)]
+                    ?? remoteJobIdsByURL[registryKey(item.url)]
+                guard batch.destination == .serverAndPhone, let existingJobId else {
+                    batch.items[index].state = .done
+                    activeBatch = batch
+                    persistBatch()
+                    continue
+                }
                 if batch.destination == .serverAndPhone {
                     batch.items[index].state = .pullingPhone(progress: 0)
                     activeBatch = batch
@@ -810,10 +957,7 @@ final class MovieDownloadService: ObservableObject {
                         if cancelledItemIds.contains(item.id) || activeBatch?.isCancelled == true {
                             markCancelled(index: index)
                         } else {
-                            batch = activeBatch ?? batch
-                            batch.items[index].state = .failed(error.localizedDescription)
-                            activeBatch = batch
-                            persistBatch()
+                            notePhonePullFailed(index: index, item: item, error: error)
                         }
                     }
                 } else {
@@ -838,10 +982,7 @@ final class MovieDownloadService: ObservableObject {
                     startJobId = known
                     alreadyReady = false
                 } else {
-                    let height = MediaQualityOption.apiHeight(
-                        for: batch.quality,
-                        options: batch.quality.id == "best" ? [] : [batch.quality]
-                    )
+                    let height = downloadHeight(for: batch.quality)
                     let start = try await api.startMovieDownload(
                         url: item.url,
                         height: height,
@@ -882,10 +1023,13 @@ final class MovieDownloadService: ObservableObject {
                 try await finalizeServerDownload(item: item, jobId: startJobId)
 
                 if batch.destination == .serverAndPhone {
+                    let serverFileBytes = activeDownloadedBytes
                     batch = activeBatch ?? batch
                     batch.items[index].state = .pullingPhone(progress: 0)
                     activeBatch = batch
                     resetProgressTiming()
+                    activeDownloadedBytes = serverFileBytes
+                    bytesItemIndex = index
                     noteProgress(0)
                     persistBatch()
                     let phoneKey = "movie:\(item.url)"
@@ -928,6 +1072,9 @@ final class MovieDownloadService: ObservableObject {
             } catch {
                 if cancelledItemIds.contains(item.id) || batch.isCancelled || Task.isCancelled || activeBatch?.isCancelled == true {
                     markCancelled(index: index)
+                } else if batch.destination == .serverAndPhone,
+                          verifyMovieLanded(item: item, in: onlineMovies.downloads) {
+                    notePhonePullFailed(index: index, item: item, error: error)
                 } else {
                     batch = activeBatch ?? batch
                     batch.items[index].state = .failed(error.localizedDescription)
@@ -974,37 +1121,50 @@ final class MovieDownloadService: ObservableObject {
         // Keep the terminal snapshot until the user taps OK.
     }
 
-    /// Fire-and-forget server jobs for all pending items so EOS keeps working when the app is suspended.
+    /// Admit a sliding window of server jobs (not the whole season at once).
+    private static let serverAdmitWindow = 2
+
     private func enqueueAllPendingOnServer() async {
         guard let api, let onlineMovies else { return }
         guard var batch = activeBatch, !batch.isRemoteSynced else { return }
 
         await onlineMovies.refreshDownloads()
 
+        let inFlightOnServer = batch.items.filter {
+            switch $0.state {
+            case .queuedOnServer, .downloading: return true
+            default: return false
+            }
+        }.count
+        var slotsLeft = max(0, Self.serverAdmitWindow - inFlightOnServer)
+
         for index in batch.items.indices {
+            if slotsLeft <= 0 { break }
             if Task.isCancelled || batch.isCancelled { break }
             let item = batch.items[index]
             if cancelledItemIds.contains(item.id) { continue }
             switch item.state {
-            case .done, .skipped, .cancelled, .failed, .pullingPhone:
-                continue
-            default:
+            case .pending:
                 break
+            default:
+                continue
             }
-            if onlineMovies.jobId(for: item.url, title: item.title) != nil { continue }
+            if let existing = onlineMovies.jobId(for: item.url, title: item.title) {
+                let key = registryKey(item.url)
+                itemJobIds[key] = existing
+                batch.items[index].state = .queuedOnServer
+                slotsLeft -= 1
+                continue
+            }
             let key = registryKey(item.url)
             if itemJobIds[key] != nil || remoteJobIdsByURL[key] != nil {
-                if case .pending = batch.items[index].state {
-                    batch.items[index].state = .queuedOnServer
-                }
+                batch.items[index].state = .queuedOnServer
+                slotsLeft -= 1
                 continue
             }
 
             do {
-                let height = MediaQualityOption.apiHeight(
-                    for: batch.quality,
-                    options: batch.quality.id == "best" ? [] : [batch.quality]
-                )
+                let height = downloadHeight(for: batch.quality)
                 let start = try await api.startMovieDownload(
                     url: item.url,
                     height: height,
@@ -1016,13 +1176,15 @@ final class MovieDownloadService: ObservableObject {
                     audioBitrate: batch.format.kind == "audio" ? (batch.quality.bitrate ?? 0) : nil
                 )
                 itemJobIds[key] = start.jobId
-                if start.ready != true {
+                if start.ready == true, verifyMovieLanded(item: item, in: onlineMovies.downloads) {
+                    batch.items[index].state = .done
+                } else {
                     batch.items[index].state = .queuedOnServer
+                    slotsLeft -= 1
                 }
                 activeBatch = batch
                 persistBatch(force: true)
             } catch {
-                // runBatch will retry this item in the sequential pass.
                 continue
             }
 
@@ -1070,10 +1232,37 @@ final class MovieDownloadService: ObservableObject {
         lastProgressSample = (now, percent)
     }
 
+    private func downloadHeight(for quality: MediaQualityOption) -> Int {
+        quality.isBest ? 0 : (quality.height ?? 0)
+    }
+
+    private func noteServerBytes(itemIndex: Int, downloaded: Int?, expected: Int?, progressPercent: Double? = nil) {
+        if bytesItemIndex != itemIndex {
+            bytesItemIndex = itemIndex
+            activeDownloadedBytes = 0
+            activeExpectedBytes = 0
+        }
+        if let expected, expected > 0 {
+            activeExpectedBytes = Int64(expected)
+        }
+        if let downloaded, downloaded > 0 {
+            activeDownloadedBytes = max(activeDownloadedBytes, Int64(downloaded))
+        } else if let expected, expected > 0, let pct = progressPercent, pct > 0 {
+            // HLS often omits downloadedBytes — derive from measured % × expected size.
+            let estimated = Int64((Double(expected) * min(max(pct, 0), 100) / 100.0).rounded())
+            if estimated > 0 {
+                activeDownloadedBytes = max(activeDownloadedBytes, estimated)
+            }
+        }
+    }
+
     private func resetProgressTiming() {
         progressAnchor = nil
         lastProgressSample = nil
         activePhoneBytes = 0
+        activeDownloadedBytes = 0
+        activeExpectedBytes = 0
+        bytesItemIndex = -1
     }
 
     private func waitForJob(jobId: String, itemIndex: Int) async throws {
@@ -1120,6 +1309,12 @@ final class MovieDownloadService: ObservableObject {
                 lastProgressAt = Date()
             }
 
+            noteServerBytes(
+                itemIndex: itemIndex,
+                downloaded: job.downloadedBytes,
+                expected: job.expectedBytes,
+                progressPercent: job.progress.map { $0 <= 1 ? $0 * 100 : $0 }
+            )
             if let progress = job.progress {
                 applyProgress(
                     itemIndex: itemIndex,
@@ -1128,8 +1323,10 @@ final class MovieDownloadService: ObservableObject {
                 )
             }
 
-            if job.status.lowercased() == "done" {
-                // 100% is reserved for a verified file in MOVIES/. Linking follows.
+            if job.status.lowercased() == "done"
+                || job.ready == true
+                || job.onServer == true
+                || job.isDurableServerCopy {
                 applyProgress(itemIndex: itemIndex, phone: false, percent: 99)
                 return
             }
@@ -1174,6 +1371,15 @@ final class MovieDownloadService: ObservableObject {
             remoteJobIdsByURL[registryKey(movie.url)] = movie.jobId
         }
 
+        if var batch = activeBatch {
+            markLandedItemsDone(&batch)
+            if shouldDismissLanded(batch) {
+                finishLandedBatch()
+                return
+            }
+            activeBatch = batch
+        }
+
         // Local batch runner owns sequencing — refresh progress for matching URLs.
         if batchTask != nil, var batch = activeBatch, !batch.isRemoteSynced {
             var changed = false
@@ -1197,6 +1403,12 @@ final class MovieDownloadService: ObservableObject {
                     applyProgress(itemIndex: index, phone: false, percent: 99)
                     continue
                 }
+                noteServerBytes(
+                    itemIndex: index,
+                    downloaded: item.downloadedBytes,
+                    expected: item.expectedBytes,
+                    progressPercent: item.progressPercent
+                )
                 applyProgress(itemIndex: index, phone: false, percent: item.progressPercent)
                 changed = true
             }
@@ -1214,10 +1426,22 @@ final class MovieDownloadService: ObservableObject {
 
         // No local runner — reconstruct a server-only batch from live account jobs.
         // Finished-only snapshots must not come back after the user taps OK.
-        let live = movies.filter { !$0.isTerminal }
+        let live = movies.filter {
+            MovieDownloadLockScreenPolicy.isLiveRemoteJob(
+                isTerminal: $0.isTerminal,
+                alreadyLanded: isAlreadyLanded(url: $0.url, title: $0.title)
+            )
+        }
         let recentDone = movies.filter { $0.isTerminal && !$0.isFailed }
 
         if live.isEmpty {
+            if var batch = activeBatch {
+                markLandedItemsDone(&batch)
+                if shouldDismissLanded(batch) {
+                    finishLandedBatch()
+                    return
+                }
+            }
             if var batch = activeBatch, batch.isRemoteSynced, batchTask == nil {
                 var changed = !batch.isFinished
                 var landedCount = 0
@@ -1323,6 +1547,14 @@ final class MovieDownloadService: ObservableObject {
         activeBatch = batch
         if let active = live.first {
             noteProgress(active.progressPercent)
+            if let index = items.firstIndex(where: { MovieURLMatching.urlsMatch($0.url, active.url) }) {
+                noteServerBytes(
+                    itemIndex: index,
+                    downloaded: active.downloadedBytes,
+                    expected: active.expectedBytes,
+                    progressPercent: active.progressPercent
+                )
+            }
         }
         statusMessage = nil
     }

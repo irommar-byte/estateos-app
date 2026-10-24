@@ -22,15 +22,18 @@ enum NowPlayingInfoBuilder {
         persistentSeed: String,
         collectionPersistentSeed: String?,
         externalContentIdentifier: String?,
-        artwork: MPMediaItemArtwork?
+        artwork: MPMediaItemArtwork?,
+        isVideo: Bool = false
     ) -> [String: Any] {
         var info: [String: Any] = [:]
         info[MPMediaItemPropertyTitle] = title
-        info[MPMediaItemPropertyMediaType] = NSNumber(value: MPMediaType.music.rawValue)
+        info[MPMediaItemPropertyMediaType] = NSNumber(value: (isVideo ? MPMediaType.movie : MPMediaType.music).rawValue)
         info[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: isPlaying ? 1.0 : 0.0)
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(value: elapsed)
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = NSNumber(value: 1.0)
-        info[MPNowPlayingInfoPropertyMediaType] = NSNumber(value: MPNowPlayingInfoMediaType.audio.rawValue)
+        info[MPNowPlayingInfoPropertyMediaType] = NSNumber(
+            value: (isVideo ? MPNowPlayingInfoMediaType.video : MPNowPlayingInfoMediaType.audio).rawValue
+        )
         if let artist, !artist.isEmpty {
             info[MPMediaItemPropertyArtist] = artist
         }
@@ -141,5 +144,6 @@ struct PendingShazamAdd: Codable, Equatable {
     var appleMusicID: String?
     var isrc: String?
     var webURL: String?
+    var artworkURL: String?
     var createdAt: Date
 }

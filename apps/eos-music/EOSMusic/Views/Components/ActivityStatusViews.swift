@@ -11,50 +11,99 @@ struct FloatingDownloadActivityOverlay: View {
 
     private var showsMusic: Bool { app.downloads.bulkServerQueue != nil }
     private var showsMovie: Bool { app.movieDownloads.activeBatch != nil }
+    private var musicIsOrb: Bool { app.downloads.isBulkQueueMinimized }
+    private var movieIsOrb: Bool { isMovieQueueMinimized }
+
+    private var queueTop: CGFloat { showsSync ? 64 : 8 }
+
+    @ViewBuilder
+    private var movieQueue: some View {
+        if let batch = app.movieDownloads.activeBatch {
+            MovieDownloadQueuePanel(
+                batch: batch,
+                service: app.movieDownloads,
+                isMinimized: $isMovieQueueMinimized
+            )
+            .transition(Self.cardTransition)
+        }
+    }
+
+    @ViewBuilder
+    private var musicQueue: some View {
+        if let queue = app.downloads.bulkServerQueue {
+            ServerDownloadQueuePanel(
+                queue: queue,
+                isMinimized: Binding(
+                    get: { app.downloads.isBulkQueueMinimized },
+                    set: { app.downloads.isBulkQueueMinimized = $0 }
+                )
+            ) {
+                app.cancelBulkMusicQueue()
+            }
+            .transition(Self.cardTransition)
+        }
+    }
 
     var body: some View {
-        Group {
-            if showsSync || showsMusic || showsMovie {
-                VStack(spacing: 8) {
-                    if showsSync, let sync = app.librarySyncMessage {
-                        LibrarySyncStatusBar(
-                            message: sync,
-                            showsSpinner: app.isLibraryLoading
-                        )
-                        .transition(Self.cardTransition)
-                    }
-
-                    if let queue = app.downloads.bulkServerQueue {
-                        ServerDownloadQueuePanel(
-                            queue: queue,
-                            isMinimized: Binding(
-                                get: { app.downloads.isBulkQueueMinimized },
-                                set: { app.downloads.isBulkQueueMinimized = $0 }
-                            )
-                        ) {
-                            app.cancelBulkMusicQueue()
-                        }
-                        .transition(Self.cardTransition)
-                    }
-
-                    if let batch = app.movieDownloads.activeBatch {
-                        MovieDownloadQueuePanel(
-                            batch: batch,
-                            service: app.movieDownloads,
-                            isMinimized: $isMovieQueueMinimized
-                        )
-                        .transition(Self.cardTransition)
-                    }
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .overlay(alignment: .top) {
+                if showsSync, let sync = app.librarySyncMessage {
+                    LibrarySyncStatusBar(
+                        message: sync,
+                        showsSpinner: app.isLibraryLoading
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                    .transition(Self.cardTransition)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .top)
             }
-        }
+            .overlay(alignment: .top) {
+                if showsMovie && showsMusic && !movieIsOrb && !musicIsOrb {
+                    VStack(spacing: 8) {
+                        movieQueue
+                        musicQueue
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, queueTop)
+                }
+            }
+            .overlay(alignment: .top) {
+                if showsMovie && !movieIsOrb && !(showsMusic && !musicIsOrb) {
+                    movieQueue
+                        .padding(.leading, 12)
+                        .padding(.trailing, showsMusic && musicIsOrb ? 64 : 12)
+                        .padding(.top, queueTop)
+                }
+            }
+            .overlay(alignment: .top) {
+                if showsMusic && !musicIsOrb && !(showsMovie && !movieIsOrb) {
+                    musicQueue
+                        .padding(.leading, showsMovie && movieIsOrb ? 64 : 12)
+                        .padding(.trailing, 12)
+                        .padding(.top, queueTop)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if showsMovie && movieIsOrb {
+                    movieQueue
+                        .padding(.leading, 12)
+                        .padding(.top, queueTop)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if showsMusic && musicIsOrb {
+                    musicQueue
+                        .padding(.trailing, 12)
+                        .padding(.top, queueTop)
+                }
+            }
         .animation(EOSMotion.soft, value: showsSync)
         .animation(EOSMotion.soft, value: showsMusic)
         .animation(EOSMotion.soft, value: showsMovie)
+        .animation(EOSMotion.snappy, value: musicIsOrb)
+        .animation(EOSMotion.snappy, value: movieIsOrb)
         .onChange(of: app.movieDownloads.activeBatch?.id) { _, newId in
             if newId != nil {
                 isMovieQueueMinimized = true
@@ -119,6 +168,11 @@ struct MovieDownloadQueuePanel: View {
     @ObservedObject var service: MovieDownloadService
     @Binding var isMinimized: Bool
 
+    @State private var collapseTask: Task<Void, Never>?
+
+    /// Niebieski, żeby kółko filmu nie myliło się z różowym kółkiem muzyki.
+    private static let ring = Color(red: 0.20, green: 0.55, blue: 0.98)
+
     private var destinationBadge: MovieStorageLocationBadge.Kind {
         switch batch.destination {
         case .server:
@@ -132,18 +186,108 @@ struct MovieDownloadQueuePanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isMinimized ? 6 : 10) {
+        Group {
+            if isMinimized {
+                orb
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.6, anchor: .topLeading).combined(with: .opacity),
+                            removal: .scale(scale: 0.82, anchor: .topLeading).combined(with: .opacity)
+                        )
+                    )
+            } else {
+                expandedCard
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.92, anchor: .topLeading)
+                                .combined(with: .opacity)
+                                .combined(with: .offset(y: -10)),
+                            removal: .scale(scale: 0.7, anchor: .topLeading)
+                                .combined(with: .opacity)
+                                .combined(with: .offset(y: -18))
+                        )
+                    )
+                    .gesture(
+                        DragGesture(minimumDistance: 12).onEnded { value in
+                            if value.translation.height < -20 {
+                                collapse()
+                            }
+                        }
+                    )
+            }
+        }
+        .animation(EOSMotion.snappy, value: isMinimized)
+        .onAppear {
+            if !isMinimized { scheduleCollapse() }
+        }
+        .onChange(of: isMinimized) { _, minimized in
+            if minimized {
+                collapseTask?.cancel()
+            } else {
+                scheduleCollapse()
+            }
+        }
+    }
+
+    private var orb: some View {
+        Button {
+            withAnimation(EOSMotion.snappy) { isMinimized = false }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                Circle()
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                Circle()
+                    .stroke(Color.primary.opacity(0.12), lineWidth: 3.5)
+                Circle()
+                    .trim(from: 0, to: CGFloat(min(1, max(0, service.overallProgress))))
+                    .stroke(
+                        AngularGradient(
+                            colors: [Self.ring, Self.ring.opacity(0.55)],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.22), value: service.overallProgress)
+                VStack(spacing: 1) {
+                    if !service.isRunning {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Self.ring)
+                            .symbolRenderingMode(.hierarchical)
+                    } else {
+                        Text("\(Int((service.overallProgress * 100).rounded()))")
+                            .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(Self.ring)
+                            .contentTransition(.numericText())
+                        Image(systemName: service.activeItemPhaseBadge == "iPHONE" ? "iphone" : "film.fill")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(width: 44, height: 44)
+            .shadow(color: Color.black.opacity(0.16), radius: 10, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Postęp pobierania filmu, \(Int((service.overallProgress * 100).rounded())) procent")
+    }
+
+    private var expandedCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
                 Button {
-                    withAnimation(EOSMotion.snappy) { isMinimized.toggle() }
+                    collapse()
                 } label: {
-                    Image(systemName: isMinimized ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
+                    Image(systemName: "chevron.up.circle.fill")
                         .font(.body)
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(EOSTheme.accent)
+                        .foregroundStyle(Self.ring)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isMinimized ? "Rozwiń kolejkę" : "Zwiń kolejkę")
+                .accessibilityLabel("Zwiń kolejkę")
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(batch.label)
@@ -162,7 +306,7 @@ struct MovieDownloadQueuePanel: View {
                     }
                 }
                 Spacer(minLength: 0)
-                Text("\(Int((service.overallProgress * 100).rounded()))%")
+                Text(String(format: "%.1f%%", service.overallProgress * 100))
                     .font(.subheadline.monospacedDigit().weight(.bold))
                     .foregroundStyle(EOSTheme.accent)
                 if service.isRunning {
@@ -175,6 +319,13 @@ struct MovieDownloadQueuePanel: View {
             }
 
             FloatingProgressBar(progress: service.overallProgress)
+
+            if let bytes = service.activeBytesLabel, service.isRunning {
+                Text(bytes)
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(EOSTheme.accent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             if let title = service.activeItemTitle {
                 HStack(spacing: 6) {
@@ -193,7 +344,7 @@ struct MovieDownloadQueuePanel: View {
                     if !detail.isEmpty {
                         Text(detail)
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
@@ -221,6 +372,20 @@ struct MovieDownloadQueuePanel: View {
         .modifier(FloatingActivityChrome())
     }
 
+    private func collapse() {
+        collapseTask?.cancel()
+        withAnimation(EOSMotion.snappy) { isMinimized = true }
+    }
+
+    private func scheduleCollapse() {
+        collapseTask?.cancel()
+        collapseTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(EOSMotion.snappy) { isMinimized = true }
+        }
+    }
+
     private func itemRow(_ item: MovieDownloadQueueItem) -> some View {
         HStack(spacing: 8) {
             if let kind = badgeKind(for: item) {
@@ -232,7 +397,7 @@ struct MovieDownloadQueuePanel: View {
                     .lineLimit(1)
                 if let pct = item.progressPercent {
                     HStack(spacing: 6) {
-                        Text(pct >= 99 ? "Finalizowanie…" : String(format: "%.0f%%", pct))
+                        Text(pct >= 99 ? "Finalizowanie…" : String(format: "%.1f%%", pct))
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundStyle(EOSTheme.accent)
                         if item.id == service.activeBatch?.items.first(where: {
@@ -242,8 +407,8 @@ struct MovieDownloadQueuePanel: View {
                         })?.id {
                             if let bytes = service.activeBytesLabel {
                                 Text(bytes)
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundStyle(.secondary)
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundStyle(.primary)
                             }
                             if let eta = service.activeETALabel {
                                 Text("· \(eta)")
@@ -268,9 +433,9 @@ struct MovieDownloadQueuePanel: View {
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                 } else if case .queuedOnServer = item.state {
-                    Text("Na serwerze EOS")
+                    Text("W kolejce na serwerze")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(EOSTheme.accent.opacity(0.85))
+                        .foregroundStyle(.secondary)
                 } else if case .failed(let message) = item.state {
                     Text(message)
                         .font(.system(size: 10, weight: .medium))
@@ -378,6 +543,8 @@ struct ServerDownloadQueuePanel: View {
     @Binding var isMinimized: Bool
     var onCancel: (() -> Void)?
 
+    @State private var collapseTask: Task<Void, Never>?
+
     private var phaseTitle: String {
         if queue.destination == .serverAndPhone, queue.phase == .device {
             return "Pobieranie na iPhone"
@@ -396,30 +563,150 @@ struct ServerDownloadQueuePanel: View {
         queue.phase == .device ? queue.devicePending : queue.pending
     }
 
+    private var isFinished: Bool {
+        queue.pending.isEmpty
+            && queue.active == nil
+            && (queue.completed + queue.failedCount) >= max(queue.total, 1)
+    }
+
+    private var finishedWithErrors: Bool {
+        isFinished && queue.failedCount > 0
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: isMinimized ? 8 : 10) {
+        Group {
+            if isMinimized {
+                orb
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.6, anchor: .topTrailing).combined(with: .opacity),
+                            removal: .scale(scale: 0.82, anchor: .topTrailing).combined(with: .opacity)
+                        )
+                    )
+            } else {
+                expandedCard
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.92, anchor: .topTrailing)
+                                .combined(with: .opacity)
+                                .combined(with: .offset(y: -10)),
+                            removal: .scale(scale: 0.7, anchor: .topTrailing)
+                                .combined(with: .opacity)
+                                .combined(with: .offset(y: -18))
+                        )
+                    )
+                    .gesture(
+                        DragGesture(minimumDistance: 12).onEnded { value in
+                            if value.translation.height < -20 {
+                                collapse()
+                            }
+                        }
+                    )
+            }
+        }
+        .animation(EOSMotion.snappy, value: isMinimized)
+        .onAppear {
+            if !isMinimized { scheduleCollapse() }
+        }
+        .onChange(of: isMinimized) { _, minimized in
+            if minimized {
+                collapseTask?.cancel()
+            } else {
+                scheduleCollapse()
+            }
+        }
+    }
+
+    private var orb: some View {
+        Button {
+            withAnimation(EOSMotion.snappy) { isMinimized = false }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(.ultraThinMaterial)
+                Circle()
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                Circle()
+                    .stroke(Color.primary.opacity(0.12), lineWidth: 3.5)
+                Circle()
+                    .trim(from: 0, to: CGFloat(min(1, max(0, queue.overallProgress))))
+                    .stroke(
+                        AngularGradient(
+                            colors: [EOSTheme.accent, EOSTheme.accentSecondary],
+                            center: .center
+                        ),
+                        style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.22), value: queue.overallProgress)
+                VStack(spacing: 1) {
+                    if finishedWithErrors {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(EOSTheme.accent)
+                            .symbolRenderingMode(.hierarchical)
+                    } else if isFinished {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(EOSTheme.statusOnline)
+                            .symbolRenderingMode(.hierarchical)
+                    } else {
+                        Text("\(Int((queue.overallProgress * 100).rounded()))")
+                            .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(EOSTheme.accent)
+                            .contentTransition(.numericText())
+                        Image(systemName: queue.phase == .device ? "iphone" : "externaldrive.fill")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(width: 44, height: 44)
+            .shadow(color: Color.black.opacity(0.16), radius: 10, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Postęp zapisu na serwer, \(Int((queue.overallProgress * 100).rounded())) procent")
+    }
+
+    private var expandedCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Button {
-                    withAnimation(EOSMotion.snappy) { isMinimized.toggle() }
+                    collapse()
                 } label: {
-                    Image(systemName: isMinimized ? "chevron.down.circle.fill" : "chevron.up.circle.fill")
+                    Image(systemName: "chevron.up.circle.fill")
                         .font(.body)
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(EOSTheme.accent)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(isMinimized ? "Rozwiń kolejkę" : "Zwiń kolejkę")
+                .accessibilityLabel("Zwiń kolejkę")
 
                 phasePill
                 Spacer(minLength: 6)
-                Text("\(Int((queue.overallProgress * 100).rounded()))%")
-                    .font(.title3.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(EOSTheme.accent)
-                    .contentTransition(.numericText())
-                Text(DownloadETAFormatter.expanded(queue.etaSeconds ?? Double(max(1, queue.remainingCount)) * 25))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                if finishedWithErrors {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(EOSTheme.accent)
+                        .symbolRenderingMode(.hierarchical)
+                } else if isFinished {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(EOSTheme.statusOnline)
+                        .symbolRenderingMode(.hierarchical)
+                } else {
+                    Text("\(Int((queue.overallProgress * 100).rounded()))%")
+                        .font(.title3.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(EOSTheme.accent)
+                        .contentTransition(.numericText())
+                    Text(DownloadETAFormatter.expanded(LiveActivityLockScreenPolicy.displayETA(
+                        seconds: queue.etaSeconds,
+                        remainingCount: queue.remainingCount
+                    )))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 if onCancel != nil {
                     Button("Anuluj", role: .cancel) { onCancel?() }
                         .font(.caption.weight(.semibold))
@@ -436,7 +723,7 @@ struct ServerDownloadQueuePanel: View {
                     .foregroundStyle(.secondary)
             }
 
-            ForEach(Array(queue.liveCurrentItems.prefix(2).enumerated()), id: \.offset) { _, item in
+            ForEach(Array(queue.liveCurrentItems.prefix(BulkServerQueuePolicy.maxConcurrentServerJobs).enumerated()), id: \.offset) { _, item in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         Text(item.title)
@@ -448,34 +735,56 @@ struct ServerDownloadQueuePanel: View {
                             .foregroundStyle(EOSTheme.accent)
                             .contentTransition(.numericText())
                     }
+                    if let bytes = queue.byteLabel, !bytes.isEmpty {
+                        Text(bytes)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    } else if item.progress < 0.01 {
+                        Text("Szukam pliku…")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                     FloatingProgressBar(progress: min(1, max(0, item.progress)), height: 3.5)
                 }
             }
 
-            if !isMinimized {
-                if queue.destination == .serverAndPhone, queue.phase == .server, queue.deviceTotal > 0 {
-                    Text("Potem na iPhone: \(queue.deviceTotal) utworów")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+            if queue.destination == .serverAndPhone, queue.phase == .server, queue.deviceTotal > 0 {
+                Text("Potem na iPhone: \(queue.deviceTotal) utworów")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
             }
         }
         .modifier(FloatingActivityChrome())
     }
 
+    private func collapse() {
+        collapseTask?.cancel()
+        withAnimation(EOSMotion.snappy) { isMinimized = true }
+    }
+
+    private func scheduleCollapse() {
+        collapseTask?.cancel()
+        collapseTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(EOSMotion.snappy) { isMinimized = true }
+        }
+    }
+
     private var phasePill: some View {
         let phone = queue.phase == .device
+        let done = isFinished
         return HStack(spacing: 5) {
-            Image(systemName: phone ? "iphone" : "externaldrive.fill")
+            Image(systemName: done ? "checkmark.circle.fill" : (phone ? "iphone" : "externaldrive.fill"))
                 .font(.caption2.weight(.semibold))
-            Text(phone ? "iPhone" : "Serwer")
+            Text(done ? "Zakończono" : (phone ? "iPhone" : "Serwer"))
                 .font(.caption.weight(.semibold))
         }
-        .foregroundStyle(EOSTheme.accent)
+        .foregroundStyle(done ? EOSTheme.statusOnline : EOSTheme.accent)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(EOSTheme.accent.opacity(0.14), in: Capsule())
-        .accessibilityLabel(phaseTitle)
+        .background((done ? EOSTheme.statusOnline : EOSTheme.accent).opacity(0.14), in: Capsule())
+        .accessibilityLabel(done ? "Zakończono" : phaseTitle)
     }
 }
 

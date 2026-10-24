@@ -1,8 +1,38 @@
 import SwiftUI
 
+private enum AppTab: Hashable, CaseIterable, Identifiable {
+    case library, search, browse, video, account
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .library: return "Biblioteka"
+        case .search: return "Szukaj"
+        case .browse: return "Przeglądaj"
+        case .video: return "Wideo"
+        case .account: return "Konto"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .library: return "music.note.list"
+        case .search: return "magnifyingglass"
+        case .browse: return "folder.fill"
+        case .video: return "film"
+        case .account: return "person.crop.circle.fill"
+        }
+    }
+}
+
 struct MainTabView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var ui: UIPreferences
+    @State private var section = AppTab.library
+
+    /// Aplikacja iOS na Macu nie dostaje dolnego paska zakładek, gdy TabView nie jest korzeniem okna.
+    private var runsOnMac: Bool { ProcessInfo.processInfo.isiOSAppOnMac }
 
     init() {
         EOSTypography.configureGlobalAppearance()
@@ -21,29 +51,40 @@ struct MainTabView: View {
                 .environmentObject(app)
                 .environmentObject(ui)
 
+            if runsOnMac {
+                MacAppTabBar(selection: $section)
+            }
+
             ZStack(alignment: .top) {
-                TabView {
+                TabView(selection: $section) {
                     LibraryView()
                         .miniPlayerTabInset()
                         .tabItem { Label("Biblioteka", systemImage: "music.note.list") }
+                        .tag(AppTab.library)
 
                     SearchCatalogView()
                         .miniPlayerTabInset()
                         .tabItem { Label("Szukaj", systemImage: "magnifyingglass") }
+                        .tag(AppTab.search)
 
                     SourcesView()
                         .miniPlayerTabInset()
                         .tabItem { Label("Przeglądaj", systemImage: "folder.fill") }
+                        .tag(AppTab.browse)
 
                     VideoLibraryView()
                         .miniPlayerTabInset()
                         .tabItem { Label("Wideo", systemImage: "film") }
+                        .tag(AppTab.video)
 
                     AccountView()
                         .miniPlayerTabInset()
                         .tabItem { Label("Konto", systemImage: "person.crop.circle.fill") }
+                        .tag(AppTab.account)
                 }
                 .tint(EOSTheme.accent)
+                .toolbar(runsOnMac ? .hidden : .automatic, for: .tabBar)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .eosMiniPlayerAboveTabBar()
 
                 FloatingDownloadActivityOverlay()
@@ -52,6 +93,40 @@ struct MainTabView: View {
         .background(Color(.systemBackground).ignoresSafeArea())
         // Offline sync lives in EOSMusicApp (configureOfflineMode + onChange); picker writes both.
         .syncPlayerVisualAnalysis()
+    }
+}
+
+/// Sekcje aplikacji widoczne na Macu — dolny pasek iOS tam się nie pokazuje.
+private struct MacAppTabBar: View {
+    @Binding var selection: AppTab
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(AppTab.allCases) { tab in
+                let selected = selection == tab
+                Button {
+                    selection = tab
+                } label: {
+                    Label(tab.title, systemImage: tab.symbol)
+                        .font(.subheadline.weight(selected ? .semibold : .medium))
+                        .foregroundStyle(selected ? Color.white : .primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background {
+                            if selected {
+                                Capsule().fill(EOSTheme.accent)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Sekcje")
     }
 }
 
@@ -173,6 +248,7 @@ struct ServerMusicAssetsView: View {
     @State private var selectedAlbumKey: String?
     @State private var assetToDelete: MusicAssetItem?
     @State private var movieToDelete: MovieDownload?
+    @State private var movieResume: LibraryResumeAsk?
     @State private var movieSelection: OnlineMovieSelection?
     @State private var sharePayload: SharePayload?
     @State private var isRefreshing = false
@@ -181,6 +257,12 @@ struct ServerMusicAssetsView: View {
     private struct SharePayload: Identifiable {
         let id = UUID()
         let url: URL
+    }
+
+    private struct LibraryResumeAsk: Identifiable {
+        let id = UUID()
+        let download: MovieDownload
+        let seconds: Double
     }
 
     private var assets: [MusicAssetItem] {
@@ -455,6 +537,40 @@ struct ServerMusicAssetsView: View {
                 Text("„\(movie.title)” zniknie z dysku serwera.")
             }
         }
+        .confirmationDialog(
+            "Ten film był już rozpoczęty",
+            isPresented: Binding(
+                get: { movieResume != nil },
+                set: { if !$0 { movieResume = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Kontynuuj od \(MovieResumePolicy.clockLabel(seconds: movieResume?.seconds ?? 0))") {
+                guard let ask = movieResume else { return }
+                movieResume = nil
+                Task {
+                    await app.onlineMovies.playFromServer(
+                        selection: OnlineMovieSelection(download: ask.download),
+                        video: video,
+                        startAt: ask.seconds
+                    )
+                }
+            }
+            Button("Od początku") {
+                guard let ask = movieResume else { return }
+                movieResume = nil
+                MovieResumeStore.clear(id: ask.download.url)
+                Task {
+                    await app.onlineMovies.playFromServer(
+                        selection: OnlineMovieSelection(download: ask.download),
+                        video: video
+                    )
+                }
+            }
+            Button("Anuluj", role: .cancel) { movieResume = nil }
+        } message: {
+            Text("Możesz wrócić do miejsca, w którym obraz się urwał, albo zacząć film od początku.")
+        }
         .sheet(item: $sharePayload) { payload in
             ActivityView(activityItems: [payload.url])
         }
@@ -610,11 +726,15 @@ struct ServerMusicAssetsView: View {
                 Label("Otwórz", systemImage: "play.fill")
             }
             Button {
-                Task {
-                    await app.onlineMovies.playFromServer(
-                        selection: OnlineMovieSelection(download: download),
-                        video: video
-                    )
+                if let seconds = MovieResumeStore.offerSeconds(for: download.url) {
+                    movieResume = LibraryResumeAsk(download: download, seconds: seconds)
+                } else {
+                    Task {
+                        await app.onlineMovies.playFromServer(
+                            selection: OnlineMovieSelection(download: download),
+                            video: video
+                        )
+                    }
                 }
             } label: {
                 Label("Odtwórz teraz", systemImage: "play.circle")

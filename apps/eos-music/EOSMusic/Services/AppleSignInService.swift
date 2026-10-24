@@ -68,6 +68,21 @@ final class AppleSignInService: NSObject, ObservableObject {
         }
     }
 
+    /// Zapisane hasło tej aplikacji (ten sam wpis, który iOS pokazuje nad klawiaturą).
+    func requestSavedPassword() async throws -> (login: String, password: String) {
+        try await withCheckedThrowingContinuation { continuation in
+            let request = ASAuthorizationPasswordProvider().createRequest()
+            let controller = ASAuthorizationController(authorizationRequests: [request])
+            let delegate = PasswordCredentialDelegate { result in
+                continuation.resume(with: result.map { (login: $0.0, password: $0.1) })
+            }
+            controller.delegate = delegate
+            controller.presentationContextProvider = self
+            objc_setAssociatedObject(controller, "delegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+            controller.performRequests()
+        }
+    }
+
     func storeLink(_ link: AppleAccountLink) throws {
         linkedAccount = link
         let data = try JSONEncoder().encode(link)
@@ -103,6 +118,35 @@ extension AppleSignInService: ASAuthorizationControllerPresentationContextProvid
         MainActor.assumeIsolated {
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             return scenes.flatMap(\.windows).first { $0.isKeyWindow } ?? ASPresentationAnchor()
+        }
+    }
+}
+
+private final class PasswordCredentialDelegate: NSObject, ASAuthorizationControllerDelegate {
+    private let completion: (Result<(String, String), Error>) -> Void
+
+    init(completion: @escaping (Result<(String, String), Error>) -> Void) {
+        self.completion = completion
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithAuthorization authorization: ASAuthorization) {
+        guard let credential = authorization.credential as? ASPasswordCredential else {
+            completion(.failure(AppleSignInError.noCredential))
+            return
+        }
+        let login = credential.user.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !login.isEmpty, !credential.password.isEmpty else {
+            completion(.failure(AppleSignInError.noCredential))
+            return
+        }
+        completion(.success((login, credential.password)))
+    }
+
+    func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
+        if let authError = error as? ASAuthorizationError, authError.code == .canceled {
+            completion(.failure(AppleSignInError.cancelled))
+        } else {
+            completion(.failure(error))
         }
     }
 }

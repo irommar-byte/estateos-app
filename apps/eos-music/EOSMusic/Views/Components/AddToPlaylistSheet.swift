@@ -13,11 +13,16 @@ struct AddToPlaylistSheet: View {
     @State private var errorMessage: String?
     @State private var addedFolderId: String?
 
+    /// Ostatnio używane playlisty na górze — smart kolejka w sheetcie.
+    private var foldersForPicker: [MusicFolder] {
+        RecentPlaylistUsage.sortFolders(app.playlistFoldersForBrowsing)
+    }
+
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(app.playlistFoldersForBrowsing) { folder in
+                    ForEach(foldersForPicker) { folder in
                         Button {
                             Task { await add(to: folder.id) }
                         } label: {
@@ -106,9 +111,13 @@ struct AddToPlaylistSheet: View {
         defer { isSaving = false }
         do {
             let folder = try await app.api.createMusicFolder(name: name)
+            RecentPlaylistUsage.record(folderId: folder.id)
             try await app.refreshMusicLibrary()
             newFolderName = ""
             try await app.addTrackToFolder(folderId: folder.id, track: track, announcePlaylistName: folder.name)
+            RecentPlaylistUsage.record(folderId: folder.id)
+            addedFolderId = folder.id
+            try? await Task.sleep(nanoseconds: 350_000_000)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

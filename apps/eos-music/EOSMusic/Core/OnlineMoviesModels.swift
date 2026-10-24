@@ -164,6 +164,68 @@ struct FilmsHomeResponse: Codable {
     let shelves: [FilmsHomeShelf]
 }
 
+struct CdaHdBrowseResponse: Codable {
+    let title: String?
+    let pageUrl: String?
+    let page: Int?
+    let pageSize: Int?
+    let items: [SearchResultItem]
+    let hasMore: Bool?
+}
+
+enum MovieBrowseOrdering {
+    enum Mode: String, CaseIterable, Identifiable {
+        case newest
+        case topRated
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .newest: return "Najnowsze"
+            case .topRated: return "Najlepiej oceniane"
+            }
+        }
+    }
+
+    static func ordered(_ items: [SearchResultItem], mode: Mode) -> [SearchResultItem] {
+        items.enumerated().sorted { lhs, rhs in
+            switch mode {
+            case .newest:
+                let leftYear = lhs.element.releaseYear ?? -1
+                let rightYear = rhs.element.releaseYear ?? -1
+                if leftYear != rightYear { return leftYear > rightYear }
+            case .topRated:
+                let leftRating = lhs.element.rating ?? -1
+                let rightRating = rhs.element.rating ?? -1
+                if leftRating != rightRating { return leftRating > rightRating }
+                let leftYear = lhs.element.releaseYear ?? -1
+                let rightYear = rhs.element.releaseYear ?? -1
+                if leftYear != rightYear { return leftYear > rightYear }
+            }
+            return lhs.offset < rhs.offset
+        }.map(\.element)
+    }
+}
+
+enum CdaHdBrowseLink {
+    static func releaseYearURL(year: Int, referenceURL: String? = nil) -> String {
+        var base = "https://cda-hd.cc"
+        if let referenceURL,
+           let url = URL(string: referenceURL),
+           let scheme = url.scheme,
+           let host = url.host {
+            base = "\(scheme)://\(host)"
+        }
+        return "\(base)/release-year/\(year)/"
+    }
+
+    static func year(in title: String) -> Int? {
+        guard let match = title.range(of: #"\((19|20)\d{2}\)"#, options: .regularExpression) else { return nil }
+        return Int(title[match].dropFirst().dropLast())
+    }
+}
+
 struct CdaHdCatalogResponse: Codable {
     let mode: String?
     let type: String?
@@ -178,6 +240,15 @@ struct CdaHdCatalogResponse: Codable {
     let stale: Bool?
 }
 
+struct MovieSearchFacet: Codable, Identifiable, Hashable {
+    var id: String { url }
+    let name: String
+    let url: String
+    var role: String? = nil
+    var thumbnail: String? = nil
+    var year: Int? = nil
+}
+
 struct SearchResponse: Codable {
     let query: String?
     let source: String?
@@ -188,9 +259,12 @@ struct SearchResponse: Codable {
     let total: Int?
     let totalPages: Int?
     let hasMore: Bool?
+    let people: [MovieSearchFacet]
+    let genres: [MovieSearchFacet]
+    let years: [MovieSearchFacet]
 
     enum CodingKeys: String, CodingKey {
-        case query, source, sort, results, items, page, pageSize, total, totalPages, hasMore
+        case query, source, sort, results, items, page, pageSize, total, totalPages, hasMore, people, genres, years
     }
 
     init(from decoder: Decoder) throws {
@@ -208,6 +282,9 @@ struct SearchResponse: Codable {
         total = try c.decodeIfPresent(Int.self, forKey: .total)
         totalPages = try c.decodeIfPresent(Int.self, forKey: .totalPages)
         hasMore = try c.decodeIfPresent(Bool.self, forKey: .hasMore)
+        people = try c.decodeIfPresent([MovieSearchFacet].self, forKey: .people) ?? []
+        genres = try c.decodeIfPresent([MovieSearchFacet].self, forKey: .genres) ?? []
+        years = try c.decodeIfPresent([MovieSearchFacet].self, forKey: .years) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -221,6 +298,9 @@ struct SearchResponse: Codable {
         try c.encodeIfPresent(total, forKey: .total)
         try c.encodeIfPresent(totalPages, forKey: .totalPages)
         try c.encodeIfPresent(hasMore, forKey: .hasMore)
+        try c.encode(people, forKey: .people)
+        try c.encode(genres, forKey: .genres)
+        try c.encode(years, forKey: .years)
     }
 }
 
@@ -238,21 +318,16 @@ struct MovieDownload: Codable, Identifiable, Hashable {
 
     var isDownloaded: Bool { hasLandedFile }
 
-    /// Real file on EOS — not a job stub without bytes.
+    /// Real file on EOS — not a job stub / queued download without bytes.
+    /// Floor is high enough to reject truncated Fallout-style landings (few MB with a fake 1h moov).
     var hasLandedFile: Bool {
-        if let bytes, bytes > 400_000 { return true }
-        if let filename, !filename.isEmpty {
-            let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
-            let videoExts: Set<String> = ["mp4", "mkv", "m4v", "mov", "webm"]
-            if videoExts.contains(ext) { return true }
-        }
-        if let downloadJobId, !downloadJobId.isEmpty, downloadedAt != nil {
-            return true
-        }
+        if let bytes, bytes > 30_000_000 { return true }
+        // Filename / downloadedAt alone is not enough — season queues marked stubs as "Pobrany".
         return false
     }
 
-    /// Job already registered — play/token can use this even before byte count arrives.
+    /// Job already registered — play/token may use this even before byte count arrives.
+    /// Must NOT be treated as "downloaded" for UI badges.
     var hasPlayableJob: Bool {
         guard let downloadJobId, !downloadJobId.isEmpty else { return false }
         return hasLandedFile || downloadedAt != nil || (filename?.isEmpty == false)
@@ -471,58 +546,62 @@ struct MediaQualityOption: Codable, Hashable, Identifiable {
         }
     }
 
-    static func defaultStreamTiers(duration: Double?) -> [MediaQualityOption] {
-        let dur = (duration ?? 0) > 0 ? duration! : 45 * 60
-        func estLabel(_ kbps: Int) -> String {
-            let bytes = Double(kbps) * 1000 * dur / 8
-            return "\(MediaByteFormat.label(bytes: Int(bytes))) ~"
-        }
-        return [
-            MediaQualityOption(id: "best", label: "Najlepsza", detail: "Auto", sizeLabel: estLabel(5000)),
-            MediaQualityOption(id: "1080", label: "1080p", detail: "Full HD", sizeLabel: estLabel(5000), height: 1080),
-            MediaQualityOption(id: "720", label: "720p", detail: "HD", sizeLabel: estLabel(2800), height: 720),
-            MediaQualityOption(id: "480", label: "480p", detail: "SD", sizeLabel: estLabel(1200), height: 480),
-        ]
+    /// Mirror pages used to invent 1080p/720p/480p from a fixed bitrate. Those rows are not real variants.
+    var isInventedMirrorTier: Bool {
+        MovieDownloadQualityPolicy.isInventedMirrorTier(detail: detail)
     }
 
-    static func apiHeight(for option: MediaQualityOption, options: [MediaQualityOption]) -> Int {
-        if option.isBest { return options.compactMap(\.height).max() ?? 720 }
-        return option.height ?? 720
-    }
-
-    func estimatedBytes(duration: Double) -> Int {
-        if let sizeBytes, sizeBytes > 0 { return sizeBytes }
-        let seconds = max(duration, 60)
-        let kbps: Int
-        if let height {
-            kbps = height >= 1080 ? 5000 : height >= 720 ? 2800 : 1200
-        } else if isBest {
-            kbps = 5000
+    /// Size the server measured or derived from the real stream bitrate. Never a fixed 5 Mb/s guess.
+    func knownSizeLabel(itemCount: Int, singleItemDuration: Double, totalDuration: Double) -> String? {
+        guard !isInventedMirrorTier, let sizeBytes, sizeBytes > 0 else { return nil }
+        let approximate = sizeLabel?.hasPrefix("ok.") == true
+        let bytes: Int
+        if itemCount > 1, singleItemDuration > 0, totalDuration > 0 {
+            bytes = Int((Double(sizeBytes) * totalDuration / singleItemDuration).rounded())
+        } else if itemCount > 1 {
+            return nil
         } else {
-            kbps = 2800
+            bytes = sizeBytes
         }
-        return Int(Double(kbps) * 1000 * seconds / 8)
-    }
-
-    func totalEstimateLabel(itemCount: Int, totalDuration: Double) -> String {
-        guard itemCount > 0 else { return "—" }
-        let perItem = totalDuration > 0 ? totalDuration / Double(itemCount) : 45 * 60
-        let bytes = estimatedBytes(duration: perItem) * itemCount
-        return "\(MediaByteFormat.label(bytes: bytes)) ~"
+        let number = MediaByteFormat.label(bytes: bytes)
+        return approximate ? "ok. \(number)" : number
     }
 
     var displaySizeLabel: String {
+        if isInventedMirrorTier { return "—" }
         if let sizeLabel, !sizeLabel.isEmpty { return sizeLabel }
         if let sizeBytes, sizeBytes > 0 { return MediaByteFormat.label(bytes: sizeBytes) }
         return "—"
     }
 }
 
+enum MovieDownloadQualityPolicy {
+    static func isInventedMirrorTier(detail: String?) -> Bool {
+        let text = (detail ?? "").lowercased()
+        return text.contains("szacunek") && text.contains("mirror")
+    }
+
+    static func offersDistinctVideoQuality(_ options: [MediaQualityOption]) -> Bool {
+        let heights = Set(options.compactMap(\.height).filter { $0 > 0 })
+        return heights.count > 1
+    }
+
+    /// Downloaded amount, with the real expected total only when the server measured one.
+    static func progressBytesLabel(downloaded: Int, expected: Int?) -> String {
+        let done = MediaByteFormat.label(bytes: max(downloaded, 0))
+        guard let expected, expected > downloaded + 1_048_576 else { return done }
+        return "\(done) / \(MediaByteFormat.label(bytes: expected))"
+    }
+}
+
 enum MediaByteFormat {
     static func label(bytes: Int) -> String {
         let value = Double(max(bytes, 0))
-        if value >= 1_073_741_824 { return String(format: "%.1f GB", value / 1_073_741_824) }
-        if value >= 1_048_576 { return String(format: "%.0f MB", value / 1_048_576) }
+        if value >= 1_073_741_824 { return String(format: "%.2f GB", value / 1_073_741_824) }
+        if value >= 1_048_576 {
+            let mb = value / 1_048_576
+            return mb >= 100 ? String(format: "%.0f MB", mb) : String(format: "%.1f MB", mb)
+        }
         if value >= 1024 { return String(format: "%.0f KB", value / 1024) }
         return "\(bytes) B"
     }
@@ -583,8 +662,7 @@ struct VideoInfoResponse: Codable, Identifiable {
 
 extension VideoInfoResponse {
     var effectiveStreamOptions: [MediaQualityOption] {
-        if let videoOptions, !videoOptions.isEmpty { return videoOptions }
-        return MediaQualityOption.defaultStreamTiers(duration: duration)
+        (videoOptions ?? []).filter { !$0.isInventedMirrorTier }
     }
 
     var availableDownloadFormats: [MediaDownloadFormat] {
@@ -608,17 +686,38 @@ extension VideoInfoResponse {
     func defaultDownloadSelection() -> (format: MediaDownloadFormat, quality: MediaQualityOption) {
         let format = availableDownloadFormats.first ?? .videoMP4
         let qualities = qualityOptions(for: format)
-        let quality = qualities.first(where: { $0.id == "720" })
+        let quality = qualities.max(by: { ($0.height ?? 0) < ($1.height ?? 0) })
             ?? qualities.first(where: { $0.isBest })
             ?? qualities.first
-            ?? MediaQualityOption(id: "720", label: "720p", height: 720)
+            ?? MediaQualityOption(id: "best", label: "Najlepsza dostępna")
         return (format, quality)
     }
 }
 
-enum OnlineMovieDownloadDestination: Equatable {
+enum OnlineMovieDownloadDestination: Equatable, Hashable, CaseIterable {
     case server
     case serverAndPhone
+
+    var label: String {
+        switch self {
+        case .server: return "Tylko serwer EOS"
+        case .serverAndPhone: return "Serwer, potem to urządzenie"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .server: return "Trwała kopia w MOVIES/ — odtwarzanie z serwera"
+        case .serverAndPhone: return "Najpierw serwer, potem plik offline na tym iPhonie"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .server: return "server.rack"
+        case .serverAndPhone: return "iphone.and.arrow.down"
+        }
+    }
 }
 
 /// Tytuł pliku na serwerze: `Serial · Sezon N · Odcinek` → folder `Serial/Sezon N/`.

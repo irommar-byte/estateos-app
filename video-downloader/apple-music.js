@@ -931,11 +931,11 @@ async function resolveAppleMusicDownloadUrlDirect(appleUrl) {
   return extractDownloadUrl(step2.data || "");
 }
 
-function runYtDlp(args, timeoutMs = 35000) {
+function runYtDlp(args, timeoutMs = 180000) {
   return new Promise((resolve, reject) => {
     const child = spawn(YT_DLP_PATH, args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, PATH: `${process.env.PATH || ""}:/usr/bin:/bin` },
+      env: ytDlpBinEnv(),
     });
     let stdout = "";
     let stderr = "";
@@ -977,151 +977,463 @@ function youtubeSearchQueries(track) {
   return [...new Set(queries.map((q) => q.replace(/[\r\n]+/g, " ").trim()).filter(Boolean))];
 }
 
-function ytDlpPlayerArgs() {
-  return [
-    "--extractor-args",
-    "youtube:player_client=android,ios,tv",
+function ytDlpBinEnv() {
+  return { ...process.env, PATH: `/usr/local/bin:${process.env.PATH || ""}:/usr/bin:/bin` };
+}
+
+function ytDlpPlayerArgSets() {
+  // Default (no forced client) usually exposes m4a/opus. android is kept as a
+  // progressive fallback (format 18) when adaptive audio 403s / is missing.
+  const deno = [
+    "--js-runtimes",
+    "deno",
+    "--remote-components",
+    "ejs:github",
   ];
+  return [
+    [...deno],
+    [...deno, "--extractor-args", "youtube:player_client=android"],
+    [...deno, "--extractor-args", "youtube:player_client=tv,android"],
+  ];
+}
+
+function ytDlpPlayerArgs() {
+  return ytDlpPlayerArgSets()[0];
+}
+
+const YT_DLP_AUDIO_FORMAT_BEST = "bestaudio[acodec^=mp4a]/bestaudio/ba";
+const YT_DLP_AUDIO_FORMAT_FALLBACK = "18/bestaudio/ba";
+const YT_DLP_AUDIO_SORT = ["-S", "abr,asr,acodec:opus"];
+const YT_DLP_AUDIO_FORMAT = YT_DLP_AUDIO_FORMAT_BEST;
+
+let ytDlpHealPromise = null;
+let ytDlpHealAt = 0;
+
+function shouldHealYtDlp(err) {
+  const msg = String(err?.message || err || "");
+  return /(limit czasu|timeout|n-sig|js engine|Unable to extract|HTTP Error 403|Requested format|Sabotaged|page needs to be reloaded|Sign in to confirm)/i.test(msg);
+}
+
+/** Codziennie ok. 4:30 — YouTube zmienia się często, a stary yt-dlp = 403 i wolne streamy. */
+function runYtDlpUpdate(reason) {
+  if (!fs.existsSync(YT_DLP_PATH) || ytDlpHealPromise) return;
+  ytDlpHealAt = Date.now();
+  ytDlpHealPromise = new Promise((resolve) => {
+    const child = spawn(YT_DLP_PATH, ["--update-to", "nightly"], { stdio: ["ignore", "pipe", "pipe"], env: ytDlpBinEnv() });
+    let out = "";
+    child.stdout.on("data", (d) => { out += d; });
+    const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} resolve(); }, 120000);
+    child.once("error", () => { clearTimeout(timer); resolve(); });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      const line = out.trim().split("\n").pop() || "";
+      console.warn(`yt-dlp ${reason}: ${code === 0 ? "ok" : "kod " + code} ${line}`.trim());
+      resolve();
+    });
+  }).finally(() => { ytDlpHealPromise = null; });
+}
+
+(function scheduleYtDlpNightlyUpdate() {
+  if (process.env.EOS_YTDLP_AUTOUPDATE === "0") return;
+  const next = new Date();
+  next.setHours(4, 30, 0, 0);
+  if (next <= new Date()) next.setDate(next.getDate() + 1);
+  setTimeout(() => {
+    runYtDlpUpdate("nocna aktualizacja");
+    setInterval(() => runYtDlpUpdate("nocna aktualizacja"), 24 * 60 * 60 * 1000).unref?.();
+  }, next - Date.now()).unref?.();
+  // Po starcie serwera też sprawdź (po 2 min, żeby nie spowalniać rozruchu).
+  setTimeout(() => runYtDlpUpdate("aktualizacja po starcie"), 120000).unref?.();
+})();
+
+async function healYtDlpBinary(err) {
+  if (!shouldHealYtDlp(err)) return;
+  if (Date.now() - ytDlpHealAt < 6 * 60 * 60 * 1000) return;
+  if (ytDlpHealPromise) return ytDlpHealPromise;
+  ytDlpHealAt = Date.now();
+  ytDlpHealPromise = new Promise((resolve) => {
+    console.warn("yt-dlp self-heal: updating to nightly");
+    const child = spawn(YT_DLP_PATH, ["--update-to", "nightly"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: ytDlpBinEnv(),
+    });
+    const timer = setTimeout(() => {
+      try { child.kill("SIGKILL"); } catch {}
+      resolve();
+    }, 120000);
+    child.once("error", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      console.warn("yt-dlp self-heal finished", code);
+      resolve();
+    });
+  }).finally(() => {
+    ytDlpHealPromise = null;
+  });
+  await ytDlpHealPromise;
 }
 
 async function resolveAppleMusicDownloadUrlViaYouTube(appleUrl) {
   if (!fs.existsSync(YT_DLP_PATH)) throw new Error("Brak lokalnego resolvera audio yt-dlp.");
   const track = await buildAppleMusicInfo(appleUrl);
+  // Krótkie rozwiązanie adresu źródła — używane przy Play, więc nie czeka za pobieraniami.
+  return withMusicStreamSlot(() => resolveAppleMusicDownloadUrlViaYouTubeUnlocked(track));
+}
+
+async function resolveAppleMusicDownloadUrlViaYouTubeUnlocked(track) {
   let lastErr;
+  const playerSets = ytDlpPlayerArgSets();
+  const formats = [YT_DLP_AUDIO_FORMAT_BEST, YT_DLP_AUDIO_FORMAT_FALLBACK];
   for (const query of youtubeSearchQueries(track)) {
-    try {
-      const stdout = await runYtDlp([
-        "--no-playlist",
-        "--no-warnings",
-        "--socket-timeout",
-        "12",
-        "--retries",
-        "2",
-        ...ytDlpPlayerArgs(),
-        "-f",
-        "bestaudio[ext=m4a]/bestaudio/best",
-        "-g",
-        `ytsearch1:${query}`,
-      ]);
-      const url = String(stdout)
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .find((line) => /^https?:\/\//i.test(line));
-      if (url) return url;
-      lastErr = new Error("Nie znaleziono zgodnego awaryjnego źródła audio.");
-    } catch (err) {
-      lastErr = err;
+    for (let i = 0; i < playerSets.length; i += 1) {
+      const playerArgs = playerSets[i];
+      const format = formats[Math.min(i, formats.length - 1)];
+      try {
+        const stdout = await runYtDlp([
+          "--no-playlist",
+          "--no-warnings",
+          "--socket-timeout",
+          "12",
+          "--retries",
+          "2",
+          ...playerArgs,
+          "-f",
+          format,
+          "-g",
+          `ytsearch1:${query}`,
+        ]);
+        const url = String(stdout)
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find((line) => /^https?:\/\//i.test(line));
+        if (url) return url;
+        lastErr = new Error("Nie znaleziono zgodnego awaryjnego źródła audio.");
+      } catch (err) {
+        lastErr = err;
+      }
     }
   }
   throw lastErr || new Error("Nie znaleziono zgodnego awaryjnego źródła audio.");
 }
 
-function parseYtDlpProgress(line) {
-  const match = String(line || "").match(/\[download\]\s+([0-9.]+)%/);
-  if (!match) return null;
-  const pct = Number(match[1]);
-  return Number.isFinite(pct) ? pct : null;
+function ytUnitToBytes(amount, unit) {
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n < 0) return null;
+  const u = String(unit || "").toLowerCase();
+  const base = u.includes("i") ? 1024 : 1000;
+  if (u.startsWith("g")) return Math.round(n * base ** 3);
+  if (u.startsWith("m")) return Math.round(n * base ** 2);
+  if (u.startsWith("k")) return Math.round(n * base);
+  return Math.round(n);
 }
 
-function runYtDlpDownload(args, { timeoutMs = 180000, onProgress } = {}) {
+function parseYtDlpProgress(line) {
+  const info = parseYtDlpDownloadLine(line);
+  return info ? info.percent : null;
+}
+
+function parseYtDlpDownloadLine(line) {
+  const match = String(line || "").match(
+    /\[download\]\s+([0-9.]+)%(?:\s+of\s+~?\s*([0-9.]+)\s*([KMGT]i?B))?/i
+  );
+  if (!match) return null;
+  const percent = Number(match[1]);
+  if (!Number.isFinite(percent)) return null;
+  const totalBytes = match[2] && match[3] ? ytUnitToBytes(match[2], match[3]) : null;
+  const downloadedBytes = totalBytes != null ? Math.round(totalBytes * (percent / 100)) : null;
+  return { percent, downloadedBytes, totalBytes };
+}
+
+let musicYtDlpLane = Promise.resolve();
+
+/** Kolejka pobierań na serwer (trwałe pliki) — jedno pobieranie naraz. */
+function enqueueMusicYtDlp(task) {
+  const run = musicYtDlpLane.then(task, task);
+  musicYtDlpLane = run.then(
+    () => {},
+    () => {}
+  );
+  return run;
+}
+
+/**
+ * Osobny pas dla odtwarzania (Play + przygotowanie następnego utworu).
+ * Wcześniej stream czekał w tej samej kolejce co pobieranie (do 22 min), a stream na żywo
+ * blokował pobieranie przez cały utwór.
+ */
+const MUSIC_STREAM_MAX = Math.max(1, Number(process.env.MUSIC_STREAM_CONCURRENCY || 3) || 3);
+let musicStreamActive = 0;
+const musicStreamWaiters = [];
+
+async function withMusicStreamSlot(task) {
+  if (musicStreamActive >= MUSIC_STREAM_MAX) {
+    await new Promise((resolve) => musicStreamWaiters.push(resolve));
+  }
+  musicStreamActive += 1;
+  try {
+    return await task();
+  } finally {
+    musicStreamActive = Math.max(0, musicStreamActive - 1);
+    const next = musicStreamWaiters.shift();
+    if (next) next();
+  }
+}
+
+/**
+ * Search + player JS on this link is silent for about a minute, then the
+ * m4a arrives near 10 KB/s. Killing the process after 20s of silence, or
+ * after 90s total, aborts every track before the file exists.
+ * Stall only once a download percent has been seen and then stops.
+ */
+function runYtDlpDownload(args, { timeoutMs = 22 * 60 * 1000, stallMs = 90000, onProgress, onSpawn } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(YT_DLP_PATH, args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, PATH: `${process.env.PATH || ""}:/usr/bin:/bin` },
+      env: ytDlpBinEnv(),
     });
+    onSpawn?.(child);
     let stdout = "";
     let stderr = "";
+    let settled = false;
+    let sawDownload = false;
+    let lastProgressAt = 0;
+    const started = Date.now();
+    const finish = (fn) => (arg) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearInterval(watch);
+      fn(arg);
+    };
+    const fail = finish((err) => {
+      try { child.kill("SIGKILL"); } catch {}
+      reject(err);
+    });
+    const succeed = finish((value) => resolve(value));
     const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error("Pobieranie audio przekroczyło limit czasu."));
+      fail(new Error("Pobieranie audio przekroczyło limit czasu."));
     }, timeoutMs);
-    const handleChunk = (chunk, isErr) => {
-      const text = String(chunk);
-      if (isErr) {
-        if (stderr.length < 256 * 1024) stderr += text;
-      } else if (stdout.length < 256 * 1024) {
-        stdout += text;
+    const watch = setInterval(() => {
+      const now = Date.now();
+      if (!sawDownload) {
+        if (now - started > 3 * 60 * 1000) {
+          fail(new Error("Pobieranie audio przekroczyło limit czasu."));
+        }
+        return;
       }
-      for (const line of text.split(/\r?\n/)) {
-        const pct = parseYtDlpProgress(line);
-        if (pct != null) onProgress?.(pct);
+      if (lastProgressAt > 0 && now - lastProgressAt > stallMs) {
+        fail(new Error("Pobieranie audio przekroczyło limit czasu."));
+      }
+    }, 2000);
+    const handleChunk = (chunk, isErr) => {
+      const textChunk = String(chunk);
+      if (isErr) {
+        if (stderr.length < 256 * 1024) stderr += textChunk;
+      } else if (stdout.length < 256 * 1024) {
+        stdout += textChunk;
+      }
+      for (const line of textChunk.split(/\r?\n/)) {
+        const info = parseYtDlpDownloadLine(line);
+        if (info) {
+          sawDownload = true;
+          lastProgressAt = Date.now();
+          onProgress?.(info);
+        }
       }
     };
     child.stdout.on("data", (chunk) => handleChunk(chunk, false));
     child.stderr.on("data", (chunk) => handleChunk(chunk, true));
-    child.once("error", (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+    child.once("error", (err) => fail(err));
     child.once("close", (code) => {
-      clearTimeout(timer);
+      if (settled) return;
       if (code !== 0) {
-        reject(new Error(stderr.trim().slice(-500) || `yt-dlp zakończył się kodem ${code}.`));
+        const detail = stderr.trim().slice(-500);
+        fail(new Error(detail || `yt-dlp zakończył się kodem ${code}.`));
         return;
       }
-      resolve(stdout);
+      succeed(stdout);
     });
   });
 }
 
-async function downloadAppleMusicViaYtDlp(track, destPath, onProgress) {
-  if (!fs.existsSync(YT_DLP_PATH)) throw new Error("Brak lokalnego resolvera audio yt-dlp.");
-  const queries = youtubeSearchQueries(track);
-  if (!queries.length) throw new Error("Brak tytułu utworu do wyszukania źródła audio.");
 
-  const tmpBase = `${destPath}.ytsrc`;
-  for (const extra of [".m4a", ".webm", ".mp4", ".opus", ".ogg", ".mp3", ".part"]) {
-    try {
-      if (fs.existsSync(tmpBase + extra)) fs.unlinkSync(tmpBase + extra);
-    } catch {}
-  }
-
-  let lastErr;
-  for (const query of queries) {
-    try {
-      await runYtDlpDownload(
-        [
-          "--no-playlist",
-          "--no-warnings",
-          "--newline",
-          "--socket-timeout",
-          "15",
-          "--retries",
-          "3",
-          "--fragment-retries",
-          "3",
-          ...ytDlpPlayerArgs(),
-          "-f",
-          "bestaudio[ext=m4a]/bestaudio/best",
-          "-o",
-          `${tmpBase}.%(ext)s`,
-          `ytsearch1:${query}`,
-        ],
-        {
-          timeoutMs: 180000,
-          onProgress: (pct) => onProgress?.(5 + (pct / 100) * 75),
-        }
-      );
-      lastErr = null;
-      break;
-    } catch (err) {
-      lastErr = err;
-      console.warn("yt-dlp audio:", query, err?.message || err);
-    }
-  }
-  if (lastErr) throw lastErr;
-
+function findYtDlpOutput(tmpBase) {
   const dir = path.dirname(tmpBase);
   const prefix = path.basename(tmpBase) + ".";
-  const found = fs.readdirSync(dir).find((name) => name.startsWith(prefix) && !name.endsWith(".part"));
-  if (!found) throw new Error("yt-dlp nie zapisał pliku audio.");
-  const srcPath = path.join(dir, found);
-  try {
-    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
-  } catch {}
-  fs.renameSync(srcPath, destPath);
+  const name = fs.readdirSync(dir).find((entry) => entry.startsWith(prefix) && !entry.endsWith(".part"));
+  return name ? path.join(dir, name) : null;
 }
 
+function probeAudioBitrateKbps(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) return 0;
+  let size = 0;
+  try {
+    size = fs.statSync(filePath).size || 0;
+  } catch {
+    return 0;
+  }
+  // Large captures are never "4 kbps" — avoid false rejects from noisy ffmpeg banners.
+  if (size >= 400 * 1024) {
+    // Prefer size/duration estimate when ffmpeg is available; otherwise trust size.
+  }
+  if (!ffmpegStatic) {
+    return size >= 400 * 1024 ? 128 : 0;
+  }
+  const result = spawnSync(
+    ffmpegStatic,
+    ["-hide_banner", "-i", filePath, "-f", "null", "-"],
+    { encoding: "utf8", timeout: 20000 }
+  );
+  const log = `${result.stderr || ""}\n${result.stdout || ""}`;
+  const audioLines = [...log.matchAll(/Stream #\d+:\d+(?:\[[^\]]*\])?: Audio:[^\n]*/gi)].map((m) => m[0]);
+  for (const line of audioLines) {
+    const m = line.match(/(\d+(?:\.\d+)?)\s*kb\/s/i);
+    if (m) {
+      const kbps = Number(m[1]) || 0;
+      if (kbps >= 32) return kbps;
+    }
+  }
+  const dur = log.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+  if (dur) {
+    const sec = Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3]);
+    if (sec > 1 && size > 0) {
+      return Math.round((size * 8) / sec / 1000);
+    }
+  }
+  // Fallback: assume healthy when the file is clearly not a stub.
+  return size >= 400 * 1024 ? 128 : 0;
+}
+
+
+/** Global music ingest slot — durable file acquires (outer gate). yt-dlp itself is also serialized via enqueueMusicYtDlp (downloads + streams). */
+const MUSIC_INGEST_MAX = Math.max(1, Number(process.env.MUSIC_INGEST_CONCURRENCY || 1) || 1);
+let musicIngestActive = 0;
+const musicIngestWaiters = [];
+
+function acquireMusicIngestSlot() {
+  if (musicIngestActive < MUSIC_INGEST_MAX) {
+    musicIngestActive += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => musicIngestWaiters.push(resolve)).then(() => {
+    musicIngestActive += 1;
+  });
+}
+
+function releaseMusicIngestSlot() {
+  musicIngestActive = Math.max(0, musicIngestActive - 1);
+  const next = musicIngestWaiters.shift();
+  if (next) next();
+}
+
+export async function withMusicIngestSlot(fn) {
+  await acquireMusicIngestSlot();
+  try {
+    return await fn();
+  } finally {
+    releaseMusicIngestSlot();
+  }
+}
+
+async function downloadAppleMusicViaYtDlp(track, destPath, onProgress, { onSpawn } = {}) {
+  if (!fs.existsSync(YT_DLP_PATH)) throw new Error("Brak lokalnego resolvera audio yt-dlp.");
+  const queries = youtubeSearchQueries(track).slice(0, 2);
+  if (!queries.length) throw new Error("Brak tytułu utworu do wyszukania źródła audio.");
+
+  return enqueueMusicYtDlp(async () => {
+    let keepAlive;
+    try {
+      const tmpBase = `${destPath}.ytsrc`;
+      for (const extra of [".m4a", ".webm", ".mp4", ".opus", ".ogg", ".mp3", ".part"]) {
+        try {
+          if (fs.existsSync(tmpBase + extra)) fs.unlinkSync(tmpBase + extra);
+        } catch {}
+      }
+
+      let sawBytes = false;
+      keepAlive = setInterval(() => {
+        if (!sawBytes) onProgress?.(0, { phase: "prepare", downloadedBytes: 0, totalBytes: null });
+      }, 8000);
+      onProgress?.(0, { phase: "prepare", downloadedBytes: 0, totalBytes: null });
+      const sets = ytDlpPlayerArgSets();
+      const plans = [
+        { format: YT_DLP_AUDIO_FORMAT_BEST, playerArgs: sets[0], sort: true },
+        { format: YT_DLP_AUDIO_FORMAT_BEST, playerArgs: sets[1], sort: true },
+        { format: YT_DLP_AUDIO_FORMAT_FALLBACK, playerArgs: sets[1], sort: false },
+        { format: YT_DLP_AUDIO_FORMAT_FALLBACK, playerArgs: sets[2] || sets[0], sort: false },
+      ];
+      let lastErr = null;
+      for (let planIndex = 0; planIndex < plans.length; planIndex += 1) {
+        const plan = plans[planIndex];
+        const query = queries[Math.min(planIndex, queries.length - 1)];
+        try {
+          await runYtDlpDownload(
+            [
+              "--no-playlist",
+              "--no-warnings",
+              "--no-update",
+              "--force-ipv4",
+              "--newline",
+              "--socket-timeout",
+              "20",
+              "--retries",
+              "3",
+              "--fragment-retries",
+              "3",
+              ...plan.playerArgs,
+              "-f",
+              plan.format,
+              ...(plan.sort ? YT_DLP_AUDIO_SORT : []),
+              "-o",
+              `${tmpBase}.%(ext)s`,
+              `ytsearch1:${query}`,
+            ],
+            {
+              onSpawn,
+              onProgress: (info) => {
+                sawBytes = true;
+                onProgress?.(info.percent, info);
+              },
+            }
+          );
+          const grabbed = findYtDlpOutput(tmpBase);
+          if (!grabbed) throw new Error("yt-dlp nie zapisał pliku audio.");
+          let grabbedSize = 0;
+          try { grabbedSize = fs.statSync(grabbed).size || 0; } catch {}
+          const kbps = probeAudioBitrateKbps(grabbed);
+          if (grabbedSize < 200 * 1024 && kbps > 0 && kbps < 48) {
+            try { fs.unlinkSync(grabbed); } catch {}
+            throw new Error(`Źródło ${Math.round(kbps)} kbps jest za słabe.`);
+          }
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          console.warn("yt-dlp audio:", query, err?.message || err);
+        }
+      }
+      if (lastErr) {
+        await healYtDlpBinary(lastErr);
+        throw lastErr;
+      }
+
+      const dir = path.dirname(tmpBase);
+      const prefix = path.basename(tmpBase) + ".";
+      const found = fs.readdirSync(dir).find((name) => name.startsWith(prefix) && !name.endsWith(".part"));
+      if (!found) throw new Error("yt-dlp nie zapisał pliku audio.");
+      const srcPath = path.join(dir, found);
+      try {
+        if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+      } catch {}
+      fs.renameSync(srcPath, destPath);
+    } finally {
+      if (keepAlive) clearInterval(keepAlive);
+    }
+  });
+}
 
 export function isPipedMusicStream(jobOrUrl) {
   if (!jobOrUrl) return false;
@@ -1129,7 +1441,9 @@ export function isPipedMusicStream(jobOrUrl) {
   return jobOrUrl.pipeStream === true || jobOrUrl.streamUrl === "eos:yt-dlp";
 }
 
-/** Progressive MP3 for tap-to-play. AVPlayer reads as the encoder produces bytes. */
+/** Progressive MP3 for tap-to-play. AVPlayer reads as the encoder produces bytes.
+ * Uses its own stream lane (MUSIC_STREAM_CONCURRENCY, default 3) — never waits behind durable downloads.
+ */
 export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
   const track = trackMeta || (await buildAppleMusicInfo(appleUrl));
   const queries = youtubeSearchQueries(track);
@@ -1137,8 +1451,18 @@ export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
   if (!fs.existsSync(YT_DLP_PATH)) throw new Error("Brak lokalnego resolvera audio yt-dlp.");
   if (!ffmpegStatic) throw new Error("Brak ffmpeg do streamu MP3.");
 
+  return withMusicStreamSlot(() => pipeAppleMusicAudioUnlocked(track, res, queries));
+}
+
+async function pipeAppleMusicAudioUnlocked(track, res, queries) {
   let lastErr;
-  for (const query of queries) {
+  const playerSets = ytDlpPlayerArgSets();
+  for (let setIndex = 0; setIndex < playerSets.length; setIndex += 1) {
+    const playerArgs = playerSets[setIndex];
+    const format = setIndex === playerSets.length - 1
+      ? YT_DLP_AUDIO_FORMAT_FALLBACK
+      : YT_DLP_AUDIO_FORMAT_BEST;
+    for (const query of queries.slice(0, 2)) {
     try {
       await new Promise((resolve, reject) => {
         const ytdlp = spawn(
@@ -1150,14 +1474,15 @@ export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
             "15",
             "--retries",
             "2",
-            ...ytDlpPlayerArgs(),
+            ...playerArgs,
             "-f",
-            "bestaudio[ext=m4a]/bestaudio/best",
+            format,
+            ...YT_DLP_AUDIO_SORT,
             "-o",
             "-",
             `ytsearch1:${query}`,
           ],
-          { stdio: ["ignore", "pipe", "pipe"] }
+          { stdio: ["ignore", "pipe", "pipe"], env: ytDlpBinEnv() }
         );
         const ffmpeg = spawn(
           ffmpegStatic,
@@ -1171,18 +1496,28 @@ export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
             "-vn",
             "-acodec",
             "libmp3lame",
-            "-ab",
-            "192k",
+            // VBR V2 (~190 kbps): źródło YouTube ma ~128–160 kbps, 320k tylko pompowało plik.
+            "-q:a",
+            "2",
             "-f",
             "mp3",
             "pipe:1",
           ],
           { stdio: ["pipe", "pipe", "pipe"] }
         );
+        // Gdy klient przerwie stream (przeskok utworu), ffmpeg ginie, a zapis do jego stdin
+        // rzucał nieobsłużony EPIPE — który wywracał cały proces serwera.
+        const swallow = () => {};
+        ytdlp.stdout.on("error", swallow);
+        ffmpeg.stdin.on("error", swallow);
+        ffmpeg.stdout.on("error", swallow);
         ytdlp.stdout.pipe(ffmpeg.stdin);
         ytdlp.stderr.on("data", () => {});
         ffmpeg.stderr.on("data", () => {});
+        // Limit dotyczy tylko oczekiwania na pierwsze dane. Gdy dźwięk już płynie, pilnuje
+        // go stallWatch (brak odczytu) — wcześniej utwory dłuższe niż 3 min były ucinane.
         const STREAM_TIMEOUT_MS = Number(process.env.MUSIC_STREAM_TIMEOUT_MS || 180000);
+        const STREAM_MAX_MS = Number(process.env.MUSIC_STREAM_MAX_MS || 45 * 60 * 1000);
         let settled = false;
         const finish = (fn) => (arg) => {
           if (settled) return;
@@ -1196,10 +1531,18 @@ export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
           reject(err);
         });
         const succeed = finish(() => resolve());
-        const timer = setTimeout(
+        let timer = setTimeout(
           () => fail(new Error("Stream audio przekroczył limit czasu.")),
           STREAM_TIMEOUT_MS,
         );
+        ffmpeg.stdout.once("data", () => {
+          if (settled) return;
+          clearTimeout(timer);
+          timer = setTimeout(
+            () => fail(new Error("Stream audio przekroczył maksymalny czas.")),
+            STREAM_MAX_MS,
+          );
+        });
         ytdlp.once("error", fail);
         ffmpeg.once("error", fail);
         ytdlp.once("close", (code) => {
@@ -1226,6 +1569,22 @@ export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
             "Connection": "close",
           });
         }
+        // If the auth-proxy/phone stops draining, TCP backs up and this Promise
+        // never settles — which permanently blocks enqueueMusicYtDlp.
+        let lastDrainAt = Date.now();
+        const STALL_MS = Number(process.env.MUSIC_STREAM_STALL_MS || 45000);
+        const stallWatch = setInterval(() => {
+          if (Date.now() - lastDrainAt > STALL_MS) {
+            fail(new Error("Stream audio zablokowany (brak odczytu po stronie)."));
+          }
+        }, 5000);
+        const markDrain = () => { lastDrainAt = Date.now(); };
+        res.on("drain", markDrain);
+        ffmpeg.stdout.on("data", markDrain);
+        const clearStall = () => clearInterval(stallWatch);
+        ytdlp.once("close", clearStall);
+        ffmpeg.once("close", clearStall);
+        res.on("close", clearStall);
         ffmpeg.stdout.pipe(res);
       });
       lastErr = null;
@@ -1233,7 +1592,10 @@ export async function pipeAppleMusicAudio(appleUrl, res, { trackMeta } = {}) {
     } catch (err) {
       lastErr = err;
       console.warn("yt-dlp pipe:", query, err?.message || err);
+      if (res.headersSent) break;
     }
+    }
+    if (res.headersSent) break;
   }
   throw lastErr || new Error("Nie udało się otworzyć streamu audio.");
 }
@@ -1293,8 +1655,8 @@ function transcodeToMp3InPlace(filePath) {
       "-vn",
       "-c:a",
       "libmp3lame",
-      "-b:a",
-      "256k",
+      "-q:a",
+      "2",
       "-f",
       "mp3",
       filePath,
@@ -1399,6 +1761,25 @@ export async function downloadAppleMusicToFile({
   trackMeta,
   onProgress,
   downloadUrl: presetDownloadUrl = null,
+  onSpawn = null,
+}) {
+  return withMusicIngestSlot(() => downloadAppleMusicToFileUnlocked({
+    appleUrl,
+    destPath,
+    trackMeta,
+    onProgress,
+    downloadUrl: presetDownloadUrl,
+    onSpawn,
+  }));
+}
+
+async function downloadAppleMusicToFileUnlocked({
+  appleUrl,
+  destPath,
+  trackMeta,
+  onProgress,
+  downloadUrl: presetDownloadUrl = null,
+  onSpawn = null,
 }) {
   const track = trackMeta || (await buildAppleMusicInfo(appleUrl));
   let usedYoutube = false;
@@ -1441,7 +1822,7 @@ export async function downloadAppleMusicToFile({
   if (canUseDirectHttp) {
     await pullHttpToFile(presetDownloadUrl);
   } else {
-    await downloadAppleMusicViaYtDlp(track, destPath, onProgress);
+    await downloadAppleMusicViaYtDlp(track, destPath, onProgress, { onSpawn });
     usedYoutube = true;
   }
 

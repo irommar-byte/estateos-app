@@ -29,13 +29,13 @@ struct VinylCASpin<Content: View>: UIViewRepresentable {
         hosted.backgroundColor = .clear
         hosted.isOpaque = false
         view.embed(hosted)
-        view.setSpinning(isSpinning, duration: max(4, secondsPerRevolution))
+        view.setSpinning(isSpinning, duration: max(1.2, secondsPerRevolution))
         return view
     }
 
     func updateUIView(_ uiView: VinylSpinContainerView, context: Context) {
         context.coordinator.hosting.rootView = content
-        uiView.setSpinning(isSpinning, duration: max(4, secondsPerRevolution))
+        uiView.setSpinning(isSpinning, duration: max(1.2, secondsPerRevolution))
     }
 
     final class Coordinator {

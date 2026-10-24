@@ -5,11 +5,18 @@
  * plain playback acquires stay hidden so other devices don't show false "downloads".
  */
 
+import fs from "node:fs";
+
 const RECENT_DONE_MS = 10 * 60 * 1000; // 10 min — show completed jobs after app relaunch
 
 function isTerminalDone(job) {
   const status = String(job?.status || "");
-  return status === "done" || job?.ready === true;
+  if (status === "done" || job?.ready === true) return true;
+  try {
+    return !!(job?.file && fs.existsSync(job.file) && fs.statSync(job.file).size > 0);
+  } catch {
+    return false;
+  }
 }
 
 function isTerminalError(job) {
@@ -66,7 +73,12 @@ export function noteJobProgress(job, payload = {}) {
 
   const madeProgress = Number.isFinite(nextProgress)
     && (!Number.isFinite(previousProgress) || nextProgress > previousProgress + 0.05);
-  if (madeProgress || nextStatus !== previousStatus || payload.heartbeat === true) {
+  // Heartbeats keep the UI alive but must NOT reset the stall clock — otherwise a
+  // stuck 0% resolve holds the durable movie queue forever.
+  const terminalFlip =
+    nextStatus !== previousStatus &&
+    (nextStatus === "done" || nextStatus === "error" || nextStatus === "cancelled" || payload.ready === true);
+  if (madeProgress || terminalFlip || (nextStatus !== previousStatus && payload.heartbeat !== true)) {
     job.lastProgressAt = Date.now();
   }
 
@@ -116,10 +128,16 @@ function serializeJob(job) {
   const title =
     String(job.name || job.movieTitle || "").trim() ||
     (kind === "music" ? "Utwór" : "Film");
-  const status = String(job.status || (job.ready ? "done" : "starting"));
+  const fileOnDisk = !!(job.file && fs.existsSync(job.file));
+  const persisting = !!job.persisting && !fileOnDisk;
+  const status = persisting
+    ? "downloading"
+    : (fileOnDisk || isTerminalDone(job)
+      ? "done"
+      : String(job.status || "starting"));
   let progress = Number(job.progress);
-  if (!Number.isFinite(progress)) progress = job.ready ? 100 : 0;
-  if (status === "done" || job.ready) progress = Math.max(progress, 100);
+  if (!Number.isFinite(progress)) progress = fileOnDisk ? 100 : 0;
+  if (!persisting && (status === "done" || fileOnDisk)) progress = Math.max(progress, 100);
 
   return {
     jobId: job.id,
@@ -130,13 +148,17 @@ function serializeJob(job) {
     url,
     thumbnail: String(job.movieThumbnail || job.thumbnail || "") || null,
     error: job.error || null,
-    ready: !!(job.ready || status === "done"),
+    ready: fileOnDisk,
     folderId: job.folderId || null,
     assetId: job.assetId || (kind === "music" ? job.id : null),
     queuedAt: job.queuedAt || null,
     finishedAt: job.finishedAt || null,
     phase: job.phase || null,
     updatedAt: job.lastProgressAt || job.queuedAt || null,
+    downloadedBytes: job.downloadedBytes > 0 ? Math.round(job.downloadedBytes) : null,
+    expectedBytes: job.expectedBytes > 0 ? Math.round(job.expectedBytes) : null,
+    mode: fileOnDisk ? "file" : (job.mode || null),
+    intent: job.intent || null,
   };
 }
 

@@ -415,3 +415,8 @@ body.music-mode #favoritesPanel { display: none !important; }
 .music-import-box input { width: 100%; margin: 12px 0; }
 
 .mode-tab-icon { margin-right: 6px; opacity: 0.85; }
+
+.music-track-row-wrap .music-track-add-btn {
+  white-space: nowrap;
+  font-size: 13px;
+}

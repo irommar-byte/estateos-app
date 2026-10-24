@@ -1,11 +1,11 @@
 import Foundation
 
-/// NAS music ingest runs a small pool (2). Playlist download waits for a durable
-/// copy (or a stall retry) before filling a free slot.
+/// NAS music ingest is one yt-dlp at a time. The WAN path to YouTube is about
+/// 10 KB/s, so a second parallel grab starves the first and both look stuck.
 enum BulkServerQueuePolicy {
-    static let maxConcurrentServerJobs = 2
-    static let stallSeconds: TimeInterval = 18
-    static let meaningfulProgressDelta: Double = 3
+    static let maxConcurrentServerJobs = 1
+    static let stallSeconds: TimeInterval = 150
+    static let meaningfulProgressDelta: Double = 0.25
     static let interTrackDelayNanoseconds: UInt64 = 250_000_000
 
     enum Action: Equatable {
@@ -24,8 +24,17 @@ enum BulkServerQueuePolicy {
     }
 
     static func isAcquireStalled(progress: Double, unchangedFor: TimeInterval) -> Bool {
-        guard progress < 96 else { return false }
+        // The last few percent of a slow audio file can sit near the end while
+        // ffmpeg tags the MP3. That is still a live transfer.
+        if progress >= 96 {
+            return unchangedFor > 120
+        }
         return unchangedFor > stallSeconds
+    }
+
+    static func isFinalizeComplete(progress: Double, isDurable: Bool, isReady: Bool) -> Bool {
+        _ = progress
+        return isDurable || isReady
     }
 
     static func isMeaningfulProgress(from: Double, to: Double) -> Bool {
@@ -44,6 +53,16 @@ enum BulkServerQueuePolicy {
     static func displayTotal(stickyTotal: Int, itemCount: Int, existingTotal: Int = 0) -> Int {
         max(stickyTotal, itemCount, existingTotal, 1)
     }
+
+    /// Honest list progress: finished tracks + the 0…1 fraction of each live slot.
+    static func overallFraction(completed: Int, total: Int, slotProgresses: [Double]) -> Double {
+        guard total > 0 else { return 0 }
+        let slots = slotProgresses
+            .prefix(maxConcurrentServerJobs)
+            .map { min(1, max(0, $0)) }
+            .reduce(0, +)
+        return min(1, (Double(max(0, completed)) + slots) / Double(total))
+    }
 }
 
 enum ServerOwnedQueuePolicy {
@@ -56,21 +75,32 @@ enum ServerOwnedQueuePolicy {
 
     static func cancelRemovesActiveAndPending() -> Bool { true }
 
-    static let idleServerBatchFallbackSeconds: TimeInterval = 12
-
-    /// Production without `/api/downloads/queue` (or an empty batchId) must not sit in a poll loop.
+    /// Playlist ingest stays on the NAS. A missing or idle batch is not a reason
+    /// for the iPhone to start POST /api/download itself.
     static func shouldFallBackToPhoneAcquire(didEnqueue: Bool, batchId: String?) -> Bool {
-        guard didEnqueue else { return true }
-        guard let batchId else { return true }
-        return batchId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        _ = didEnqueue
+        _ = batchId
+        return false
     }
 
-    /// Server accepted a batchId but never started a job — same stuck UI as a missing route.
     static func shouldAbandonIdleServerBatch(
         secondsWaiting: TimeInterval,
         completed: Int,
         hasActiveRemoteJob: Bool
     ) -> Bool {
-        secondsWaiting >= idleServerBatchFallbackSeconds && completed <= 0 && !hasActiveRemoteJob
+        _ = secondsWaiting
+        _ = completed
+        _ = hasActiveRemoteJob
+        return false
+    }
+
+    static func shouldReenqueueExistingBatch(_ batchId: String?) -> Bool {
+        guard let batchId else { return true }
+        return batchId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// A “+” / single-track session must not inherit a leftover playlist HUD.
+    static func shouldAdoptRemoteBatch(plusSessionActive: Bool, alreadyOwnsStickyItems: Bool) -> Bool {
+        !plusSessionActive && alreadyOwnsStickyItems
     }
 }

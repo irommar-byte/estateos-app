@@ -194,6 +194,11 @@ final class BackgroundTransferService: NSObject, URLSessionDownloadDelegate, @un
         pending.observation?.invalidate()
         cleanupPart(pending.partURL)
 
+        if let http = downloadTask.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            pending.continuation.resume(throwing: URLError(.badServerResponse))
+            return
+        }
+
         do {
             let tempDir = FileManager.default.temporaryDirectory
             let stable = tempDir.appendingPathComponent("eos-dl-\(UUID().uuidString).tmp")

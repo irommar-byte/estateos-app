@@ -83,28 +83,28 @@ struct AccountView: View {
     @ViewBuilder
     private var profileSection: some View {
         Section {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(EOSTheme.accent.opacity(0.14))
-                        .frame(width: 58, height: 58)
-                    Text(avatarInitials)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(EOSTheme.accent)
-                }
-                .shadow(color: EOSTheme.accent.opacity(0.18), radius: 8, y: 3)
+            VStack(spacing: 10) {
+                Text(avatarInitials)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 84, height: 84)
+                    .background(Circle().fill(EOSTheme.gradient))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.35), lineWidth: 1))
+                    .shadow(color: EOSTheme.accent.opacity(0.35), radius: 16, y: 8)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(app.user?.login ?? "Gość")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(isAppleConnected ? "Apple ID połączone" : "Konto Nostalgie™")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
+                Text(app.user?.login ?? "Gość")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.primary)
+                Label(
+                    isAppleConnected ? "Logowanie przez Apple włączone" : "Konto Nostalgie™",
+                    systemImage: isAppleConnected ? "apple.logo" : "person.crop.circle"
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .listRowBackground(Color.clear)
             .accessibilityElement(children: .combine)
         }
     }
@@ -162,22 +162,19 @@ struct AccountView: View {
             .tint(EOSTheme.accent)
         } header: {
             Text("Odtwarzanie")
-        } footer: {
-            Text("Winyl · Okładka · Spectrum — wybór także w pełnym playerze. Bez suwaka „mocy”.")
         }
     }
 
     private var appearanceSection: some View {
         Section {
-            ForEach(AppAppearance.allCases) { mode in
-                SettingsChoiceRow(
-                    title: mode.title,
-                    systemImage: appearanceIcon(mode),
-                    isSelected: ui.appearance == mode
-                ) {
-                    ui.appearance = mode
+            Picker("Wygląd", selection: $ui.appearance.animation(EOSMotion.standard)) {
+                ForEach(AppAppearance.allCases) { mode in
+                    Text(mode.title).tag(mode)
                 }
             }
+            .pickerStyle(.segmented)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
         } header: {
             Text("Wygląd")
         }
@@ -206,8 +203,6 @@ struct AccountView: View {
             }
         } header: {
             Text("Pamięć")
-        } footer: {
-            Text("Pobrane działają offline. Kopia na serwerze EOS jest dostępna na każdym zalogowanym urządzeniu.")
         }
     }
 

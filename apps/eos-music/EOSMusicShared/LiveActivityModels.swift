@@ -90,6 +90,38 @@ struct ShazamActivityAttributes: ActivityAttributes {
     var operationId: String
 }
 
+/// Lock-screen Live Activity: honest minutes, never a leftover 26-hour timer.
+enum LiveActivityLockScreenPolicy {
+    static let maxSingleTrackSeconds: TimeInterval = 8 * 60
+    static let maxDisplaySeconds: TimeInterval = 45 * 60
+
+    static func displayETA(seconds: Double?, remainingCount: Int) -> Double? {
+        guard let seconds, seconds.isFinite, seconds > 0 else { return nil }
+        let cap = remainingCount <= 1 ? maxSingleTrackSeconds : maxDisplaySeconds
+        guard seconds <= cap else { return nil }
+        return seconds
+    }
+
+    static func shouldFinishPlusFromRemote(plusURLs: Set<String>, finishedURLs: Set<String>) -> Bool {
+        !plusURLs.isEmpty && plusURLs.isSubset(of: finishedURLs)
+    }
+
+    static func shouldDismissOrphanActivity(hasActiveWork: Bool) -> Bool {
+        !hasActiveWork
+    }
+}
+
+/// Movie lock-screen / in-app queue: a file already in MOVIES/ is not an active download.
+enum MovieDownloadLockScreenPolicy {
+    static func isLiveRemoteJob(isTerminal: Bool, alreadyLanded: Bool) -> Bool {
+        !isTerminal && !alreadyLanded
+    }
+
+    static func shouldDismissLandedBatch(unfinishedCount: Int, landedCount: Int, total: Int) -> Bool {
+        total > 0 && unfinishedCount == 0 && landedCount >= total
+    }
+}
+
 enum DownloadETAFormatter {
     static func compact(_ seconds: Double?) -> String? {
         guard let seconds, seconds.isFinite, seconds > 0, seconds < 36 * 3600 else { return nil }

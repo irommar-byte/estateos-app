@@ -1,3 +1,5 @@
+import AVFoundation
+import QuartzCore
 import MediaPlayer
 import XCTest
 @testable import EOSMusic
@@ -84,6 +86,14 @@ final class ShazamReducerTests: XCTestCase {
         XCTAssertFalse(ShazamMatchConfirmPolicy.shouldConsiderMatch(elapsed: 0.4))
         XCTAssertFalse(
             ShazamMatchConfirmPolicy.shouldAccept(elapsed: 2.0, agreeingCount: 2, hasCandidate: true)
+        )
+        XCTAssertTrue(
+            ShazamMatchConfirmPolicy.shouldAccept(
+                elapsed: 2.3,
+                agreeingCount: 1,
+                hasCandidate: true,
+                isStableIdentity: true
+            )
         )
     }
 
@@ -185,16 +195,15 @@ final class DownloadQueuePolicyTests: XCTestCase {
         XCTAssertTrue(ServerOwnedQueuePolicy.cancelRemovesActiveAndPending())
     }
 
-    func testMissingServerBatchFallsBackToPhoneAcquire() {
-        XCTAssertTrue(ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(didEnqueue: false, batchId: nil))
-        XCTAssertTrue(ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(didEnqueue: true, batchId: nil))
-        XCTAssertTrue(ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(didEnqueue: true, batchId: ""))
-        XCTAssertTrue(ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(didEnqueue: true, batchId: "   "))
+    func testPlaylistNeverFallsBackToPhoneAcquire() {
+        XCTAssertFalse(ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(didEnqueue: false, batchId: nil))
+        XCTAssertFalse(ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(didEnqueue: true, batchId: nil))
+        XCTAssertFalse(ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(didEnqueue: true, batchId: ""))
         XCTAssertFalse(ServerOwnedQueuePolicy.shouldFallBackToPhoneAcquire(didEnqueue: true, batchId: "batch-1"))
     }
 
-    func testIdleAcceptedBatchAlsoFallsBack() {
-        XCTAssertTrue(
+    func testIdleServerBatchKeepsWaiting() {
+        XCTAssertFalse(
             ServerOwnedQueuePolicy.shouldAbandonIdleServerBatch(
                 secondsWaiting: 12,
                 completed: 0,
@@ -203,17 +212,31 @@ final class DownloadQueuePolicyTests: XCTestCase {
         )
         XCTAssertFalse(
             ServerOwnedQueuePolicy.shouldAbandonIdleServerBatch(
-                secondsWaiting: 12,
+                secondsWaiting: 120,
                 completed: 0,
                 hasActiveRemoteJob: true
             )
         )
+    }
+
+    func testExistingBatchIsNotReenqueued() {
+        XCTAssertTrue(ServerOwnedQueuePolicy.shouldReenqueueExistingBatch(nil))
+        XCTAssertTrue(ServerOwnedQueuePolicy.shouldReenqueueExistingBatch(""))
+        XCTAssertFalse(ServerOwnedQueuePolicy.shouldReenqueueExistingBatch("batch-1"))
+    }
+
+    func testPlusSessionDoesNotInheritLeftoverPlaylist() {
         XCTAssertFalse(
-            ServerOwnedQueuePolicy.shouldAbandonIdleServerBatch(
-                secondsWaiting: 11,
-                completed: 0,
-                hasActiveRemoteJob: false
-            )
+            ServerOwnedQueuePolicy.shouldAdoptRemoteBatch(plusSessionActive: true, alreadyOwnsStickyItems: false)
+        )
+        XCTAssertFalse(
+            ServerOwnedQueuePolicy.shouldAdoptRemoteBatch(plusSessionActive: true, alreadyOwnsStickyItems: true)
+        )
+        XCTAssertFalse(
+            ServerOwnedQueuePolicy.shouldAdoptRemoteBatch(plusSessionActive: false, alreadyOwnsStickyItems: false)
+        )
+        XCTAssertTrue(
+            ServerOwnedQueuePolicy.shouldAdoptRemoteBatch(plusSessionActive: false, alreadyOwnsStickyItems: true)
         )
     }
 }
@@ -245,5 +268,104 @@ final class AppGroupStoreTests: XCTestCase {
         let migrated = await EOSAppGroupStore.shared.load()
         XCTAssertEqual(migrated.schemaVersion, EOSAppGroup.schemaVersion)
         await EOSAppGroupStore.shared.setOverrideDirectory(nil)
+    }
+}
+
+// MARK: - Poprawki 2026-10: „Zagraj jako następny”, analizator audio
+
+final class PlayNextQueueEditTests: XCTestCase {
+    func testInsertNewTrackAfterCurrent() {
+        let r = PlayNextQueueEdit.apply(playOrder: [0, 1, 2, 3], cursor: 1, inserting: [4])
+        XCTAssertEqual(r.playOrder, [0, 1, 4, 2, 3])
+        XCTAssertEqual(r.cursor, 1)
+    }
+
+    func testTrackAlreadyLaterInQueueMovesUpWithoutDuplicate() {
+        let r = PlayNextQueueEdit.apply(playOrder: [0, 1, 2, 3], cursor: 0, inserting: [3])
+        XCTAssertEqual(r.playOrder, [0, 3, 1, 2])
+        XCTAssertEqual(r.cursor, 0)
+    }
+
+    func testTrackFromBeforeCurrentKeepsCursorOnSameSong() {
+        // Wcześniej usunięcie utworu sprzed bieżącego przesuwało wskaźnik na zły utwór.
+        let r = PlayNextQueueEdit.apply(playOrder: [0, 1, 2, 3], cursor: 2, inserting: [0])
+        XCTAssertEqual(r.playOrder, [1, 2, 0, 3])
+        XCTAssertEqual(r.playOrder[r.cursor], 2)
+    }
+
+    func testCurrentTrackIsNotDuplicated() {
+        let r = PlayNextQueueEdit.apply(playOrder: [0, 1, 2], cursor: 1, inserting: [1, 2])
+        XCTAssertEqual(r.playOrder, [0, 1, 2])
+        XCTAssertEqual(r.playOrder[r.cursor], 1)
+    }
+
+    func testMultipleTracksKeepTheirOrder() {
+        let r = PlayNextQueueEdit.apply(playOrder: [0, 1, 2, 3, 4], cursor: 0, inserting: [4, 3])
+        XCTAssertEqual(r.playOrder, [0, 4, 3, 1, 2])
+    }
+
+    @MainActor
+    func testEngineInsertNextWithTrackAlreadyInQueueDoesNotCrash() {
+        let tracks = (0..<4).map { i in
+            MusicPlaybackTrack(
+                openedLocalFile: URL(fileURLWithPath: "/tmp/eos-test-\(i).mp3"),
+                libraryURL: "eosmusic://opened/test-insert-\(i)",
+                title: "Utwór \(i)"
+            )
+        }
+        let engine = MusicPlaybackEngine(session: MusicPlaybackSession(queue: tracks, startIndex: 0, folderId: nil, folderName: "Test"))
+        engine.insertNext([tracks[3]])
+        XCTAssertEqual(engine.playbackQueueRows.map(\.track.title), ["Utwór 0", "Utwór 3", "Utwór 1", "Utwór 2"])
+    }
+}
+
+final class PlayerAudioAnalyzerRealtimeTests: XCTestCase {
+    func testConsumeProducesSpectrumFrameQuickly() {
+        let analyzer = PlayerAudioAnalyzer()
+        analyzer.setAnalysisEnabled(true)
+        analyzer.setSpectrumEnabled(true)
+        analyzer.setPublishRate(fps: 30)
+        var frames = 0
+        var lastFrame: MusicPlaybackEngine.AudioReactiveFrame?
+        analyzer.setPublishHandler { frame in
+            frames += 1
+            lastFrame = frame
+        }
+
+        let frameCount = 1024
+        let channels = 2
+        var samples = [Float](repeating: 0, count: frameCount * channels)
+        var phase: Float = 0
+        let iterations = 2000
+        var worst: Double = 0
+        let started = CACurrentMediaTime()
+        for _ in 0..<iterations {
+            for i in 0..<frameCount {
+                let v = 0.4 * sinf(phase) + 0.2 * sinf(phase * 7.3)
+                samples[i * 2] = v
+                samples[i * 2 + 1] = v
+                phase += 2 * .pi * 110 / 44_100
+            }
+            let t0 = CACurrentMediaTime()
+            samples.withUnsafeMutableBufferPointer { bp in
+                var list = AudioBufferList(
+                    mNumberBuffers: 1,
+                    mBuffers: AudioBuffer(
+                        mNumberChannels: UInt32(channels),
+                        mDataByteSize: UInt32(bp.count * MemoryLayout<Float>.size),
+                        mData: UnsafeMutableRawPointer(bp.baseAddress)
+                    )
+                )
+                analyzer.consume(&list, frames: CMItemCount(frameCount), time: .zero)
+            }
+            worst = max(worst, CACurrentMediaTime() - t0)
+            usleep(200)
+        }
+        let avgMicros = (CACurrentMediaTime() - started) / Double(iterations) * 1_000_000
+        print("EOS_BENCH analyzer avg_loop_us=\(Int(avgMicros)) worst_consume_us=\(Int(worst * 1_000_000)) frames=\(frames)")
+        XCTAssertGreaterThan(frames, 0)
+        XCTAssertGreaterThan(lastFrame?.spectrumBands.prefix(24).max() ?? 0, 0)
+        // Bufor 1024 próbek to ~23 ms dźwięku — analiza musi być rzędy wielkości szybsza.
+        XCTAssertLessThan(worst, 0.005)
     }
 }

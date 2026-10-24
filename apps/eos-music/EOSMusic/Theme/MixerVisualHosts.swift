@@ -24,7 +24,7 @@ final class MixerLampDriver: NSObject, ObservableObject {
         if isPlaying {
             guard displayLink == nil else { return }
             let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 8, maximum: 12, preferred: 10)
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 30, preferred: 30)
             link.add(to: .main, forMode: .common)
             displayLink = link
         } else {
@@ -41,10 +41,19 @@ final class MixerLampDriver: NSObject, ObservableObject {
     deinit { displayLink?.invalidate() }
 
     @objc private func tick(_ link: CADisplayLink) {
-        if link.timestamp - lastDraw < 1.0 / 12 { return }
+        if link.timestamp - lastDraw < 1.0 / 31 { return }
         lastDraw = link.timestamp
         let frame = visualizer?.snapshot(isPlaying: isPlaying) ?? MusicPlaybackEngine.AudioReactiveFrame()
-        output = engine.process(frame: frame, isPlaying: isPlaying, onServer: onServer)
+        let next = engine.process(frame: frame, isPlaying: isPlaying, onServer: onServer)
+        if Self.visiblyDifferent(next, output) { output = next }
+    }
+
+    /// Diody / mierniki mają skończoną rozdzielczość — drobniejsze zmiany nie są widoczne.
+    private static func visiblyDifferent(_ a: DJConsoleLampEngine.Output, _ b: DJConsoleLampEngine.Output) -> Bool {
+        let pairs = [(a.beat, b.beat), (a.rytm, b.rytm), (a.bass, b.bass), (a.treble, b.treble),
+                     (a.out, b.out), (a.clip, b.clip), (a.left, b.left), (a.right, b.right), (a.eos, b.eos)]
+        if a.bpm != b.bpm { return true }
+        return pairs.contains { abs($0.0 - $0.1) > 0.04 }
     }
 }
 

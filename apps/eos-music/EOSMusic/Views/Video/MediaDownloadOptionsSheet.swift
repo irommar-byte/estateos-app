@@ -34,7 +34,16 @@ struct MediaDownloadOptionsSheet: View {
 
     private var qualityOptions: [MediaQualityOption] {
         let options = info.qualityOptions(for: selectedFormat)
-        return options.isEmpty ? MediaQualityOption.defaultStreamTiers(duration: info.duration) : options
+        if selectedFormat.kind == "audio" { return options }
+        if options.isEmpty {
+            return [MediaQualityOption(id: "best", label: "Najlepsza dostępna", detail: "Jedyna jakość w źródle")]
+        }
+        return options
+    }
+
+    private var showsQualityPicker: Bool {
+        if selectedFormat.kind == "audio" { return qualityOptions.count > 1 }
+        return MovieDownloadQualityPolicy.offersDistinctVideoQuality(qualityOptions)
     }
 
     private var effectiveTotalDuration: Double {
@@ -45,6 +54,24 @@ struct MediaDownloadOptionsSheet: View {
 
     private var selectedQuality: MediaQualityOption? {
         qualityOptions.first(where: { $0.id == selectedQualityID }) ?? qualityOptions.first
+    }
+
+    private func sizeLine(for quality: MediaQualityOption) -> String {
+        quality.knownSizeLabel(
+            itemCount: itemCount,
+            singleItemDuration: info.duration ?? 0,
+            totalDuration: effectiveTotalDuration
+        ) ?? "Rozmiar widać na pasku w trakcie pobierania"
+    }
+
+    private func sizeCaption(for quality: MediaQualityOption) -> String {
+        if showsQualityPicker {
+            return "\(itemCount) × \(quality.label) · \(selectedFormat.label)"
+        }
+        if itemCount > 1 {
+            return "Najlepsza jakość ze źródła · \(itemCount) pozycji"
+        }
+        return "Najlepsza jakość dostępna w tym źródle"
     }
 
     var body: some View {
@@ -61,11 +88,32 @@ struct MediaDownloadOptionsSheet: View {
                 }
 
                 Section("Gdzie zapisać") {
-                    Picker("Cel", selection: $destination) {
-                        Text("Serwer EOS (MOVIES/)").tag(OnlineMovieDownloadDestination.server)
-                        Text("Serwer + iPhone").tag(OnlineMovieDownloadDestination.serverAndPhone)
+                    ForEach(OnlineMovieDownloadDestination.allCases, id: \.self) { option in
+                        Button {
+                            destination = option
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: option.systemImage)
+                                    .font(.title3)
+                                    .foregroundStyle(EOSTheme.accent)
+                                    .frame(width: 28)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(option.label)
+                                        .font(EOSTypography.subheadline.weight(.semibold))
+                                    Text(option.detail)
+                                        .font(EOSTypography.caption)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                                if destination == option {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(EOSTheme.accent)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .pickerStyle(.inline)
                 }
 
                 Section("Format") {
@@ -90,26 +138,28 @@ struct MediaDownloadOptionsSheet: View {
                     }
                 }
 
-                Section(selectedFormat.kind == "audio" ? "Jakość audio" : "Rozdzielczość") {
-                    ForEach(qualityOptions) { option in
-                        Button {
-                            selectedQualityID = option.id
-                        } label: {
-                            MediaQualityOptionRow(option: option, isSelected: option.id == selectedQualityID)
+                if showsQualityPicker {
+                    Section(selectedFormat.kind == "audio" ? "Jakość audio" : "Rozdzielczość") {
+                        ForEach(qualityOptions) { option in
+                            Button {
+                                selectedQualityID = option.id
+                            } label: {
+                                MediaQualityOptionRow(option: option, isSelected: option.id == selectedQualityID)
+                            }
+                            .foregroundStyle(.primary)
                         }
-                        .foregroundStyle(.primary)
                     }
                 }
 
                 if let quality = selectedQuality {
-                    Section("Szacowany rozmiar") {
+                    Section("Rozmiar") {
                         HStack {
                             Image(systemName: "internaldrive")
                                 .foregroundStyle(EOSTheme.accent)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(quality.totalEstimateLabel(itemCount: itemCount, totalDuration: effectiveTotalDuration))
+                                Text(sizeLine(for: quality))
                                     .font(EOSTypography.subheadline.weight(.semibold))
-                                Text("\(itemCount) × \(quality.label) · \(selectedFormat.label)")
+                                Text(sizeCaption(for: quality))
                                     .font(EOSTypography.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -119,12 +169,14 @@ struct MediaDownloadOptionsSheet: View {
             }
             .navigationTitle("Pobieranie")
             .navigationBarTitleDisplayMode(.inline)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Anuluj") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Start") {
+                    Button("Rozpocznij") {
                         guard let quality = selectedQuality else { return }
                         onStart(selectedFormat, quality, destination)
                         dismiss()

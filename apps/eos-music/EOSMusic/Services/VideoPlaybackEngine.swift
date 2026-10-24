@@ -88,6 +88,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     private var videoKickTask: Task<Void, Never>?
     private var mediaLoadTask: Task<Void, Never>?
     private var pendingInitialAutoplay = false
+    private var launchStartAt: Double?
+    private var resumeBookmarkKey: String?
+    private var lastResumeSaveAt = Date.distantPast
     private var mediaLoadGeneration: UInt64 = 0
     private var isLocalFile = true
     private var aspectApplyTask: Task<Void, Never>?
@@ -171,7 +174,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         applyAspect(force: true)
         if pendingInitialAutoplay, isDrawableReady {
             pendingInitialAutoplay = false
-            loadCurrent(autoplay: true)
+            let start = launchStartAt
+            launchStartAt = nil
+            loadCurrent(autoplay: true, startAt: start)
             return
         }
         if wasParked {
@@ -297,7 +302,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
                     && host.bounds.height > 8
                 if self.pendingInitialAutoplay, self.isDrawableReady {
                     self.pendingInitialAutoplay = false
-                    self.loadCurrent(autoplay: true)
+                    let start = self.launchStartAt
+                    self.launchStartAt = nil
+                    self.loadCurrent(autoplay: true, startAt: start)
                     return
                 }
                 if self.pendingExpandRestore,
@@ -382,6 +389,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         queue = session.items
         folderName = session.folderName
         sessionDurationHint = session.durationHint
+        launchStartAt = session.startAt
+        resumeBookmarkKey = session.resumeKey
+        lastResumeSaveAt = .distantPast
         currentIndex = min(max(0, session.startIndex), max(0, session.items.count - 1))
         errorMessage = nil
         hasEnded = false
@@ -393,7 +403,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         isDrawableReady = hasVisibleHost
         if hasVisibleHost {
             pendingInitialAutoplay = false
-            loadCurrent(autoplay: true)
+            let start = launchStartAt
+            launchStartAt = nil
+            loadCurrent(autoplay: true, startAt: start)
         } else {
             pendingInitialAutoplay = true
             isPlaying = false
@@ -626,15 +638,12 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         currentTime = clamped
         lastPublishedTime = clamped
         hasEnded = false
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 280_000_000)
-            self?.captureStripFrame(force: true)
-        }
     }
 
     func playNext(sources: VideoSourcesStore) {
         sourcesRef = sources
         guard hasNext else { return }
+        flushResumeBookmark()
         currentIndex += 1
         hasEnded = false
         loadCurrent(autoplay: true)
@@ -649,7 +658,8 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             relativePath: old.relativePath,
             fileURL: fileURL,
             fileSize: old.fileSize,
-            folderId: old.folderId
+            folderId: old.folderId,
+            artworkURL: old.artworkURL
         )
     }
 
@@ -688,6 +698,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
             seek(to: 0, resume: true)
             return
         }
+        flushResumeBookmark()
         currentIndex -= 1
         loadCurrent(autoplay: true)
     }
@@ -695,6 +706,7 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     func playIndex(_ index: Int, sources: VideoSourcesStore) {
         sourcesRef = sources
         guard queue.indices.contains(index) else { return }
+        flushResumeBookmark()
         currentIndex = index
         loadCurrent(autoplay: true)
     }
@@ -733,6 +745,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     func stop() {
+        flushResumeBookmark()
+        launchStartAt = nil
+        resumeBookmarkKey = nil
         videoKickTask?.cancel()
         bufferingRevealTask?.cancel()
         aspectApplyTask?.cancel()
@@ -778,6 +793,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
 
     private func loadCurrent(autoplay: Bool, startAt: Double? = nil, cancelPendingKick: Bool = true) {
         guard let item = currentItem, let sources = sourcesRef else { return }
+        if queue.count > 1 {
+            resumeBookmarkKey = item.id
+        }
         do {
             let url = try sources.resolvePlayableURL(for: item)
             let previousFolder = accessedFolderId
@@ -1046,29 +1064,31 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     func captureScrubPreview() {
-        captureStripFrame(force: true)
+        // Live VLC snapshots abort the process on seek / AirPlay (TestFlight 2.0.28).
+        // The prepared filmstrip already covers the scrubber.
     }
 
     private func maybeCaptureStripFrame() {
+        let occupied = Set(thumbnailGenerator.frames.map {
+            VideoFilmstripPolicy.liveBucket(fraction: $0.fraction)
+        })
         guard VideoFilmstripPolicy.shouldCaptureLiveFrame(
             currentTime: currentTime,
             lastCaptureAt: lastStripCaptureAt,
-            isSeeking: isUserSeeking
+            isSeeking: isUserSeeking,
+            knownDuration: duration,
+            occupiedBuckets: occupied
         ) else { return }
         lastStripCaptureAt = currentTime
         captureStripFrame(force: false)
     }
 
     private func captureStripFrame(force: Bool) {
-        if isUserSeeking, !force { return }
-        let denom = VideoFilmstripPolicy.placementDuration(known: duration, currentTime: currentTime)
-        let fraction = min(0.999, max(0, currentTime / denom))
-        pendingSnapshotFraction = fraction
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("eos-filmstrip", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let path = dir.appendingPathComponent("frame-\(Int(fraction * 1000)).jpg").path
-        player.saveVideoSnapshot(at: path, withWidth: 240, andHeight: 140)
-        ingestLastSnapshotIfAvailable()
+        _ = force
+        // MobileVLCKit `saveVideoSnapshot` raises NSException and aborts the process
+        // when there is no decoded frame (seek, AirPlay, first seconds). TestFlight
+        // 2.0 (28) crashed here from applySeek. The AV/VLC filmstrip already fills
+        // the scrubber — do not take live snapshots from the playing decoder.
     }
 
     private func ingestLastSnapshotIfAvailable() {
@@ -1105,6 +1125,9 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
     }
 
     private func markEnded() {
+        if let resumeBookmarkKey {
+            MovieResumeStore.clear(id: resumeBookmarkKey)
+        }
         hasEnded = true
         isPlaying = false
         clearBuffering()
@@ -1381,7 +1404,21 @@ final class VideoPlaybackEngine: NSObject, ObservableObject {
         if playing { clearBuffering() }
         if playing, !isUserSeeking {
             maybeCaptureStripFrame()
+            noteResumeBookmark()
         }
+    }
+
+    private func noteResumeBookmark() {
+        guard let resumeBookmarkKey else { return }
+        let now = Date()
+        guard now.timeIntervalSince(lastResumeSaveAt) >= 5 else { return }
+        lastResumeSaveAt = now
+        flushResumeBookmark()
+    }
+
+    private func flushResumeBookmark() {
+        guard let resumeBookmarkKey else { return }
+        MovieResumeStore.save(id: resumeBookmarkKey, seconds: currentTime, duration: duration)
     }
 }
 

@@ -82,7 +82,7 @@ enum AudioSession {
             try session.setCategory(
                 .playAndRecord,
                 mode: .measurement,
-                options: [.mixWithOthers, .defaultToSpeaker]
+                options: [.duckOthers, .defaultToSpeaker, .allowBluetoothHFP]
             )
             try session.setActive(true, options: [])
             EOSLog.audioSession.info("lease=shazamCapture")

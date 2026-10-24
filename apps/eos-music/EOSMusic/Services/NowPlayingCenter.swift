@@ -94,6 +94,7 @@ final class NowPlayingCenter {
         shuffleEnabled: Bool = false,
         supplemental: SupplementalMetadata? = nil,
         identity: PlaybackItemIdentity,
+        keepsSessionAlive: Bool = false,
         force: Bool = false
     ) {
         guard isActive else { return }
@@ -151,7 +152,7 @@ final class NowPlayingCenter {
 
         let center = MPNowPlayingInfoCenter.default()
         center.nowPlayingInfo = info
-        center.playbackState = isPlaying ? .playing : .paused
+        center.playbackState = (isPlaying || keepsSessionAlive) ? .playing : .paused
         lastElapsedPublish = elapsed
         lastPlayingPublish = isPlaying
         lastDurationPublish = duration

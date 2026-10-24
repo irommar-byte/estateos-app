@@ -9,13 +9,19 @@ final class AppModel: ObservableObject {
         didSet { ListeningStatsStore.shared.activate(userLogin: user?.login) }
     }
     @Published private(set) var isBootstrapping = true
-    @Published private(set) var musicFolders: [MusicFolder] = []
-    @Published private(set) var musicTracks: [MusicTrack] = []
+    @Published private(set) var musicFolders: [MusicFolder] = [] {
+        didSet { libraryDataVersion &+= 1 }
+    }
+    @Published private(set) var musicTracks: [MusicTrack] = [] {
+        didSet { libraryDataVersion &+= 1 }
+    }
     @Published private(set) var serverAssetCount: Int = 0
     @Published private(set) var serverLibraryBytes: Int = 0
     @Published private(set) var serverDiskTotalBytes: Int?
     @Published private(set) var serverDiskFreeBytes: Int?
-    @Published private(set) var serverAssets: [MusicAssetItem] = []
+    @Published private(set) var serverAssets: [MusicAssetItem] = [] {
+        didSet { libraryDataVersion &+= 1 }
+    }
     @Published private(set) var favoriteItems: [FavoriteItem] = []
     @Published private(set) var isLibraryLoading = false
     @Published private(set) var librarySyncMessage: String?
@@ -105,9 +111,58 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Library cache
+    //
+    // Widoki biblioteki czytają te listy przy każdym odświeżeniu (AppModel publikuje często:
+    // pobieranie, odtwarzacz, sieć). Wcześniej każde odświeżenie filtrowało/sortowało całą
+    // bibliotekę (część operacji kwadratowo). Teraz liczymy raz na zmianę danych.
+
+    private var libraryDataVersion = 0
+    private var libraryCacheVersion = -1
+    private var cachedTracksByURL: [String: MusicTrack] = [:]
+    private var cachedTracksByFolder: [String: [MusicTrack]] = [:]
+    private var cachedReadyAssetURLs: Set<String> = []
+    private var cachedOnlineBrowsingTracks: [MusicTrack] = []
+    private var cachedVisibleFolders: [MusicFolder] = []
+    private var cachedAlbumDumpFolders: [MusicFolder] = []
+    private var cachedSongsByTitle: [MusicTrack] = []
+
+    private func refreshLibraryCacheIfNeeded() {
+        guard libraryCacheVersion != libraryDataVersion else { return }
+        libraryCacheVersion = libraryDataVersion
+        cachedTracksByURL = Dictionary(musicTracks.map { ($0.url, $0) }, uniquingKeysWith: { first, _ in first })
+        cachedTracksByFolder = Dictionary(grouping: musicTracks, by: \.folderId)
+        cachedReadyAssetURLs = Set(serverAssets.compactMap { $0.ready != false ? $0.url : nil })
+        cachedOnlineBrowsingTracks = musicTracks + serverOnlyLibraryTracks
+        var visible: [MusicFolder] = []
+        var dumps: [MusicFolder] = []
+        for folder in musicFolders {
+            let kind = PlaylistHygiene.kind(for: folder, tracks: cachedTracksByFolder[folder.id] ?? [])
+            if kind == .albumDump { dumps.append(folder) } else { visible.append(folder) }
+        }
+        cachedVisibleFolders = visible
+        cachedAlbumDumpFolders = dumps
+        cachedSongsByTitle = cachedOnlineBrowsingTracks.sorted {
+            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+    }
+
     /// Tracks visible in library browsing (full library online, downloads only offline).
     var libraryTracksForBrowsing: [MusicTrack] {
-        isOfflinePlaybackActive ? downloadedLibraryTracks : musicTracks + serverOnlyLibraryTracks
+        if isOfflinePlaybackActive { return downloadedLibraryTracks }
+        refreshLibraryCacheIfNeeded()
+        return cachedOnlineBrowsingTracks
+    }
+
+    /// `libraryTracksForBrowsing` posortowane po tytule (lista „Utwory”).
+    var librarySongsSortedByTitle: [MusicTrack] {
+        if isOfflinePlaybackActive {
+            return downloadedLibraryTracks.sorted {
+                $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+        }
+        refreshLibraryCacheIfNeeded()
+        return cachedSongsByTitle
     }
 
     /// Playlists that still have playable content in the current mode.
@@ -117,20 +172,21 @@ final class AppModel: ObservableObject {
 
     /// User-facing playlists (no album-dump folders).
     var playlistFoldersForBrowsing: [MusicFolder] {
-        let visible = musicFolders.filter { folder in
-            PlaylistHygiene.kind(for: folder, tracks: musicTracks) != .albumDump
-        }
+        refreshLibraryCacheIfNeeded()
+        let visible = cachedVisibleFolders
         guard isOfflinePlaybackActive else { return visible }
         let offlineFolderIds = Set(downloadedLibraryTracks.map(\.folderId))
         return visible.filter { offlineFolderIds.contains($0.id) }
     }
 
     var albumDumpFolders: [MusicFolder] {
-        musicFolders.filter { PlaylistHygiene.kind(for: $0, tracks: musicTracks) == .albumDump }
+        refreshLibraryCacheIfNeeded()
+        return cachedAlbumDumpFolders
     }
 
     func tracks(in folderId: String) -> [MusicTrack] {
-        musicTracks.filter { $0.folderId == folderId }
+        refreshLibraryCacheIfNeeded()
+        return cachedTracksByFolder[folderId] ?? []
     }
 
     /// Header / list subtitle — counted from the same state as the per-track clouds.
@@ -149,13 +205,13 @@ final class AppModel: ObservableObject {
         switch downloads.uiState(for: url, isOnServer: onServer) {
         case .onServer, .done, .downloading:
             return true
-        case .idle, .acquiringServer, .failed:
+        case .idle, .queuedForServer, .acquiringServer, .failed:
             return false
         }
     }
 
     func folderContains(folderId: String, url: String) -> Bool {
-        musicTracks.contains { $0.folderId == folderId && $0.url == url }
+        tracks(in: folderId).contains { $0.url == url }
     }
 
     func folderContainsSameRecording(folderId: String, title: String, artist: String?) -> Bool {
@@ -368,7 +424,7 @@ final class AppModel: ObservableObject {
             async let activeDownloads: Void = serverDownloads.refreshOnce()
             _ = await (workspace, movies, activeDownloads)
             syncListeningStatsIfNeeded()
-            movieDownloads.resumePersistedBatchIfNeeded()
+            await movieDownloads.reconcileAfterForeground()
         } catch {
             // Only clear session on auth failure; network blips keep the user in-app.
             if case APIError.unauthorized = error {
@@ -389,7 +445,7 @@ final class AppModel: ObservableObject {
                 async let activeDownloads: Void = serverDownloads.refreshOnce()
                 _ = await (workspace, movies, activeDownloads)
                 syncListeningStatsIfNeeded()
-                movieDownloads.resumePersistedBatchIfNeeded()
+                await movieDownloads.reconcileAfterForeground()
             }
         }
     }
@@ -408,7 +464,7 @@ final class AppModel: ObservableObject {
         async let activeDownloads: Void = serverDownloads.refreshOnce()
         _ = await (workspace, activeDownloads)
         syncListeningStatsIfNeeded()
-        movieDownloads.resumePersistedBatchIfNeeded()
+        await movieDownloads.reconcileAfterForeground()
     }
 
     func loginWithApple(identityToken: String, login: String? = nil, password: String? = nil, linkOnly: Bool = false) async throws {
@@ -425,7 +481,7 @@ final class AppModel: ObservableObject {
         async let activeDownloads: Void = serverDownloads.refreshOnce()
         _ = await (workspace, activeDownloads)
         syncListeningStatsIfNeeded()
-        movieDownloads.resumePersistedBatchIfNeeded()
+        await movieDownloads.reconcileAfterForeground()
     }
 
     func linkAppleAccount(identityToken: String, login: String? = nil, password: String? = nil) async throws {
@@ -532,9 +588,8 @@ final class AppModel: ObservableObject {
         let previousTrackURLs = Set(musicTracks.map(\.url))
         let newFolders = library.folders.filter { !previousFolderIds.contains($0.id) }
         let newTracks = deduplicatedTracks(library.tracks).filter { !previousTrackURLs.contains($0.url) }
-        let removedTracks = musicTracks.filter { old in
-            !library.tracks.contains { $0.url == old.url }
-        }
+        let incomingURLs = Set(library.tracks.map(\.url))
+        let removedTracks = musicTracks.filter { !incomingURLs.contains($0.url) }
 
         musicFolders = library.folders
         musicTracks = deduplicatedTracks(library.tracks)
@@ -722,8 +777,9 @@ final class AppModel: ObservableObject {
 
     /// Durable EOS server copy for this URL (library track, assets list, or confirmed ingest).
     func isOnServer(_ url: String) -> Bool {
-        if musicTracks.first(where: { $0.url == url })?.isOnServer == true { return true }
-        if serverAssets.contains(where: { $0.url == url && $0.ready != false }) { return true }
+        refreshLibraryCacheIfNeeded()
+        if cachedTracksByURL[url]?.isOnServer == true { return true }
+        if cachedReadyAssetURLs.contains(url) { return true }
         if downloads.wasConfirmedOnServer(url) { return true }
         return false
     }
@@ -893,6 +949,7 @@ final class AppModel: ObservableObject {
 
         let prepared = enrich ? (try await prepareLibraryPayload(track)) : track
         _ = try await api.addTrackToFolder(folderId: folderId, track: prepared)
+        RecentPlaylistUsage.record(folderId: folderId)
         if refreshLibrary {
             try await refreshMusicLibrary()
         }
@@ -974,7 +1031,9 @@ final class AppModel: ObservableObject {
                 phase: "persisting",
                 persistent: true,
                 onServer: true,
-                mode: upload.mode ?? "file"
+                mode: upload.mode ?? "file",
+                downloadedBytes: nil,
+                expectedBytes: nil
             )
         } else {
             ready = try await api.waitForMusicPlayReady(
@@ -989,6 +1048,7 @@ final class AppModel: ObservableObject {
             try? await refreshMusicLibrary()
         }
         if folderContains(folderId: folderId, url: track.url) {
+            RecentPlaylistUsage.record(folderId: folderId)
             if let announcePlaylistName {
                 presentToast(.addedToPlaylist(trackTitle: track.title, playlist: announcePlaylistName))
             }
@@ -1019,6 +1079,7 @@ final class AppModel: ObservableObject {
         )
 
         _ = try await api.addTrackToFolder(folderId: folderId, track: serverTrack)
+        RecentPlaylistUsage.record(folderId: folderId)
         _ = try? await api.linkTrackDownload(
             folderId: folderId,
             url: serverURL,
@@ -1112,9 +1173,7 @@ final class AppModel: ObservableObject {
             throw APIError.server("Wybierz folder z utworami, nie pojedynczy plik.")
         }
 
-        let playlistName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? folderURL.lastPathComponent
-            : name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let playlistName = Self.resolvedImportPlaylistName(preferred: name, folderURL: folderURL)
 
         let accountEmail: String? = nil
         try sources.connectFolder(
@@ -1138,7 +1197,9 @@ final class AppModel: ObservableObject {
         }
 
         let folder = try await api.createMusicFolder(name: playlistName)
+        PlaylistUSBBookmarkStore.save(url: folderURL, folderId: folder.id)
         try await addTracksToFolder(folderId: folder.id, tracks: payloads)
+        // Upload bezpośrednio z pendrive/folderu (eosmusic://external) — nie szukaj w YouTube.
         queueAlbumOnServer(folderId: folder.id, albumTitle: playlistName, tracks: payloads)
 
         presentToast(MusicToast(
@@ -1148,6 +1209,41 @@ final class AppModel: ObservableObject {
         ))
 
         return folder.id
+    }
+
+    /// Unika UUID z Files/pendrive jako nazwy playlisty.
+    nonisolated private static func resolvedImportPlaylistName(preferred: String, folderURL: URL) -> String {
+        let trimmed = preferred.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, !looksLikeOpaqueFolderId(trimmed) {
+            return trimmed
+        }
+        if let values = try? folderURL.resourceValues(forKeys: [.localizedNameKey, .nameKey]),
+           let localized = values.localizedName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !localized.isEmpty,
+           !looksLikeOpaqueFolderId(localized) {
+            return localized
+        }
+        let last = folderURL.lastPathComponent.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !last.isEmpty, !looksLikeOpaqueFolderId(last) {
+            return last
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "pl_PL")
+        formatter.dateFormat = "d MMM yyyy HH:mm"
+        return "Import z pendrive · \(formatter.string(from: Date()))"
+    }
+
+    nonisolated private static func looksLikeOpaqueFolderId(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if UUID(uuidString: trimmed) != nil { return true }
+        // Częściowy UUID / identyfikator providera Files (np. 19408C05-80F4-39…)
+        if trimmed.range(
+            of: #"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{0,4}"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+        return false
     }
 
     private func resolveExternalUploadFile(for url: String) async throws -> (local: URL, title: String, artist: String?, album: String?, fileName: String) {
@@ -1791,6 +1887,84 @@ final class AppModel: ObservableObject {
         ) { [weak self] in
             try? await self?.refreshMusicLibrary()
         }
+    }
+
+    struct PlaylistAutoAcquirePlan: Equatable {
+        var serverCount: Int
+        var phoneCount: Int
+        var tracksForQueue: [MusicTrack]
+    }
+
+    /// Ile utworów pójdzie na serwer / iPhone przy włączonym trybie auto-pobierania.
+    func playlistAutoAcquirePlan(
+        tracks: [MusicTrack],
+        policy: PlaylistAutoAcquirePolicy
+    ) -> PlaylistAutoAcquirePlan {
+        switch policy {
+        case .off:
+            return PlaylistAutoAcquirePlan(serverCount: 0, phoneCount: 0, tracksForQueue: [])
+        case .server:
+            let missing = tracks.filter { !isOnServer($0.url) }
+            return PlaylistAutoAcquirePlan(
+                serverCount: missing.count,
+                phoneCount: 0,
+                tracksForQueue: missing
+            )
+        case .serverAndPhone:
+            let needServer = tracks.filter { !isOnServer($0.url) }
+            let needPhone = tracks.filter { !isOfflineAvailable($0.url) }
+            // Pełna lista brakujących gdziekolwiek — kolejka rozdziela fazy.
+            var seen = Set<String>()
+            var queue: [MusicTrack] = []
+            for track in tracks where !isOnServer(track.url) || !isOfflineAvailable(track.url) {
+                if seen.insert(track.url).inserted { queue.append(track) }
+            }
+            return PlaylistAutoAcquirePlan(
+                serverCount: needServer.count,
+                phoneCount: needPhone.count,
+                tracksForQueue: queue
+            )
+        }
+    }
+
+    /// Po potwierdzeniu trybu playlisty: zapis polityki + kolejka do skutku.
+    func startPlaylistAutoAcquire(
+        folderId: String,
+        folderName: String,
+        tracks: [MusicTrack],
+        policy: PlaylistAutoAcquirePolicy
+    ) {
+        PlaylistAutoAcquireStore.set(policy, for: folderId)
+        guard policy != .off else { return }
+
+        let plan = playlistAutoAcquirePlan(tracks: tracks, policy: policy)
+        guard !plan.tracksForQueue.isEmpty else {
+            presentToast(MusicToast(
+                systemImage: "checkmark.circle.fill",
+                title: policy == .server ? "Już na serwerze" : "Już pobrane",
+                subtitle: folderName
+            ))
+            return
+        }
+
+        let destination: MusicDownloadDestination = policy == .serverAndPhone ? .serverAndPhone : .server
+        let subtitle: String
+        if policy == .server {
+            subtitle = "\(plan.serverCount) utworów · \(folderName)"
+        } else {
+            subtitle = "\(plan.serverCount)→serwer · \(plan.phoneCount)→iPhone · \(folderName)"
+        }
+        presentToast(MusicToast(
+            systemImage: destination == .serverAndPhone ? "iphone.and.arrow.forward" : "externaldrive.badge.icloud",
+            title: "Pobieranie playlisty",
+            subtitle: subtitle
+        ))
+        downloadAll(
+            in: plan.tracksForQueue,
+            folderId: folderId,
+            destination: destination,
+            label: folderName
+        )
     }
 
     func cancelDownload(for url: String) {

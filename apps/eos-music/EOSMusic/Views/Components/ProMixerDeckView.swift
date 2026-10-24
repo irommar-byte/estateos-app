@@ -1,3 +1,4 @@
+import AVFoundation
 import QuartzCore
 import SwiftUI
 
@@ -34,6 +35,9 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
     let policy: PlayerVisualPolicy
     let artworkURL: URL?
     let fallbackArtwork: UIImage?
+    var artworkIdentity: String = ""
+    var artworkTitle: String = ""
+    var artworkArtist: String? = nil
     let canvasSize: CGFloat
     var spectrumHeight: CGFloat = 150
     @ViewBuilder var meta: () -> Meta
@@ -143,6 +147,9 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
             PlayerHeroArtworkBridge(
                 artworkURL: artworkURL,
                 fallbackImage: fallbackArtwork,
+                identity: artworkIdentity,
+                placeholderTitle: artworkTitle,
+                placeholderSubtitle: artworkArtist,
                 isPlaying: live,
                 preset: preset,
                 policy: policy,
@@ -155,7 +162,10 @@ struct ProMixerWideConsole<Meta: View, Status: View, Storage: View>: View {
                 size: canvasSize * 0.92,
                 cornerRadius: 14,
                 allowAnimated: true,
-                fallbackImage: fallbackArtwork
+                fallbackImage: fallbackArtwork,
+                identity: artworkIdentity,
+                placeholderTitle: artworkTitle,
+                placeholderSubtitle: artworkArtist
             )
             .shadow(color: EOSTheme.accent.opacity(0.16), radius: 12, y: 6)
         }
@@ -182,6 +192,9 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
     let policy: PlayerVisualPolicy
     let artworkURL: URL?
     let fallbackArtwork: UIImage?
+    var artworkIdentity: String = ""
+    var artworkTitle: String = ""
+    var artworkArtist: String? = nil
     let canvasSize: CGFloat
     var spectrumHeight: CGFloat = 110
     var expandSpectrum: Bool = false
@@ -301,6 +314,9 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
             PlayerHeroArtworkBridge(
                 artworkURL: artworkURL,
                 fallbackImage: fallbackArtwork,
+                identity: artworkIdentity,
+                placeholderTitle: artworkTitle,
+                placeholderSubtitle: artworkArtist,
                 isPlaying: live,
                 preset: preset,
                 policy: policy,
@@ -313,7 +329,10 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
                 size: canvasSize * 0.92,
                 cornerRadius: 14,
                 allowAnimated: true,
-                fallbackImage: fallbackArtwork
+                fallbackImage: fallbackArtwork,
+                identity: artworkIdentity,
+                placeholderTitle: artworkTitle,
+                placeholderSubtitle: artworkArtist
             )
         }
     }
@@ -323,6 +342,9 @@ struct ProMixerNarrowConsole<Meta: View, Status: View, Storage: View>: View {
 private struct PlayerHeroArtworkBridge: View {
     let artworkURL: URL?
     var fallbackImage: UIImage?
+    var identity: String = ""
+    var placeholderTitle: String = ""
+    var placeholderSubtitle: String? = nil
     let isPlaying: Bool
     let preset: PlayerVisualPreset
     let policy: PlayerVisualPolicy
@@ -338,15 +360,21 @@ private struct PlayerHeroArtworkBridge: View {
                     size: canvasSize * 0.82,
                     cornerRadius: 14,
                     allowAnimated: true,
-                    fallbackImage: fallbackImage
+                    fallbackImage: fallbackImage,
+                    identity: identity,
+                    placeholderTitle: placeholderTitle,
+                    placeholderSubtitle: placeholderSubtitle
                 )
             } else if preset == .vinyl {
                 ProMixerVinylThumb(
                     artworkURL: artworkURL,
                     fallbackImage: fallbackImage,
                     isPlaying: isPlaying,
-                    size: canvasSize
+                    size: canvasSize,
+                    visualizer: visualizer,
+                    policy: policy
                 )
+                .id(identity)
             } else if preset == .cover {
                 CoverSplitBeatPulseView(
                     artworkURL: artworkURL,
@@ -358,6 +386,7 @@ private struct PlayerHeroArtworkBridge: View {
                     cornerRadius: 16,
                     style: .split
                 )
+                .id(identity)
             } else {
                 // Spectrum — rhythmic halo rings around cover (cheap GPU).
                 CoverSplitBeatPulseView(
@@ -370,6 +399,7 @@ private struct PlayerHeroArtworkBridge: View {
                     cornerRadius: 14,
                     style: .halo
                 )
+                .id(identity)
             }
         }
         .frame(width: canvasSize, height: canvasSize)
@@ -414,11 +444,14 @@ private struct ProMixerVinylThumb: View {
     var fallbackImage: UIImage?
     let isPlaying: Bool
     let size: CGFloat
+    var visualizer: PlayerAudioVisualizer?
+    var policy: PlayerVisualPolicy?
 
     var body: some View {
-        MixerContinuousSpin(isSpinning: isPlaying, secondsPerRevolution: 11) {
-            ZStack {
-                // Picture Disc winyl — cała okładka
+        let live = isPlaying && (policy?.analyzerFPS ?? 12) > 0.5
+        ZStack {
+            VinylPulseRings(size: size * 0.92, pulse: CoverBeatPulseDriver.Pulse())
+            VinylCASpin(isSpinning: live) {
                 ArtworkImage(
                     url: artworkURL,
                     size: size * 0.92,
@@ -431,11 +464,13 @@ private struct ProMixerVinylThumb: View {
                         .clipShape(Circle())
                 }
                 .overlay {
-                    // Przerywany pierścień na środku
                     Circle()
                         .stroke(
                             LinearGradient(
-                                colors: [Color.white.opacity(0.9), Color.white.opacity(0.3)],
+                                colors: [
+                                    Color.white.opacity(0.85),
+                                    Color.white.opacity(0.28)
+                                ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
@@ -447,39 +482,8 @@ private struct ProMixerVinylThumb: View {
                     SpindleHub()
                         .scaleEffect(0.65)
                 }
-                .shadow(color: .black.opacity(0.38), radius: 8, y: 4)
             }
-        }
-    }
-}
-
-/// Reliable continuous spin — starts on appear even if `isSpinning` is already
-/// true (a plain `.animation(value:)` never fires in that case, so the disc
-/// appears frozen). Resumes from the current angle instead of jumping.
-private struct MixerContinuousSpin<Content: View>: View {
-    let isSpinning: Bool
-    let secondsPerRevolution: Double
-    @ViewBuilder let content: Content
-    @State private var angle: Double = 0
-
-    var body: some View {
-        content
-            .rotationEffect(.degrees(angle))
-            .onAppear { applySpin(isSpinning) }
-            .onChange(of: isSpinning) { _, spinning in applySpin(spinning) }
-    }
-
-    private func applySpin(_ spinning: Bool) {
-        if spinning {
-            withAnimation(.linear(duration: max(0.1, secondsPerRevolution)).repeatForever(autoreverses: false)) {
-                angle += 360
-            }
-        } else {
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                angle = angle.truncatingRemainder(dividingBy: 360)
-            }
+            .frame(width: size * 0.92, height: size * 0.92)
         }
     }
 }
@@ -667,7 +671,7 @@ private struct ProMixerScrew: View {
 
 // MARK: - Status LED rail
 
-private struct ProMixerStatusRail: View {
+struct ProMixerStatusRail: View {
     let visualizer: PlayerAudioVisualizer
     let isPlaying: Bool
     let queueLabel: String
@@ -675,8 +679,15 @@ private struct ProMixerStatusRail: View {
     var onServer: Bool
     var drive: Double = 0.4
     var compact: Bool = false
+    /// Stan buforowania — dioda NET (tylko szeroki ekran).
+    var statusFlags: PlaybackStatusFlags? = nil
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @StateObject private var lamps = MixerLampDriver()
+    @ObservedObject private var route = AudioRouteMonitor.shared
+
+    /// iPad / szerokie okno: pasek mieści dodatkowe wskaźniki.
+    private var wideRail: Bool { sizeClass == .regular }
     private var isLight: Bool { colorScheme == .light }
 
     var body: some View {
@@ -693,43 +704,87 @@ private struct ProMixerStatusRail: View {
 
     private func lampRow(_ out: DJConsoleLampEngine.Output) -> some View {
         HStack(spacing: 0) {
-            HStack(spacing: compact ? 8 : 12) {
+            HStack(spacing: compact ? 6 : 10) {
                 ProMixerLED(label: "BEAT", color: ProMixerDeckView.labelGreen, intensity: out.beat)
                 ProMixerLED(label: "RYTM", color: ProMixerDeckView.labelAmber, intensity: out.rytm)
+                ProMixerLED(label: "BASS", color: ProMixerDeckView.labelGreen, intensity: out.bass)
                 ProMixerLED(label: "EOS", color: Color(red: 0.18, green: 0.72, blue: 0.95), intensity: out.eos)
             }
 
-            Spacer(minLength: 6)
+            if wideRail {
+                Spacer(minLength: 10)
+                StereoLEDMeter(left: out.left, right: out.right, isLight: isLight)
+            }
 
-            queueControl(compact: false)
+            Spacer(minLength: 4)
 
-            Spacer(minLength: 6)
+            HStack(spacing: 6) {
+                BPMReadout(bpm: out.bpm, beat: out.beat, compact: compact)
+                queueControl(compact: compact)
+            }
 
-            HStack(spacing: compact ? 8 : 12) {
+            Spacer(minLength: 4)
+
+            if wideRail {
+                RouteLEDStrip(kind: route.kind, isLight: isLight)
+                if let statusFlags {
+                    NetLED(flags: statusFlags)
+                        .padding(.leading, 8)
+                }
+                Spacer(minLength: 10)
+            }
+
+            HStack(spacing: compact ? 6 : 10) {
+                ProMixerLED(label: "HI", color: Color(red: 0.55, green: 0.82, blue: 1.0), intensity: out.treble)
                 ProMixerLED(label: "OUT", color: ProMixerDeckView.labelGreen, intensity: out.out)
                 ProMixerLED(label: "CLIP", color: ProMixerDeckView.labelRed, intensity: out.clip)
             }
         }
-        .padding(.horizontal, compact ? 8 : 10)
-        .padding(.vertical, compact ? 6 : 8)
-        .background { railBackground }
+        .padding(.horizontal, compact ? 10 : 12)
+        .padding(.vertical, compact ? 7 : 9)
+        .background { railBackground(bass: out.bass, kick: out.beat) }
     }
 
-    private var railBackground: some View {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
+    /// Panel jak front sprzętu: ciemny lakier z fazą, szklana szybka u góry
+    /// i krawędź w kolorze EOS, która żarzy się w rytm basu.
+    private func railBackground(bass: Double, kick: Double) -> some View {
+        let glow = min(1, bass * 0.7 + kick * 0.5)
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return shape
             .fill(
                 LinearGradient(
                     colors: isLight
-                        ? [Color(white: 0.88), Color(white: 0.78)]
-                        : [Color(white: 0.11), Color(white: 0.06)],
+                        ? [Color(white: 0.995), Color(white: 0.9)]
+                        : [Color(white: 0.13), Color(white: 0.035)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .stroke(Color.white.opacity(isLight ? 0.2 : 0.1), lineWidth: 0.6)
+            .overlay(alignment: .top) {
+                // Szybka / szczotkowane aluminium: odblask na górnej połowie.
+                shape
+                    .fill(LinearGradient(colors: [Color.white.opacity(isLight ? 0.9 : 0.09), .clear], startPoint: .top, endPoint: .center))
+                    .padding(1)
             }
+            .overlay {
+                shape.strokeBorder(isLight ? Color.black.opacity(0.1) : Color.black.opacity(0.8), lineWidth: isLight ? 1 : 2)
+            }
+            .overlay {
+                shape.strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            EOSTheme.accent.opacity(0.35 + 0.65 * glow),
+                            EOSTheme.accentSecondary.opacity(0.25 + 0.6 * glow),
+                            EOSTheme.accent.opacity(0.35 + 0.65 * glow)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    lineWidth: 1.2
+                )
+            }
+            .shadow(color: EOSTheme.accent.opacity((isLight ? 0.08 : 0.15) + (isLight ? 0.35 : 0.55) * glow), radius: 4 + 14 * glow)
+            .shadow(color: .black.opacity(isLight ? 0.1 : 0.45), radius: isLight ? 12 : 8, y: isLight ? 6 : 4)
     }
 
     @ViewBuilder
@@ -772,61 +827,84 @@ private struct ProMixerStatusRail: View {
     }
 }
 
+/// Prostokątna dioda jak w prawdziwym sprzęcie: obudowa z fazą, kolorowa soczewka
+/// (ciemna, gdy zgaszona), jasny rdzeń i rozbłysk światła wokół, gdy świeci.
 private struct ProMixerLED: View {
     let label: String
     let color: Color
     let intensity: Double
     @Environment(\.colorScheme) private var colorScheme
 
-    private var isLight: Bool { colorScheme == .light }
-
     var body: some View {
-        let on = intensity > 0.08
+        let isLight = colorScheme == .light
+        let i = min(1, max(0, intensity))
+        let on = i > 0.04
         VStack(spacing: 3) {
             Text(label)
-                .font(.system(size: 6.5, weight: .semibold, design: .default))
-                .tracking(0.6)
-                .foregroundStyle(
-                    on
-                        ? color.opacity(isLight ? 0.92 : 0.95)
-                        : (isLight ? Color.secondary.opacity(0.72) : Color.secondary.opacity(0.55))
-                )
+                .font(.system(size: 6.5, weight: .bold, design: .rounded))
+                .tracking(0.7)
+                .foregroundStyle(on ? color.opacity(0.55 + 0.45 * i) : (isLight ? Color.black.opacity(0.38) : Color.white.opacity(0.32)))
 
             ZStack {
+                // Obudowa
+                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                    .fill(LinearGradient(colors: isLight ? [Color(white: 0.72), Color(white: 0.9)] : [Color.black, Color(white: 0.16)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 24, height: 10)
+                // Soczewka: zgaszona = przyciemniony kolor; świecąca = gradient z białym rdzeniem.
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(
-                        isLight
-                            ? LinearGradient(
-                                colors: [Color(white: 0.94), Color(white: 0.82)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            : LinearGradient(
-                                colors: [Color.black.opacity(0.92), Color.black.opacity(0.78)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                        LinearGradient(
+                            colors: on
+                                ? [Color.white.opacity(0.55 * i + 0.1), color.opacity(0.75 + 0.25 * i), color.opacity(0.55 + 0.3 * i)]
+                                : [color.opacity(0.22), color.opacity(0.1), color.opacity(0.16)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
                     )
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .stroke(
-                                isLight ? Color.black.opacity(0.14) : Color.white.opacity(0.14),
-                                lineWidth: 0.6
-                            )
-                    }
-                    .frame(width: 22, height: 8)
-
-                RoundedRectangle(cornerRadius: 1, style: .continuous)
-                    .fill(color.opacity(on ? (isLight ? 0.55 + 0.45 * intensity : 0.35 + 0.65 * intensity) : (isLight ? 0.12 : 0.07)))
-                    .frame(width: 18, height: 5)
-                    .shadow(
-                        color: on ? color.opacity(isLight ? 0.42 * intensity : 0.55 * intensity) : .clear,
-                        radius: on ? (isLight ? 2.5 : 3) : 0
-                    )
+                    .frame(width: 20, height: 6)
+                    // Rozbłysk światła wokół soczewki
+                    .shadow(color: color.opacity(on ? 0.85 * i : 0), radius: on ? 3 + 4 * i : 0)
+                // Odblask szkła — widoczny także na zgaszonej diodzie
+                Capsule()
+                    .fill(Color.white.opacity(on ? 0.45 : 0.18))
+                    .frame(width: 12, height: 1)
+                    .offset(y: -1.6)
             }
         }
-        .frame(minWidth: 28)
+        .frame(minWidth: 24)
         .accessibilityLabel("\(label) \(on ? "on" : "off")")
+    }
+}
+
+/// Wyświetlacz tempa: zielony LCD, kropka mruga na stopę.
+private struct BPMReadout: View {
+    let bpm: Int
+    let beat: Double
+    var compact: Bool = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(ProMixerDeckView.labelGreen.opacity(0.25 + 0.75 * beat))
+                .frame(width: 5, height: 5)
+                .shadow(color: ProMixerDeckView.labelGreen.opacity(beat), radius: 3 * beat)
+            Text(bpm > 0 ? "\(bpm)" : "---")
+                .font(.system(size: compact ? 11 : 12, weight: .bold, design: .monospaced))
+                .contentTransition(.numericText())
+                .animation(.snappy, value: bpm)
+            Text("BPM")
+                .font(.system(size: 6.5, weight: .bold))
+                .opacity(0.7)
+        }
+        .foregroundStyle(ProMixerDeckView.labelGreen)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color.black.opacity(0.72))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(ProMixerDeckView.labelGreen.opacity(0.28), lineWidth: 0.7))
+        )
+        .accessibilityLabel(bpm > 0 ? "Tempo \(bpm) BPM" : "Tempo nieznane")
     }
 }
 
@@ -1183,175 +1261,109 @@ private struct ProMixerSpectrumTuneStrip: View {
 
 // MARK: - Effect mode strip (ON + presets with LED)
 
+/// Wybór efektu w stylu Apple: kapsuła z przesuwanym podświetleniem + przełączniki zasilania i stroboskopu.
+/// Lekkie wypełnienia zamiast rozmycia materiałem (rozmycie zacinało player przy animacjach).
 struct ProMixerControlStrip: View {
     @EnvironmentObject private var ui: UIPreferences
     @Environment(\.colorScheme) private var colorScheme
     var compact: Bool = false
+    @Namespace private var selection
 
     private var isLight: Bool { colorScheme == .light }
     private var powered: Bool { ui.playerMixerPowered }
+    private var height: CGFloat { compact ? 36 : 42 }
+
+    private struct ModeItem: Identifiable {
+        let preset: PlayerVisualPreset
+        let title: String
+        let icon: String
+        var id: String { preset.rawValue }
+    }
+
+    private let modes: [ModeItem] = [
+        ModeItem(preset: .vinyl, title: "Winyl", icon: "opticaldisc.fill"),
+        ModeItem(preset: .cover, title: "Okładka", icon: "square.stack.fill"),
+        ModeItem(preset: .spectrum, title: "EQ", icon: "waveform")
+    ]
 
     var body: some View {
-        HStack(spacing: compact ? 6 : 12) {
-            ProMixerMasterPowerButton(isOn: $ui.playerMixerPowered, compact: compact)
-
-            Rectangle()
-                .fill(isLight ? Color.black.opacity(0.08) : Color.white.opacity(0.12))
-                .frame(width: 1, height: compact ? 36 : 48)
-
-            HStack(spacing: compact ? 6 : 8) {
-                effectButton(.vinyl, title: "WINYL", icon: "opticaldisc.fill", led: ProMixerDeckView.labelAmber)
-                effectButton(.cover, title: "OKŁADKA", icon: "square.stack.3d.up.fill", led: EOSTheme.accentSecondary)
-                effectButton(.spectrum, title: "EQ", icon: "waveform.path.ecg", led: ProMixerDeckView.labelGreen)
-                strobeToggleButton()
+        HStack(spacing: compact ? 8 : 12) {
+            roundToggle(
+                systemName: "power",
+                active: powered,
+                label: powered ? "Wyłącz efekty" : "Włącz efekty"
+            ) {
+                ui.playerMixerPowered.toggle()
             }
-            .opacity(powered ? 1 : 0.45)
-            .allowsHitTesting(powered)
 
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, compact ? 8 : 14)
-        .padding(.vertical, compact ? 5 : 10)
-        .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: isLight
-                            ? [Color.white, Color(white: 0.95)]
-                            : [Color(white: 0.14), Color(white: 0.07)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                colors: isLight
-                                    ? [Color.white, Color.black.opacity(0.07)]
-                                    : [Color.white.opacity(0.16), Color.white.opacity(0.04)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            ),
-                            lineWidth: 1
-                        )
+            HStack(spacing: 0) {
+                ForEach(modes) { item in
+                    let mode = item.preset
+                    let active = powered && ui.playerVisualPreset == mode
+                    Button {
+                        ui.playerVisualPreset = mode
+                        ui.playerMixerPowered = true
+                    } label: {
+                        Label(item.title, systemImage: item.icon)
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: compact ? 12 : 13, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .foregroundStyle(active ? EOSTheme.textPrimary : EOSTheme.textSecondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: height - 6)
+                            .background {
+                                if active {
+                                    Capsule()
+                                        .fill(isLight ? Color.white : Color.white.opacity(0.16))
+                                        .shadow(color: .black.opacity(isLight ? 0.12 : 0.3), radius: 4, y: 2)
+                                        .matchedGeometryEffect(id: "mode", in: selection)
+                                }
+                            }
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(EOSPressableStyle(pressedScale: 0.95))
+                    .sensoryFeedback(.selection, trigger: active)
                 }
-                .shadow(color: .black.opacity(isLight ? 0.08 : 0.35), radius: isLight ? 8 : 10, y: isLight ? 3 : 4)
-        }
-    }
-
-    private func effectButton(_ preset: PlayerVisualPreset, title: String, icon: String, led: Color) -> some View {
-        let active = powered && ui.playerVisualPreset == preset
-        return Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) {
-                ui.playerVisualPreset = preset
-                ui.playerMixerPowered = true
             }
-        } label: {
-            VStack(spacing: compact ? 3 : 5) {
-                ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: isLight
-                                    ? (active ? [led.opacity(0.16), led.opacity(0.06)] : [Color.white, Color(white: 0.93)])
-                                    : (active ? [led.opacity(0.28), led.opacity(0.1)] : [Color(white: 0.18), Color(white: 0.08)]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(width: compact ? 46 : 62, height: compact ? 32 : 46)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(
-                                    active ? led.opacity(0.55) : (isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.1)),
-                                    lineWidth: active ? 1.4 : 1
-                                )
-                        }
-                        .shadow(color: active ? led.opacity(0.35) : .black.opacity(isLight ? 0.06 : 0.25), radius: active ? 8 : 3, y: 2)
+            .padding(3)
+            .background(Capsule().fill(Color.primary.opacity(isLight ? 0.06 : 0.09)))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+            .animation(.spring(response: 0.34, dampingFraction: 0.8), value: ui.playerVisualPreset)
+            .animation(.spring(response: 0.34, dampingFraction: 0.8), value: powered)
 
-                    Image(systemName: icon)
-                        .font(.system(size: compact ? 13 : 16, weight: .semibold))
-                        .foregroundStyle(active ? led : (isLight ? Color.secondary : Color.white.opacity(0.55)))
-                        .frame(width: compact ? 46 : 62, height: compact ? 32 : 46)
-
-                    // Dioda LED — zapala się gdy efekt aktywny
-                    Circle()
-                        .fill(active ? led : (isLight ? Color(white: 0.82) : Color(white: 0.18)))
-                        .frame(width: 7, height: 7)
-                        .shadow(color: active ? led.opacity(0.9) : .clear, radius: 4)
-                        .offset(x: -6, y: 6)
-                }
-
-                Text(title)
-                    .font(.system(size: 8, weight: .heavy, design: .monospaced))
-                    .foregroundStyle(active ? led : (isLight ? Color.secondary : Color.white.opacity(0.45)))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-        }
-        .buttonStyle(TransportPressStyle())
-        .accessibilityLabel("\(title)\(active ? ", włączony" : "")")
-    }
-
-    private func strobeToggleButton() -> some View {
-        let active = powered && ui.playerStrobeEnabled
-        let led = EOSTheme.accent
-        return Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.72)) {
+            roundToggle(
+                systemName: "light.beacon.max.fill",
+                active: powered && ui.playerStrobeEnabled,
+                label: "Stroboskop"
+            ) {
                 ui.playerStrobeEnabled.toggle()
                 ui.playerMixerPowered = true
             }
-        } label: {
-            VStack(spacing: compact ? 3 : 5) {
-                ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: isLight
-                                    ? (active ? [led.opacity(0.16), led.opacity(0.06)] : [Color.white, Color(white: 0.93)])
-                                    : (active ? [led.opacity(0.28), led.opacity(0.1)] : [Color(white: 0.18), Color(white: 0.08)]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(width: compact ? 46 : 62, height: compact ? 32 : 46)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(
-                                    active ? led.opacity(0.55) : (isLight ? Color.black.opacity(0.06) : Color.white.opacity(0.1)),
-                                    lineWidth: active ? 1.4 : 1
-                                )
-                        }
-                        .shadow(color: active ? led.opacity(0.35) : .black.opacity(isLight ? 0.06 : 0.25), radius: active ? 8 : 3, y: 2)
-
-                    Image(systemName: "light.beacon.max.fill")
-                        .font(.system(size: compact ? 13 : 16, weight: .semibold))
-                        .foregroundStyle(active ? led : (isLight ? Color.secondary : Color.white.opacity(0.55)))
-                        .frame(width: compact ? 46 : 62, height: compact ? 32 : 46)
-
-                    Circle()
-                        .fill(active ? led : (isLight ? Color(white: 0.82) : Color(white: 0.18)))
-                        .frame(width: 7, height: 7)
-                        .shadow(color: active ? led.opacity(0.9) : .clear, radius: 4)
-                        .offset(x: -6, y: 6)
-                }
-
-                Text("STROBO")
-                    .font(.system(size: 8, weight: .heavy, design: .monospaced))
-                    .foregroundStyle(active ? led : (isLight ? Color.secondary : Color.white.opacity(0.45)))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
         }
-        .buttonStyle(TransportPressStyle())
-        .accessibilityLabel("Stroboskop\(active ? ", włączony" : "")")
+        .frame(maxWidth: 560)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func roundToggle(systemName: String, active: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: compact ? 14 : 16, weight: .semibold))
+                .foregroundStyle(active ? Color.white : EOSTheme.textSecondary)
+                .frame(width: height, height: height)
+                .background(
+                    Circle().fill(active ? AnyShapeStyle(EOSTheme.accent) : AnyShapeStyle(Color.primary.opacity(isLight ? 0.06 : 0.09)))
+                )
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+                .contentTransition(.symbolEffect(.replace))
+                .animation(.spring(response: 0.3, dampingFraction: 0.75), value: active)
+        }
+        .buttonStyle(EOSPressableStyle(pressedScale: 0.9))
+        .sensoryFeedback(.impact(weight: .light), trigger: active)
+        .accessibilityLabel(label)
     }
 }
 
-/// Duży, piękny przełącznik ON/OFF całej elektroniki efektów.
 private struct ProMixerMasterPowerButton: View {
     @Binding var isOn: Bool
     var compact: Bool = false
@@ -1432,29 +1444,38 @@ struct ProMixerTransportDeck: View {
     var bare: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
+    @State private var backTaps = 0
+    @State private var forwardTaps = 0
+    @State private var toggleTaps = 0
 
     private var isLight: Bool { colorScheme == .light }
 
+    /// Jak w Apple Music: duże, czyste glify — bez kul i pastylek. Shuffle i powtarzanie
+    /// mniejsze, na skrajach, z akcentem gdy aktywne.
     var body: some View {
-        HStack(spacing: tight ? 12 : 20) {
-            transportButton("shuffle", active: engine.shuffleEnabled) {
+        HStack(spacing: 0) {
+            modeButton("shuffle", active: engine.shuffleEnabled, label: engine.shuffleEnabled ? "Wyłącz losowo" : "Losowo") {
                 engine.toggleShuffle()
             }
-            transportButton("backward.fill", size: .title3) {
+            Spacer(minLength: 4)
+            skipButton("backward.fill", taps: backTaps, label: "Poprzedni") {
+                backTaps += 1
                 Task { await engine.skipPrevious() }
             }
-
+            Spacer(minLength: 4)
             playPauseButton
-
-            transportButton("forward.fill", size: .title3) {
+            Spacer(minLength: 4)
+            skipButton("forward.fill", taps: forwardTaps, label: "Następny") {
+                forwardTaps += 1
                 Task { await engine.skipNext() }
             }
-            transportButton(engine.repeatMode.icon, active: engine.repeatMode != .off) {
+            Spacer(minLength: 4)
+            modeButton(engine.repeatMode.icon, active: engine.repeatMode != .off, label: "Powtarzanie: \(engine.repeatMode.label)") {
                 engine.cycleRepeatMode()
             }
         }
         .foregroundStyle(EOSTheme.textPrimary)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
         .padding(.vertical, tight ? 4 : 10)
         .background {
             if !bare {
@@ -1462,177 +1483,82 @@ struct ProMixerTransportDeck: View {
             }
         }
         .padding(.vertical, tight ? 2 : 4)
+        .sensoryFeedback(.impact(weight: .light), trigger: backTaps)
+        .sensoryFeedback(.impact(weight: .light), trigger: forwardTaps)
+        .sensoryFeedback(.impact(weight: .medium), trigger: toggleTaps)
     }
 
-    // MARK: Play / pause — wypukła „kula” z głębią 3D, adaptacyjna do motywu
+    // MARK: Play / pause
 
     private var playPauseButton: some View {
         Button {
+            toggleTaps += 1
             engine.togglePlayPause()
         } label: {
             ZStack {
-                Circle()
-                    .fill(playSphereFill)
-                    .frame(width: playButtonSize + 8, height: playButtonSize + 8)
-                    .overlay {
-                        // Górny błysk — efekt wypukłości.
-                        Circle()
-                            .stroke(
-                                LinearGradient(
-                                    colors: isLight
-                                        ? [Color.white, Color.white.opacity(0.15)]
-                                        : [Color.white.opacity(0.35), Color.white.opacity(0.08)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.5
-                            )
-                    }
-                    .overlay(alignment: .top) {
-                        Ellipse()
-                            .fill(Color.white.opacity(isLight ? 0.85 : 0.16))
-                            .frame(width: playButtonSize * 0.62, height: playButtonSize * 0.28)
-                            .blur(radius: 5)
-                            .offset(y: 5)
-                            .allowsHitTesting(false)
-                    }
-                    .shadow(
-                        color: .black.opacity(isLight ? 0.16 : 0.5),
-                        radius: isLight ? 12 : 10,
-                        y: isLight ? 7 : 6
-                    )
-                    .shadow(color: EOSTheme.accent.opacity(engine.isPlaying ? 0.4 : 0.14), radius: 16, y: 4)
-
                 if engine.isLoading {
                     ProgressView()
                         .controlSize(.large)
-                        .tint(isLight ? EOSTheme.accent : .white)
+                        .tint(EOSTheme.textPrimary)
+                        .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 } else {
                     Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: playButtonSize * 0.38, weight: .bold))
-                        .foregroundStyle(playGlyphStyle)
+                        .font(.system(size: playButtonSize * 0.62, weight: .bold))
+                        .foregroundStyle(EOSTheme.textPrimary)
                         .contentTransition(.symbolEffect(.replace.downUp.byLayer))
-                        .offset(x: engine.isPlaying ? 0 : 2)
-                        .shadow(color: EOSTheme.accent.opacity(isLight ? 0.25 : 0), radius: 6, y: 2)
+                        .shadow(color: .black.opacity(isLight ? 0.08 : 0.35), radius: 8, y: 3)
+                        .transition(.opacity.combined(with: .scale(scale: 0.6)))
                 }
             }
-            .scaleEffect(engine.isPlaying ? 1 : 0.97)
-            .animation(EOSMotion.snappy, value: engine.isPlaying)
+            .frame(width: playButtonSize + 12, height: playButtonSize + 12)
+            .contentShape(Circle())
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: engine.isLoading)
         }
-        .buttonStyle(TransportPressStyle())
+        .buttonStyle(EOSGlyphPressStyle(highlightDiameter: playButtonSize + 18))
         .disabled(engine.isLoading)
         .accessibilityLabel(engine.isPlaying ? "Pauza" : "Odtwarzaj")
     }
 
-    private var playSphereFill: some ShapeStyle {
-        if isLight {
-            // Biała, wypukła kula — pasuje do jasnego motywu zamiast czarnego krążka.
-            return AnyShapeStyle(
-                RadialGradient(
-                    colors: [
-                        Color.white,
-                        Color(white: 0.97),
-                        Color(white: 0.88)
-                    ],
-                    center: .topLeading,
-                    startRadius: 4,
-                    endRadius: playButtonSize + 6
-                )
-            )
+    // MARK: Przeskok — strzałki „odbijają” w kierunku ruchu
+
+    private func skipButton(_ systemName: String, taps: Int, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: playButtonSize * 0.42, weight: .semibold))
+                .foregroundStyle(EOSTheme.textPrimary)
+                .symbolEffect(.bounce.down.byLayer, value: taps)
+                .frame(width: playButtonSize, height: playButtonSize)
+                .contentShape(Circle())
         }
-        return AnyShapeStyle(
-            RadialGradient(
-                colors: [
-                    Color(white: 0.22),
-                    Color(white: 0.08),
-                    Color.black
-                ],
-                center: .topLeading,
-                startRadius: 4,
-                endRadius: playButtonSize
-            )
-        )
+        .buttonStyle(EOSGlyphPressStyle(highlightDiameter: playButtonSize + 4))
+        .accessibilityLabel(label)
     }
 
-    private var playGlyphStyle: some ShapeStyle {
-        if isLight {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: [EOSTheme.accent, EOSTheme.accentSecondary],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-        }
-        return AnyShapeStyle(Color.white)
-    }
+    // MARK: Losowo / powtarzanie
 
-    // MARK: Boczne przyciski — miękkie, wypukłe pastylki
-
-    private func transportButton(
+    private func modeButton(
         _ systemName: String,
-        active: Bool = false,
-        size: Font = .body,
+        active: Bool,
+        label: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(size.weight(.semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(active ? EOSTheme.accent : EOSTheme.textSecondary)
+                .contentTransition(.symbolEffect(.replace))
                 .symbolEffect(.bounce, value: active)
-                .frame(width: 42, height: 42)
+                .frame(width: 40, height: 40)
                 .background {
                     Circle()
-                        .fill(sideButtonFill(active: active))
-                        .overlay {
-                            Circle()
-                                .stroke(
-                                    LinearGradient(
-                                        colors: isLight
-                                            ? [Color.white.opacity(0.9), Color.black.opacity(0.05)]
-                                            : [Color.white.opacity(0.14), Color.white.opacity(0.02)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    ),
-                                    lineWidth: 1
-                                )
-                        }
-                        .shadow(
-                            color: .black.opacity(isLight ? 0.1 : 0.35),
-                            radius: isLight ? 5 : 6,
-                            y: isLight ? 3 : 4
-                        )
-                        .shadow(
-                            color: active ? EOSTheme.accent.opacity(0.28) : .clear,
-                            radius: 8,
-                            y: 2
-                        )
+                        .fill(EOSTheme.accent.opacity(active ? 0.14 : 0))
                 }
+                .contentShape(Circle())
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: active)
         }
-        .buttonStyle(TransportPressStyle())
-    }
-
-    private func sideButtonFill(active: Bool) -> some ShapeStyle {
-        if isLight {
-            return AnyShapeStyle(
-                LinearGradient(
-                    colors: active
-                        ? [EOSTheme.accent.opacity(0.14), EOSTheme.accent.opacity(0.06)]
-                        : [Color.white, Color(white: 0.93)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-        }
-        return AnyShapeStyle(
-            LinearGradient(
-                colors: active
-                    ? [EOSTheme.accent.opacity(0.24), EOSTheme.accent.opacity(0.1)]
-                    : [Color.white.opacity(0.1), Color.white.opacity(0.03)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .buttonStyle(EOSGlyphPressStyle(highlightDiameter: 42))
+        .sensoryFeedback(.selection, trigger: active)
+        .accessibilityLabel(label)
     }
 
     private var deckChassis: some View {
@@ -1666,5 +1592,115 @@ struct TransportPressStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.88 : 1)
             .opacity(configuration.isPressed ? 0.9 : 1)
             .animation(.spring(response: 0.28, dampingFraction: 0.55), value: configuration.isPressed)
+    }
+}
+
+
+// MARK: - Wskaźniki szerokiego paska (iPad)
+
+/// Bieżące wyjście audio — aktualizowane przy każdej zmianie trasy (słuchawki, BT, auto, AirPlay).
+@MainActor
+final class AudioRouteMonitor: ObservableObject {
+    enum Kind: CaseIterable { case speaker, headphones, bluetooth, car, airplay }
+    static let shared = AudioRouteMonitor()
+    @Published private(set) var kind: Kind = .speaker
+    private var token: NSObjectProtocol?
+
+    private init() {
+        refresh()
+        token = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.refresh() }
+        }
+    }
+
+    func refresh() {
+        let port = AVAudioSession.sharedInstance().currentRoute.outputs.first?.portType
+        switch port {
+        case .some(.airPlay): kind = .airplay
+        case .some(.carAudio): kind = .car
+        case .some(.bluetoothA2DP), .some(.bluetoothLE), .some(.bluetoothHFP): kind = .bluetooth
+        case .some(.headphones), .some(.usbAudio), .some(.lineOut): kind = .headphones
+        default: kind = .speaker
+        }
+    }
+}
+
+/// Mierniki L/R z 16 segmentów LED (zielony → bursztyn → czerwony), z prawdziwych kanałów.
+private struct StereoLEDMeter: View {
+    let left: Double
+    let right: Double
+    let isLight: Bool
+    private let segments = 16
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            row("L", left)
+            row("R", right)
+        }
+        .accessibilityLabel("Poziom lewy \(Int(left * 100)) procent, prawy \(Int(right * 100)) procent")
+    }
+
+    private func row(_ label: String, _ level: Double) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .font(.system(size: 7, weight: .heavy, design: .rounded))
+                .foregroundStyle(isLight ? Color.black.opacity(0.45) : Color.white.opacity(0.45))
+                .frame(width: 7)
+            HStack(spacing: 2) {
+                ForEach(0..<segments, id: \.self) { i in
+                    let threshold = Double(i + 1) / Double(segments)
+                    let lit = level >= threshold - 0.0001
+                    let color = segColor(i)
+                    RoundedRectangle(cornerRadius: 1, style: .continuous)
+                        .fill(lit ? color : color.opacity(isLight ? 0.16 : 0.13))
+                        .frame(width: 6, height: 5)
+                        .brightness(lit ? 0.08 : 0)
+                }
+            }
+        }
+    }
+
+    private func segColor(_ i: Int) -> Color {
+        if i >= segments - 2 { return ProMixerDeckView.labelRed }
+        if i >= segments - 5 { return ProMixerDeckView.labelAmber }
+        return ProMixerDeckView.labelGreen
+    }
+}
+
+/// Gdzie gra dźwięk: SPK / HP / BT / CAR / AIR — świeci aktualne wyjście.
+private struct RouteLEDStrip: View {
+    let kind: AudioRouteMonitor.Kind
+    let isLight: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(AudioRouteMonitor.Kind.allCases, id: \.self) { item in
+                ProMixerLED(label: label(item), color: Color(red: 0.25, green: 0.7, blue: 1.0), intensity: item == kind ? 1 : 0)
+            }
+        }
+    }
+
+    private func label(_ kind: AudioRouteMonitor.Kind) -> String {
+        switch kind {
+        case .speaker: return "SPK"
+        case .headphones: return "HP"
+        case .bluetooth: return "BT"
+        case .car: return "CAR"
+        case .airplay: return "AIR"
+        }
+    }
+}
+
+/// NET: mruga na bursztynowo, gdy stream się buforuje; zgaszona, gdy dane płyną.
+private struct NetLED: View {
+    @ObservedObject var flags: PlaybackStatusFlags
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.25, paused: !flags.isBuffering)) { context in
+            let blink = Int(context.date.timeIntervalSinceReferenceDate * 4) % 2 == 0
+            ProMixerLED(label: "NET", color: ProMixerDeckView.labelAmber, intensity: flags.isBuffering ? (blink ? 1 : 0.25) : 0)
+        }
     }
 }

@@ -45,6 +45,9 @@ export function canonicalMusicKey(url) {
   if (/^eosmusic:\/\/opened\//i.test(raw)) {
     return `opened:${raw.slice("eosmusic://opened/".length)}`;
   }
+  if (/^eosmusic:\/\/external\//i.test(raw)) {
+    return `external:${crypto.createHash("sha256").update(raw.toLowerCase()).digest("hex").slice(0, 24)}`;
+  }
   const trackId = parseAppleMusicTrackId(url);
   if (trackId) return `apple:${trackId}`;
   const normalized = raw.toLowerCase().replace(/[?#].*$/, "");
@@ -378,6 +381,7 @@ function persistLiveJobToDisk(job, {
   downloadsRoot,
   friendlyError,
   inflightKey,
+  trackMeta: providedMeta = null,
 }) {
   if (!job || job.persisting) return;
   const assetId = job.assetId || job.id;
@@ -386,7 +390,8 @@ function persistLiveJobToDisk(job, {
   job.listInQueue = true;
   job.persisting = true;
   job.status = "downloading";
-  job.progress = Math.max(22, job.progress || 22);
+  job.progress = 0;
+  job.downloadedBytes = 0;
   job.lastProgressAt = Date.now();
   if (!job.queuedAt) job.queuedAt = Date.now();
   activeAcquire.set(inflightKey, job.id);
@@ -401,7 +406,13 @@ function persistLiveJobToDisk(job, {
   (async () => {
     let partPath = null;
     try {
-      const track = await buildAppleMusicInfo(url);
+      let track;
+      try {
+        track = await buildAppleMusicInfo(url);
+      } catch (lookupErr) {
+        track = synthesizeTrackMetaFromRequest(url, providedMeta || job.trackMeta);
+        if (!track) throw lookupErr;
+      }
       if (track.thumbnail) {
         track.thumbnail = String(track.thumbnail).replace(
           /\/(\d+)x(\d+)(bb)?(\.(?:jpg|png|webp))/i,
@@ -426,16 +437,21 @@ function persistLiveJobToDisk(job, {
         onSpawn: (child) => {
           job.proc = child;
         },
-        onProgress: (pct) => {
+        onProgress: (pct, stats) => {
           if (job.cancelled) return;
-          const next = Math.min(97, Math.max(22, Math.round(pct)));
-          if (next > (Number(job.progress) || 0) + 0.4) {
-            job.lastProgressAt = Date.now();
+          const preparing = stats?.phase === "prepare";
+          job.lastProgressAt = Date.now();
+          if (!preparing) {
+            const next = Math.max(0, Math.min(99.9, Number(pct) || 0));
+            job.progress = Math.round(next * 10) / 10;
           }
-          job.progress = next;
+          if (stats?.downloadedBytes > 0) job.downloadedBytes = Math.round(stats.downloadedBytes);
+          if (stats?.totalBytes > 0) job.expectedBytes = Math.round(stats.totalBytes);
           sendEvent?.(job, {
             status: "downloading",
             progress: job.progress,
+            downloadedBytes: job.downloadedBytes || null,
+            expectedBytes: job.expectedBytes || null,
             purpose: job.purpose,
             assetId,
             streaming: !!job.streamUrl,
@@ -538,6 +554,25 @@ function persistLiveJobToDisk(job, {
   })();
 }
 
+function synthesizeTrackMetaFromRequest(url, providedMeta) {
+  const title = String(providedMeta?.title || "").trim();
+  if (!title) return null;
+  return {
+    isPlaylist: false,
+    isMusicTrack: true,
+    trackId: null,
+    title,
+    uploader: String(providedMeta?.artist || "").trim(),
+    album: String(providedMeta?.album || "").trim(),
+    duration: Number(providedMeta?.duration) || 0,
+    thumbnail: String(providedMeta?.thumbnail || "").trim(),
+    webpageUrl: String(url || ""),
+    previewUrl: "",
+    videoOptions: [],
+    audioOptions: { mp3: [], m4a: [] },
+  };
+}
+
 export async function ensureMusicAsset({
   userKey,
   url,
@@ -550,16 +585,20 @@ export async function ensureMusicAsset({
   friendlyError,
   waitUntilPlayable = false,
   intent = "play",
+  trackMeta: providedMeta = null,
 }) {
   if (!userKey) {
     const err = new Error("Zaloguj się, aby odtwarzać i zapisywać muzykę w bibliotece EOS.");
     err.status = 401;
     throw err;
   }
+  const hasMetaTitle = !!(providedMeta && String(providedMeta.title || "").trim());
   if (!url || !/music\.apple\.com/i.test(url)) {
-    const err = new Error("Podaj link utworu Apple Music.");
-    err.status = 400;
-    throw err;
+    if (!hasMetaTitle) {
+      const err = new Error("Podaj link utworu Apple Music.");
+      err.status = 400;
+      throw err;
+    }
   }
 
   const assetId = stableAssetId(userKey, url);
@@ -649,6 +688,7 @@ export async function ensureMusicAsset({
       downloadsRoot,
       friendlyError,
       inflightKey,
+      trackMeta: providedMeta,
     });
   };
 
@@ -737,7 +777,17 @@ export async function ensureMusicAsset({
         sendEvent?.(job, { status: "preparing", progress: 3, purpose: job.purpose, assetId });
       }
 
-      const track = await buildAppleMusicInfo(url);
+      let track;
+      try {
+        track = await buildAppleMusicInfo(url);
+      } catch (lookupErr) {
+        track = synthesizeTrackMetaFromRequest(url, providedMeta);
+        if (!track) throw lookupErr;
+        console.warn(
+          "music-assets: Apple lookup failed, using Shazam/title fallback:",
+          lookupErr?.message || lookupErr
+        );
+      }
       if (track.thumbnail) {
         track.thumbnail = String(track.thumbnail).replace(
           /\/(\d+)x(\d+)(bb)?(\.(?:jpg|png|webp))/i,
@@ -782,7 +832,8 @@ export async function ensureMusicAsset({
       // gets HTTP 403; FlareSolverr/APLMate is reserved for CDA-HD, not music.
       job.status = "downloading";
       job.ready = false;
-      job.progress = 18;
+      job.progress = 0;
+      job.downloadedBytes = 0;
       job.persisting = true;
       sendEvent?.(job, {
         status: "downloading",
@@ -799,16 +850,21 @@ export async function ensureMusicAsset({
         onSpawn: (child) => {
           job.proc = child;
         },
-        onProgress: (pct) => {
+        onProgress: (pct, stats) => {
           if (job.cancelled) return;
-          const next = Math.min(97, Math.max(22, Math.round(pct)));
-          if (next > (Number(job.progress) || 0) + 0.4) {
-            job.lastProgressAt = Date.now();
+          const preparing = stats?.phase === "prepare";
+          job.lastProgressAt = Date.now();
+          if (!preparing) {
+            const next = Math.max(0, Math.min(99.9, Number(pct) || 0));
+            job.progress = Math.round(next * 10) / 10;
           }
-          job.progress = next;
+          if (stats?.downloadedBytes > 0) job.downloadedBytes = Math.round(stats.downloadedBytes);
+          if (stats?.totalBytes > 0) job.expectedBytes = Math.round(stats.totalBytes);
           sendEvent?.(job, {
             status: "downloading",
             progress: job.progress,
+            downloadedBytes: job.downloadedBytes || null,
+            expectedBytes: job.expectedBytes || null,
             purpose: job.purpose,
             assetId,
             ready: false,
@@ -949,9 +1005,10 @@ export function resolveAssetJob(userKey, jobId, downloadsRoot, { ensurePlayToken
 }
 
 
-const MUSIC_ACQUIRE_IDLE_MS = Number(process.env.MUSIC_ACQUIRE_IDLE_MS || 90_000);
-const MUSIC_ACQUIRE_BOOT_IDLE_MS = Number(process.env.MUSIC_ACQUIRE_BOOT_IDLE_MS || 35_000);
-const MUSIC_ACQUIRE_MAX_MS = Number(process.env.MUSIC_ACQUIRE_MAX_MS || 180_000);
+const MUSIC_ACQUIRE_IDLE_MS = Number(process.env.MUSIC_ACQUIRE_IDLE_MS || 120_000);
+const MUSIC_ACQUIRE_BOOT_IDLE_MS = Number(process.env.MUSIC_ACQUIRE_BOOT_IDLE_MS || 180_000);
+// A track takes several minutes at the YouTube rate this host actually gets.
+const MUSIC_ACQUIRE_MAX_MS = Number(process.env.MUSIC_ACQUIRE_MAX_MS || 35 * 60 * 1000);
 
 export function clearActiveAcquire(job) {
   if (!job?.userKey || !job?.url) return;
@@ -1026,6 +1083,7 @@ export async function importLocalMusicAsset({
   title,
   artist = "",
   album = "",
+  thumbnail = "",
   fileBuffer,
   fileName,
   folderId = null,
@@ -1039,12 +1097,12 @@ export async function importLocalMusicAsset({
     err.status = 401;
     throw err;
   }
-  if (!url || !/^eosmusic:\/\/opened\//i.test(String(url))) {
+  if (!url || !/^eosmusic:\/\/(opened|external)\//i.test(String(url))) {
     const err = new Error("Nieprawidłowy identyfikator importowanego pliku.");
     err.status = 400;
     throw err;
   }
-  if (!fileBuffer || !Buffer.isBuffer(fileBuffer) || fileBuffer.length < 32 * 1024) {
+  if (!fileBuffer || !Buffer.isBuffer(fileBuffer) || fileBuffer.length < 8 * 1024) {
     const err = new Error("Plik audio jest za mały lub uszkodzony.");
     err.status = 400;
     throw err;
@@ -1068,22 +1126,33 @@ export async function importLocalMusicAsset({
     };
   }
 
-  const safeName = String(fileName || "import.mp3").replace(/[^\p{L}\p{N}\-_. ]/gu, "_").slice(0, 120) || "import.mp3";
+  const rawName = String(fileName || "import.mp3");
+  const extMatch = rawName.match(/\.([a-z0-9]{2,5})$/i);
+  const ext = (extMatch ? extMatch[1] : "mp3").toLowerCase();
+  const safeBase = rawName
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^\p{L}\p{N}\-_. ]/gu, "_")
+    .slice(0, 100) || "import";
+  const safeName = `${safeBase}.${ext}`;
+  const albumLabel = /^eosmusic:\/\/external\//i.test(String(url))
+    ? (album || "Import lokalny")
+    : (album || "Otwarte pliki");
   const relativePath = buildRelativePath(
     userKey,
-    { uploader: artist || "Import", album: album || "Otwarte pliki", title: title || safeName },
-    safeName.endsWith(".mp3") ? safeName : `${safeName.replace(/\.[^.]+$/, "")}.mp3`
+    { uploader: artist || "Import", album: albumLabel, title: title || safeBase },
+    safeName
   );
   const destPath = assetAbsolutePath(downloadsRoot, relativePath);
   ensureDir(path.dirname(destPath));
 
   fs.writeFileSync(destPath, fileBuffer);
 
-  let probe = { duration: 0, bytes: fileBuffer.length, bitrate: 0, codec: "mp3" };
+  let probe = { duration: 0, bytes: fileBuffer.length, bitrate: 0, codec: ext };
   try {
     probe = probeMp3(destPath);
+    if (!probe.codec) probe.codec = ext;
   } catch {
-    /* keep size */
+    /* keep size — original bytes stay as-is */
   }
 
   upsertAsset(userKey, {
@@ -1091,10 +1160,10 @@ export async function importLocalMusicAsset({
     userKey,
     canonicalKey: canonicalMusicKey(url),
     url,
-    title: title || safeName,
+    title: title || safeBase,
     artist: artist || "",
     album: album || "",
-    thumbnail: "",
+    thumbnail: String(thumbnail || "").slice(0, 2000),
     relativePath,
     bytes: probe.bytes,
     duration: probe.duration,

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
 import { createReadStream } from "node:fs";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import { spawnSync, spawn } from "node:child_process";
 import os from "node:os";
 import crypto from "node:crypto";
@@ -22,6 +22,8 @@ import {
   parseCdaHdMoviePage,
   fetchCdaHdBrowse,
   searchCdaHd,
+  searchCdaHdAdvanced,
+  titleMatchesSearchQuery,
   fetchCdaHdLatest,
   fetchCdaHdCatalog,
   fetchCdaHdCatalogPool,
@@ -139,7 +141,7 @@ import {
   markJobListed,
   noteJobProgress,
 } from "./download-queue.js";
-import { createPlaylistBatchQueue } from "./playlist-batch-queue.js";
+import { createPlaylistBatchQueue, PLAYLIST_BATCH_CONCURRENCY } from "./playlist-batch-queue.js";
 import { DurableMovieJobQueue } from "./movie-job-queue.js";
 
 const require = createRequire(import.meta.url);
@@ -418,39 +420,32 @@ async function probeStreamSizeBytes(streamUrl, referer) {
   return meta.size || 0;
 }
 
+function plainByteLabel(bytes) {
+  if (!bytes || bytes <= 0) return "—";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${Math.round(bytes / (1024 * 1024))} MB`;
+  const gb = bytes / (1024 * 1024 * 1024);
+  return `${gb >= 10 ? gb.toFixed(0) : gb.toFixed(1)} GB`;
+}
+
+function singleSourceVideoOption({ sizeBytes = 0, approximate = false, detail = "Jedyna jakość w źródle" } = {}) {
+  const option = {
+    id: "best",
+    label: "Najlepsza dostępna",
+    detail,
+  };
+  if (sizeBytes > 0) {
+    option.sizeBytes = Math.round(sizeBytes);
+    option.sizeLabel = approximate ? `ok. ${plainByteLabel(sizeBytes)}` : plainByteLabel(sizeBytes);
+  }
+  return [option];
+}
+
 function buildMirrorVideoOptions(durationSec, exactBytes) {
   if (exactBytes > 0) {
-    return [
-      {
-        id: "720",
-        label: "720p",
-        height: 720,
-        detail: "Mirror · MP4",
-        sizeBytes: exactBytes,
-        sizeLabel: formatBytes(exactBytes),
-      },
-    ];
+    return singleSourceVideoOption({ sizeBytes: exactBytes, detail: "Jeden plik w źródle" });
   }
-
-  const dur = durationSec > 0 ? durationSec : 45 * 60;
-  const estimated = !durationSec;
-  const suffix = estimated ? " ~" : "";
-  const tiers = [
-    { label: "1080p", height: 1080, kbps: 5000 },
-    { label: "720p", height: 720, kbps: 2800 },
-    { label: "480p", height: 480, kbps: 1200 },
-  ];
-  return tiers.map((t) => {
-    const sizeBytes = estimateBytesFromBitrate(t.kbps, dur);
-    return {
-      id: String(t.height),
-      label: t.label,
-      height: t.height,
-      detail: estimated ? "Szacunek · mirror" : "Szacunek · mirror · czas z strony",
-      sizeBytes: Math.round(sizeBytes),
-      sizeLabel: formatBytes(sizeBytes) + suffix,
-    };
-  });
+  return singleSourceVideoOption();
 }
 
 function buildTvpVideoOptions(durationSec) {
@@ -518,12 +513,24 @@ function buildMirrorAudioOptions(durationSec) {
   };
 }
 
+async function resolveMirrorVideoOptions(mirror, durationSec) {
+  const stream = mirror.stream;
+  const streamType = stream?.type || (stream?.url ? detectStreamType(stream.url) : "");
+  const isHls = streamType === "hls" || /\.m3u8?(\?|$)/i.test(stream?.url || "");
+  if (isHls && stream?.url) {
+    return hlsVideoOptions(stream.url, stream.referer || mirror.webpageUrl, durationSec);
+  }
+  let exactBytes = 0;
+  if (stream?.url) exactBytes = await probeStreamSizeBytes(stream.url, mirror.webpageUrl);
+  if (exactBytes > 0) {
+    return singleSourceVideoOption({ sizeBytes: exactBytes, detail: "Jeden plik w źródle" });
+  }
+  return singleSourceVideoOption();
+}
+
 async function buildMirrorMediaInfoAsync(mirror) {
   const durationSec = mirror.duration || 0;
-  let exactBytes = 0;
-  if (mirror.stream?.url && mirror.stream.type !== "hls") {
-    exactBytes = await probeStreamSizeBytes(mirror.stream.url, mirror.webpageUrl);
-  }
+  const videoOptions = await resolveMirrorVideoOptions(mirror, durationSec);
 
   return {
     isPlaylist: false,
@@ -534,7 +541,7 @@ async function buildMirrorMediaInfoAsync(mirror) {
     thumbnail: absUrl(mirror.thumbnail),
     webpageUrl: mirror.webpageUrl,
     duration: durationSec,
-    videoOptions: buildMirrorVideoOptions(durationSec, exactBytes),
+    videoOptions,
     audioOptions: buildMirrorAudioOptions(durationSec),
   };
 }
@@ -662,7 +669,7 @@ function ensureMediaInfoOptions(info) {
   if (!Array.isArray(info.videoOptions) || !info.videoOptions.length) {
     info.videoOptions = isTvp
       ? buildTvpVideoOptions(duration)
-      : buildMirrorVideoOptions(duration, 0);
+      : singleSourceVideoOption();
   } else if (isTvp) {
     info.videoOptions = buildTvpVideoOptions(duration);
   }
@@ -693,6 +700,10 @@ function finalizeJob(job, jobDir) {
 
   job.file = path.join(jobDir, target);
   job.name = target;
+  try {
+    const written = fs.statSync(job.file).size;
+    if (written > 0) job.downloadedBytes = written;
+  } catch {}
 
   if (job.purpose === "preview") {
     job.status = "processing";
@@ -837,6 +848,21 @@ function assertValidMovieFile(filePath) {
     }
     throw new Error(`Plik jest za mały (${stat.size} B) — pobieranie nie powiodło się.`);
   }
+  // Reject truncated MP4s that advertise a long duration but barely have media data.
+  // Those scrub-hang on Apple TV: moov says 1h+, mdat is only a few MB.
+  try {
+    const seconds = probeDurationSeconds(filePath);
+    if (seconds && seconds > 5 * 60) {
+      const minBytes = Math.max(8 * 1024 * 1024, Math.floor(seconds * 80_000)); // ~640 kb/s floor
+      if (stat.size < minBytes) {
+        throw new Error(
+          `Plik wygląda na ucięty (${(stat.size / (1024 * 1024)).toFixed(1)} MB przy ${Math.round(seconds / 60)} min) — pobierz ponownie.`
+        );
+      }
+    }
+  } catch (err) {
+    if (/ucięty|za mały|HLS|Brak pliku/i.test(String(err?.message || err))) throw err;
+  }
 }
 
 function finalizeMovieDownload(job) {
@@ -869,6 +895,14 @@ function avPlayableSidecarPath(filePath) {
 }
 
 function videoMimeForPath(filePath) {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    const buf = Buffer.alloc(16);
+    fs.readSync(fd, buf, 0, 16, 0);
+    fs.closeSync(fd);
+    // MPEG-TS sync byte 0x47 every 188 bytes — even when misnamed .mp4
+    if (buf[0] === 0x47) return "video/mp2t";
+  } catch {}
   const ext = path.extname(filePath).toLowerCase();
   if (ext === ".webm") return "video/webm";
   if (ext === ".mkv") return "video/x-matroska";
@@ -933,6 +967,13 @@ function isAVPlayableMp4(filePath) {
   if (!filePath || !fs.existsSync(filePath)) return false;
   const ext = path.extname(filePath).toLowerCase();
   if (![".mp4", ".m4v", ".mov"].includes(ext)) return false;
+  try {
+    const fd = fs.openSync(filePath, "r");
+    const buf = Buffer.alloc(1);
+    fs.readSync(fd, buf, 0, 1, 0);
+    fs.closeSync(fd);
+    if (buf[0] === 0x47) return false; // MPEG-TS mislabeled as mp4
+  } catch {}
   const { video, audio } = probeMediaCodecs(filePath);
   const videoOk = video.includes("h264") || video.includes("avc");
   const audioOk = !audio || audio.includes("aac") || audio.includes("mp4a");
@@ -1024,11 +1065,33 @@ function runAVPlayableConversion(job) {
     proc.on("error", reject);
     proc.on("close", (code) => {
       if (code === 0 && fs.existsSync(dest) && fs.statSync(dest).size > 1024) {
-        job.avPlayableFile = dest;
-        job.avPlayablePreparing = false;
-        job.avPlayableError = null;
-        resolve(dest);
-        return;
+        try {
+          // HLS lands as MPEG-TS named .mp4 — replace it with one Apple-playable MP4
+          // so MOVIES/ does not keep a ~2× twin (.mp4 TS + .av.mp4).
+          if (src !== dest && fs.existsSync(src)) {
+            const replacing = `${src}.replacing-av`;
+            try { fs.unlinkSync(replacing); } catch {}
+            fs.renameSync(dest, replacing);
+            try { fs.unlinkSync(src); } catch {}
+            fs.renameSync(replacing, src);
+            job.file = src;
+            job.name = path.basename(src);
+            job.avPlayableFile = src;
+          } else {
+            job.avPlayableFile = dest;
+          }
+          job.avPlayablePreparing = false;
+          job.avPlayableError = null;
+          resolve(job.avPlayableFile || dest);
+          return;
+        } catch (err) {
+          // Sidecar still usable even if replace failed.
+          job.avPlayableFile = dest;
+          job.avPlayablePreparing = false;
+          job.avPlayableError = null;
+          resolve(dest);
+          return;
+        }
       }
       reject(new Error(stderr.trim() || `ffmpeg av-playable exit ${code}`));
     });
@@ -1908,6 +1971,139 @@ async function fetchHlsPlaylistText(url, referer) {
   return await res.text();
 }
 
+function parseHlsVariants(playlist, baseUrl) {
+  if (!/#EXT-X-STREAM-INF/i.test(playlist)) return [];
+  const lines = playlist.split(/\r?\n/);
+  const variants = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!/#EXT-X-STREAM-INF:/i.test(line)) continue;
+    const bandwidth = line.match(/BANDWIDTH=(\d+)/i);
+    const resolution = line.match(/RESOLUTION=(\d+)x(\d+)/i);
+    const next = lines[i + 1];
+    if (!bandwidth || !next || next.startsWith("#")) continue;
+    try {
+      variants.push({
+        bandwidth: Number(bandwidth[1]),
+        width: resolution ? Number(resolution[1]) : 0,
+        height: resolution ? Number(resolution[2]) : 0,
+        url: new URL(next.trim(), baseUrl).href,
+      });
+    } catch {
+      /* skip */
+    }
+  }
+  return variants;
+}
+
+function hlsPlaylistDurationSec(playlist) {
+  let sum = 0;
+  for (const line of String(playlist || "").split(/\r?\n/)) {
+    const match = line.match(/^#EXTINF:([\d.]+)/i);
+    if (match) sum += Number(match[1]);
+  }
+  return sum;
+}
+
+function bytesFromBandwidth(bandwidth, durationSec) {
+  if (!bandwidth || !durationSec) return 0;
+  return Math.round((bandwidth * durationSec) / 8);
+}
+
+function chooseHlsVariant(variants, requestedHeight, budgetBytes, durationSec) {
+  const ranked = [...variants].sort((a, b) => b.bandwidth - a.bandwidth);
+  const height = Number(requestedHeight) || 0;
+  let pool = ranked;
+  const withHeight = ranked.filter((variant) => variant.height > 0);
+  if (height > 0 && withHeight.length > 1) {
+    const exact = withHeight.filter((variant) => variant.height === height);
+    if (exact.length) {
+      pool = exact;
+    } else {
+      const nearest = withHeight.reduce((best, variant) =>
+        Math.abs(variant.height - height) < Math.abs(best.height - height) ? variant : best
+      );
+      pool = withHeight.filter((variant) => variant.height === nearest.height);
+    }
+  }
+  const fits = durationSec > 0
+    ? pool.filter((variant) => bytesFromBandwidth(variant.bandwidth, durationSec) <= budgetBytes)
+    : pool;
+  return fits[0] || pool[pool.length - 1] || ranked[ranked.length - 1];
+}
+
+function videoOptionsFromHlsVariants(variants, durationSec) {
+  const ranked = [...variants].sort((a, b) => b.bandwidth - a.bandwidth);
+  const byHeight = new Map();
+  for (const variant of ranked) {
+    const key = variant.height > 0 ? variant.height : 0;
+    if (!byHeight.has(key)) byHeight.set(key, variant);
+  }
+  const uniqueHeights = [...byHeight.values()].filter((variant) => variant.height > 0);
+  if (uniqueHeights.length <= 1) {
+    const variant = ranked[0];
+    const resolution = variant.height
+      ? (variant.width ? `${variant.width}×${variant.height}` : `${variant.height}p`)
+      : "";
+    const sizeBytes = bytesFromBandwidth(variant.bandwidth, durationSec);
+    return singleSourceVideoOption({
+      sizeBytes,
+      approximate: sizeBytes > 0,
+      detail: resolution ? `${resolution} · jedyna jakość w źródle` : "Jedyna jakość w źródle",
+    }).map((option) => ({ ...option, height: variant.height || undefined, bitrate: Math.round(variant.bandwidth / 1000) }));
+  }
+  return uniqueHeights
+    .sort((a, b) => b.height - a.height)
+    .map((variant) => {
+      const sizeBytes = bytesFromBandwidth(variant.bandwidth, durationSec);
+      return {
+        id: String(variant.height),
+        label: `${variant.height}p`,
+        height: variant.height,
+        detail: variant.width ? `${variant.width}×${variant.height}` : "HLS",
+        bitrate: Math.round(variant.bandwidth / 1000),
+        ...(sizeBytes > 0
+          ? { sizeBytes, sizeLabel: `ok. ${plainByteLabel(sizeBytes)}` }
+          : {}),
+      };
+    });
+}
+
+async function hlsVideoOptions(streamUrl, referer, durationSec) {
+  let playlist;
+  try {
+    playlist = await fetchHlsPlaylistText(streamUrl, referer);
+  } catch {
+    return singleSourceVideoOption();
+  }
+  const variants = parseHlsVariants(playlist, streamUrl);
+  if (!variants.length) return singleSourceVideoOption();
+  let duration = durationSec > 0 ? durationSec : 0;
+  if (!duration) {
+    try {
+      const media = await fetchHlsPlaylistText(variants[0].url, referer);
+      duration = hlsPlaylistDurationSec(media);
+    } catch {
+      duration = 0;
+    }
+  }
+  return videoOptionsFromHlsVariants(variants, duration);
+}
+
+async function rememberHlsExpectedSize(job, variant, referer) {
+  if (!variant?.bandwidth) return;
+  job.hlsBandwidth = variant.bandwidth;
+  let duration = 0;
+  try {
+    const media = await fetchHlsPlaylistText(variant.url, referer);
+    duration = hlsPlaylistDurationSec(media);
+  } catch {
+    duration = 0;
+  }
+  const expected = bytesFromBandwidth(variant.bandwidth, duration);
+  if (expected > 0) job.expectedBytes = expected;
+}
+
 async function pickHlsVariantForDisk(streamUrl, referer, job) {
   let playlist;
   try {
@@ -1915,37 +2111,27 @@ async function pickHlsVariantForDisk(streamUrl, referer, job) {
   } catch {
     return streamUrl;
   }
-  if (!/#EXT-X-STREAM-INF/i.test(playlist)) return streamUrl;
-  const lines = playlist.split(/\r?\n/);
-  const variants = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const m = lines[i].match(/#EXT-X-STREAM-INF:[^\n]*BANDWIDTH=(\d+)/i);
-    if (!m || !lines[i + 1] || lines[i + 1].startsWith("#")) continue;
-    try {
-      variants.push({
-        bandwidth: Number(m[1]),
-        url: new URL(lines[i + 1].trim(), streamUrl).href,
-      });
-    } catch {
-      /* skip */
-    }
-  }
+  const variants = parseHlsVariants(playlist, streamUrl);
   if (!variants.length) return streamUrl;
-  variants.sort((a, b) => b.bandwidth - a.bandwidth);
   let available = 0;
   try {
     available = movieStorageAvailableBytes();
   } catch {
-    return variants[0].url;
+    available = Number.MAX_SAFE_INTEGER;
   }
   const budget = Math.max(0, available - MOVIE_STORAGE_ABORT_BYTES);
-  const durationSec = estimateMovieDurationSec(job);
-  const fits = variants.filter((v) => (v.bandwidth * durationSec) / 8 <= budget);
-  const chosen = fits[0] || variants[variants.length - 1];
+  const chosen = chooseHlsVariant(
+    variants,
+    job?.requestedHeight,
+    budget,
+    estimateMovieDurationSec(job)
+  );
+  await rememberHlsExpectedSize(job, chosen, referer);
   if (chosen.url !== streamUrl) {
     console.warn(
       "hls variant",
       Math.round(chosen.bandwidth / 1000) + "kbps",
+      chosen.height ? `${chosen.height}p` : "auto",
       "budget",
       (budget / (1024 ** 3)).toFixed(2) + "GB"
     );
@@ -1989,6 +2175,8 @@ function waitForFfmpegHlsCopy(job, outFile, inputUrl, referer) {
         const dur = text.match(/Duration:\s*(\d+):(\d+):(\d+)/);
         if (dur) {
           durationSec = Number(dur[1]) * 3600 + Number(dur[2]) * 60 + Number(dur[3]);
+          const expected = bytesFromBandwidth(job.hlsBandwidth, durationSec);
+          if (expected > 0) job.expectedBytes = expected;
         }
       });
       proc.stdout.on("data", (chunk) => {
@@ -2021,6 +2209,7 @@ function waitForFfmpegHlsCopy(job, outFile, inputUrl, referer) {
           purpose: job.purpose,
           phase: job.phase,
           downloadedBytes: job.downloadedBytes || null,
+          expectedBytes: job.expectedBytes || null,
         });
       });
       proc.on("error", (err) => reject(err));
@@ -2058,6 +2247,7 @@ function startHlsMovieDownloadJob({
   referer,
   movieDownload,
   title,
+  height,
 }) {
   const jobDir = path.join(DOWNLOAD_DIR, jobId);
   fs.mkdirSync(jobDir, { recursive: true });
@@ -2076,6 +2266,7 @@ function startHlsMovieDownloadJob({
     name: displayTitle,
     status: "starting",
     progress: 0,
+    requestedHeight: Number(height) || 0,
     clients: new Set(),
   };
   jobs.set(jobId, job);
@@ -2125,6 +2316,45 @@ function startHlsMovieDownloadJob({
           ];
           const proc = ytDlp.exec(args);
           job.proc = proc;
+          const refreshHlsBytes = () => {
+            try {
+              let onDisk = 0;
+              const mainPart = path.join(jobDir, "download.mp4.part");
+              if (fs.existsSync(mainPart)) onDisk += fs.statSync(mainPart).size;
+              for (const name of fs.readdirSync(jobDir)) {
+                if (!name.startsWith("download.mp4.part-Frag")) continue;
+                try { onDisk += fs.statSync(path.join(jobDir, name)).size; } catch {}
+              }
+              if (onDisk > 0) {
+                job.downloadedBytes = Math.max(Number(job.downloadedBytes) || 0, onDisk);
+              }
+              const expected = Number(job.expectedBytes) || 0;
+              if (expected > 0 && job.downloadedBytes > 0) {
+                const fromBytes = Math.min(99, Math.max(0, (job.downloadedBytes / expected) * 100));
+                // Prefer measured percent when yt-dlp omits/ lags; never drop progress.
+                job.progress = Math.max(Number(job.progress) || 0, fromBytes);
+              }
+            } catch {}
+          };
+          const publishHlsProgress = () => {
+            refreshHlsBytes();
+            sendEvent(job, {
+              status: job.status,
+              progress: job.progress,
+              purpose: job.purpose,
+              phase: job.phase,
+              downloadedBytes: job.downloadedBytes || null,
+              expectedBytes: job.expectedBytes || null,
+            });
+          };
+          const hlsBytesTimer = setInterval(() => {
+            if (job.cancelled || job.status === "error") return;
+            if (failJobIfDiskExhausted(job)) return;
+            job.status = "downloading";
+            job.phase = "downloading";
+            job.lastProgressAt = Date.now();
+            publishHlsProgress();
+          }, 1000);
           proc.on("progress", (p) => {
             if (job.cancelled) return;
             if (failJobIfDiskExhausted(job)) return;
@@ -2132,15 +2362,25 @@ function startHlsMovieDownloadJob({
             job.phase = "downloading";
             job.lastProgressAt = Date.now();
             if (typeof p.percent === "number") job.progress = Math.min(99, Math.max(0, p.percent));
-            sendEvent(job, {
-              status: job.status,
-              progress: job.progress,
-              purpose: job.purpose,
-              phase: job.phase,
-            });
+            const downloaded =
+              Number(p.downloaded) ||
+              Number(p.downloaded_bytes) ||
+              Number(p.downloadedBytes) ||
+              0;
+            const total =
+              Number(p.total) ||
+              Number(p.total_bytes) ||
+              Number(p.totalBytes) ||
+              Number(job.expectedBytes) ||
+              0;
+            if (downloaded > 0) job.downloadedBytes = Math.max(Number(job.downloadedBytes) || 0, downloaded);
+            if (total > 0) job.expectedBytes = total;
+            publishHlsProgress();
           });
-          proc.on("error", reject);
+          const clearHlsTimer = () => { try { clearInterval(hlsBytesTimer); } catch {} };
+          proc.on("error", (err) => { clearHlsTimer(); reject(err); });
           proc.on("close", (code, signal) => {
+            clearHlsTimer();
             if (job.cancelled || job.status === "error") return resolve();
             if (signal || (code != null && code !== 0)) {
               return reject(new Error(job.error || `Pobieranie HLS zakończyło się błędem (kod ${code}).`));
@@ -2538,12 +2778,19 @@ function startAppleMusicDownloadJob({ jobId, url, userKey, folderId, trackUrl })
         appleUrl: url,
         destPath: filePath,
         trackMeta: track,
-        onProgress: (pct) => {
+        onProgress: (pct, stats) => {
           if (job.cancelled) return;
-          job.progress = Math.min(99, Math.round(pct));
+          job.lastProgressAt = Date.now();
+          if (stats?.phase !== "prepare") {
+            job.progress = Math.max(0, Math.min(99.9, Number(pct) || 0));
+          }
+          if (stats?.downloadedBytes > 0) job.downloadedBytes = Math.round(stats.downloadedBytes);
+          if (stats?.totalBytes > 0) job.expectedBytes = Math.round(stats.totalBytes);
           sendEvent(job, {
             status: "downloading",
             progress: job.progress,
+            downloadedBytes: job.downloadedBytes || null,
+            expectedBytes: job.expectedBytes || null,
             purpose: job.purpose,
           });
         },
@@ -2611,12 +2858,19 @@ function startAppleMusicPlayJob({ jobId, url }) {
         appleUrl: url,
         destPath: filePath,
         trackMeta: track,
-        onProgress: (pct) => {
+        onProgress: (pct, stats) => {
           if (job.cancelled) return;
-          job.progress = Math.min(99, Math.round(pct));
+          job.lastProgressAt = Date.now();
+          if (stats?.phase !== "prepare") {
+            job.progress = Math.max(0, Math.min(99.9, Number(pct) || 0));
+          }
+          if (stats?.downloadedBytes > 0) job.downloadedBytes = Math.round(stats.downloadedBytes);
+          if (stats?.totalBytes > 0) job.expectedBytes = Math.round(stats.totalBytes);
           sendEvent(job, {
             status: "downloading",
             progress: job.progress,
+            downloadedBytes: job.downloadedBytes || null,
+            expectedBytes: job.expectedBytes || null,
             purpose: job.purpose,
           });
         },
@@ -3200,9 +3454,11 @@ function restoreQueuedMovieJobs() {
   }
 }
 
-function enqueueMirrorMovieDownload({ jobId, sourceUrl, movieDownload }) {
+function enqueueMirrorMovieDownload({ jobId, sourceUrl, movieDownload, height }) {
   const record = movieDownloadQueue.enqueue({
-    id: jobId, payload: { type: "mirror", sourceUrl, movieDownload }, enqueuedAt: Date.now(),
+    id: jobId,
+    payload: { type: "mirror", sourceUrl, movieDownload, height: Number(height) || 0 },
+    enqueuedAt: Date.now(),
   });
   const job = makeQueuedMovieJob(record);
   jobs.set(jobId, job);
@@ -3211,12 +3467,13 @@ function enqueueMirrorMovieDownload({ jobId, sourceUrl, movieDownload }) {
 }
 
 async function runQueuedMirrorMovieDownload(record) {
-  const { sourceUrl, movieDownload } = record.payload || {};
+  const { sourceUrl, movieDownload, height } = record.payload || {};
   if (!sourceUrl || !movieDownload) throw new Error("Niepełny zapis kolejki pobierania.");
   const previous = jobs.get(record.id) || makeQueuedMovieJob(record);
   previous.status = "starting";
   previous.phase = "resolving";
   previous.lastProgressAt = Date.now();
+  previous.bytesAtProgress = previous.downloadedBytes || 0;
   jobs.set(record.id, previous);
   sendEvent(previous, { status: "starting", phase: "resolving", progress: 0, heartbeat: true });
 
@@ -3234,7 +3491,8 @@ async function runQueuedMirrorMovieDownload(record) {
 
   let mirror;
   try {
-    mirror = await withTimeout(getMirrorStream(sourceUrl), 360_000, "resolve-stream");
+    // Keep resolve short so a stuck CDA/FlareSolverr lookup cannot pin the durable queue.
+    mirror = await withTimeout(getMirrorStream(sourceUrl), 90_000, "resolve-stream");
   } finally {
     clearInterval(heartbeat);
   }
@@ -3245,7 +3503,7 @@ async function runQueuedMirrorMovieDownload(record) {
   const job = isHls
     ? startHlsMovieDownloadJob({
         jobId: record.id, streamUrl: mirror.stream.url, referer: mirror.stream.referer,
-        title: movieDownload.title || mirror.title, movieDownload,
+        title: movieDownload.title || mirror.title, movieDownload, height,
       })
     : startMirrorDownloadJob({
         jobId: record.id, streamUrl: mirror.stream.url, streamReferer: mirror.stream.referer,
@@ -3253,13 +3511,15 @@ async function runQueuedMirrorMovieDownload(record) {
         movieTitle: movieDownload.title, movieThumbnail: movieDownload.thumbnail,
         movieSource: movieDownload.source,
       });
-  if (job) {
-    job.clients = clients;
-    job.queuedAt = record.enqueuedAt || job.queuedAt || Date.now();
-    job.lastProgressAt = Date.now();
-    job.phase = "downloading";
-    markJobListed(job, { kind: "movie", title: job.movieTitle, url: job.movieUrl });
+  if (!job) {
+    throw new Error("Nie udało się uruchomić pobierania po rozwiązaniu strumienia.");
   }
+  job.clients = clients;
+  job.queuedAt = record.enqueuedAt || job.queuedAt || Date.now();
+  job.lastProgressAt = Date.now();
+  job.phase = "downloading";
+  markJobListed(job, { kind: "movie", title: job.movieTitle, url: job.movieUrl });
+  sendEvent(job, { status: "downloading", phase: "downloading", progress: job.progress || 1 });
 }
 
 function failQueuedMovieDownload(record, error) {
@@ -3295,13 +3555,28 @@ function canAccessPlay(req, job) {
   return false;
 }
 
-const MOVIE_JOB_IDLE_MS = 15 * 60 * 1000;
+const MOVIE_JOB_IDLE_MS = 12 * 60 * 1000;
+const MOVIE_RESOLVE_IDLE_MS = 2 * 60 * 1000;
 
 function isStalledMovieDownload(job, now = Date.now()) {
   if (!job || job.kind !== "movie" || job.purpose !== "download") return false;
   if (job.status === "queued" || job.phase === "queued") return false;
   if (job.ready || job.status === "done" || job.status === "error" || job.status === "cancelled") return false;
-  // yt-dlp still running (including remux) — slow feature films must not be killed.
+  const phase = String(job.phase || "");
+  const status = String(job.status || "");
+  // Resolving / starting with no real progress must not pin the queue via heartbeats.
+  if (phase === "resolving" || status === "starting") {
+    const anchor = Number(job.lastProgressAt || job.queuedAt || job.createdAt || 0);
+    return anchor > 0 && now - anchor > MOVIE_RESOLVE_IDLE_MS;
+  }
+  // yt-dlp still running (including remux) — slow feature films must not be killed
+  // unless progress/bytes have been frozen past the idle window.
+  const progress = Number(job.progress) || 0;
+  const bytes = Number(job.downloadedBytes) || 0;
+  if (job.proc && progress <= 0.5 && bytes <= 0) {
+    const anchor = Number(job.lastProgressAt || job.queuedAt || job.createdAt || 0);
+    return anchor > 0 && now - anchor > MOVIE_JOB_IDLE_MS;
+  }
   if (job.proc && job.status !== "error" && job.status !== "cancelled") return false;
   const anchor = Number(job.lastProgressAt || job.queuedAt || job.createdAt || 0);
   return anchor > 0 && now - anchor > MOVIE_JOB_IDLE_MS;
@@ -3362,6 +3637,9 @@ function sendEvent(job, payload) {
 
 const playlistBatchQueue = createPlaylistBatchQueue({
   filePath: path.join(DOWNLOAD_DIR, "_music-batch-queue.json"),
+  // When a movie season is resolving/downloading, keep music batch serial so CDA + yt-dlp
+  // do not starve the VM together.
+  getConcurrency: () => (movieDownloadQueue.runningCount() > 0 ? 0 : PLAYLIST_BATCH_CONCURRENCY),
   ensureMusicAsset: async ({ userKey, url, folderId, trackUrl, intent }) => {
     const result = await ensureMusicAsset({
       userKey,
@@ -3409,7 +3687,25 @@ playlistBatchQueue.resume();
 
 // --- App ---------------------------------------------------------------------
 const app = express();
-app.use(express.json({ limit: "6mb" }));
+// Domyślny limit JSON 6 MB — ale NIE dla zapisu plików z iPhone'a: ta trasa ma własny parser 96 MB.
+// Wcześniej globalny parser czytał body pierwszy i odrzucał każdy plik > ~4,5 MB (base64) kodem 413.
+const defaultJsonParser = express.json({ limit: "6mb" });
+const LARGE_JSON_ROUTES = new Set(["/api/music/upload-local"]);
+app.use((req, res, next) => (LARGE_JSON_ROUTES.has(req.path) ? next() : defaultJsonParser(req, res, next)));
+// Diagnostyka czasu odpowiedzi muzyki (EOS_TRACE=0 wyłącza). Bez tokenów w logu.
+app.use((req, res, next) => {
+  if (process.env.EOS_TRACE === "0" || !/^\/api\/(music|job|downloads)/.test(req.path)) return next();
+  const t0 = Date.now();
+  const p = req.path;
+  if (p.startsWith("/api/music/stream/")) console.log(`[trace] ${req.method} ${p} START range=${req.headers.range || "-"}`);
+  res.on("close", () => {
+    const ms = Date.now() - t0;
+    if (p.startsWith("/api/music/stream/") || ms > 800 || req.method !== "GET") {
+      console.log(`[trace] ${req.method} ${p} ${res.statusCode} ${ms}ms`);
+    }
+  });
+  next();
+});
 
 app.use((req, _res, next) => {
   const user = authUserFromRequest(req);
@@ -4133,52 +4429,62 @@ function withTimeout(promise, ms, label = "operacja") {
 const SEARCH_SOURCE_TIMEOUT_MS = {
   youtube: 12000,
   cda: 14000,
-  "cda-hd": 18000,
+  "cda-hd": 45000,
   tvp: 12000,
   "apple-music": 14000,
 };
 const SEARCH_DEFAULT_TIMEOUT_MS = 14000;
 
-async function searchCdaHdWithCacheFallback(query, limit) {
+async function searchCdaHdWithCacheFallback(query, limit, page = 1) {
   const q = String(query || "").trim();
   const fallbackRelevant = () => {
     const disk = loadCdaHdDiskCatalog(7 * 24 * 60 * 60 * 1000);
     const pool = cdaHdLatestCache.items.length
       ? cdaHdLatestCache.items
       : disk?.latest || [];
-    // Tylko trafienia po tytule — NIGDY „najnowsze” jako wyniki wyszukiwania.
-    const ranked = rankSearchByQuery(pool, q);
-    return ranked
-      .filter((item) => {
-        const title = String(item?.title || "").toLowerCase();
-        const needle = q.toLowerCase();
-        if (!needle) return false;
-        if (title.includes(needle)) return true;
-        return needle
-          .split(/\s+/)
-          .filter((t) => t.length > 2)
-          .some((t) => title.includes(t));
-      })
-      .slice(0, limit);
+    const filtered = pool.filter((item) => titleMatchesSearchQuery(item?.title, q));
+    return {
+      results: filtered.slice(0, limit),
+      people: [],
+      genres: [],
+      years: [],
+      hasMore: filtered.length > limit,
+      page,
+      pageSize: limit,
+      total: filtered.length,
+    };
   };
   try {
-    // Flare/cookies: wyszukiwanie bywa 10–40 s; 8 s kończyło się fałszywymi „najnowszymi”.
-    return await withTimeout(searchCdaHd(q, limit, 2), 45000, "cda-hd-live");
+    return await withTimeout(searchCdaHdAdvanced(q, limit, page), 45000, "cda-hd-live");
   } catch (err) {
     const filtered = fallbackRelevant();
-    if (filtered.length) {
+    if (filtered.results.length) {
       console.warn("cda-hd search fallback cache (relevant only):", err?.message || err);
       return filtered;
     }
     console.warn("cda-hd search empty (no relevant cache):", err?.message || err);
-    return [];
+    return { results: [], people: [], genres: [], years: [], hasMore: false, page, pageSize: limit, total: 0 };
   }
+}
+
+function unwrapSearchPayload(part) {
+  if (Array.isArray(part)) {
+    return { results: part, people: [], genres: [], years: [] };
+  }
+  return {
+    results: Array.isArray(part?.results) ? part.results : [],
+    people: Array.isArray(part?.people) ? part.people : [],
+    genres: Array.isArray(part?.genres) ? part.genres : [],
+    years: Array.isArray(part?.years) ? part.years : [],
+    hasMore: Boolean(part?.hasMore),
+    total: Number(part?.total) || undefined,
+  };
 }
 
 const SEARCH_HANDLERS = {
   youtube: (q, limit, browser) => searchYouTube(q, Math.min(limit, SOURCE_FETCH_LIMITS.youtube), browser),
   cda: (q, limit) => searchCda(q, limit),
-  "cda-hd": (q, limit) => searchCdaHdWithCacheFallback(q, limit),
+  "cda-hd": (q, limit, _browser, page) => searchCdaHdWithCacheFallback(q, limit, page),
   tvp: (q, limit) => searchTvp(q, limit),
   "apple-music": (q, limit) => searchAppleMusic(q, Math.min(limit, SOURCE_FETCH_LIMITS["apple-music"])),
 };
@@ -4209,7 +4515,11 @@ async function warmCdaHdCaches() {
     cdaHdCatalogCache.entries = cdaHdCatalogCache.entries || {};
     cdaHdCatalogCache.entries[`latest|1|${pageSize}`] = page1;
     const series = items.filter((i) => i.isSerial || isCdaHdTvShowUrl(i.url));
-    console.warn(`cda-hd warm: ${items.length} pozycji (seriali: ${series.length})`);
+    const warmSig = `${items.length}/${series.length}`;
+    if (globalThis.__cdaWarmSig !== warmSig) {
+      globalThis.__cdaWarmSig = warmSig;
+      console.warn(`cda-hd warm: ${items.length} pozycji (seriali: ${series.length})`);
+    }
     // Podgrzej listy odcinków — FlareSolverr ~30–90 s, ale potem /api/info jest natychmiastowe.
     // Mało równoległych Flare — jeden solve naraz, kolejka 3 tytułów.
     setTimeout(() => {
@@ -5148,6 +5458,11 @@ app.post("/api/search", async (req, res) => {
 
   try {
     let results;
+    let extraPeople = [];
+    let extraGenres = [];
+    let extraYears = [];
+    let extraHasMore = false;
+    let extraTotal;
     if (source === "all") {
       // Filmy/seriale only — Apple Music lives in the Muzyka tab.
       // Prefer fast VOD sources first; per-source timeout so one slow CDN cannot hang the TV app.
@@ -5164,8 +5479,12 @@ app.post("/api/search", async (req, res) => {
             const srcLimit = Math.min(fetchLimit, SOURCE_FETCH_LIMITS[src] || fetchLimit);
             return await withTimeout(
               (async () => {
-                const part = await fn(query, srcLimit, browser);
-                return enrichSearchResults(part, browser, src);
+                const raw = await fn(query, srcLimit, browser, page);
+                const pack = unwrapSearchPayload(raw);
+                return {
+                  ...pack,
+                  results: await enrichSearchResults(pack.results, browser, src),
+                };
               })(),
               ms,
               `search/${src}`
@@ -5176,7 +5495,8 @@ app.post("/api/search", async (req, res) => {
           }
         })
       );
-      const merged = (await Promise.all(chunks)).flat();
+      const packs = await Promise.all(chunks);
+      const merged = packs.flatMap((pack) => (Array.isArray(pack) ? pack : pack?.results || []));
       const seen = new Set();
       results = merged.filter((item) => {
         const key = String(item.url || item.title || "");
@@ -5185,19 +5505,32 @@ app.post("/api/search", async (req, res) => {
         return true;
       });
       results = sortSearchResults(results, sort);
+      extraPeople = packs.flatMap((pack) => pack?.people || []);
+      extraGenres = packs.flatMap((pack) => pack?.genres || []);
+      extraYears = packs.flatMap((pack) => pack?.years || []);
     } else {
       const handler = SEARCH_HANDLERS[source];
       if (!handler) return res.status(400).json({ error: "Nieznane źródło wyszukiwania." });
       const ms = SEARCH_SOURCE_TIMEOUT_MS[source] || SEARCH_DEFAULT_TIMEOUT_MS;
       try {
-        results = await withTimeout(
+        const raw = await withTimeout(
           (async () => {
-            const part = await handler(query, fetchLimit, browser);
-            return enrichSearchResults(part, browser, source);
+            const part = await handler(query, fetchLimit, browser, page);
+            const pack = unwrapSearchPayload(part);
+            return {
+              ...pack,
+              results: await enrichSearchResults(pack.results, browser, source),
+            };
           })(),
           ms,
           `search/${source}`
         );
+        extraPeople = raw.people || [];
+        extraGenres = raw.genres || [];
+        extraYears = raw.years || [];
+        extraHasMore = Boolean(raw.hasMore);
+        extraTotal = raw.total;
+        results = raw.results || [];
       } catch (err) {
         console.warn(`search ${source}:`, err?.message || err);
         results = [];
@@ -5227,7 +5560,27 @@ app.post("/api/search", async (req, res) => {
       });
     }
     const paged = paginateSearchResults(results, page, pageSize);
-    res.json({ query, source, sort, access, ...paged });
+    const uniqByUrl = (rows) => {
+      const seen = new Set();
+      return rows.filter((row) => {
+        const key = String(row?.url || row?.name || "");
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    res.json({
+      query,
+      source,
+      sort,
+      access,
+      ...paged,
+      people: uniqByUrl(extraPeople),
+      genres: uniqByUrl(extraGenres),
+      years: uniqByUrl(extraYears),
+      hasMore: Boolean(paged.hasMore || extraHasMore),
+      total: extraTotal ?? paged.total,
+    });
   } catch (err) {
     console.error("search error:", err?.message || err);
     res.status(500).json({ error: friendlyError(err) });
@@ -5712,7 +6065,7 @@ app.post("/api/music/upload-local", express.json({ limit: "96mb" }), async (req,
   const userKey = favoritesUserKeyFromReq(req);
   if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
   const { url, folderId, title, artist, album, fileName, fileBase64 } = req.body || {};
-  if (!url || !/^eosmusic:\/\/opened\//i.test(String(url))) {
+  if (!url || !/^eosmusic:\/\/(opened|external)\//i.test(String(url))) {
     return res.status(400).json({ error: "Nieprawidłowy identyfikator importowanego pliku." });
   }
   if (!fileBase64 || typeof fileBase64 !== "string") {
@@ -5731,6 +6084,7 @@ app.post("/api/music/upload-local", express.json({ limit: "96mb" }), async (req,
       title: String(title || fileName || "Import"),
       artist: String(artist || ""),
       album: String(album || ""),
+      thumbnail: String((req.body || {}).thumbnail || ""),
       fileBuffer,
       fileName: String(fileName || "import.mp3"),
       folderId: folderId || null,
@@ -5775,7 +6129,18 @@ app.post("/api/music/play", async (req, res) => {
       // holding this request open races the iOS 30 s timeout against a 120 s acquire.
       waitUntilPlayable: false,
       intent: downloadIntent,
+      trackMeta: {
+        title: req.body?.title || "",
+        artist: req.body?.artist || "",
+        album: req.body?.album || "",
+        thumbnail: req.body?.thumbnail || "",
+      },
     });
+    // Zacznij szukać na YouTube od razu — zanim odtwarzacz otworzy stream.
+    try {
+      const warm = jobs.get(result.jobId);
+      if (warm && isPipedMusicStream(warm) && !(warm.file && fs.existsSync(warm.file)) && !streamCacheHit(warm)) ensureLiveBuffer(warm);
+    } catch {}
     res.json({
       jobId: result.jobId,
       assetId: result.assetId,
@@ -5899,9 +6264,28 @@ app.get("/api/music/play-token/:jobId", (req, res) => {
   });
 });
 
+const AUDIO_MIME_BY_EXT = {
+  ".mp3": "audio/mpeg",
+  ".m4a": "audio/mp4",
+  ".mp4": "audio/mp4",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac",
+  ".wav": "audio/wav",
+  ".aif": "audio/aiff",
+  ".aiff": "audio/aiff",
+  ".ogg": "audio/ogg",
+  ".opus": "audio/ogg",
+  ".caf": "audio/x-caf",
+};
+
+/** Importy z iPhone'a zostają w oryginalnym formacie — AVPlayer potrzebuje zgodnego Content-Type. */
+function audioMimeForPath(filePath) {
+  return AUDIO_MIME_BY_EXT[path.extname(String(filePath || "")).toLowerCase()] || "audio/mpeg";
+}
+
 function serveAudioFile(req, res, filePath) {
   const stat = fs.statSync(filePath);
-  const mime = "audio/mpeg";
+  const mime = audioMimeForPath(filePath);
   const range = req.headers.range;
   const asDownload = req.query.download === "1" || req.query.download === "true";
   const disposition = rfc5987Disposition(path.basename(filePath), asDownload ? "attachment" : "inline");
@@ -5940,6 +6324,162 @@ function serveAudioFile(req, res, filePath) {
   createReadStream(filePath).pipe(res);
 }
 
+// --- Live buffer: jedno wyszukiwanie YouTube na utwór -------------------------
+// AVPlayer otwiera stream kilka razy (sonda, odtwarzanie, ponowienia). Wcześniej każde
+// połączenie uruchamiało od nowa yt-dlp (~9 s wyszukiwania) — start trwał ~40 s.
+// Teraz pierwszy raz zapisujemy MP3 do pliku tymczasowego, a każde połączenie czyta z niego.
+const liveBuffers = new Map();
+const LIVE_BUFFER_TTL_MS = 30 * 60 * 1000;
+const LIVE_BUFFER_DIR = path.join(os.tmpdir(), "eos-live");
+try { fs.mkdirSync(LIVE_BUFFER_DIR, { recursive: true }); } catch {}
+
+// Pamięć podręczna streamów: utwory grane na żywo (niezapisane na serwer) zostają tu
+// i przy kolejnym odtworzeniu startują od razu. Limit 400 MB — najdawniej grane wylatują.
+const STREAM_CACHE_DIR = process.env.EOS_STREAM_CACHE_DIR || path.join(__dirname, "stream-cache");
+const STREAM_CACHE_MAX_BYTES = Number(process.env.EOS_STREAM_CACHE_MB || 400) * 1024 * 1024;
+try { fs.mkdirSync(STREAM_CACHE_DIR, { recursive: true }); } catch {}
+
+function streamCachePath(url) {
+  const key = String(url || "").trim().toLowerCase();
+  if (!key) return null;
+  return path.join(STREAM_CACHE_DIR, crypto.createHash("sha1").update(key).digest("hex") + ".mp3");
+}
+
+function streamCacheHit(job) {
+  const p = streamCachePath(job?.url);
+  if (!p) return null;
+  try {
+    const st = fs.statSync(p);
+    if (st.size < 32 * 1024) return null;
+    const now = new Date();
+    fs.utimesSync(p, now, now); // LRU: odtworzony = świeży
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+function trimStreamCache() {
+  try {
+    const files = fs.readdirSync(STREAM_CACHE_DIR)
+      .filter((f) => f.endsWith(".mp3"))
+      .map((f) => {
+        const full = path.join(STREAM_CACHE_DIR, f);
+        try { const st = fs.statSync(full); return { full, size: st.size, t: st.mtimeMs }; } catch { return null; }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.t - b.t);
+    let total = files.reduce((n, f) => n + f.size, 0);
+    for (const f of files) {
+      if (total <= STREAM_CACHE_MAX_BYTES) break;
+      try { fs.unlinkSync(f.full); total -= f.size; } catch {}
+    }
+  } catch (err) {
+    console.warn("stream cache trim:", err?.message || err);
+  }
+}
+
+function storeInStreamCache(job, srcPath) {
+  const dest = streamCachePath(job?.url);
+  if (!dest) return;
+  try {
+    const st = fs.statSync(srcPath);
+    if (st.size < 32 * 1024) return;
+    const tmp = dest + ".part";
+    fs.copyFileSync(srcPath, tmp);
+    fs.renameSync(tmp, dest);
+    trimStreamCache();
+  } catch (err) {
+    console.warn("stream cache store:", err?.message || err);
+  }
+}
+
+function ensureLiveBuffer(job) {
+  const existing = liveBuffers.get(job.id);
+  if (existing && !existing.error) return existing;
+  const filePath = path.join(LIVE_BUFFER_DIR, `${job.id}.mp3`);
+  try { fs.unlinkSync(filePath); } catch {}
+  const out = fs.createWriteStream(filePath);
+  const buf = { path: filePath, size: 0, done: false, error: null, waiters: new Set() };
+  const wake = () => { for (const w of buf.waiters) w(); buf.waiters.clear(); };
+  // Prawdziwy strumień udający odpowiedź HTTP dla pipeAppleMusicAudio — dane idą do pliku.
+  const sink = new Writable({
+    write(chunk, _enc, cb) {
+      sink.headersSent = true;
+      out.write(chunk, (err) => {
+        if (!err) { buf.size += chunk.length; wake(); }
+        cb(err);
+      });
+    },
+  });
+  sink.headersSent = false;
+  sink.status = () => sink;
+  sink.set = () => sink;
+  liveBuffers.set(job.id, buf);
+  pipeAppleMusicAudio(job.url, sink, { trackMeta: job.trackMeta })
+    .then(async () => {
+      if (!sink.writableFinished) {
+        await new Promise((r) => { sink.once("finish", r); sink.once("close", r); setTimeout(r, 5000); });
+      }
+      out.end(() => {
+        buf.done = true;
+        wake();
+        storeInStreamCache(job, filePath);
+      });
+    })
+    .catch((err) => {
+      console.error("live buffer:", err?.message || err);
+      buf.error = err || new Error("stream");
+      out.end();
+      wake();
+      liveBuffers.delete(job.id);
+    });
+  setTimeout(() => {
+    if (liveBuffers.get(job.id) === buf) liveBuffers.delete(job.id);
+    try { fs.unlinkSync(filePath); } catch {}
+  }, LIVE_BUFFER_TTL_MS).unref?.();
+  return buf;
+}
+
+async function serveLiveBuffer(req, res, buf) {
+  if (buf.done && buf.size > 0) return serveAudioFile(req, res, buf.path); // pełny plik: Range + długość
+  let closed = false;
+  res.on("close", () => { closed = true; });
+  // Czekaj na pierwsze bajty (wyszukiwanie YouTube), zanim wyślesz nagłówki.
+  while (!closed && buf.size === 0 && !buf.done && !buf.error) {
+    await new Promise((r) => { buf.waiters.add(r); setTimeout(r, 1000); });
+  }
+  if (closed) return;
+  if (buf.size === 0) return res.status(502).send("Błąd streamu audio.");
+  res.status(200);
+  res.set({ "Content-Type": "audio/mpeg", "Cache-Control": "no-cache" });
+  const fh = await fs.promises.open(buf.path, "r");
+  let pos = 0;
+  try {
+    while (!closed) {
+      if (pos < buf.size) {
+        const len = Math.min(256 * 1024, buf.size - pos);
+        const chunk = Buffer.allocUnsafe(len);
+        const { bytesRead } = await fh.read(chunk, 0, len, pos);
+        if (bytesRead <= 0) {
+          await new Promise((r) => setTimeout(r, 200));
+          continue;
+        }
+        pos += bytesRead;
+        if (!res.write(chunk.subarray(0, bytesRead))) {
+          await new Promise((r) => { res.once("drain", r); res.once("close", r); });
+        }
+        continue;
+      }
+      if (buf.done || buf.error) break;
+      await new Promise((r) => { buf.waiters.add(r); setTimeout(r, 1000); });
+    }
+  } finally {
+    await fh.close().catch(() => {});
+    if (!closed && !res.writableEnded) res.end();
+  }
+}
+
 // GET /api/music/stream/:jobId — pełny MP3: lokalny plik lub proxy APLMate (Range)
 app.get("/api/music/stream/:jobId", async (req, res) => {
   const job = getOrRestoreMusicJob(req.params.jobId, req);
@@ -5956,8 +6496,10 @@ app.get("/api/music/stream/:jobId", async (req, res) => {
     return res.status(404).send("Utwór nie jest zapisany na serwerze — nie można go pobrać.");
   }
   if (isPipedMusicStream(job) && job.streamUrl) {
+    const cached = streamCacheHit(job);
+    if (cached) return serveAudioFile(req, res, cached);
     try {
-      return await pipeAppleMusicAudio(job.url, res, { trackMeta: job.trackMeta });
+      return await serveLiveBuffer(req, res, ensureLiveBuffer(job));
     } catch (err) {
       console.error("music stream pipe:", err?.message || err);
       if (!res.headersSent) return res.status(502).send("Błąd streamu audio.");
@@ -6000,7 +6542,7 @@ app.head("/api/music/stream/:jobId", async (req, res) => {
     const asDownload = req.query.download === "1" || req.query.download === "true";
     res.set({
       "Content-Length": String(stat.size),
-      "Content-Type": "audio/mpeg",
+      "Content-Type": audioMimeForPath(job.file),
       "Accept-Ranges": "bytes",
       "Content-Disposition": rfc5987Disposition(path.basename(job.file), asDownload ? "attachment" : "inline"),
     });
@@ -6427,6 +6969,12 @@ app.post("/api/download", async (req, res) => {
         friendlyError: friendlyAppleMusicError,
         waitUntilPlayable: false,
         intent: "download",
+        trackMeta: {
+          title: req.body?.title || title || "",
+          artist: req.body?.artist || "",
+          album: req.body?.album || "",
+          thumbnail: req.body?.thumbnail || thumbnail || "",
+        },
       });
       return res.json({
         jobId: result.jobId,
@@ -6448,7 +6996,7 @@ app.post("/api/download", async (req, res) => {
     if (movieDownload) {
       try {
         assertMovieStorageAvailable();
-        const queued = enqueueMirrorMovieDownload({ jobId, sourceUrl: url, movieDownload });
+        const queued = enqueueMirrorMovieDownload({ jobId, sourceUrl: url, movieDownload, height });
         return res.json({ jobId, queued: true, status: queued.status, progress: queued.progress });
       } catch (error) {
         return res.status(Number(error?.statusCode) || 500).json({ error: friendlyError(error) });
@@ -6459,7 +7007,7 @@ app.post("/api/download", async (req, res) => {
       const streamType = mirror.stream.type || detectStreamType(mirror.stream.url);
       const isHls = streamType === "hls" || /\.m3u8?(\?|$)/i.test(mirror.stream.url);
       if (isHls) {
-        startHlsMovieDownloadJob({ jobId, streamUrl: mirror.stream.url, referer: mirror.stream.referer, title: mirror.title });
+        startHlsMovieDownloadJob({ jobId, streamUrl: mirror.stream.url, referer: mirror.stream.referer, title: mirror.title, height });
       } else {
         startMirrorDownloadJob({ jobId, streamUrl: mirror.stream.url, streamReferer: mirror.stream.referer, name: mirror.title });
       }
@@ -6693,14 +7241,28 @@ app.post("/api/downloads/queue", (req, res) => {
   const userKey = favoritesUserKeyFromReq(req);
   if (!userKey) return res.status(401).json({ error: "Brak konta użytkownika." });
   try {
+    // Utwory, które już leżą na dysku, nie idą do kolejki — inaczej odtwarzacz widział
+    // „zapis w toku” dla gotowego pliku i czekał (np. po zmianie kolejności playlisty).
+    const all = Array.isArray(req.body?.tracks) ? req.body.tracks : [];
+    const tracks = all.filter((t) => {
+      try {
+        const asset = findAssetByUrl(userKey, String(t?.url || ""));
+        return !(asset && assetFileReady(MUSIC_PLAYLIST_DOWNLOADS_DIR, asset));
+      } catch {
+        return true;
+      }
+    });
+    if (all.length && !tracks.length) {
+      return res.json({ ok: true, batchId: null, queued: 0, skipped: all.length });
+    }
     const result = playlistBatchQueue.enqueue({
       userKey,
       folderId: req.body?.folderId || "",
       label: req.body?.label || "",
-      tracks: req.body?.tracks || [],
+      tracks,
       isolated: !!req.body?.isolated,
     });
-    res.json(result);
+    res.json({ ...result, skipped: all.length - tracks.length });
   } catch (err) {
     res.status(Number(err?.status) || 500).json({ error: err?.message || "Nie udało się utworzyć kolejki." });
   }
@@ -6745,6 +7307,31 @@ app.delete("/api/downloads/live-activity", (req, res) => {
   }));
 });
 
+
+function readJobPartialBytes(job) {
+  if (!job) return 0;
+  const known = Number(job.downloadedBytes) || 0;
+  try {
+    const jobDir = job.dir || (job.id ? path.join(DOWNLOAD_DIR, job.id) : null);
+    if (!jobDir || !fs.existsSync(jobDir)) return known;
+    let onDisk = 0;
+    const mainPart = path.join(jobDir, "download.mp4.part");
+    if (fs.existsSync(mainPart)) onDisk += fs.statSync(mainPart).size;
+    const finalMp4 = path.join(jobDir, "download.mp4");
+    if (fs.existsSync(finalMp4)) onDisk = Math.max(onDisk, fs.statSync(finalMp4).size);
+    for (const name of fs.readdirSync(jobDir)) {
+      if (!name.startsWith("download.mp4.part-Frag")) continue;
+      try { onDisk += fs.statSync(path.join(jobDir, name)).size; } catch {}
+    }
+    if (job.file && fs.existsSync(job.file)) {
+      try { onDisk = Math.max(onDisk, fs.statSync(job.file).size); } catch {}
+    }
+    return Math.max(known, onDisk);
+  } catch {
+    return known;
+  }
+}
+
 app.get("/api/job/:jobId", (req, res) => {
   let job = jobs.get(req.params.jobId);
   if (!job || (job.kind === "movie" && !movieJobReady(job))) {
@@ -6771,6 +7358,8 @@ app.get("/api/job/:jobId", (req, res) => {
     : job.persisting
       ? (job.progress ?? 0)
       : (ready ? 100 : (job.progress ?? 0));
+  const liveBytes = readJobPartialBytes(job);
+  if (liveBytes > 0) job.downloadedBytes = liveBytes;
   res.json({
     jobId: job.id,
     status: job.persisting ? "downloading" : (job.status || (ready ? "done" : "starting")),
@@ -6790,6 +7379,8 @@ app.get("/api/job/:jobId", (req, res) => {
     mode: job.file && fs.existsSync(job.file) ? "file" : (job.mode || null),
     persistent: !!(job.file && fs.existsSync(job.file)),
     onServer: !!(job.file && fs.existsSync(job.file)),
+    downloadedBytes: job.downloadedBytes > 0 ? Math.round(job.downloadedBytes) : null,
+    expectedBytes: job.expectedBytes > 0 ? Math.round(job.expectedBytes) : null,
   });
 });
 
@@ -6882,7 +7473,12 @@ app.get("/api/file/:jobId", (req, res) => {
     return res.status(404).send("Plik niedostępny.");
   }
   if (job.kind === "movie" || job.persistent) {
-    return serveVideoFile(req, res, job.file);
+    // Prefer Apple-seekable MP4 (faststart). Raw HLS landings are MPEG-TS
+    // mislabeled as .mp4 — scrubbing them freezes Apple TV / AVPlayer.
+    queueAVPlayableMovie(job);
+    const playablePath = resolveAVPlayablePath(job);
+    const file = playablePath || job.file;
+    return serveVideoFile(req, res, file, { cacheable: !!playablePath });
   }
   res.download(job.file, sanitizeName(job.name), (err) => {
     if (!job.persistent) cleanupJob(req.params.jobId);

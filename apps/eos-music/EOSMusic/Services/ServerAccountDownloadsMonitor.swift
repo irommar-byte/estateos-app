@@ -65,8 +65,12 @@ final class ServerAccountDownloadsMonitor: ObservableObject {
         isForeground = active
         if active {
             Task {
+                if let api {
+                    musicDownloads?.restorePersistedServerBatchIfNeeded(api: api)
+                }
                 await refreshOnce()
-                movieDownloads?.resumePersistedBatchIfNeeded()
+                musicDownloads?.reconcileAfterForeground()
+                await movieDownloads?.reconcileAfterForeground()
             }
         }
     }

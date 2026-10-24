@@ -52,12 +52,15 @@ struct EOSMusicApp: App {
                     BluetoothMediaBrowser.shared.activate()
                     UIApplication.shared.beginReceivingRemoteControlEvents()
                     AudioSession.activateForPlayback()
+                    PlaybackOutputRoute.shared.start()
+                    ExternalPlaybackStage.shared.bind(app)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                     DownloadBackgroundKeeper.shared.applicationWillResignActive()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                     AudioSession.reinforceIfNeeded()
+                    app.playback.engine?.resumeIfDesiredAfterForeground()
                     app.serverDownloads.setForeground(true)
                     DownloadBackgroundKeeper.shared.applicationWillEnterForeground()
                 }
@@ -68,6 +71,7 @@ struct EOSMusicApp: App {
                     DownloadBackgroundKeeper.shared.applicationWillEnterForeground()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+                    app.playback.engine?.prepareForBackground()
                     app.serverDownloads.setForeground(false)
                     DownloadBackgroundKeeper.shared.applicationDidEnterBackground()
                 }

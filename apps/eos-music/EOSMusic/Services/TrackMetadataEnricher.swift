@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import UIKit
 
@@ -38,9 +39,93 @@ enum PlaybackArtworkCache {
     }
 
     private static func cacheFileName(for trackID: String) -> String {
-        var hasher = Hasher()
-        hasher.combine(trackID)
-        return "art-\(abs(hasher.finalize())).jpg"
+        let digest = SHA256.hash(data: Data(trackID.utf8))
+        let hex = digest.prefix(16).map { String(format: "%02x", $0) }.joined()
+        return "art-\(hex).jpg"
+    }
+}
+
+/// Remember catalog / ID3 covers by track URL so playlist rows keep art after skip.
+enum ResolvedArtworkStore {
+    private static let defaultsKey = "eos.music.resolvedArtwork.v1"
+    private static let lock = NSLock()
+    private static var memory: [String: String] = {
+        (UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: String]) ?? [:]
+    }()
+
+    static func thumbnail(for trackURL: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        let value = memory[trackURL]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? nil : value
+    }
+
+    static func url(for trackURL: String) -> URL? {
+        thumbnail(for: trackURL).flatMap(URL.init(string:))
+    }
+
+    static func remember(trackURL: String, thumbnail: String) {
+        let url = trackURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let thumb = thumbnail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty, !thumb.isEmpty, thumb.count < 2_000 else { return }
+        lock.lock()
+        memory[url] = thumb
+        let snapshot = memory
+        lock.unlock()
+        UserDefaults.standard.set(snapshot, forKey: defaultsKey)
+    }
+}
+
+@MainActor
+enum PlaylistArtworkBackfill {
+    static func overlayLocalCovers(_ tracks: [MusicTrack]) -> [MusicTrack] {
+        tracks.map { track in
+            if let thumb = track.thumbnail?.trimmingCharacters(in: .whitespacesAndNewlines), !thumb.isEmpty {
+                return track
+            }
+            if let stored = ResolvedArtworkStore.thumbnail(for: track.url) {
+                return track.withThumbnail(stored)
+            }
+            return track
+        }
+    }
+
+    static func resolvedURL(for track: MusicTrack) -> URL? {
+        if let url = track.artworkURL { return url }
+        return ResolvedArtworkStore.url(for: track.url)
+    }
+
+    static func fillMissing(tracks: [MusicTrack], api: MusicAPIClient, limit: Int = 24) async -> [MusicTrack] {
+        var result = overlayLocalCovers(tracks)
+        let missing = result.indices.filter { idx in
+            let thumb = result[idx].thumbnail?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return thumb.isEmpty
+        }
+        .prefix(limit)
+
+        for idx in missing {
+            if Task.isCancelled { break }
+            let track = result[idx]
+            let payload = MusicTrackPayload(
+                url: track.url,
+                title: track.title,
+                artist: track.artist,
+                album: track.album,
+                thumbnail: track.thumbnail,
+                duration: track.duration,
+                quality: nil,
+                source: nil,
+                artistId: track.artistId,
+                albumId: track.albumId
+            )
+            let enriched = try? await TrackMetadataEnricher.enrichPayload(payload, api: api)
+            guard let thumb = enriched?.thumbnail?.trimmingCharacters(in: .whitespacesAndNewlines), !thumb.isEmpty else {
+                continue
+            }
+            ResolvedArtworkStore.remember(trackURL: track.url, thumbnail: thumb)
+            result[idx] = track.withThumbnail(thumb)
+        }
+        return result
     }
 }
 
@@ -69,13 +154,16 @@ enum TrackMetadataEnricher {
         }
 
         if let embedded {
-            // Always prefer real cover art from the file when library has none.
-            let embeddedArtURL = embedded.cachedArtworkURL(for: track.id)
+            let allowEmbeddedArt = shouldUseEmbeddedArtwork(
+                expectedTitle: result.title,
+                embeddedTitle: embedded.title
+            )
+            let embeddedArtURL = allowEmbeddedArt ? embedded.cachedArtworkURL(for: track.id) : nil
             result = result.applying(
                 title: isBlank(result.title) ? embedded.title : nil,
                 artist: isBlank(result.artist) ? embedded.artist : nil,
                 album: isBlank(result.album) ? embedded.album : nil,
-                thumbnail: isBlank(result.thumbnail) ? (embeddedArtURL ?? result.thumbnail) : nil
+                thumbnail: isBlank(result.thumbnail) ? embeddedArtURL : nil
             )
         }
 
@@ -93,6 +181,11 @@ enum TrackMetadataEnricher {
         return true
     }
 
+    /// ID3 cover from a different recording must not leak into the mini-player.
+    static func shouldUseEmbeddedArtwork(expectedTitle: String, embeddedTitle: String?) -> Bool {
+        !embeddedTitleConflicts(expectedTitle: expectedTitle, embeddedTitle: embeddedTitle)
+    }
+
     private static func isBlank(_ value: String?) -> Bool {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty || trimmed == "Utwór"
@@ -100,8 +193,10 @@ enum TrackMetadataEnricher {
 
     static func enrichPayload(_ track: MusicTrackPayload, api: MusicAPIClient) async throws -> MusicTrackPayload {
         guard needsCatalogEnrichment(track) else { return track }
-        let search = try await api.searchMusicCatalog(query: catalogQuery(for: track))
-        guard let best = bestMatch(for: track, in: search.songs) else { return track }
+        let query = catalogQuery(for: track)
+        guard !query.isEmpty else { return track }
+        let search = try await api.searchMusicCatalog(query: query)
+        guard let best = bestCatalogMatch(for: track, in: search.songs) else { return track }
         return MusicTrackPayload(
             url: track.url,
             title: track.title,
@@ -167,14 +262,20 @@ enum TrackMetadataEnricher {
             .joined(separator: " ")
     }
 
-    private static func bestMatch(for track: MusicTrackPayload, in songs: [SearchResultItem]) -> SearchResultItem? {
+    static func bestCatalogMatch(for track: MusicTrackPayload, in songs: [SearchResultItem]) -> SearchResultItem? {
         let targetTitle = normalizedSearchToken(track.title)
         let targetArtist = normalizedSearchToken(track.artist ?? "")
+        guard !targetTitle.isEmpty else { return nil }
 
-        return songs.max { lhs, rhs in
+        guard let best = songs.max(by: { lhs, rhs in
             score(song: lhs, targetTitle: targetTitle, targetArtist: targetArtist)
                 < score(song: rhs, targetTitle: targetTitle, targetArtist: targetArtist)
-        }
+        }) else { return nil }
+
+        let bestScore = score(song: best, targetTitle: targetTitle, targetArtist: targetArtist)
+        // Exact title (100) or partial title + artist (55+30). Never attach a random cover.
+        guard bestScore >= 85 else { return nil }
+        return best
     }
 
     private static func score(song: SearchResultItem, targetTitle: String, targetArtist: String) -> Int {
@@ -196,10 +297,10 @@ enum TrackMetadataEnricher {
         return score
     }
 
-    private static func normalizedSearchToken(_ value: String) -> String {
+    static func normalizedSearchToken(_ value: String) -> String {
         value
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            .replacingOccurrences(of: "[^a-zA-Z0-9]+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[^\\p{L}\\p{N}]+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
     }

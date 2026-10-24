@@ -179,6 +179,23 @@ final class MusicAPIClient {
         return try await request("GET", path: "/api/music/catalog/search?q=\(encoded)")
     }
 
+    /// Nagranie spoza katalogu Apple Music — zwykły wynik YouTube z prawdziwym https URL.
+    func searchYouTubeAudio(query: String, limit: Int = 8) async throws -> [SearchResultItem] {
+        let capped = min(max(limit, 1), 12)
+        let response: SearchResponse = try await request(
+            "POST",
+            path: "/api/search",
+            body: [
+                "query": query,
+                "source": "youtube",
+                "page": 1,
+                "pageSize": capped,
+                "limit": capped,
+            ]
+        )
+        return response.results.filter { $0.url.lowercased().hasPrefix("http") }
+    }
+
     func fetchMusicArtist(id: String) async throws -> MusicArtistDetailResponse {
         try await request("GET", path: "/api/music/catalog/artist/\(id)")
     }
@@ -256,13 +273,15 @@ final class MusicAPIClient {
     func enqueueDownloadQueue(
         folderId: String,
         label: String,
-        tracks: [(url: String, title: String)]
+        tracks: [(url: String, title: String)],
+        isolated: Bool = false
     ) async throws -> DownloadQueueEnqueueResponse {
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "folderId": folderId,
             "label": label,
             "tracks": tracks.map { ["url": $0.url, "title": $0.title] }
         ]
+        if isolated { body["isolated"] = true }
         return try await request("POST", path: "/api/downloads/queue", body: body)
     }
 
@@ -309,20 +328,29 @@ final class MusicAPIClient {
         artist: String?,
         album: String?,
         fileName: String,
-        fileData: Data
+        fileData: Data,
+        thumbnail: String? = nil
     ) async throws -> DownloadStartResponse {
-        let body: [String: Any] = [
-            "url": url,
-            "folderId": folderId as Any,
-            "title": title,
-            "artist": artist as Any,
-            "album": album as Any,
-            "fileName": fileName,
-            "fileBase64": fileData.base64EncodedString(),
-        ]
+        // Base64 + JSON dla kilkudziesięciu MB trwa — robimy to poza głównym wątkiem,
+        // żeby interfejs nie zamarzał podczas „Zapisu na serwer”.
+        let bodyData = try await Task.detached(priority: .userInitiated) { () throws -> Data in
+            var body: [String: Any] = [
+                "url": url,
+                "folderId": folderId as Any,
+                "title": title,
+                "artist": artist as Any,
+                "album": album as Any,
+                "fileName": fileName,
+                "fileBase64": fileData.base64EncodedString(),
+            ]
+            if let thumbnail, !thumbnail.isEmpty {
+                body["thumbnail"] = thumbnail
+            }
+            return try JSONSerialization.data(withJSONObject: body)
+        }.value
         var req = makeRequest(method: "POST", path: "/api/music/upload-local", authorized: true)
         req.timeoutInterval = 300
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        req.httpBody = bodyData
         return try await perform(req)
     }
 
@@ -464,6 +492,21 @@ final class MusicAPIClient {
         )
     }
 
+    func fetchCdaHdBrowse(url: String, page: Int = 1, pageSize: Int = 24) async throws -> CdaHdBrowseResponse {
+        var components = URLComponents()
+        components.queryItems = [
+            URLQueryItem(name: "url", value: url),
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "limit", value: String(pageSize)),
+        ]
+        let query = components.percentEncodedQuery ?? ""
+        return try await request(
+            "GET",
+            path: "/api/cda-hd/browse?\(query)",
+            authorized: true
+        )
+    }
+
     func searchCdaHd(query: String, page: Int = 1, pageSize: Int = 24) async throws -> SearchResponse {
         try await request(
             "POST",
@@ -577,6 +620,26 @@ final class MusicAPIClient {
 
     func moviePlayToken(jobId: String) async throws -> MoviePlayTokenResponse {
         try await request("GET", path: "/api/movies/play-token/\(jobId)")
+    }
+
+    func waitForMovieAVPlayable(
+        jobId: String,
+        timeoutSeconds: TimeInterval = 45 * 60
+    ) async throws -> MoviePlayTokenResponse {
+        let deadline = Date().addingTimeInterval(timeoutSeconds)
+        var last = try await moviePlayToken(jobId: jobId)
+        if last.preparing != true, last.playable != false {
+            return last
+        }
+        while Date() < deadline {
+            if last.playable == true { return last }
+            if last.preparing != true, last.playable == false {
+                throw APIError.server(last.error ?? "Nie udało się przygotować filmu.")
+            }
+            try await Task.sleep(nanoseconds: 1_500_000_000)
+            last = try await moviePlayToken(jobId: jobId)
+        }
+        throw APIError.server("Przygotowanie filmu trwa zbyt długo.")
     }
 
     func movieStreamURL(jobId: String, token: String) -> URL {
@@ -737,6 +800,8 @@ final class MusicAPIClient {
         } else if path.hasPrefix("/api/music/play") {
             // Fast acknowledgement only; preparation continues under /api/job/:jobId.
             req.timeoutInterval = 20
+        } else if path.hasPrefix("/api/downloads/queue") {
+            req.timeoutInterval = 45
         } else if path.hasPrefix("/api/downloads/") {
             req.timeoutInterval = 12
         } else if path.hasPrefix("/api/download") {

@@ -31,6 +31,14 @@ struct OnlineSeriesEpisodesView: View {
     @State private var playErrorMessage: String?
     @State private var retryEpisode: EpisodeItem?
     @State private var retryPreferSavedCopy = true
+    @State private var episodeResume: EpisodeResumeAsk?
+
+    private struct EpisodeResumeAsk: Identifiable {
+        let episode: EpisodeItem
+        let seconds: Double
+        let preferSavedCopy: Bool
+        var id: String { episode.id }
+    }
 
     private var movies: OnlineMoviesController { app.onlineMovies }
     private var downloads: MovieDownloadService { app.movieDownloads }
@@ -153,6 +161,29 @@ struct OnlineSeriesEpisodesView: View {
         } message: {
             Text(playErrorMessage ?? "")
         }
+        .confirmationDialog(
+            "Ten odcinek był już rozpoczęty",
+            isPresented: Binding(
+                get: { episodeResume != nil },
+                set: { if !$0 { episodeResume = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Kontynuuj od \(MovieResumePolicy.clockLabel(seconds: episodeResume?.seconds ?? 0))") {
+                guard let ask = episodeResume else { return }
+                episodeResume = nil
+                Task { await beginEpisode(ask.episode, preferSavedCopy: ask.preferSavedCopy, startAt: ask.seconds) }
+            }
+            Button("Od początku") {
+                guard let ask = episodeResume else { return }
+                episodeResume = nil
+                MovieResumeStore.clear(id: ask.episode.url)
+                Task { await beginEpisode(ask.episode, preferSavedCopy: ask.preferSavedCopy, startAt: nil) }
+            }
+            Button("Anuluj", role: .cancel) { episodeResume = nil }
+        } message: {
+            Text("Możesz wrócić do miejsca, w którym obraz się urwał, albo zacząć odcinek od początku.")
+        }
         }
     }
 
@@ -162,6 +193,13 @@ struct OnlineSeriesEpisodesView: View {
                 statChip("\(allEpisodes.count) odc.", icon: "list.number")
                 statChip("\(downloadedOnServerCount) serwer", icon: "server.rack")
                 statChip("\(downloadedOnPhoneCount) iPhone", icon: "iphone")
+            }
+            if let message = movies.statusMessage, !message.isEmpty {
+                Text(message)
+                    .font(EOSTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onTapGesture { movies.statusMessage = nil }
             }
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -224,7 +262,7 @@ struct OnlineSeriesEpisodesView: View {
                 ContentUnavailableView(
                     "Brak odcinków na iPhonie",
                     systemImage: "iphone.slash",
-                    description: Text("W trybie Offline widać tylko odcinki skopiowane na to urządzenie (Serwer + iPhone).")
+                    description: Text("W trybie Offline widać tylko odcinki skopiowane na to urządzenie. Najpierw serwer, potem pobranie na iPhone’a.")
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
@@ -244,9 +282,19 @@ struct OnlineSeriesEpisodesView: View {
     }
 
     private func episodeRow(_ episode: EpisodeItem) -> some View {
-        let onServer = isDownloaded(episode)
-        let onPhone = app.isMovieOnPhone(url: episode.url)
         let batchState = downloads.itemState(for: episode.url)
+        let batchBusy: Bool = {
+            switch batchState {
+            case .pending, .queuedOnServer, .downloading, .pullingPhone: return true
+            default: return false
+            }
+        }()
+        // Never show library "Pobrany" while this URL is still in the active season queue.
+        let onServer = !batchBusy && isDownloaded(episode)
+        let onPhone = app.isMovieOnPhone(url: episode.url)
+        let storedTitle = serverDownloadTitle(seriesTitle: displayTitle, episode: episode)
+        let transfer = movies.transferState(for: episode.url, title: storedTitle)
+        let canCopy = movies.canCopyToDevice(url: episode.url, title: storedTitle)
         let highlighted = isHighlighted(episode)
         return HStack(spacing: 12) {
             if isSelectionMode {
@@ -272,17 +320,34 @@ struct OnlineSeriesEpisodesView: View {
                     .font(EOSTypography.subheadline.weight(.semibold))
                     .lineLimit(2)
                 HStack(spacing: 6) {
-                    if highlighted || onPhone || onServer {
-                        Text(onPhone ? "Na iPhonie" : "Pobrany")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(onPhone ? Color.green : EOSTheme.accent)
+                    if onServer {
+                        MovieStorageLocationBadge(kind: .server)
                     }
                     if onPhone {
                         MovieStorageLocationBadge(kind: .phone)
-                    } else if onServer {
-                        MovieStorageLocationBadge(kind: .server)
                     }
-                    batchStatusLabel(batchState)
+                    if case .downloadingPhone = transfer {
+                        OnlineMovieTransferBadge(state: transfer)
+                    } else {
+                        batchStatusLabel(batchState)
+                    }
+                }
+                if canCopy, !app.isOfflinePlaybackActive {
+                    Button {
+                        Task { await movies.downloadSavedCopyToDevice(selection: deviceSelection(for: episode)) }
+                    } label: {
+                        Label("Pobierz na urządzenie", systemImage: "iphone.and.arrow.down")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .tint(EOSTheme.accent)
+                }
+                if let copyError = movies.deviceCopyError(for: episode.url) {
+                    Text(copyError)
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                        .lineLimit(2)
                 }
             }
 
@@ -316,8 +381,13 @@ struct OnlineSeriesEpisodesView: View {
                         Task { await playEpisode(episode, preferSavedCopy: true) }
                     }
                 }
-                if !app.isOfflinePlaybackActive {
-                    Button("Pobierz…") {
+                if canCopy, !app.isOfflinePlaybackActive {
+                    Button("Pobierz na urządzenie") {
+                        Task { await movies.downloadSavedCopyToDevice(selection: deviceSelection(for: episode)) }
+                    }
+                }
+                if !onServer, !app.isOfflinePlaybackActive {
+                    Button("Pobierz na serwer…") {
                         prepareDownload([episode], label: serverDownloadTitle(seriesTitle: displayTitle, episode: episode))
                     }
                 }
@@ -388,6 +458,18 @@ struct OnlineSeriesEpisodesView: View {
             .tint(EOSTheme.accent)
     }
 
+    private func deviceSelection(for episode: EpisodeItem) -> OnlineMovieSelection {
+        OnlineMovieSelection(
+            title: serverDownloadTitle(seriesTitle: displayTitle, episode: episode),
+            url: episode.url,
+            thumbnail: episode.thumbnail ?? info.thumbnail,
+            source: info.source ?? "cda-hd",
+            detail: displayTitle,
+            duration: episode.duration,
+            isSerial: true
+        )
+    }
+
     private func prepareDownload(_ episodes: [EpisodeItem], label: String) {
         guard !episodes.isEmpty else { return }
         pendingBatch = PendingDownloadBatch(episodes: episodes, label: label)
@@ -407,7 +489,12 @@ struct OnlineSeriesEpisodesView: View {
                 return !app.isMovieOnPhone(url: ep.url)
             }
         }
-        guard !eligible.isEmpty else { return }
+        guard !eligible.isEmpty else {
+            movies.statusMessage = destination == .server
+                ? "Te odcinki są już na serwerze. Możesz pobrać je na urządzenie."
+                : "Te odcinki są już na tym iPhonie."
+            return
+        }
         let items = eligible.map { ep in
             MovieDownloadQueueItem(
                 url: ep.url,
@@ -428,15 +515,23 @@ struct OnlineSeriesEpisodesView: View {
     }
 
     private func playEpisode(_ episode: EpisodeItem, preferSavedCopy: Bool = true) async {
+        if let seconds = MovieResumeStore.offerSeconds(for: episode.url) {
+            episodeResume = EpisodeResumeAsk(episode: episode, seconds: seconds, preferSavedCopy: preferSavedCopy)
+            return
+        }
+        await beginEpisode(episode, preferSavedCopy: preferSavedCopy, startAt: nil)
+    }
+
+    private func beginEpisode(_ episode: EpisodeItem, preferSavedCopy: Bool, startAt: Double?) async {
         playingEpisodeID = episode.id
         defer { playingEpisodeID = nil }
         let selection = OnlineMovieSelection(episode: episode, source: info.source)
         let started: Bool
 
         if preferSavedCopy, app.isMovieOnPhone(url: episode.url) {
-            started = await movies.playFromPhone(selection: selection, video: video)
+            started = await movies.playFromPhone(selection: selection, video: video, startAt: startAt)
         } else if preferSavedCopy, movies.jobId(for: episode.url, title: episode.title) != nil {
-            started = await movies.playFromServer(selection: selection, video: video)
+            started = await movies.playFromServer(selection: selection, video: video, startAt: startAt)
         } else {
             started = await movies.watchStream(
                 selection: selection,
@@ -444,7 +539,8 @@ struct OnlineSeriesEpisodesView: View {
                 video: video,
                 episodeQueue: allEpisodes,
                 seriesTitle: displayTitle,
-                preferSavedCopy: preferSavedCopy
+                preferSavedCopy: preferSavedCopy,
+                startAt: startAt
             )
         }
 

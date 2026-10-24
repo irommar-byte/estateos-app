@@ -201,6 +201,9 @@ function isTokenizedPlay(req) {
 function isPublicPath(req) {
   const raw = req.path || req.originalUrl || req.url || "";
   if (req.method === "POST" && raw.includes("/api/auth/login")) return true;
+  // Logowanie przez Apple: serwer sam weryfikuje podpisany token Apple (JWKS) — proxy nie może
+  // wymagać wcześniejszej sesji, bo wtedy Apple ID nigdy nie dociera do serwera.
+  if (req.method === "POST" && /\/api\/auth\/apple$/.test(raw.split("?")[0])) return true;
   if (req.method === "POST" && (raw.includes("/api/search") || raw.includes("/api/info"))) return true;
   if (
     req.method === "GET" &&
@@ -231,6 +234,7 @@ function upstreamRequest(targetUrl, req, res, extraHeaders = {}) {
   }
   delete headers["content-length"];
 
+  let upResRef = null;
   const upstream = lib.request(
     {
       hostname: parsed.hostname,
@@ -241,12 +245,22 @@ function upstreamRequest(targetUrl, req, res, extraHeaders = {}) {
       timeout: 0,
     },
     (upRes) => {
+      upResRef = upRes;
+      if (res.writableEnded || res.destroyed || req.aborted) {
+        upRes.destroy();
+        upstream.destroy();
+        return;
+      }
       res.status(upRes.statusCode || 502);
       for (const [k, v] of Object.entries(upRes.headers)) {
         if (k.toLowerCase() === "transfer-encoding") continue;
         if (v !== undefined) res.setHeader(k, v);
       }
       upRes.pipe(res);
+      // If the phone stops reading, pause upstream so we do not buffer megabytes in proxy.
+      res.on("drain", () => {
+        try { upRes.resume(); } catch {}
+      });
     }
   );
 
@@ -259,9 +273,21 @@ function upstreamRequest(targetUrl, req, res, extraHeaders = {}) {
     /* ignore */
   }
 
+  const tearDown = () => {
+    try { upResRef?.unpipe?.(res); } catch {}
+    try { upResRef?.destroy(); } catch {}
+    try { upstream.destroy(); } catch {}
+  };
+  // Only when the *client* drops the response. Do NOT bind req.on("close"):
+  // for GET that fires as soon as the request is fully read and kills live streams.
+  req.on("aborted", tearDown);
+  res.on("close", tearDown);
+
   upstream.on("error", (err) => {
     if (!res.headersSent) {
       res.status(502).json({ error: "Movies service unavailable", detail: err.message });
+    } else {
+      try { res.destroy(); } catch {}
     }
   });
 

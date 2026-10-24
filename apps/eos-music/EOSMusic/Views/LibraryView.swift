@@ -26,14 +26,11 @@ struct LibraryView: View {
     private var recentColumns: [GridItem] {
         switch recentLayout {
         case .tiles:
-            return [
-                GridItem(.flexible(), spacing: 16),
-                GridItem(.flexible(), spacing: 16),
-            ]
+            return [GridItem(.adaptive(minimum: 128, maximum: 188), spacing: 12)]
         case .large:
-            return [GridItem(.flexible(), spacing: 16)]
+            return [GridItem(.adaptive(minimum: 176, maximum: 440), spacing: 16)]
         case .list:
-            return [GridItem(.flexible())]
+            return [GridItem(.flexible(), spacing: 0)]
         }
     }
 
@@ -97,7 +94,7 @@ struct LibraryView: View {
                             .padding(.top, 28)
                             .padding(.bottom, 14)
 
-                        LazyVGrid(columns: recentColumns, spacing: recentLayout == .list ? 4 : 20) {
+                        LazyVGrid(columns: recentColumns, spacing: recentLayout == .list ? 4 : 16) {
                             ForEach(recentItems) { item in
                                 recentRow(for: item)
                                     .onAppear {
@@ -115,6 +112,7 @@ struct LibraryView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 48)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .animation(EOSMotion.snappy, value: recentLayoutRaw)
                     } else if app.isOfflinePlaybackActive {
                         ContentUnavailableView(
@@ -258,21 +256,18 @@ struct LibraryView: View {
             Text(app.isOfflinePlaybackActive ? "Niedawno pobrane" : "Ostatnio dodane")
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
             Spacer(minLength: 8)
-            Menu {
-                Picker("Układ", selection: $recentLayoutRaw) {
-                    ForEach(RecentLibraryLayout.allCases) { layout in
-                        Label(layout.title, systemImage: layout.systemImage)
-                            .tag(layout.rawValue)
-                    }
+            Picker("Układ", selection: $recentLayoutRaw) {
+                ForEach(RecentLibraryLayout.allCases) { layout in
+                    Image(systemName: layout.systemImage)
+                        .accessibilityLabel(layout.title)
+                        .tag(layout.rawValue)
                 }
-            } label: {
-                Image(systemName: recentLayout.systemImage)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(LibraryAccent.icon)
-                    .frame(width: 36, height: 36)
-                    .background(Color(.secondarySystemBackground), in: Circle())
             }
+            .pickerStyle(.segmented)
+            .frame(width: 148)
             .accessibilityLabel("Układ ostatnio dodanych")
         }
     }

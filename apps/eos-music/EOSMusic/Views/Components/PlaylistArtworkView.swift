@@ -23,6 +23,7 @@ struct PlaylistArtworkView: View {
     var tracks: [MusicTrack]
     var size: CGFloat
     var cornerRadius: CGFloat = 8
+    var fillsWidth: Bool = false
 
     private var mosaicURLs: [URL] {
         if folder.artworkURL != nil { return [] }
@@ -39,22 +40,40 @@ struct PlaylistArtworkView: View {
 
     var body: some View {
         Group {
-            if let url = folder.artworkURL {
-                ArtworkImage(url: url, size: size, cornerRadius: cornerRadius, allowAnimated: true)
-            } else if mosaicURLs.count >= 2 {
-                mosaic
-            } else if let url = mosaicURLs.first ?? tracks.first?.artworkURL {
-                ArtworkImage(url: url, size: size, cornerRadius: cornerRadius, allowAnimated: true)
+            if fillsWidth {
+                Color.clear
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        GeometryReader { geo in
+                            let side = min(geo.size.width, geo.size.height)
+                            artwork(side: side)
+                                .frame(width: side, height: side)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             } else {
-                placeholder
+                artwork(side: size)
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
-    private var mosaic: some View {
-        let cell = (size - 1) / 2
+    @ViewBuilder
+    private func artwork(side: CGFloat) -> some View {
+        if let url = folder.artworkURL {
+            ArtworkImage(url: url, size: side, cornerRadius: 0, allowAnimated: true)
+        } else if mosaicURLs.count >= 2 {
+            mosaic(side: side)
+        } else if let url = mosaicURLs.first ?? tracks.first?.artworkURL {
+            ArtworkImage(url: url, size: side, cornerRadius: 0, allowAnimated: true)
+        } else {
+            placeholder
+        }
+    }
+
+    private func mosaic(side: CGFloat) -> some View {
+        let cell = (side - 1) / 2
         return VStack(spacing: 1) {
             HStack(spacing: 1) {
                 tile(mosaicURLs[safe: 0], cell: cell)

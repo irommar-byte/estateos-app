@@ -25,20 +25,24 @@ enum EOSIntentRoutingError: Error, CustomLocalizedStringResourceConvertible {
 struct EOSShazamControlIntent: AudioRecordingIntent, LiveActivityIntent {
     static var title: LocalizedStringResource = "Shazam"
     static var description = IntentDescription("Rozpoznaje utwór i dodaje go do playlisty SHAZAM.")
-    static var openAppWhenRun = false
+    static var openAppWhenRun = true
     static var isDiscoverable = true
     static var authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
 
     #if compiler(>=6.2)
     @available(iOS 26.0, *)
-    static var supportedModes: IntentModes { [.background, .foreground(.dynamic)] }
+    static var supportedModes: IntentModes { .foreground(.dynamic) }
     #endif
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         #if EOS_MAIN_APP
-        let status = try await EOSIntentRuntime.shared.performShazamHeadless()
+        let status = try await EOSIntentRuntime.shared.performShazamFromControl()
         return .result(dialog: IntentDialog(stringLiteral: EOSControlWidgetStatus.text(status)))
         #else
+        if #available(iOS 26.0, *) {
+            try await continueInForeground(alwaysConfirm: false)
+            return .result(dialog: IntentDialog("Słucham…"))
+        }
         throw EOSIntentRoutingError.notMainApp
         return .result(dialog: IntentDialog("Otwórz EOS Music, aby dokończyć."))
         #endif

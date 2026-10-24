@@ -8,6 +8,8 @@ struct RootView: View {
     @State private var showLaunchIntro = true
     @ObservedObject private var shazam = ShazamIdentifyController.shared
     @Namespace private var playerGeometry
+    /// Player „wyrasta” z mini‑playera i chowa się do niego (iOS 18 zoom transition).
+    @Namespace private var playerZoom
 
     /// iPad (and regular width): edge-to-edge like iPhone large sheet — not a floating card.
     private var prefersFullScreenPlayer: Bool {
@@ -20,7 +22,7 @@ struct RootView: View {
 
             if showLaunchIntro {
                 EOSLaunchIntroView()
-                    .transition(.opacity.combined(with: .scale(scale: 1.03)))
+                    .transition(.eosLaunchExit)
                     .zIndex(10)
             } else if app.user == nil {
                 LoginView()
@@ -28,8 +30,9 @@ struct RootView: View {
             } else {
                 MainTabView()
                     .environment(\.playerGeometryNamespace, playerGeometry)
+                    .environment(\.playerZoomNamespace, playerZoom)
                     .modifier(MusicOrientationSync())
-                    .transition(.opacity)
+                    .transition(.eosContentReveal)
             }
 
             if video.isPlayerPresented {
@@ -41,7 +44,7 @@ struct RootView: View {
                     .zIndex(200)
             }
         }
-        .animation(.easeInOut(duration: 0.55), value: showLaunchIntro)
+        .animation(.spring(response: 0.75, dampingFraction: 0.9), value: showLaunchIntro)
         .task {
             // Guarantee the intro is visible long enough to read, even when the
             // cached session/library make bootstrap resolve almost instantly.
@@ -49,7 +52,7 @@ struct RootView: View {
             while app.isBootstrapping {
                 try? await Task.sleep(nanoseconds: 40_000_000)
             }
-            let minimumDuration = 1.35
+            let minimumDuration = 1.7
             let elapsed = Date().timeIntervalSince(start)
             if elapsed < minimumDuration {
                 try? await Task.sleep(nanoseconds: UInt64((minimumDuration - elapsed) * 1_000_000_000))
@@ -87,7 +90,8 @@ struct RootView: View {
                 get: { app.isFullPlayerPresented && !video.isPlayerPresented },
                 set: { app.isFullPlayerPresented = $0 }
             ),
-            useFullScreen: prefersFullScreenPlayer
+            useFullScreen: prefersFullScreenPlayer,
+            zoomNamespace: playerZoom
         ) {
             FullPlayerView()
                 .environmentObject(app)
@@ -150,14 +154,23 @@ struct RootView: View {
 private struct MusicPlayerPresentation<PlayerContent: View>: ViewModifier {
     @Binding var isPresented: Bool
     let useFullScreen: Bool
+    let zoomNamespace: Namespace.ID
     @ViewBuilder let playerContent: () -> PlayerContent
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if useFullScreen {
+        if #available(iOS 18.0, *) {
+            // Jak Apple Music: player rośnie z okładki mini‑playera i chowa się do niej gestem w dół.
+            // Ciężkie efekty startują dopiero po przejściu (FullPlayerView.heavyVisualsReady).
             content.fullScreenCover(isPresented: $isPresented) {
                 playerContent()
-                    .presentationBackground(EOSTheme.background)
+                    .environment(\.playerPresentedFullScreen, true)
+                    .navigationTransition(.zoom(sourceID: PlayerZoomID.nowPlaying, in: zoomNamespace))
+            }
+        } else if useFullScreen {
+            content.fullScreenCover(isPresented: $isPresented) {
+                playerContent()
+                    .presentationBackground(.clear)
             }
         } else {
             content
@@ -165,7 +178,9 @@ private struct MusicPlayerPresentation<PlayerContent: View>: ViewModifier {
                     playerContent()
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
-                        .presentationBackground(EOSTheme.background)
+                        .presentationCornerRadius(38)
+                        .presentationContentInteraction(.automatic)
+                        .presentationBackground(.clear)
                         .interactiveDismissDisabled(false)
                 }
         }

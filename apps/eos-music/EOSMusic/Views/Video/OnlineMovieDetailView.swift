@@ -12,12 +12,27 @@ struct OnlineMovieDetailView: View {
     @State private var infoError: String?
     @State private var showDownloadSheet = false
     @State private var showSeriesEpisodes = false
-    @State private var actorSelection: OnlineMoviesActorSelection?
+    @State private var browseTarget: OnlineMoviesBrowseTarget?
     @State private var playbackError: String?
+    @State private var resumeAsk: MovieResumeAsk?
+
+    private enum MoviePlaySource {
+        case live, server, phone
+    }
+
+    private struct MovieResumeAsk: Identifiable {
+        let id = UUID()
+        let source: MoviePlaySource
+        let seconds: Double
+    }
 
     private var movies: OnlineMoviesController { app.onlineMovies }
     private var downloads: MovieDownloadService { app.movieDownloads }
-    private var transfer: OnlineMovieTransferState { movies.transferState(for: selection.url) }
+    private var transfer: OnlineMovieTransferState { movies.transferState(for: selection.url, title: selection.title) }
+
+    private var fileOnServer: Bool {
+        movies.downloadEntry(for: selection.url, title: selection.title)?.hasLandedFile == true
+    }
     private var meta: CdaHdMeta? { info?.cdaHd }
 
     private var displayTitle: String {
@@ -46,17 +61,33 @@ struct OnlineMovieDetailView: View {
                                 Button("Anuluj") { movies.cancelTransfer(url: selection.url) }
                                     .font(EOSTypography.caption.weight(.semibold))
                             }
-                            ProgressView(value: transfer.progressPercent, total: 100)
-                                .tint(EOSTheme.accent)
+                            if transfer.progressPercent < 1 {
+                                ProgressView()
+                                    .tint(EOSTheme.accent)
+                            } else {
+                                ProgressView(value: transfer.progressPercent, total: 100)
+                                    .tint(EOSTheme.accent)
+                            }
+                            if let status = movies.statusMessage, transfer.isBusy {
+                                Text(status)
+                                    .font(EOSTypography.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
 
                     if case .failed(let message) = transfer {
                         Text(message).font(EOSTypography.caption).foregroundStyle(.red)
+                    } else if let copyError = movies.deviceCopyError(for: selection.url) {
+                        Text(copyError)
+                            .font(EOSTypography.caption)
+                            .foregroundStyle(.orange)
                     }
 
                     descriptionBlock
                     castBlock
+                    genreBlock
+                    yearBlock
 
                     if let info, info.isSeries, !info.playableEpisodes.isEmpty {
                         seriesShortcut(info)
@@ -83,8 +114,8 @@ struct OnlineMovieDetailView: View {
                     .environmentObject(video)
             }
         }
-        .navigationDestination(item: $actorSelection) { actor in
-            OnlineMoviesActorResultsView(actorName: actor.name)
+        .navigationDestination(item: $browseTarget) { target in
+            OnlineMoviesBrowseResultsView(title: target.name, pageURL: target.url)
                 .environmentObject(app)
                 .environmentObject(video)
         }
@@ -114,11 +145,34 @@ struct OnlineMovieDetailView: View {
         ) {
             Button("Spróbuj ponownie") {
                 playbackError = nil
-                Task { await watchSource() }
+                requestPlay(.live)
             }
             Button("Anuluj", role: .cancel) { playbackError = nil }
         } message: {
             Text(playbackError ?? "")
+        }
+        .confirmationDialog(
+            "Ten film był już rozpoczęty",
+            isPresented: Binding(
+                get: { resumeAsk != nil },
+                set: { if !$0 { resumeAsk = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Kontynuuj od \(MovieResumePolicy.clockLabel(seconds: resumeAsk?.seconds ?? 0))") {
+                guard let ask = resumeAsk else { return }
+                resumeAsk = nil
+                Task { await startPlay(ask.source, startAt: ask.seconds) }
+            }
+            Button("Od początku") {
+                guard let ask = resumeAsk else { return }
+                resumeAsk = nil
+                MovieResumeStore.clear(id: selection.url)
+                Task { await startPlay(ask.source, startAt: nil) }
+            }
+            Button("Anuluj", role: .cancel) { resumeAsk = nil }
+        } message: {
+            Text("Możesz wrócić do miejsca, w którym obraz się urwał, albo zacząć film od początku.")
         }
     }
 
@@ -158,7 +212,14 @@ struct OnlineMovieDetailView: View {
     @ViewBuilder
     private var metaChips: some View {
         HStack(spacing: 8) {
-            if let year = meta?.year { chip("\(year)") }
+            if let year = displayYear {
+                Button {
+                    browseTarget = yearTarget(year)
+                } label: {
+                    chip("\(year)")
+                }
+                .buttonStyle(.plain)
+            }
             if let duration = meta?.duration ?? selection.duration, duration > 0 {
                 chip(formatDuration(duration))
             }
@@ -193,7 +254,7 @@ struct OnlineMovieDetailView: View {
             }
 
             Button {
-                Task { await watchSource() }
+                requestPlay(.live)
             } label: {
                 Label(movies.playbackLaunchPhase.isBusy ? "Uruchamiam…" : "Oglądaj ze źródła", systemImage: "dot.radiowaves.left.and.right")
                     .lineLimit(1)
@@ -219,12 +280,46 @@ struct OnlineMovieDetailView: View {
 
             playbackButtons
 
+            downloadActions
+        }
+    }
+
+    @ViewBuilder
+    private var downloadActions: some View {
+        let isSeriesPage = info?.isSeries == true && !(info?.playableEpisodes.isEmpty ?? true)
+        if isSeriesPage {
+            Button {
+                showSeriesEpisodes = true
+            } label: {
+                Label("Pobierz odcinki…", systemImage: "square.and.arrow.down")
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(OnlineMovieSecondaryButton(emphasized: true))
+        } else if movies.canCopyToDevice(url: selection.url, title: selection.title) {
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    Task { await movies.downloadSavedCopyToDevice(selection: selection) }
+                } label: {
+                    Label("Pobierz na urządzenie", systemImage: "iphone.and.arrow.down")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(OnlineMovieSecondaryButton(emphasized: true))
+                .disabled(movies.playbackLaunchPhase.isBusy)
+                Text("Kopia jest na serwerze. Ten krok zapisuje ją offline na tym iPhonie.")
+                    .font(EOSTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else if !fileOnServer {
             Button {
                 if info != nil {
                     showDownloadSheet = true
                 }
             } label: {
-                Label("Pobierz", systemImage: "arrow.down.circle")
+                Label("Pobierz na serwer", systemImage: "server.rack")
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
             }
@@ -237,12 +332,7 @@ struct OnlineMovieDetailView: View {
     private var playbackButtons: some View {
         if case .onPhone = transfer {
             Button {
-                Task {
-                    let started = await movies.playFromPhone(selection: selection, video: video)
-                    if !started, case .failed(let message) = movies.playbackLaunchPhase {
-                        playbackError = message
-                    }
-                }
+                requestPlay(.phone)
             } label: {
                 Label("Odtwórz z telefonu", systemImage: "iphone")
                     .lineLimit(1)
@@ -253,12 +343,7 @@ struct OnlineMovieDetailView: View {
         }
         if movies.jobId(for: selection.url, title: selection.title) != nil {
             Button {
-                Task {
-                    let started = await movies.playFromServer(selection: selection, video: video)
-                    if !started, case .failed(let message) = movies.playbackLaunchPhase {
-                        playbackError = message
-                    }
-                }
+                requestPlay(.server)
             } label: {
                 Label("Odtwórz z serwera", systemImage: "server.rack")
                     .lineLimit(1)
@@ -294,13 +379,39 @@ struct OnlineMovieDetailView: View {
                     .tracking(0.3)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        ForEach(cast.prefix(20)) { member in
+                        ForEach(cast.prefix(24)) { member in
                             Button {
-                                actorSelection = OnlineMoviesActorSelection(name: member.name)
+                                browseTarget = OnlineMoviesBrowseTarget(name: member.name, url: member.url)
                             } label: {
                                 OnlineMovieActorChip(name: member.name)
                             }
                             .buttonStyle(.plain)
+                            .disabled(member.url.isEmpty)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var genreBlock: some View {
+        if let genres = meta?.genres, !genres.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Gatunek")
+                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .tracking(0.3)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(genres) { genre in
+                            Button {
+                                browseTarget = OnlineMoviesBrowseTarget(name: genre.name, url: genre.url)
+                            } label: {
+                                OnlineMovieActorChip(name: genre.name)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(genre.url.isEmpty)
                         }
                     }
                     .padding(.vertical, 2)
@@ -330,6 +441,8 @@ struct OnlineMovieDetailView: View {
             return "Finalizowanie na serwerze…"
         case .acquiringServer(let p):
             return String(format: "Serwer · %.0f%%", p)
+        case .downloadingPhone(let p) where p < 1:
+            return "Przygotowuję kopię na iPhone…"
         case .downloadingPhone(let p):
             return String(format: "iPhone · %.0f%%", p)
         default:
@@ -337,13 +450,59 @@ struct OnlineMovieDetailView: View {
         }
     }
 
-    private func watchSource() async {
-        let started = await movies.watchStream(
-            selection: selection,
-            height: 720,
-            video: video,
-            preferSavedCopy: false
+    @ViewBuilder
+    private var yearBlock: some View {
+        if let year = displayYear {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Rok wydania")
+                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .tracking(0.3)
+                Button {
+                    browseTarget = yearTarget(year)
+                } label: {
+                    OnlineMovieActorChip(name: "\(year)")
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var displayYear: Int? {
+        if let year = meta?.year, year > 1900 { return year }
+        return CdaHdBrowseLink.year(in: displayTitle)
+    }
+
+    private func yearTarget(_ year: Int) -> OnlineMoviesBrowseTarget {
+        OnlineMoviesBrowseTarget(
+            name: "\(year)",
+            url: CdaHdBrowseLink.releaseYearURL(year: year, referenceURL: selection.url)
         )
+    }
+
+    private func requestPlay(_ source: MoviePlaySource) {
+        if let seconds = MovieResumeStore.offerSeconds(for: selection.url) {
+            resumeAsk = MovieResumeAsk(source: source, seconds: seconds)
+            return
+        }
+        Task { await startPlay(source, startAt: nil) }
+    }
+
+    private func startPlay(_ source: MoviePlaySource, startAt: Double?) async {
+        let started: Bool
+        switch source {
+        case .live:
+            started = await movies.watchStream(
+                selection: selection,
+                height: 720,
+                video: video,
+                preferSavedCopy: false,
+                startAt: startAt
+            )
+        case .server:
+            started = await movies.playFromServer(selection: selection, video: video, startAt: startAt)
+        case .phone:
+            started = await movies.playFromPhone(selection: selection, video: video, startAt: startAt)
+        }
         if !started, case .failed(let message) = movies.playbackLaunchPhase {
             playbackError = message
         }

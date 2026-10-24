@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import MediaPlayer
 import SwiftUI
 import UIKit
 
@@ -561,6 +562,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         avPlayer.pause()
         avPlayer.isMuted = false
         avPlayer.replaceCurrentItem(with: nil)
+        clearNowPlayingIfOwned()
         isExternalPlaybackActive = false
         externalDeviceName = nil
         airPlayNotice = nil
@@ -592,6 +594,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         guard !Task.isCancelled else { return false }
 
         let item = AVPlayerItem(asset: asset)
+        applyNowPlayingMetadata(to: item, engine: engine)
         avPlayer.replaceCurrentItem(with: item)
 
         for _ in 0..<80 {
@@ -642,6 +645,7 @@ final class VideoPiPController: NSObject, ObservableObject {
                     time: time.seconds,
                     isPlaying: self.avPlayer.rate > 0
                 )
+                self.publishNowPlayingElapsed(time.seconds, isPlaying: self.avPlayer.rate > 0)
             }
         }
     }
@@ -822,6 +826,133 @@ final class VideoPiPController: NSObject, ObservableObject {
         await startTask?.value
     }
 
+    private var ownsNowPlaying = false
+    private var artworkLoadTask: Task<Void, Never>?
+
+    private func applyNowPlayingMetadata(to item: AVPlayerItem, engine: VideoPlaybackEngine) {
+        let title = engine.currentItem?.title ?? engine.folderName
+        var metadata: [AVMetadataItem] = [Self.metadataItem(identifier: .commonIdentifierTitle, value: title)]
+        if !engine.folderName.isEmpty {
+            metadata.append(Self.metadataItem(identifier: .commonIdentifierDescription, value: engine.folderName))
+        }
+        item.externalMetadata = metadata
+        publishNowPlaying(title: title, artwork: nil, elapsed: engine.currentTime, duration: engine.duration, isPlaying: true)
+        artworkLoadTask?.cancel()
+        artworkLoadTask = Task { [weak self, weak item] in
+            guard let self, let image = await Self.loadArtwork(from: engine.currentItem?.artworkURL) else { return }
+            guard !Task.isCancelled else { return }
+            if let item {
+                var next = item.externalMetadata
+                next.removeAll { $0.identifier == .commonIdentifierArtwork }
+                next.append(Self.metadataItem(identifier: .commonIdentifierArtwork, value: image.pngData() as NSData? ?? image))
+                item.externalMetadata = next
+            }
+            self.publishNowPlaying(
+                title: title,
+                artwork: image,
+                elapsed: engine.currentTime,
+                duration: engine.duration,
+                isPlaying: self.avPlayer.rate > 0
+            )
+        }
+    }
+
+    private func publishNowPlaying(
+        title: String,
+        artwork: UIImage?,
+        elapsed: Double,
+        duration: Double,
+        isPlaying: Bool
+    ) {
+        ownsNowPlaying = true
+        let mediaArtwork = artwork.map { image in
+            MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        }
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        if let existing = info[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork, mediaArtwork == nil {
+            info = NowPlayingInfoBuilder.make(
+                title: title,
+                artist: nil,
+                album: engine?.folderName,
+                duration: duration,
+                elapsed: elapsed,
+                isPlaying: isPlaying,
+                queueIndex: 0,
+                queueCount: 1,
+                persistentSeed: engine?.currentItem?.id ?? title,
+                collectionPersistentSeed: engine?.folderName,
+                externalContentIdentifier: engine?.currentItem?.id,
+                artwork: existing,
+                isVideo: true
+            )
+        } else {
+            info = NowPlayingInfoBuilder.make(
+                title: title,
+                artist: nil,
+                album: engine?.folderName,
+                duration: duration,
+                elapsed: elapsed,
+                isPlaying: isPlaying,
+                queueIndex: 0,
+                queueCount: 1,
+                persistentSeed: engine?.currentItem?.id ?? title,
+                collectionPersistentSeed: engine?.folderName,
+                externalContentIdentifier: engine?.currentItem?.id,
+                artwork: mediaArtwork,
+                isVideo: true
+            )
+        }
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        center.playbackState = isPlaying ? .playing : .paused
+    }
+
+    private func publishNowPlayingElapsed(_ elapsed: Double, isPlaying: Bool) {
+        guard ownsNowPlaying else { return }
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(value: elapsed)
+        info[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: isPlaying ? 1.0 : 0.0)
+        if let duration = engine?.duration, duration > 1 {
+            info[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: duration)
+        }
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = info
+        center.playbackState = isPlaying ? .playing : .paused
+    }
+
+    private func clearNowPlayingIfOwned() {
+        artworkLoadTask?.cancel()
+        artworkLoadTask = nil
+        guard ownsNowPlaying else { return }
+        ownsNowPlaying = false
+        let center = MPNowPlayingInfoCenter.default()
+        center.nowPlayingInfo = nil
+        center.playbackState = .stopped
+    }
+
+    private static func metadataItem(identifier: AVMetadataIdentifier, value: Any) -> AVMetadataItem {
+        let item = AVMutableMetadataItem()
+        item.identifier = identifier
+        item.value = value as? NSCopying & NSObjectProtocol
+        item.extendedLanguageTag = "und"
+        return item
+    }
+
+    private static func loadArtwork(from url: URL?) async -> UIImage? {
+        guard let url else { return nil }
+        if let cached = RemoteImageCache.image(for: url, maxPixelSize: 900) {
+            return cached
+        }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let image = UIImage(data: data) else { return nil }
+            RemoteImageCache.store(image, for: url, maxPixelSize: 900)
+            return image
+        } catch {
+            return nil
+        }
+    }
+
     func stop() {
         startTask?.cancel()
         controller?.stopPictureInPicture()
@@ -840,6 +971,7 @@ final class VideoPiPController: NSObject, ObservableObject {
         avPlayer.pause()
         avPlayer.isMuted = false
         avPlayer.replaceCurrentItem(with: nil)
+        clearNowPlayingIfOwned()
 
         if isExternalPlaybackActive, let engine {
             engine.cancelAVKitHandoff()

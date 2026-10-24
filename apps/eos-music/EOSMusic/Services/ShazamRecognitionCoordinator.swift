@@ -31,6 +31,14 @@ final class ShazamRecognitionCoordinator {
         Task { _ = await run(app: app, allowForegroundPrompt: true) }
     }
 
+    /// Lock Screen / Control Center. Opens the listener in the app; Live Activity is optional.
+    func startFromControl(app: AppModel) async -> String {
+        self.app = app
+        ShazamIdentifyController.shared.bind(app)
+        ShazamIdentifyController.shared.isPresented = true
+        return await run(app: app, allowForegroundPrompt: true)
+    }
+
     func startHeadless(app: AppModel) async -> String {
         self.app = app
         return await run(app: app, allowForegroundPrompt: false)
@@ -57,7 +65,10 @@ final class ShazamRecognitionCoordinator {
         let pending = await ShazamOutbox.shared.pending()
         for item in pending {
             do {
-                try await addPending(item, app: app)
+                let added = try await addPending(item, app: app)
+                if let payload = added.payload {
+                    app.queuePlus(payload, preferredFolderId: added.folderId)
+                }
                 try await ShazamOutbox.shared.remove(item.id)
             } catch {
                 EOSLog.shazam.error("outbox retry failed \(error.localizedDescription, privacy: .public)")
@@ -130,6 +141,7 @@ final class ShazamRecognitionCoordinator {
         }
         do {
             AudioSession.activateForShazamCapture()
+            try? await Task.sleep(nanoseconds: 220_000_000)
             reducer.markListening(id: operation)
             phase = .listening
             ShazamLiveActivityController.shared.update(phase: .listening, message: "Słucham…")
@@ -151,7 +163,8 @@ final class ShazamRecognitionCoordinator {
                 artist: item.artist,
                 appleMusicID: item.appleMusicID,
                 isrc: item.isrc,
-                webURL: item.webURL?.absoluteString,
+                webURL: (item.webURL ?? item.appleMusicURL)?.absoluteString,
+                artworkURL: item.artworkURL?.absoluteString,
                 createdAt: Date()
             )
             try? await ShazamOutbox.shared.enqueue(pending)
@@ -161,13 +174,19 @@ final class ShazamRecognitionCoordinator {
                 title: pending.title,
                 artist: pending.artist ?? ""
             )
-            let message = try await addPending(pending, app: app)
+            let added = try await addPending(pending, app: app)
             try? await ShazamOutbox.shared.remove(pending.id)
-            reducer.finish(id: operation, phase: phase, message: message)
-            ShazamLiveActivityController.shared.finish(phase: phase, message: message, title: pending.title, artist: pending.artist ?? "")
+            audioMatcher?.stop()
+            audioMatcher = nil
+            AudioSession.endShazamCapture()
+            if let payload = added.payload {
+                app.queuePlus(payload, preferredFolderId: added.folderId)
+            }
+            reducer.finish(id: operation, phase: phase, message: added.message)
+            ShazamLiveActivityController.shared.finish(phase: phase, message: added.message, title: pending.title, artist: pending.artist ?? "")
             EOSIntentRuntime.shared.publishSnapshot()
             EOSIntentRuntime.shared.reloadControls()
-            return message
+            return added.message
         } catch is CancellationError {
             return statusMessage
         } catch let error as ShazamIdentifyError {
@@ -232,7 +251,8 @@ final class ShazamRecognitionCoordinator {
             guard ShazamMatchConfirmPolicy.shouldAccept(
                 elapsed: elapsed,
                 agreeingCount: agreeingCount,
-                hasCandidate: bestItem != nil
+                hasCandidate: bestItem != nil,
+                isStableIdentity: bestCandidate?.hasStableIdentity == true
             ) else { return nil }
             return bestItem
         }
@@ -287,7 +307,8 @@ final class ShazamRecognitionCoordinator {
                     return bestItem
                 }
                 throw ShazamIdentifyError.notRecognized
-            case .level:
+            case .level(let rms):
+                ShazamIdentifyController.shared.setInputLevel(rms)
                 if let accepted = acceptIfReady() {
                     audioMatcher?.stop()
                     return accepted
@@ -300,22 +321,31 @@ final class ShazamRecognitionCoordinator {
         throw ShazamIdentifyError.notRecognized
     }
 
-    private func addPending(_ pending: PendingShazamAdd, app: AppModel) async throws -> String {
+    private func addPending(_ pending: PendingShazamAdd, app: AppModel) async throws -> (message: String, payload: MusicTrackPayload?, folderId: String?) {
         phase = .resolvingCatalog
         let folderId = try await app.ensureShazamFolderId()
         await app.refreshFolderTracks(folderId: folderId)
-        let songs = try await collectCatalogSongs(pending: pending, api: app.api)
-        guard let song = ShazamCatalogMatcher.bestSong(
+        ShazamIdentifyController.shared.applyExternal(
             title: pending.title,
-            artist: pending.artist,
-            appleMusicID: pending.appleMusicID,
-            isrc: pending.isrc,
-            webURL: pending.webURL.flatMap(URL.init(string:)),
-            songs: songs
-        ) else {
+            artist: pending.artist ?? "",
+            status: "Szukam nagrania…",
+            success: nil,
+            listening: false,
+            artwork: pending.artworkURL.flatMap(URL.init(string:))
+        )
+        let song = try await resolvePlayableSong(pending: pending, api: app.api)
+        guard let song else {
             phase = .failed
-            statusMessage = "Nie dodano do SHAZAM · brak w katalogu"
+            statusMessage = "Rozpoznano „\(pending.title)”, nie znalazłem pliku do pobrania"
             lastSafeError = statusMessage
+            ShazamIdentifyController.shared.applyExternal(
+                title: pending.title,
+                artist: pending.artist ?? "",
+                status: statusMessage,
+                success: false,
+                listening: false,
+                artwork: pending.artworkURL.flatMap(URL.init(string:))
+            )
             throw ShazamIdentifyError.notRecognized
         }
         if app.folderContains(folderId: folderId, url: song.url)
@@ -329,7 +359,7 @@ final class ShazamRecognitionCoordinator {
                 success: false,
                 listening: false
             )
-            return statusMessage
+            return (statusMessage, song.payload, folderId)
         }
         phase = .adding
         do {
@@ -337,27 +367,109 @@ final class ShazamRecognitionCoordinator {
                 folderId: folderId,
                 track: song.payload,
                 announcePlaylistName: nil,
-                queueServerCopy: true
+                queueServerCopy: false
             )
             phase = .added
-            statusMessage = "Dodano do SHAZAM · \(song.title)"
+            statusMessage = "Dodano do SHAZAM · \(pending.title)"
+            let artwork = song.thumbnail.flatMap(URL.init(string:))
+                ?? pending.artworkURL.flatMap(URL.init(string:))
             ShazamIdentifyController.shared.applyExternal(
-                title: song.title,
-                artist: song.uploader ?? pending.artist ?? "",
+                title: pending.title,
+                artist: pending.artist ?? song.uploader ?? "",
                 status: statusMessage,
                 success: true,
-                listening: false
+                listening: false,
+                artwork: artwork
             )
-            return statusMessage
+            return (statusMessage, song.payload, folderId)
         } catch {
             if ShazamIdentifyError.isNetwork(error) {
                 phase = .queuedOffline
                 statusMessage = "Rozpoznano — dodam po odzyskaniu sieci"
                 lastSafeError = statusMessage
-                return statusMessage
+                return (statusMessage, nil, folderId)
             }
             throw error
         }
+    }
+
+    /// Po udanej animacji ciągłego nasłuchu — kolejna sesja bez zamykania karty.
+    func resumeAfterContinuousCelebration(app: AppModel) {
+        guard ShazamIdentifyController.shared.continuousListening,
+              ShazamIdentifyController.shared.isPresented else { return }
+        guard phase != .listening, phase != .preparingActivity else { return }
+        phase = .idle
+        reducer = ShazamReducerState()
+        self.app = app
+        Task { _ = await self.run(app: app, allowForegroundPrompt: true) }
+    }
+
+    /// Katalog Apple Music, a gdy go nie ma — nagranie z YouTube (tytuł + wykonawca).
+    private func resolvePlayableSong(pending: PendingShazamAdd, api: MusicAPIClient) async throws -> SearchResultItem? {
+        let songs = try await collectCatalogSongs(pending: pending, api: api)
+        if let catalog = ShazamCatalogMatcher.bestSong(
+            title: pending.title,
+            artist: pending.artist,
+            appleMusicID: pending.appleMusicID,
+            isrc: pending.isrc,
+            webURL: pending.webURL.flatMap(URL.init(string:)),
+            songs: songs
+        ) {
+            return catalog
+        }
+        if let external = await resolveExternalRecording(pending: pending, api: api) {
+            return external
+        }
+        return ShazamCatalogMatcher.catalogFallback(
+            title: pending.title,
+            artist: pending.artist,
+            appleMusicID: pending.appleMusicID,
+            webURL: pending.webURL
+        )
+    }
+
+    private func resolveExternalRecording(pending: PendingShazamAdd, api: MusicAPIClient) async -> SearchResultItem? {
+        var queries: [String] = []
+        let titleOnly = pending.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artist = pending.artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let titled = artist.isEmpty ? titleOnly : "\(titleOnly) \(artist)"
+        if !titled.isEmpty { queries.append(titled) }
+        if !titleOnly.isEmpty, titleOnly != titled { queries.append(titleOnly) }
+
+        var pool: [SearchResultItem] = []
+        var seen = Set<String>()
+        for query in queries {
+            guard let rows = try? await api.searchYouTubeAudio(query: query) else { continue }
+            for row in rows where seen.insert(row.url).inserted {
+                pool.append(row)
+            }
+            if ShazamCatalogMatcher.bestExternalRecording(
+                title: pending.title,
+                artist: pending.artist,
+                songs: pool
+            ) != nil, pool.contains(where: {
+                ShazamCatalogMatcher.titleSimilarity(
+                    ShazamCatalogMatcher.normalized(pending.title),
+                    ShazamCatalogMatcher.normalized($0.title)
+                ) >= 55
+            }) {
+                break
+            }
+        }
+        guard let match = ShazamCatalogMatcher.bestExternalRecording(
+            title: pending.title,
+            artist: pending.artist,
+            songs: pool
+        ) else { return nil }
+        let resolvedArtist = pending.artist ?? match.uploader ?? match.detail
+        let thumb = match.thumbnail ?? pending.artworkURL
+        return SearchResultItem.catalogStub(
+            title: pending.title,
+            url: match.url,
+            artist: resolvedArtist,
+            thumbnail: thumb,
+            source: "youtube"
+        )
     }
 
     private func collectCatalogSongs(pending: PendingShazamAdd, api: MusicAPIClient) async throws -> [SearchResultItem] {
@@ -375,6 +487,12 @@ final class ShazamRecognitionCoordinator {
         }
         if let artist = pending.artist, !artist.isEmpty {
             if let search = try? await api.searchMusicCatalog(query: "\(pending.title) \(artist)") {
+                append(search.songs)
+            }
+        }
+        let core = ShazamCatalogMatcher.stripped(pending.title)
+        if !core.isEmpty, core != ShazamCatalogMatcher.normalized(pending.title) {
+            if let search = try? await api.searchMusicCatalog(query: core) {
                 append(search.songs)
             }
         }

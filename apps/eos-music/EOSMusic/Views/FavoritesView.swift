@@ -367,7 +367,8 @@ struct FavoritesView: View {
                 isSerial: nil,
                 premium: nil,
                 previewUrl: nil,
-                isrc: nil
+                isrc: nil,
+                year: nil
             )
         }
         await app.playCatalogItems(items, startIndex: index)

@@ -99,7 +99,8 @@ enum PlaylistHygiene {
         let unique = Set(albums.map { $0.lowercased() })
         guard unique.count == 1, let album = albums.first else { return false }
 
-        if owned.count == 1 { return true }
+        // Folder name must match the album. A one-track user playlist must NOT
+        // disappear just because the track has album metadata.
         return folder.name.localizedCaseInsensitiveCompare(album) == .orderedSame
     }
 }

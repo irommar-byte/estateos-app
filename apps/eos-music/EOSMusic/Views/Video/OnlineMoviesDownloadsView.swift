@@ -36,8 +36,8 @@ struct OnlineMoviesDownloadsView: View {
                     systemImage: app.isOfflinePlaybackActive ? "iphone.slash" : "externaldrive",
                     description: Text(
                         app.isOfflinePlaybackActive
-                            ? "Tryb Offline pokazuje tylko kopie na tym urządzeniu. W Online pobierz z opcją „Serwer + iPhone” albo dodaj folder z plikami."
-                            : "Pobierz z EOS™LIBRARY — pliki trafią do MOVIES/Serial/Sezon/ na VPS."
+                            ? "Tryb Offline pokazuje tylko kopie na tym iPhonie. Najpierw zapisz film na serwerze, potem pobierz go na urządzenie."
+                            : "Pobierz z EOS™LIBRARY. Najpierw kopia w MOVIES/ na serwerze, potem osobno na to urządzenie."
                     )
                 )
             } else {
@@ -95,35 +95,67 @@ struct OnlineMoviesDownloadsView: View {
     }
 
     private func downloadRow(_ download: MovieDownload) -> some View {
-        Button {
-            selected = OnlineMovieSelection(download: download)
-        } label: {
-            HStack(spacing: 12) {
-                ArtworkImage(url: download.artworkURL, size: 64, cornerRadius: 10)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(download.title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
-                    HStack(spacing: 8) {
-                        OnlineMovieTransferBadge(state: movies.transferState(for: download.url))
-                        if let season = download.seasonFolderName {
-                            Text(season.uppercased())
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.secondary)
+        let transfer = movies.transferState(for: download.url, title: download.title)
+        let onPhone = movies.isAvailableOffline(url: download.url)
+        let canCopy = movies.canCopyToDevice(url: download.url, title: download.title)
+        return HStack(spacing: 12) {
+            Button {
+                selected = OnlineMovieSelection(download: download)
+            } label: {
+                HStack(spacing: 12) {
+                    ArtworkImage(url: download.artworkURL, size: 64, cornerRadius: 10)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(download.title)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.leading)
+                        HStack(spacing: 6) {
+                            if transfer.isBusy {
+                                OnlineMovieTransferBadge(state: transfer)
+                            } else {
+                                if download.hasLandedFile {
+                                    MovieStorageLocationBadge(kind: .server)
+                                }
+                                if onPhone {
+                                    MovieStorageLocationBadge(kind: .phone)
+                                }
+                            }
+                            if let season = download.seasonFolderName {
+                                Text(season.uppercased())
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if let copyError = movies.deviceCopyError(for: download.url) {
+                            Text(copyError)
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                                .lineLimit(2)
+                        } else if let path = download.serverRelativePath {
+                            Text(path)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
                         }
                     }
-                    if let path = download.serverRelativePath {
-                        Text(path)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            if canCopy {
+                Button {
+                    Task { await movies.downloadSavedCopyToDevice(selection: OnlineMovieSelection(download: download)) }
+                } label: {
+                    Image(systemName: "iphone.and.arrow.down")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.bordered)
+                .tint(EOSTheme.accent)
+                .accessibilityLabel("Pobierz na urządzenie")
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {

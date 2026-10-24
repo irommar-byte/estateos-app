@@ -53,6 +53,7 @@ rsync -az --delete \
 rsync -az \
   --exclude node_modules \
   --exclude downloads \
+  --exclude stream-cache \
   --exclude tmp \
   --exclude data/cda-hd-session.json \
   --exclude data/cda-hd-catalog-cache.json \

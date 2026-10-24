@@ -38,7 +38,7 @@ struct MovieStorageLocationBadge: View {
         switch kind {
         case .server: return "SERWER"
         case .phone: return "iPHONE"
-        case .serverProgress(let p): return String(format: "SERWER %.0f%%", clamp(p))
+        case .serverProgress(let p): return String(format: "SERWER %.1f%%", clamp(p))
         case .phoneProgress(let p): return String(format: "iPHONE %.0f%%", clamp(p))
         case .queue: return "KOLEJKA"
         case .cancelled: return "ANULOWANE"

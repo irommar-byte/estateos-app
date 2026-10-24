@@ -5,8 +5,9 @@ import ImageIO
 enum RemoteImageCache {
     static let memory: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
-        cache.countLimit = 80
-        cache.totalCostLimit = 24 * 1024 * 1024
+        // 80 okładek to ~2 ekrany listy — przy przewijaniu w górę wszystko dekodowało się od nowa.
+        cache.countLimit = 400
+        cache.totalCostLimit = 64 * 1024 * 1024
         return cache
     }()
 
@@ -205,6 +206,65 @@ enum ArtworkLoader {
     }
 }
 
+struct ArtworkPlaceholder: View {
+    var title: String = ""
+    var subtitle: String? = nil
+    var size: CGFloat = 40
+
+    var body: some View {
+        let colors = Self.palette(title: title, subtitle: subtitle)
+        ZStack {
+            LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
+            if glyph.isEmpty {
+                Image(systemName: "music.note")
+                    .font(.system(size: max(13, size * 0.30), weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.82))
+            } else {
+                Text(glyph)
+                    .font(.system(size: max(12, size * 0.36), weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .padding(.horizontal, 3)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var glyph: String {
+        Self.glyph(from: title)
+    }
+
+    static func glyph(from title: String) -> String {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = trimmed.first else { return "" }
+        return String(first).uppercased()
+    }
+
+    static func palette(title: String, subtitle: String?) -> [Color] {
+        let palettes: [[Color]] = [
+            [Color(red: 0.62, green: 0.16, blue: 0.48), Color(red: 0.22, green: 0.06, blue: 0.28)],
+            [Color(red: 0.72, green: 0.18, blue: 0.32), Color(red: 0.28, green: 0.06, blue: 0.18)],
+            [Color(red: 0.22, green: 0.28, blue: 0.68), Color(red: 0.08, green: 0.10, blue: 0.32)],
+            [Color(red: 0.10, green: 0.46, blue: 0.48), Color(red: 0.06, green: 0.18, blue: 0.28)],
+            [Color(red: 0.64, green: 0.34, blue: 0.10), Color(red: 0.28, green: 0.10, blue: 0.06)],
+            [Color(red: 0.18, green: 0.48, blue: 0.30), Color(red: 0.06, green: 0.20, blue: 0.14)],
+            [Color(red: 0.46, green: 0.14, blue: 0.58), Color(red: 0.16, green: 0.08, blue: 0.36)],
+            [Color(red: 0.36, green: 0.18, blue: 0.56), Color(red: 0.10, green: 0.06, blue: 0.26)],
+        ]
+        let seed = djb2("\(title)\u{1e}\(subtitle ?? "")")
+        return palettes[Int(seed % UInt64(palettes.count))]
+    }
+
+    private static func djb2(_ value: String) -> UInt64 {
+        var hash: UInt64 = 5381
+        for byte in value.utf8 {
+            hash = ((hash &<< 5) &+ hash) &+ UInt64(byte)
+        }
+        return hash
+    }
+}
+
 struct ArtworkImage: View {
     let url: URL?
     var size: CGFloat = 56
@@ -214,21 +274,32 @@ struct ArtworkImage: View {
     var allowAnimated = false
     /// Immediate cover from ID3 / Now Playing while remote URL loads (critical on iPad player).
     var fallbackImage: UIImage? = nil
+    /// Stable per-track key so SwiftUI does not keep the previous cover when the URL is nil.
+    var identity: String = ""
+    var placeholderTitle: String = ""
+    var placeholderSubtitle: String? = nil
+    /// Okładka rośnie do szerokości komórki (siatka na iPadzie i Macu).
+    var fillsWidth: Bool = false
 
     @State private var stillImage: UIImage?
     @State private var animatedImage: UIImage?
     @State private var loadingURL: URL?
+    @State private var loadedKey = ""
 
     private var maxPixelSize: Int {
         // Cap decode size — huge iPad hero canvases don't need 4× retina bitmaps.
-        min(1024, Int(ceil(size * UIScreen.main.scale)))
+        min(1024, Int(ceil((fillsWidth ? max(size, 240) : size) * UIScreen.main.scale)))
+    }
+
+    private var contentKey: String {
+        "\(identity)|\(url?.absoluteString ?? "nil")|\(placeholderTitle)|\(maxPixelSize)|\(allowAnimated)"
     }
 
     var body: some View {
-        Group {
-            if let animatedImage {
+        let picture = Group {
+            if loadedKey == contentKey, let animatedImage {
                 AnimatedUIImageView(image: animatedImage)
-            } else if let stillImage {
+            } else if loadedKey == contentKey, let stillImage {
                 Image(uiImage: stillImage)
                     .resizable()
                     .scaledToFill()
@@ -236,35 +307,44 @@ struct ArtworkImage: View {
                 Image(uiImage: fallbackImage)
                     .resizable()
                     .scaledToFill()
+            } else if !allowAnimated, let url, let cached = RemoteImageCache.image(for: url, maxPixelSize: maxPixelSize) {
+                // Okładka już w pamięci — pokaż od razu (bez mignięcia zaślepki podczas przewijania).
+                Image(uiImage: cached)
+                    .resizable()
+                    .scaledToFill()
             } else {
-                placeholder
+                ArtworkPlaceholder(title: placeholderTitle, subtitle: placeholderSubtitle, size: size)
             }
         }
-        .frame(width: size, height: size)
-        .modifier(ArtworkClip(circleClip: circleClip, cornerRadius: cornerRadius, size: size))
-        .task(id: "\(url?.absoluteString ?? "nil")|\(maxPixelSize)|\(allowAnimated)") {
-            await loadArtwork()
+        Group {
+            if fillsWidth {
+                Color.clear
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .overlay {
+                        picture
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            } else {
+                picture
+                    .frame(width: size, height: size)
+                    .modifier(ArtworkClip(circleClip: circleClip, cornerRadius: cornerRadius, size: size))
+            }
         }
-    }
-
-    private var placeholder: some View {
-        ZStack {
-            LinearGradient(
-                colors: [EOSTheme.accent.opacity(0.35), EOSTheme.accentSecondary.opacity(0.3)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            Image(systemName: "music.note")
-                .font(.system(size: max(14, size * 0.28), weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
+        .task(id: contentKey) {
+            await loadArtwork()
         }
     }
 
     @MainActor
     private func loadArtwork() async {
+        let key = contentKey
+        stillImage = nil
+        animatedImage = nil
+        loadedKey = key
+
         guard let url else {
-            stillImage = nil
-            animatedImage = nil
             loadingURL = nil
             return
         }
@@ -274,6 +354,7 @@ struct ArtworkImage: View {
         if let cached = RemoteImageCache.image(for: url, maxPixelSize: pixelSize), !allowAnimated {
             stillImage = cached
             animatedImage = nil
+            loadedKey = key
             return
         }
         // Animated covers must re-decode GIF/APNG — still cache would freeze frame 0 forever.
@@ -290,7 +371,7 @@ struct ArtworkImage: View {
             allowAnimated: allowAnimated,
             timeout: size >= 120 ? 12 : 4
         )
-        guard loadingURL == url else { return }
+        guard loadingURL == url, loadedKey == key else { return }
         guard let loaded else {
             if !url.isFileURL {
                 RemoteImageCache.markFailed(url)
@@ -302,6 +383,7 @@ struct ArtworkImage: View {
         RemoteImageCache.store(loaded.still, for: url, maxPixelSize: pixelSize)
         stillImage = loaded.still
         animatedImage = allowAnimated ? loaded.animated : nil
+        loadedKey = key
     }
 }
 
@@ -381,10 +463,9 @@ struct TrackRowView: View {
             if let index {
                 Group {
                     if isPlaying {
-                        Image(systemName: "waveform")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(EOSTheme.accent)
-                            .symbolEffect(.variableColor.iterative, options: .speed(0.6), isActive: true)
+                        NowPlayingBars()
+                            .frame(width: 18, height: 14)
+                            .transition(.scale(scale: 0.4).combined(with: .opacity))
                     } else {
                         Text("\(index)")
                             .font(indexFont)
@@ -394,23 +475,29 @@ struct TrackRowView: View {
                 .frame(width: max(indexWidth, 22), alignment: .center)
                 .accessibilityHidden(true)
             }
-            ArtworkImage(url: artworkURL, size: artSize, cornerRadius: artRadius)
+            ArtworkImage(
+                url: artworkURL,
+                size: artSize,
+                cornerRadius: artRadius,
+                identity: "row:\(title)|\(subtitle ?? "")|\(artworkURL?.absoluteString ?? "nil")",
+                placeholderTitle: title,
+                placeholderSubtitle: subtitle
+            )
+            // Lista jak w Apple Music: tytuł przycięty „…” (przewijany tekst zostaje w playerze).
+            // MarqueeText w każdym wierszu to dwa pomiary geometrii na wiersz — hamowało przewijanie.
             VStack(alignment: .leading, spacing: textSpacing) {
-                MarqueeText(
-                    text: title,
-                    font: titleFont,
-                    foreground: isPlaying ? EOSTheme.accent : EOSTheme.textPrimary,
-                    speedPointsPerSecond: 28
-                )
+                Text(title)
+                    .font(titleFont)
+                    .foregroundStyle(isPlaying ? EOSTheme.accent : EOSTheme.textPrimary)
+                    .lineLimit(1)
                 if let subtitle, !subtitle.isEmpty {
-                    MarqueeText(
-                        text: subtitle,
-                        font: subtitleFont,
-                        foreground: EOSTheme.textSecondary,
-                        speedPointsPerSecond: 24
-                    )
+                    Text(subtitle)
+                        .font(subtitleFont)
+                        .foregroundStyle(EOSTheme.textSecondary)
+                        .lineLimit(1)
                 }
             }
+            .animation(.easeInOut(duration: 0.25), value: isPlaying)
             Spacer(minLength: 6)
             VStack(alignment: .trailing, spacing: 2) {
                 if let detailLabel, !detailLabel.isEmpty {
@@ -432,5 +519,132 @@ struct TrackRowView: View {
         }
         .padding(.vertical, verticalPadding)
         .contentShape(Rectangle())
+    }
+}
+
+
+// MARK: - Wskaźnik „teraz gra” jak na ekranie blokady iOS
+
+/// Pięć zaokrąglonych słupków skaczących niezależnie — jak w odtwarzaczu na ekranie blokady.
+/// Napędzane prawdziwym dźwiękiem (5 pasm analizatora); gdy analiza jest wyłączona, słupki
+/// ruszają się w rytmie iOS. Pauza = słupki stoją nisko i płasko.
+struct NowPlayingBars: UIViewRepresentable {
+    var color: Color = EOSTheme.accent
+    var barWidth: CGFloat = 2.4
+
+    func makeUIView(context: Context) -> NowPlayingBarsUIView {
+        let view = NowPlayingBarsUIView()
+        view.configure(color: UIColor(color), barWidth: barWidth)
+        return view
+    }
+
+    func updateUIView(_ uiView: NowPlayingBarsUIView, context: Context) {
+        uiView.configure(color: UIColor(color), barWidth: barWidth)
+    }
+
+    static func dismantleUIView(_ uiView: NowPlayingBarsUIView, coordinator: ()) { uiView.stop() }
+}
+
+final class NowPlayingBarsUIView: UIView {
+    private var bars: [CALayer] = []
+    private var heights: [CGFloat] = [0.3, 0.5, 0.7, 0.45, 0.25]
+    private var targets: [CGFloat] = [0.3, 0.5, 0.7, 0.45, 0.25]
+    private var nextRetarget: [CFTimeInterval] = Array(repeating: 0, count: 5)
+    private var link: CADisplayLink?
+    private var barWidth: CGFloat = 2.4
+    private var lastTick: CFTimeInterval = 0
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        for _ in 0..<5 {
+            let bar = CALayer()
+            bar.actions = ["bounds": NSNull(), "position": NSNull(), "frame": NSNull()]
+            layer.addSublayer(bar)
+            bars.append(bar)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(color: UIColor, barWidth: CGFloat) {
+        self.barWidth = barWidth
+        for bar in bars { bar.backgroundColor = color.cgColor }
+        setNeedsLayout()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { stop() } else { start() }
+    }
+
+    private func start() {
+        guard link == nil else { return }
+        let l = CADisplayLink(target: BarsTarget(self), selector: #selector(BarsTarget.tick(_:)))
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        l.add(to: .main, forMode: .common)
+        link = l
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyHeights()
+    }
+
+    fileprivate func step(_ link: CADisplayLink) {
+        let now = link.timestamp
+        let dt = CGFloat(lastTick == 0 ? 1.0 / 60 : min(0.05, now - lastTick))
+        lastTick = now
+        let playing = PlayerAudioVisualizer.isPlayingNow
+        let live = PlayerAudioVisualizer.current?.snapshot(isPlaying: playing).islandBars ?? []
+        let hasLive = playing && live.count == 5 && (live.max() ?? 0) > 0.02
+
+        for i in 0..<5 {
+            if !playing {
+                targets[i] = 0.18
+            } else if hasLive {
+                targets[i] = max(0.15, min(1, CGFloat(live[i]) * 1.15))
+            } else if now >= nextRetarget[i] {
+                // Rytm iOS: każdy słupek co ~0,15–0,3 s wybiera nową wysokość.
+                targets[i] = CGFloat.random(in: 0.22...1)
+                nextRetarget[i] = now + Double.random(in: 0.14...0.3)
+            }
+            // Szybko w górę, łagodniej w dół — jak w systemowym wskaźniku.
+            let speed: CGFloat = targets[i] > heights[i] ? 22 : 11
+            heights[i] += (targets[i] - heights[i]) * min(1, dt * speed)
+        }
+        applyHeights()
+    }
+
+    private func applyHeights() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let count = CGFloat(bars.count)
+        let gap = max(1.2, (bounds.width - barWidth * count) / (count - 1))
+        for (i, bar) in bars.enumerated() {
+            let h = max(barWidth, bounds.height * heights[i])
+            bar.frame = CGRect(
+                x: CGFloat(i) * (barWidth + gap),
+                y: (bounds.height - h) / 2,
+                width: barWidth,
+                height: h
+            )
+            bar.cornerRadius = barWidth / 2
+        }
+        CATransaction.commit()
+    }
+}
+
+private final class BarsTarget: NSObject {
+    weak var view: NowPlayingBarsUIView?
+    init(_ view: NowPlayingBarsUIView) { self.view = view }
+    @objc func tick(_ link: CADisplayLink) {
+        if let view { view.step(link) } else { link.invalidate() }
     }
 }

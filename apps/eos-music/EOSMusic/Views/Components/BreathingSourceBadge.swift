@@ -71,7 +71,12 @@ enum MediaPlaybackOrigin: Equatable {
     }
 }
 
-/// Pill that pulses so the current playback origin is obvious at a glance.
+/// Plakietka źródła odtwarzania — jeden kształt dla wszystkich (szklana kapsuła w kolorze źródła),
+/// a mikroanimacja mówi, co się dzieje:
+/// • Źródło (stream) — fale sygnału rozchodzą się od ikony: łącze trzymane, dane napływają,
+/// • Serwer EOS — strumień światła płynie przez kapsułę do ikony: dane spływają z serwera,
+/// • iPhone — statyczna: utwór jest na urządzeniu, nic się nie dzieje,
+/// • AirPlay — spokojne pulsowanie nadawania.
 struct BreathingSourceBadge: View {
     let origin: MediaPlaybackOrigin
     var compact: Bool = false
@@ -79,51 +84,82 @@ struct BreathingSourceBadge: View {
     var iconOnly: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var inhale = false
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var flow = false
+
+    private var height: CGFloat { compact || iconOnly ? 22 : 28 }
+    private var animated: Bool { !reduceMotion }
 
     var body: some View {
         if origin != .unknown {
-            HStack(spacing: compact ? 4 : 6) {
-                Image(systemName: origin.systemImage)
+            HStack(spacing: compact ? 5 : 6) {
+                icon
+                    .font(.system(size: compact || iconOnly ? 10 : 12, weight: .bold))
+                    .frame(width: compact || iconOnly ? 14 : 16)
                 if !iconOnly {
                     Text(compact ? origin.compactTitle : origin.title)
+                        .font(.system(size: compact ? 11 : 12.5, weight: .semibold, design: .rounded))
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                 }
             }
-            .font(compact || iconOnly ? .caption2.weight(.bold) : .caption.weight(.bold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, iconOnly ? 7 : (compact ? 8 : 10))
-            .padding(.vertical, iconOnly ? 5 : (compact ? 4 : 6))
-            .background(origin.tint.opacity(pulse ? 0.95 : 0.62), in: Capsule())
-            .overlay(
+            .foregroundStyle(origin.tint)
+            .padding(.horizontal, iconOnly ? 6 : (compact ? 9 : 11))
+            .frame(height: height)
+            .background {
                 Capsule()
-                    .stroke(origin.tint.opacity(pulse ? 1 : 0.4), lineWidth: compact || iconOnly ? 1 : 1.4)
-            )
-            // Compact / icon-only never scale — the pulse was covering the song title.
-            .scaleEffect(allowsPulse ? (inhale ? 1.05 : 0.97) : 1)
-            .shadow(
-                color: origin.tint.opacity(allowsPulse && inhale ? 0.55 : 0.18),
-                radius: allowsPulse && inhale ? 6 : 1
+                    .fill(origin.tint.opacity(colorScheme == .dark ? 0.16 : 0.12))
+                    .overlay { serverFlow }
+                    .clipShape(Capsule())
+            }
+            .overlay(
+                Capsule().strokeBorder(
+                    LinearGradient(
+                        colors: [origin.tint.opacity(0.55), origin.tint.opacity(0.18)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.8
+                )
             )
             .fixedSize()
             .layoutPriority(1)
-            .onAppear {
-                inhale = false
-                guard allowsPulse else { return }
-                withAnimation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true)) {
-                    inhale = true
-                }
-            }
+            .onAppear { flow = false; if animated { flow = true } }
             .accessibilityLabel("Źródło odtwarzania: \(origin.title)")
         }
     }
 
-    private var allowsPulse: Bool {
-        !reduceMotion && !compact && !iconOnly
+    @ViewBuilder
+    private var icon: some View {
+        switch origin {
+        case .liveSource:
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .symbolEffect(.variableColor.iterative.reversing, options: .speed(0.9), isActive: animated)
+        case .server:
+            Image(systemName: "server.rack")
+        case .airPlay:
+            Image(systemName: "airplayaudio")
+                .symbolEffect(.pulse, options: .speed(0.6), isActive: animated)
+        case .phone, .unknown:
+            Image(systemName: origin.systemImage)
+        }
     }
 
-    private var pulse: Bool {
-        allowsPulse && inhale
+    /// Serwer: wąska smuga światła płynie od prawej do lewej (do ikony serwera) w pętli.
+    @ViewBuilder
+    private var serverFlow: some View {
+        if origin == .server, animated {
+            GeometryReader { geo in
+                LinearGradient(
+                    colors: [.clear, origin.tint.opacity(0.45), .clear],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: geo.size.width * 0.35)
+                .offset(x: flow ? -geo.size.width * 0.4 : geo.size.width * 1.05)
+                .animation(.linear(duration: 1.6).repeatForever(autoreverses: false), value: flow)
+            }
+            .allowsHitTesting(false)
+        }
     }
 }

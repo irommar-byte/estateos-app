@@ -4,6 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_CDA_HD_UA, fetchCdaHdHtmlResilient } from "./cda-hd-fetch.js";
+import {
+  harvestPeople,
+  matchPeople,
+  rememberPerson,
+} from "./cda-hd-people.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -142,7 +147,7 @@ function parseCdaHdSeriesMeta(html, pageUrl, counts = {}) {
 function parseTaggedLinks(block, pageUrl) {
   if (!block) return [];
   const links = [];
-  const re = /<a href="((?:https?:\/\/)?(?:www\.)?cda-hd\.(?:cc|pl|to|online|info)\/[^"]+)" rel="(?:tag|category tag)">([^<]*)<\/a>/gi;
+  const re = /<a href="((?:https?:\/\/)?(?:www\.)?cda-hd\.(?:cc|pl|to|online|info)\/[^"]+|\/(?:star|director|gatunki|release-year|tvshows-cast|tvshows-creator|tvshows-networks|tvshows-studio|tvshows-release-year)\/[^"]+)" rel="(?:tag|category tag)">([^<]*)<\/a>/gi;
   let m;
   while ((m = re.exec(block))) {
     const name = decodeHtml(m[2]);
@@ -214,6 +219,8 @@ export function parseCdaHdMoviePage(html, pageUrl) {
     const cap3 = html.match(/<div id="cap3">([\s\S]*?)<\/div>/i)?.[1] || "";
     cast = parseTaggedLinks(cap3, pageUrl).filter((link) => !/reżyser/i.test(link.name));
   }
+  harvestPeople(cast, "Aktor");
+  harvestPeople(directorLinks, "Reżyser");
 
   const country = decodeHtml(
     html.match(/<p class="meta_dd">\s*<b class="icon-network"><\/b>\s*([^<\n]+)/i)?.[1] || ""
@@ -253,47 +260,64 @@ function cdaHdPagedUrl(baseUrl, page) {
   return `${String(baseUrl).replace(/\/?$/, "/")}page/${page}/`;
 }
 
+const cdaHdBrowseCache = new Map();
+const CDA_HD_BROWSE_CACHE_TTL_MS = 10 * 60 * 1000;
+
 export async function fetchCdaHdBrowse(pageUrl, limit = 24, page = 1) {
   const safePage = Math.max(1, Number(page) || 1);
   const safeLimit = Math.min(Math.max(Number(limit) || 24, 1), 48);
-  const minNeeded = safePage * safeLimit + 1;
-  const all = [];
-  const seen = new Set();
-  let heading = "Powiązane filmy";
-  let finalUrl = pageUrl;
+  const minNeeded = safePage * safeLimit;
+  const cacheKey = String(pageUrl || "").replace(/\/$/, "");
+  let cached = cdaHdBrowseCache.get(cacheKey);
+  if (!cached || Date.now() - cached.at > CDA_HD_BROWSE_CACHE_TTL_MS) {
+    cached = { at: Date.now(), items: [], seen: new Set(), nextSitePage: 1, done: false, heading: "Powiązane filmy", finalUrl: pageUrl };
+  }
 
-  for (let p = 1; p <= 12 && all.length < minNeeded; p += 1) {
-    const fetchUrl = cdaHdPagedUrl(pageUrl, p);
+  while (!cached.done && cached.items.length < minNeeded && cached.nextSitePage <= 40) {
+    const sitePage = cached.nextSitePage;
+    const fetchUrl = cdaHdPagedUrl(pageUrl, sitePage);
     let html;
+    let finalUrl = fetchUrl;
     try {
       ({ html, finalUrl } = await fetchCdaHdHtml(fetchUrl));
     } catch {
+      if (!cached.items.length) cached.done = true;
       break;
     }
-    if (p === 1) {
-      heading =
+    if (sitePage === 1) {
+      cached.heading =
         decodeHtml(html.match(/<h1[^>]*>([^<]+)/i)?.[1] || "") ||
         decodeHtml(html.match(/<title>([^<|]+)/i)?.[1] || "") ||
-        heading;
+        cached.heading;
+      cached.finalUrl = finalUrl;
     }
-    const batch = parseCdaHdSearch(html, safeLimit + 12);
+    const batch = parseCdaHdSearch(html, 200);
     let added = 0;
     for (const item of batch) {
-      if (seen.has(item.url)) continue;
-      seen.add(item.url);
-      all.push(item);
+      if (cached.seen.has(item.url)) continue;
+      cached.seen.add(item.url);
+      cached.items.push(item);
       added += 1;
     }
-    if (!added) break;
+    cached.nextSitePage += 1;
+    // A short page is the end of the list. Requesting /page/N/ anyway
+    // hits a Cloudflare challenge and the films already parsed never return.
+    if (!added || added < 20) {
+      cached.done = true;
+      break;
+    }
   }
 
+  cached.at = Date.now();
+  cdaHdBrowseCache.set(cacheKey, cached);
+
   const start = (safePage - 1) * safeLimit;
-  const items = all.slice(start, start + safeLimit);
-  const hasMore = all.length > start + safeLimit;
+  const items = cached.items.slice(start, start + safeLimit);
+  const hasMore = start + items.length < cached.items.length || !cached.done;
 
   return {
-    title: heading.replace(/\s*–\s*CDA-HD.*/i, "").trim(),
-    pageUrl: finalUrl,
+    title: String(cached.heading || "").replace(/\s*–\s*CDA-HD.*/i, "").trim(),
+    pageUrl: cached.finalUrl,
     page: safePage,
     pageSize: safeLimit,
     items,
@@ -375,6 +399,24 @@ export function saveCdaHdDiskCatalog(items) {
   writeDiskCatalogCache({ latest, series: series.slice(0, 40), films: films.slice(0, 40) });
 }
 
+function parseListingYear(title, url, block) {
+  const fromTitle = String(title || "").match(/\((19\d{2}|20\d{2})\)/);
+  if (fromTitle) return Number(fromTitle[1]);
+  const blob = String(block || "");
+  const fromBlock =
+    blob.match(/release-year\/(\d{4})/i)?.[1] ||
+    blob.match(/tvshows-release-year\/(\d{4})/i)?.[1] ||
+    blob.match(/<span class="year">\s*(\d{4})/i)?.[1] ||
+    blob.match(/class="[^"]*year[^"]*"[^>]*>\s*(\d{4})/i)?.[1];
+  if (fromBlock && /^(19|20)\d{2}$/.test(fromBlock)) return Number(fromBlock);
+  const fromUrl = String(url || "").match(/(?:^|[-/])((?:19|20)\d{2})(?:[-/]|$)/);
+  if (fromUrl) {
+    const year = Number(fromUrl[1]);
+    if (year >= 1950 && year <= 2035) return year;
+  }
+  return null;
+}
+
 export function parseCdaHdSearch(html, limit = 12) {
   const results = [];
   const seen = new Set();
@@ -405,6 +447,7 @@ export function parseCdaHdSearch(html, limit = 12) {
     const ratingRaw = block.match(/<span class="imdbs">([^<]*)<\/span>/i)?.[1]?.trim() || null;
     const rating = ratingRaw != null && ratingRaw !== "" ? Number(ratingRaw) : null;
     const isSerial = /serial/i.test(typepost) || isCdaHdTvShowUrl(url) || /\/tvshows?\//i.test(url);
+    const year = parseListingYear(title, url, block);
 
     results.push({
       id: url.replace(/\/$/, "").split("/").pop(),
@@ -414,6 +457,7 @@ export function parseCdaHdSearch(html, limit = 12) {
       uploader: "CDA-HD",
       duration: 0,
       rating: Number.isFinite(rating) ? rating : null,
+      year,
       quality: Number.isFinite(rating) ? `${rating}/10` : null,
       qualities: Number.isFinite(rating) ? [`TMDb ${rating}`] : [],
       source: "cda-hd",
@@ -444,14 +488,21 @@ export function parseCdaHdSearchRss(xml, limit = 48) {
     if (!/cda-hd\./i.test(url)) continue;
     seen.add(url);
     const isSerial = isCdaHdTvShowUrl(url) || /\/tvshows?\//i.test(url) || /post_type=tvshows/i.test(block);
+    const year = parseListingYear(title, url, block);
+    const thumbnail =
+      block.match(/<media:thumbnail[^>]+url="([^"]+)"/i)?.[1] ||
+      block.match(/<enclosure[^>]+url="(https:\/\/image\.tmdb\.org[^"]+)"/i)?.[1] ||
+      block.match(/(https:\/\/image\.tmdb\.org\/t\/p\/[^"'\s<]+)/i)?.[1] ||
+      "";
     results.push({
       id: url.replace(/\/$/, "").split("/").pop(),
       title,
       url,
-      thumbnail: "",
+      thumbnail: absUrl(thumbnail),
       uploader: "CDA-HD",
       duration: 0,
       rating: null,
+      year,
       quality: null,
       qualities: [],
       source: "cda-hd",
@@ -633,48 +684,234 @@ export async function fetchCdaHdLatest(limit = 20) {
   return items;
 }
 
-export async function searchCdaHd(query, limit = 48, page = 1) {
-  const q = String(query || "").trim();
-  const target = Math.min(Math.max(Number(limit) || 48, 1), 120);
-  if (!q) return [];
+export const CDA_HD_SEARCH_GENRES = [
+  { name: "Akcja", slug: "akcja" },
+  { name: "Akcja i Przygoda", slug: "akcja-i-przygoda" },
+  { name: "Animacja", slug: "animacja" },
+  { name: "Dokumentalny", slug: "dokumentalny" },
+  { name: "Dramat", slug: "dramat" },
+  { name: "Familijny", slug: "familijny" },
+  { name: "Fantasy", slug: "fantasy" },
+  { name: "Historyczny", slug: "historyczny" },
+  { name: "Horror", slug: "horror" },
+  { name: "Komedia", slug: "komedia" },
+  { name: "Kryminał", slug: "kryminal" },
+  { name: "Przygodowy", slug: "przygodowy" },
+  { name: "Romans", slug: "romans" },
+  { name: "Science fiction", slug: "sci-fi" },
+  { name: "Thriller", slug: "thriller" },
+  { name: "Wojenny", slug: "wojenny" },
+  { name: "Western", slug: "western" },
+  { name: "Biograficzny", slug: "biograficzny" },
+];
 
-  // 1) RSS — jeden request, poprawne tytuły/linki (WordPress search feed).
-  try {
-    const slug = encodeURIComponent(q).replace(/%20/g, "+");
-    const rssUrl = `${CDA_HD_BASE}/search/${slug}/feed/rss2/`;
-    const { html: rss } = await fetchCdaHdHtml(rssUrl);
-    const fromRss = parseCdaHdSearchRss(rss, target);
-    if (fromRss.length) return fromRss;
-  } catch (err) {
-    console.warn("cda-hd search rss:", err?.message || err);
+function normalizeSearchText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function searchSlug(value) {
+  return normalizeSearchText(value).replace(/\s+/g, "-");
+}
+
+function isCatalogYearQuery(query) {
+  return /^(19|20)\d{2}$/.test(String(query || "").trim());
+}
+
+function isBareNumberQuery(query) {
+  return /^\d{2,4}$/.test(String(query || "").trim());
+}
+
+export function titleMatchesSearchQuery(title, query) {
+  const q = normalizeSearchText(query);
+  if (!q) return false;
+  const t = normalizeSearchText(title);
+  if (!t) return false;
+  if (t === q) return true;
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  if (new RegExp(`(?:^|\\s)${escaped}(?:\\s|$)`).test(t)) return true;
+  if (/^\d+$/.test(q)) return false;
+  const tokens = t.split(/\s+/).filter(Boolean);
+  if (tokens.some((token) => token.startsWith(q))) return true;
+  return q.length >= 3 && t.includes(q);
+}
+
+function headingFromHtml(html, fallback) {
+  return (
+    decodeHtml(html.match(/<h1[^>]*>([^<]+)/i)?.[1] || "") ||
+    decodeHtml(html.match(/<title>([^<|]+)/i)?.[1] || "") ||
+    fallback
+  )
+    .replace(/\s*[–—-]\s*(Year|CDA-HD|Year – CDA-HD).*/i, "")
+    .replace(/\s*–\s*CDA-HD.*/i, "")
+    .trim();
+}
+
+const cdaHdTitleSearchCache = new Map();
+const CDA_HD_TITLE_SEARCH_TTL_MS = 15 * 60 * 1000;
+
+async function fetchCdaHdSearchCards(query, target) {
+  const key = normalizeSearchText(query);
+  const cached = cdaHdTitleSearchCache.get(key);
+  if (cached && Date.now() - cached.at < CDA_HD_TITLE_SEARCH_TTL_MS) {
+    return cached.items.slice(0, target);
   }
-
-  // 2) HTML wyszukiwania (naprawiony parser bez wymogu typepost).
-  const maxPages = Math.max(1, Math.min(Number(page) || 1, 4));
   const all = [];
   const seen = new Set();
-  for (let p = 1; p <= maxPages && all.length < target; p += 1) {
-    const searchUrl =
-      p === 1
-        ? `${CDA_HD_BASE}/?s=${encodeURIComponent(q)}`
-        : `${CDA_HD_BASE}/page/${p}/?s=${encodeURIComponent(q)}`;
-    let html;
-    try {
-      ({ html } = await fetchCdaHdHtml(searchUrl));
-    } catch {
-      break;
-    }
-    const batch = parseCdaHdSearch(html, target - all.length);
-    let added = 0;
-    for (const item of batch) {
+  const searchUrl = `${CDA_HD_BASE}/?s=${encodeURIComponent(query)}`;
+  try {
+    const { html } = await fetchCdaHdHtml(searchUrl);
+    for (const item of parseCdaHdSearch(html, Math.max(target, 80))) {
       if (seen.has(item.url)) continue;
       seen.add(item.url);
       all.push(item);
-      added += 1;
     }
-    if (!added) break;
+    cdaHdTitleSearchCache.set(key, { at: Date.now(), items: all });
+  } catch {
+    return cached?.items?.slice(0, target) || [];
   }
   return all.slice(0, target);
+}
+
+function localCatalogTitleHits(query, limit) {
+  try {
+    const disk = loadCdaHdDiskCatalog(14 * 24 * 60 * 60 * 1000);
+    const pool = [
+      ...(disk?.latest || []),
+      ...(disk?.films || []),
+      ...(disk?.series || []),
+    ];
+    const seen = new Set();
+    const out = [];
+    for (const item of pool) {
+      const url = item?.url;
+      if (!url || seen.has(url)) continue;
+      if (!titleMatchesSearchQuery(item.title, query)) continue;
+      seen.add(url);
+      out.push(item);
+      if (out.length >= limit) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCdaHdNamedPage(path, name, role) {
+  const url = `${CDA_HD_BASE}${path}`;
+  try {
+    const { html, finalUrl } = await fetchCdaHdHtml(url);
+    const items = parseCdaHdSearch(html, 8);
+    if (!items.length) return null;
+    const heading = headingFromHtml(html, name);
+    return {
+      name: heading || name,
+      url: finalUrl || url,
+      role,
+      thumbnail: items[0]?.thumbnail || "",
+      count: items.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function searchCdaHdAdvanced(query, limit = 48, page = 1) {
+  const q = String(query || "").trim();
+  const safePage = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(Math.max(Number(limit) || 24, 1), 48);
+  if (!q) {
+    return { results: [], people: [], genres: [], years: [], hasMore: false, page: safePage, pageSize };
+  }
+
+  const people = [];
+  const genres = [];
+  const years = [];
+  const seenPeople = new Set();
+
+  if (isCatalogYearQuery(q)) {
+    years.push({
+      name: q,
+      url: `${CDA_HD_BASE}/release-year/${q}/`,
+      year: Number(q),
+    });
+  }
+
+  const genreNeedle = normalizeSearchText(q);
+  for (const genre of CDA_HD_SEARCH_GENRES) {
+    const g = normalizeSearchText(genre.name);
+    if (
+      g === genreNeedle
+      || genre.slug === searchSlug(q)
+      || (genreNeedle.length >= 3 && (g.startsWith(genreNeedle) || genre.slug.startsWith(searchSlug(q))))
+    ) {
+      genres.push({
+        name: genre.name,
+        url: `${CDA_HD_BASE}/gatunki/${genre.slug}/`,
+      });
+    }
+  }
+
+  if (!isBareNumberQuery(q) && !isCatalogYearQuery(q)) {
+    for (const hit of matchPeople(q, 12)) {
+      if (seenPeople.has(hit.url)) continue;
+      seenPeople.add(hit.url);
+      people.push(hit);
+    }
+  }
+
+  const queries = [q];
+  if (isBareNumberQuery(q) && !isCatalogYearQuery(q)) queries.push(`${q}:`);
+
+  const raw = [];
+  const seen = new Set();
+  const addBatch = (batch) => {
+    for (const item of batch || []) {
+      if (!item?.url || seen.has(item.url)) continue;
+      seen.add(item.url);
+      raw.push(item);
+    }
+  };
+  addBatch(localCatalogTitleHits(q, pageSize * safePage + 8));
+
+  const livePromise = (async () => {
+    const collected = [];
+    for (const phrase of queries) {
+      collected.push(...(await fetchCdaHdSearchCards(phrase, pageSize * safePage + 8)));
+    }
+    return collected;
+  })();
+
+  const waitMs = people.length || genres.length || years.length ? 2800 : 12000;
+  const live = await Promise.race([
+    livePromise,
+    new Promise((resolve) => setTimeout(() => resolve(null), waitMs)),
+  ]);
+  if (Array.isArray(live)) addBatch(live);
+  else livePromise.catch(() => {});
+
+  const matched = raw.filter((item) => titleMatchesSearchQuery(item.title, q));
+  const start = (safePage - 1) * pageSize;
+  const results = matched.slice(start, start + pageSize);
+  return {
+    results,
+    people,
+    genres,
+    years,
+    hasMore: start + results.length < matched.length,
+    page: safePage,
+    pageSize,
+    total: matched.length,
+  };
+}
+
+export async function searchCdaHd(query, limit = 48, page = 1) {
+  const advanced = await searchCdaHdAdvanced(query, limit, page);
+  return advanced.results;
 }
 
 export function parseCdaHdTvShow(html, pageUrl) {

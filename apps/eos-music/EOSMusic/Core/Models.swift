@@ -140,6 +140,14 @@ struct SearchResultItem: Codable, Identifiable, Hashable {
     let premium: Bool?
     let previewUrl: String?
     let isrc: String?
+    let year: Int?
+
+    /// Rok z pola katalogu, a gdy go nie ma — z „(2025)” w tytule.
+    var releaseYear: Int? {
+        if let year, year > 1900 { return year }
+        guard let match = title.range(of: #"\((19|20)\d{2}\)"#, options: .regularExpression) else { return nil }
+        return Int(title[match].dropFirst().dropLast())
+    }
 
     var artworkURL: URL? {
         guard let thumbnail, !thumbnail.isEmpty else { return nil }
@@ -232,6 +240,10 @@ struct JobStatusResponse: Codable {
     let persistent: Bool?
     let onServer: Bool?
     let mode: String?
+    /// Bytes already written on the server for this job.
+    let downloadedBytes: Int?
+    /// Expected file size from the chosen stream, when the server could measure it.
+    let expectedBytes: Int?
 
     var isDurableServerCopy: Bool {
         if mode == "stream-proxy" { return false }
@@ -289,6 +301,8 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
     let updatedAt: Double?
     let mode: String?
     let intent: String?
+    let downloadedBytes: Int?
+    let expectedBytes: Int?
 
     var isMusic: Bool { kind == "music" }
     var isMovie: Bool { kind == "movie" }
@@ -315,19 +329,27 @@ struct ActiveServerDownload: Codable, Identifiable, Equatable, Hashable {
         return p == "download" || p == "acquire" || p == "file" || p == "ingest"
     }
 
-    /// Hung Apple Music ingest typically sits at ~22% with no file on disk.
+    /// A job with no bytes yet can be the YouTube search. Once any percent
+    /// arrives, the transfer is live even if it is still under 28%.
     var isLikelyStalledIngest: Bool {
         guard looksLikeFileIngest, !isTerminal, !isFailed else { return false }
-        if progressPercent > 28 { return false }
+        if progressPercent >= 1 || (downloadedBytes ?? 0) > 0 { return false }
         guard let queuedAt else { return false }
         let queuedMs = queuedAt > 10_000_000_000 ? queuedAt : queuedAt * 1000
-        return Date().timeIntervalSince1970 * 1000 - queuedMs > 40_000
+        return Date().timeIntervalSince1970 * 1000 - queuedMs > 180_000
     }
 
     var progressPercent: Double {
         let value = progress ?? 0
         return min(100, max(0, value <= 1 && value > 0 ? value * 100 : value))
     }
+}
+
+struct DownloadBatchTrackSnapshot: Codable, Equatable {
+    var url: String?
+    var title: String?
+    var status: String?
+    var progress: Double?
 }
 
 struct DownloadBatchSnapshot: Codable, Equatable {
@@ -341,6 +363,8 @@ struct DownloadBatchSnapshot: Codable, Equatable {
     var phase: String?
     var revision: Int?
     var status: String?
+    var currentItems: [DownloadBatchTrackSnapshot]?
+    var items: [DownloadBatchTrackSnapshot]?
 }
 
 struct DownloadQueueEnqueueResponse: Codable {
@@ -491,6 +515,23 @@ struct MusicTrack: Codable, Identifiable, Hashable {
     }
 
     var artworkURL: URL? { thumbnail.flatMap(URL.init(string:)) }
+
+    func withThumbnail(_ thumbnail: String?) -> MusicTrack {
+        MusicTrack(
+            folderId: folderId,
+            url: url,
+            title: title,
+            artist: artist,
+            album: album,
+            thumbnail: thumbnail ?? self.thumbnail,
+            duration: duration,
+            artistId: artistId,
+            albumId: albumId,
+            downloadJobId: downloadJobId,
+            serverAssetId: serverAssetId,
+            addedAt: addedAt
+        )
+    }
 
     init(
         folderId: String,

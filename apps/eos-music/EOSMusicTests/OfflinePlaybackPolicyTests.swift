@@ -443,9 +443,10 @@ final class VideoDurationPolicyTests: XCTestCase {
         XCTAssertEqual(VideoFilmstripPolicy.placementDuration(known: 7200, currentTime: 80), 7200)
         XCTAssertTrue(
             VideoFilmstripPolicy.shouldCaptureLiveFrame(
-                currentTime: 1.2,
+                currentTime: 10,
                 lastCaptureAt: -30,
-                isSeeking: false
+                isSeeking: false,
+                knownDuration: 5760
             )
         )
         XCTAssertFalse(
@@ -455,6 +456,19 @@ final class VideoDurationPolicyTests: XCTestCase {
                 isSeeking: false
             )
         )
+        let early = VideoFilmstripPolicy.liveBucket(fraction: 12 / 5760)
+        XCTAssertFalse(
+            VideoFilmstripPolicy.shouldCaptureLiveFrame(
+                currentTime: 20,
+                lastCaptureAt: 0,
+                isSeeking: false,
+                knownDuration: 5760,
+                occupiedBuckets: [early]
+            )
+        )
+        XCTAssertFalse(VideoFilmstripPolicy.canTakeVLCSnapshot(hasVideoSize: false, isSeeking: false, force: true))
+        XCTAssertFalse(VideoFilmstripPolicy.canTakeVLCSnapshot(hasVideoSize: true, isSeeking: true, force: false))
+        XCTAssertTrue(VideoFilmstripPolicy.canTakeVLCSnapshot(hasVideoSize: true, isSeeking: false, force: false))
     }
 }
 
@@ -475,5 +489,101 @@ final class VideoPlayerChromeMetricsTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(VideoPlayerChromeMetrics.islandGutter, 120)
         XCTAssertEqual(VideoPlayerChromeMetrics.sideInset(safeSide: 59), 59)
         XCTAssertEqual(VideoPlayerChromeMetrics.sideInset(safeSide: 0), 16)
+    }
+}
+
+final class MovieBrowseOrderingTests: XCTestCase {
+    func testNewestPutsLaterYearsFirst() {
+        let items = [
+            SearchResultItem(title: "Starszy (1990)", url: "https://example.com/a", thumbnail: nil, detail: nil, source: nil, uploader: nil, album: nil, duration: nil, artistId: nil, albumId: nil, trackNumber: nil, quality: nil, rating: 9, views: nil, isSerial: nil, premium: nil, previewUrl: nil, isrc: nil, year: 1990),
+            SearchResultItem(title: "Nowy (2025)", url: "https://example.com/b", thumbnail: nil, detail: nil, source: nil, uploader: nil, album: nil, duration: nil, artistId: nil, albumId: nil, trackNumber: nil, quality: nil, rating: 4, views: nil, isSerial: nil, premium: nil, previewUrl: nil, isrc: nil, year: 2025),
+        ]
+        let ordered = MovieBrowseOrdering.ordered(items, mode: .newest)
+        XCTAssertEqual(ordered.map(\.url), ["https://example.com/b", "https://example.com/a"])
+    }
+
+    func testTopRatedPutsHigherScoresFirst() {
+        let items = [
+            SearchResultItem(title: "Słabszy (2024)", url: "https://example.com/a", thumbnail: nil, detail: nil, source: nil, uploader: nil, album: nil, duration: nil, artistId: nil, albumId: nil, trackNumber: nil, quality: nil, rating: 3.8, views: nil, isSerial: nil, premium: nil, previewUrl: nil, isrc: nil, year: 2024),
+            SearchResultItem(title: "Lepszy (2019)", url: "https://example.com/b", thumbnail: nil, detail: nil, source: nil, uploader: nil, album: nil, duration: nil, artistId: nil, albumId: nil, trackNumber: nil, quality: nil, rating: 8.1, views: nil, isSerial: nil, premium: nil, previewUrl: nil, isrc: nil, year: 2019),
+        ]
+        let ordered = MovieBrowseOrdering.ordered(items, mode: .topRated)
+        XCTAssertEqual(ordered.map(\.url), ["https://example.com/b", "https://example.com/a"])
+    }
+}
+
+final class MovieResumePolicyTests: XCTestCase {
+    func testMidFilmPositionIsOffered() {
+        XCTAssertTrue(MovieResumePolicy.shouldOffer(position: 15 * 60, duration: 96 * 60))
+        XCTAssertFalse(MovieResumePolicy.shouldOffer(position: 10, duration: 96 * 60))
+        XCTAssertFalse(MovieResumePolicy.shouldOffer(position: 96 * 60 - 10, duration: 96 * 60))
+        XCTAssertEqual(MovieResumePolicy.clockLabel(seconds: 15 * 60 + 2), "15:02")
+    }
+
+    func testReleaseYearURLKeepsTheCatalogHost() {
+        XCTAssertEqual(
+            CdaHdBrowseLink.releaseYearURL(year: 1985, referenceURL: "https://cda-hd.cc/3879/rambo/"),
+            "https://cda-hd.cc/release-year/1985/"
+        )
+        XCTAssertEqual(CdaHdBrowseLink.year(in: "Rambo II (1985)"), 1985)
+    }
+}
+
+final class MovieDownloadQualityPolicyTests: XCTestCase {
+    func testInventedMirrorTiersAreNotARealQualityChoice() {
+        XCTAssertTrue(
+            MovieDownloadQualityPolicy.isInventedMirrorTier(detail: "Szacunek · mirror · czas z strony")
+        )
+        XCTAssertFalse(MovieDownloadQualityPolicy.isInventedMirrorTier(detail: "1128×480 · jedyna jakość w źródle"))
+        XCTAssertFalse(MovieDownloadQualityPolicy.isInventedMirrorTier(detail: "TVP VOD · szacunek"))
+    }
+
+    func testSingleSourceHeightHidesTheQualityPicker() {
+        let only = [
+            MediaQualityOption(id: "best", label: "Najlepsza dostępna", detail: "1128×480", sizeBytes: 681_378_552, height: 480)
+        ]
+        XCTAssertFalse(MovieDownloadQualityPolicy.offersDistinctVideoQuality(only))
+        let ladder = [
+            MediaQualityOption(id: "1080", label: "1080p", height: 1080),
+            MediaQualityOption(id: "720", label: "720p", height: 720),
+        ]
+        XCTAssertTrue(MovieDownloadQualityPolicy.offersDistinctVideoQuality(ladder))
+    }
+
+    func testProgressLabelUsesBytesWrittenNotABitrateGuess() {
+        XCTAssertEqual(
+            MovieDownloadQualityPolicy.progressBytesLabel(downloaded: 320 * 1_048_576, expected: 650 * 1_048_576),
+            "320 MB / 650 MB"
+        )
+        XCTAssertEqual(
+            MovieDownloadQualityPolicy.progressBytesLabel(downloaded: 681_378_552, expected: nil),
+            "650 MB"
+        )
+        XCTAssertEqual(
+            MovieDownloadQualityPolicy.progressBytesLabel(downloaded: 35_651_584, expected: 801_979_233),
+            "34.0 MB / 765 MB"
+        )
+    }
+
+    func testKnownSizeUsesMeasuredBytes() {
+        let option = MediaQualityOption(
+            id: "best",
+            label: "Najlepsza dostępna",
+            sizeBytes: 681_378_552,
+            sizeLabel: "ok. 650 MB",
+            height: 480
+        )
+        XCTAssertEqual(
+            option.knownSizeLabel(itemCount: 1, singleItemDuration: 5761, totalDuration: 5761),
+            "ok. 650 MB"
+        )
+        let invented = MediaQualityOption(
+            id: "1080",
+            label: "1080p",
+            detail: "Szacunek · mirror",
+            sizeBytes: 3_600_000_000,
+            height: 1080
+        )
+        XCTAssertNil(invented.knownSizeLabel(itemCount: 1, singleItemDuration: 5761, totalDuration: 5761))
     }
 }

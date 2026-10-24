@@ -72,7 +72,7 @@ actor DownloadCoordinator {
         try result.get()
     }
 
-    /// Runs `operation` under a phase slot (up to 2 NAS ingests / max 2 device transfers).
+    /// Runs `operation` under a phase slot (up to 3 NAS ingests / max 2 device transfers).
     func withPhaseSlot<T>(
         trackUrl: String,
         kind: Kind,

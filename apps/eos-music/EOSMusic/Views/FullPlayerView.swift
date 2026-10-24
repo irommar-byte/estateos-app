@@ -23,7 +23,11 @@ private struct PlayerContent: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.playerPresentedFullScreen) private var presentedFullScreen
     @State private var showAddToPlaylist = false
+    /// Spektrum, stroboskop, szklane tło i animowana okładka włączają się po przejściu
+    /// (w trakcie animacji były liczone klatka po klatce i zacinały wysuwanie).
+    @State private var heavyVisualsReady = false
     @State private var showEffectsSheet = false
     @State private var showQueueSheet = false
     @State private var artistRoute: MusicArtistRoute?
@@ -109,16 +113,22 @@ private struct PlayerContent: View {
                     image: engine.currentTrack.flatMap { engine.displayArtwork(for: $0) },
                     colorScheme: colorScheme
                 )
+                // Kolor tła płynnie przechodzi do barw nowej okładki.
+                .animation(.easeInOut(duration: 0.8), value: engine.currentTrack?.id)
+                .animation(.easeInOut(duration: 0.8), value: engine.displayArtwork != nil)
 
-                PlayerGlassBackground(
-                    visualizer: engine.visualizer,
-                    isPlaying: engine.isPlaying,
-                    preset: preset,
-                    policy: policy
-                )
-                .opacity(0.42)
+                if heavyVisualsReady {
+                    PlayerGlassBackground(
+                        visualizer: engine.visualizer,
+                        isPlaying: engine.isPlaying,
+                        preset: preset,
+                        policy: policy
+                    )
+                    .opacity(0.42)
+                    .transition(.opacity)
+                }
 
-                if policy.allowStrobe {
+                if policy.allowStrobe, heavyVisualsReady {
                     PlayerStrobeLayer(
                         visualizer: engine.visualizer,
                         isPlaying: engine.isPlaying && !engine.isLoading,
@@ -136,9 +146,7 @@ private struct PlayerContent: View {
 
                 if let track = engine.currentTrack {
                     Group {
-                        if preset.showsMixer {
-                            eqPlayerLayout(track: track, layout: layout)
-                        } else if layout.wide {
+                        if layout.wide {
                             widePlayerLayout(track: track, layout: layout)
                         } else {
                             narrowPlayerLayout(track: track, layout: layout)
@@ -163,6 +171,10 @@ private struct PlayerContent: View {
             PlaybackQueueSheet(engine: engine)
         }
         .onAppear { applySpectrumPreferences() }
+        .task {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            withAnimation(.easeInOut(duration: 0.35)) { heavyVisualsReady = true }
+        }
         .onChange(of: ui.playerSpectrumBandCount) { _, _ in applySpectrumPreferences() }
     }
 
@@ -171,9 +183,29 @@ private struct PlayerContent: View {
         UIDevice.current.userInterfaceIdiom == .pad || ProcessInfo.processInfo.isiOSAppOnMac
     }
 
+    /// iPhone w pełnym ekranie: uchwyt jak w Apple Music (gest w dół obsługuje przejście zoom).
+    private var showsGrabber: Bool {
+        presentedFullScreen && !showsCollapseChrome
+    }
+
     private var playerCollapseChrome: some View {
         Group {
-            if showsCollapseChrome {
+            if showsGrabber {
+                Button {
+                    heavyVisualsReady = false
+                    app.minimizePlayer()
+                } label: {
+                    Capsule()
+                        .fill(EOSTheme.textSecondary.opacity(0.5))
+                        .frame(width: 38, height: 5)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 6)
+                        .padding(.bottom, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Zwiń odtwarzacz")
+            } else if showsCollapseChrome {
                 HStack {
                     Button {
                         app.minimizePlayer()
@@ -260,7 +292,8 @@ private struct PlayerContent: View {
                     onQueueTap: nil,
                     onServer: app.isOnServer(track.url) || track.isOnServer,
                     drive: ui.playerDrive,
-                    compact: !layout.wide
+                    compact: !layout.wide,
+                    statusFlags: engine.statusFlags
                 )
                 .frame(maxWidth: .infinity)
                 ProMixerControlStrip(compact: !layout.wide)
@@ -338,35 +371,122 @@ private struct PlayerContent: View {
                 onQueueTap: nil,
                 onServer: app.isOnServer(track.url) || track.isOnServer,
                 drive: ui.playerDrive,
-                compact: !wide
+                compact: !wide,
+                statusFlags: engine.statusFlags
             )
             .frame(maxWidth: .infinity)
             ProMixerControlStrip(compact: !wide)
                 .frame(maxWidth: .infinity)
-            if preset.showsMixer {
-                nowPlayingSpectrum(layout: layout, eqH: eqH, fills: wide)
-                    .frame(maxWidth: .infinity, maxHeight: wide ? .infinity : nil)
-            }
         }
     }
 
+    @ViewBuilder
+    private func spectrumHostIfReady(
+        visualizer: PlayerAudioVisualizer,
+        isPlaying: Bool,
+        intensity: Double,
+        bandCount: Int,
+        barScale: Double,
+        speed: Double,
+        compact: Bool,
+        lightAppearance: Bool
+    ) -> some View {
+        if heavyVisualsReady {
+            WinampSpectrumHost(
+                visualizer: visualizer,
+                isPlaying: isPlaying,
+                intensity: intensity,
+                bandCount: bandCount,
+                barScale: barScale,
+                speed: speed,
+                compact: compact,
+                lightAppearance: lightAppearance
+            )
+            .transition(.opacity)
+        } else {
+            Color.clear
+        }
+    }
+
+    /// Pauza ustawiona przez użytkownika (nie chwilowe buforowanie ani przeskok utworu).
+    private var heroResting: Bool {
+        !engine.isPlaying && !engine.isPlaybackIntended && !engine.isLoading
+    }
+
+    @ViewBuilder
     private func nowPlayingHero(track: MusicPlaybackTrack, hero: CGFloat) -> some View {
+        if preset.showsMixer {
+            eqHeroPanel(track: track, hero: hero)
+        } else {
+            artworkHero(track: track, hero: hero)
+        }
+    }
+
+    /// EQ w kadrze okładki: rozmyta okładka jako tło, analizator na wierzchu.
+    /// Ten sam rozmiar i przejście co Winyl/Okładka — reszta playera stoi w miejscu.
+    private func eqHeroPanel(track: MusicPlaybackTrack, hero: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: max(14, hero * 0.06), style: .continuous)
+        return ZStack {
+            ArtworkImage(
+                url: track.artworkURL,
+                size: hero,
+                cornerRadius: 0,
+                allowAnimated: false,
+                fallbackImage: engine.displayArtwork(for: track)
+            )
+            .blur(radius: 26)
+            .overlay(Color.black.opacity(colorScheme == .light ? 0.38 : 0.55))
+            spectrumHostIfReady(
+                visualizer: engine.visualizer,
+                isPlaying: engine.isPlaying && !engine.isLoading,
+                intensity: mixerIntensity,
+                bandCount: ui.playerSpectrumBandCount,
+                barScale: ui.playerSpectrumBarScale,
+                speed: ui.playerSpectrumSpeed,
+                compact: hero < 260,
+                lightAppearance: false
+            )
+            .padding(hero * 0.06)
+        }
+        .frame(width: hero, height: hero)
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(.white.opacity(0.12), lineWidth: 1))
+        .scaleEffect(heroResting ? 0.82 : 1)
+        .shadow(color: .black.opacity(heroResting ? 0.14 : 0.34), radius: heroResting ? 12 : 28, y: heroResting ? 6 : 18)
+        .animation(.spring(response: 0.55, dampingFraction: 0.66), value: heroResting)
+        .transition(.scale(scale: 0.92).combined(with: .opacity))
+        .frame(maxWidth: .infinity)
+    }
+
+    private func artworkHero(track: MusicPlaybackTrack, hero: CGFloat) -> some View {
         PlayerHeroArtwork(
             artworkURL: track.artworkURL,
             fallbackImage: engine.displayArtwork(for: track),
             isPlaying: engine.isPlaying && !engine.isLoading,
-            preset: preset,
+            preset: heavyVisualsReady ? preset : .off,
             policy: policy,
             visualizer: engine.visualizer,
             canvasSize: hero
         )
         .id(track.id)
-        .modifier(PlayerArtworkGeometry())
+        .transition(.asymmetric(
+            insertion: .scale(scale: 0.9).combined(with: .opacity),
+            removal: .scale(scale: 1.04).combined(with: .opacity)
+        ))
+        // Apple Music: przy pauzie okładka „odsuwa się”, przy odtwarzaniu wraca z głębokim cieniem.
+        .scaleEffect(heroResting ? 0.82 : 1)
+        .shadow(
+            color: .black.opacity(heroResting ? 0.14 : 0.34),
+            radius: heroResting ? 12 : 28,
+            y: heroResting ? 6 : 18
+        )
+        .animation(.spring(response: 0.55, dampingFraction: 0.66), value: heroResting)
+        .animation(.spring(response: 0.5, dampingFraction: 0.84), value: track.id)
         .frame(maxWidth: .infinity)
     }
 
     private func nowPlayingSpectrum(layout: PlayerLayout, eqH: CGFloat, fills: Bool = false) -> some View {
-        WinampSpectrumHost(
+        spectrumHostIfReady(
             visualizer: engine.visualizer,
             isPlaying: engine.isPlaying && !engine.isLoading,
             intensity: mixerIntensity,
@@ -550,6 +670,8 @@ private struct PlayerContent: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentTransition(.opacity)
+                    .animation(.easeInOut(duration: 0.3), value: track.title)
                 if let artist = track.artist, !artist.isEmpty {
                     Button {
                         Task { await openArtist(for: track) }
@@ -704,7 +826,8 @@ private struct PlayerLayout {
         PlayerVisualMetrics.heroSide(
             width: width,
             availableHeight: availableHeight,
-            showsMixer: preset.showsMixer,
+            // EQ zajmuje miejsce okładki — ten sam rozmiar, nic się nie przesuwa.
+            showsMixer: false,
             isPad: isPad
         )
     }
@@ -911,15 +1034,14 @@ private struct PlayerHeroArtwork: View {
             } else if preset == .vinyl {
                 VinylHero(artworkURL: artworkURL, fallbackImage: fallbackImage, isPlaying: isPlaying, canvasSize: canvasSize)
             } else if (preset == .cover || preset == .strobe), let visualizer {
-                CoverSplitBeatPulseView(
+                ClubCoverView(
                     artworkURL: artworkURL,
                     fallbackImage: fallbackImage,
                     isPlaying: isPlaying,
                     visualizer: visualizer,
-                    policy: policy,
                     canvasSize: canvasSize,
                     cornerRadius: PlayerVisualMetrics.heroCornerRadius,
-                    style: .split
+                    strobe: preset == .strobe || policy.allowStrobe
                 )
             } else if preset == .cover {
                 CoverHero(artworkURL: artworkURL, fallbackImage: fallbackImage, isPlaying: isPlaying, canvasSize: canvasSize, lively: true)
@@ -943,6 +1065,9 @@ private struct PlayerHeroArtwork: View {
     }
 }
 
+/// Realistyczny gramofon: czarna płyta z rowkami i naklejką (okładka), 33⅓ obr./min,
+/// odblask światła, który NIE kręci się z płytą (jak lampa nad gramofonem),
+/// oraz ramię z wkładką, które opada na płytę przy odtwarzaniu i odjeżdża przy pauzie.
 private struct VinylHero: View {
     let artworkURL: URL?
     var fallbackImage: UIImage? = nil
@@ -951,13 +1076,123 @@ private struct VinylHero: View {
 
     var body: some View {
         let scale = canvasSize / 320
-        VinylCASpin(isSpinning: isPlaying) {
-            VinylDisc(artworkURL: artworkURL, fallbackImage: fallbackImage)
+        ZStack {
+            // Talerz / mata gramofonu
+            Circle()
+                .fill(RadialGradient(colors: [Color(white: 0.1), Color(white: 0.03)], center: .center, startRadius: 10, endRadius: 160))
+                .frame(width: 300, height: 300)
+                .overlay(Circle().strokeBorder(LinearGradient(colors: [Color.white.opacity(0.25), Color.white.opacity(0.03)], startPoint: .top, endPoint: .bottom), lineWidth: 1.5))
+                .shadow(color: .black.opacity(0.55), radius: 18, y: 10)
+
+            VinylCASpin(isSpinning: isPlaying, secondsPerRevolution: 1.8) {
+                RealVinylRecord(artworkURL: artworkURL, fallbackImage: fallbackImage)
+            }
+            .frame(width: 284, height: 284)
+
+            // Odblask lampy — stoi w miejscu, rowki „płyną” pod nim jak w prawdziwej płycie.
+            Circle()
+                .fill(
+                    AngularGradient(
+                        colors: [.clear, .white.opacity(0.22), .clear, .clear, .clear, .white.opacity(0.16), .clear, .clear],
+                        center: .center,
+                        angle: .degrees(-30)
+                    )
+                )
+                .frame(width: 284, height: 284)
+                .mask(
+                    Circle().frame(width: 284, height: 284)
+                        .overlay(Circle().frame(width: 118, height: 118).blendMode(.destinationOut))
+                        .compositingGroup()
+                )
+                .blendMode(.screen)
+                .allowsHitTesting(false)
+
+            Tonearm(isPlaying: isPlaying)
+                .frame(width: 320, height: 320)
+                .allowsHitTesting(false)
         }
-        .frame(width: 286, height: 286)
         .frame(width: 320, height: 320)
         .scaleEffect(scale)
         .frame(width: canvasSize, height: canvasSize)
+    }
+}
+
+private struct RealVinylRecord: View {
+    let artworkURL: URL?
+    var fallbackImage: UIImage? = nil
+
+    var body: some View {
+        ZStack {
+            Circle().fill(RadialGradient(colors: [Color(white: 0.09), Color(white: 0.015)], center: .center, startRadius: 40, endRadius: 142))
+            // Rowki: rysowane raz (statyczne), kręcą się razem z płytą na GPU.
+            Canvas { ctx, size in
+                let c = CGPoint(x: size.width / 2, y: size.height / 2)
+                var r: CGFloat = 64
+                var i = 0
+                while r < size.width / 2 - 3 {
+                    let path = Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+                    let band = (i / 9) % 2 == 0 // ścieżki utworów: co kilka rowków ciemniejsza przerwa
+                    ctx.stroke(path, with: .color(.white.opacity(band ? 0.055 : 0.025)), lineWidth: 0.6)
+                    r += 1.35
+                    i += 1
+                }
+                // Brzegi: rowek wejściowy i wyjściowy
+                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - 139, y: c.y - 139, width: 278, height: 278)), with: .color(.white.opacity(0.14)), lineWidth: 1)
+                ctx.stroke(Path(ellipseIn: CGRect(x: c.x - 64, y: c.y - 64, width: 128, height: 128)), with: .color(.white.opacity(0.12)), lineWidth: 1)
+            }
+            // Naklejka = okładka
+            ArtworkImage(url: artworkURL, size: 116, cornerRadius: 58, circleClip: true, allowAnimated: false, fallbackImage: fallbackImage)
+                .overlay(Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1))
+            // Otwór na trzpień
+            Circle()
+                .fill(RadialGradient(colors: [Color(white: 0.85), Color(white: 0.45)], center: .topLeading, startRadius: 1, endRadius: 8))
+                .frame(width: 9, height: 9)
+                .shadow(color: .black.opacity(0.6), radius: 1.5)
+        }
+        .frame(width: 284, height: 284)
+    }
+}
+
+/// Ramię gramofonu z przeciwwagą i wkładką; obraca się wokół osi w prawym górnym rogu.
+private struct Tonearm: View {
+    let isPlaying: Bool
+
+    var body: some View {
+        let pivot = CGPoint(x: 292, y: 30)
+        ZStack(alignment: .topLeading) {
+            ZStack(alignment: .top) {
+                // Przeciwwaga
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(LinearGradient(colors: [Color(white: 0.75), Color(white: 0.35)], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: 14, height: 22)
+                    .offset(y: -26)
+                // Rurka ramienia
+                Capsule()
+                    .fill(LinearGradient(colors: [Color(white: 0.95), Color(white: 0.55), Color(white: 0.8)], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: 5, height: 190)
+                // Główka z wkładką
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(LinearGradient(colors: [Color(white: 0.3), Color(white: 0.1)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 16, height: 28)
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(EOSTheme.accent).frame(width: 10, height: 3)
+                    }
+                    .offset(y: 182)
+            }
+            .shadow(color: .black.opacity(0.5), radius: 4, x: 3, y: 6)
+            .rotationEffect(.degrees(isPlaying ? 24 : -8), anchor: .top)
+            .offset(x: pivot.x - 8, y: pivot.y)
+            .animation(.spring(response: 0.9, dampingFraction: 0.8), value: isPlaying)
+
+            // Oś ramienia
+            Circle()
+                .fill(RadialGradient(colors: [Color(white: 0.85), Color(white: 0.3)], center: .topLeading, startRadius: 1, endRadius: 16))
+                .frame(width: 26, height: 26)
+                .overlay(Circle().fill(Color(white: 0.15)).frame(width: 8, height: 8))
+                .shadow(color: .black.opacity(0.5), radius: 3, y: 2)
+                .offset(x: pivot.x - 13, y: pivot.y - 13)
+        }
+        .frame(width: 320, height: 320, alignment: .topLeading)
     }
 }
 
@@ -1355,44 +1590,113 @@ private struct PlayerStrobeLayer: View {
     var trackID: String?
     var colorScheme: ColorScheme = .dark
     var backgroundMode: Bool = true
-
-    @StateObject private var driver = CoverBeatPulseDriver()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let pulse = driver.pulse
-        let flash = max(pulse.beat, pulse.rytm * 0.85, pulse.bass * 0.40)
-        StrobeFlashView(
-            flash: flash,
-            beat: pulse.beat,
-            rytm: pulse.rytm,
-            isPlaying: isPlaying,
-            intensity: intensity,
-            brightness: brightness,
-            colorScheme: colorScheme,
-            backgroundMode: backgroundMode
+        RazorStrobeView(
+            visualizer: visualizer,
+            isPlaying: isPlaying && !reduceMotion,
+            alpha: backgroundMode ? 0.55 : max(0.85, brightness)
         )
-        .onAppear {
-            driver.start(
-                visualizer: visualizer,
-                isPlaying: isPlaying,
-                fps: PlayerVisualMetrics.analyzerFPS(preferred: 14)
-            )
+        .ignoresSafeArea()
+    }
+}
+
+/// Stroboskop „jak brzytwa”: twardy błysk 45 ms (bez wygaszania) dokładnie na stopę i werbel,
+/// na przemian neonowa zieleń i żółć. Jedna warstwa GPU + CADisplayLink — zero przebudów SwiftUI.
+private struct RazorStrobeView: UIViewRepresentable {
+    let visualizer: PlayerAudioVisualizer
+    let isPlaying: Bool
+    let alpha: Double
+
+    func makeUIView(context: Context) -> RazorStrobeUIView { RazorStrobeUIView() }
+
+    func updateUIView(_ view: RazorStrobeUIView, context: Context) {
+        view.configure(visualizer: visualizer, isPlaying: isPlaying, alpha: alpha)
+    }
+
+    static func dismantleUIView(_ view: RazorStrobeUIView, coordinator: ()) { view.stop() }
+}
+
+final class RazorStrobeUIView: UIView {
+    private static let colors: [UIColor] = [
+        UIColor(red: 0.22, green: 1.0, blue: 0.08, alpha: 1),  // neonowa zieleń
+        UIColor(red: 1.0, green: 0.95, blue: 0.0, alpha: 1)    // neonowa żółć
+    ]
+    private static let flashDuration: CFTimeInterval = 0.045
+    private static let minGap: CFTimeInterval = 0.09   // maks. ~11 błysków / s
+
+    private weak var visualizer: PlayerAudioVisualizer?
+    private var isPlaying = false
+    private var flashAlpha: Double = 0.9
+    private var link: CADisplayLink?
+    private var lastKick: Double = 0
+    private var lastSnare: Double = 0
+    private var flashStart: CFTimeInterval = 0
+    private var colorIndex = 0
+    private let flash = CALayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        flash.opacity = 0
+        flash.actions = ["opacity": NSNull(), "backgroundColor": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        layer.addSublayer(flash)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        flash.frame = bounds
+    }
+
+    func configure(visualizer: PlayerAudioVisualizer, isPlaying: Bool, alpha: Double) {
+        self.visualizer = visualizer
+        self.isPlaying = isPlaying
+        self.flashAlpha = alpha
+        if isPlaying { start() } else { stop(); flash.opacity = 0 }
+    }
+
+    private func start() {
+        guard link == nil else { return }
+        let l = CADisplayLink(target: StrobeTarget(self), selector: #selector(StrobeTarget.tick(_:)))
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        l.add(to: .main, forMode: .common)
+        link = l
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+    }
+
+    fileprivate func step() {
+        guard let frame = visualizer?.snapshot(isPlaying: true) else { return }
+        let now = CACurrentMediaTime()
+        let latency = EOSBeatClock.outputLatency
+        // Błysk w chwili, gdy uderzenie jest słyszalne.
+        let kickAudible = frame.kickAt > 0 && frame.kickAt != lastKick && now >= frame.kickAt + latency
+        let snareAudible = frame.snareAt > 0 && frame.snareAt != lastSnare && now >= frame.snareAt + latency
+        if kickAudible { lastKick = frame.kickAt }
+        if snareAudible { lastSnare = frame.snareAt }
+        if (kickAudible || snareAudible), now - flashStart >= Self.minGap {
+            flashStart = now
+            colorIndex = (colorIndex + 1) % Self.colors.count
+            flash.backgroundColor = Self.colors[colorIndex].cgColor
         }
-        .onChange(of: isPlaying) { _, playing in
-            driver.start(
-                visualizer: visualizer,
-                isPlaying: playing,
-                fps: PlayerVisualMetrics.analyzerFPS(preferred: 14)
-            )
-        }
-        .onChange(of: trackID) { _, _ in
-            driver.start(
-                visualizer: visualizer,
-                isPlaying: isPlaying,
-                fps: PlayerVisualMetrics.analyzerFPS(preferred: 14)
-            )
-        }
-        .onDisappear { driver.stop() }
+        let on = now - flashStart < Self.flashDuration
+        flash.opacity = on ? Float(flashAlpha) : 0
+    }
+}
+
+private final class StrobeTarget: NSObject {
+    weak var view: RazorStrobeUIView?
+    init(_ view: RazorStrobeUIView) { self.view = view }
+    @objc func tick(_ link: CADisplayLink) {
+        if let view { view.step() } else { link.invalidate() }
     }
 }
 

@@ -21,13 +21,15 @@ final class MusicPlaybackService: ObservableObject {
         }
         objectWillChange.send()
 
+        // @Published emituje przy każdym zapisie, także tej samej wartości — bez removeDuplicates
+        // każde `isLoading = false` przebudowywało ~35 widoków obserwujących AppModel.
         Publishers.MergeMany(
-            engine.$currentTrack.map { _ in () }.eraseToAnyPublisher(),
-            engine.$displayArtwork.map { _ in () }.eraseToAnyPublisher(),
-            engine.$isPlaying.map { _ in () }.eraseToAnyPublisher(),
-            engine.$isLoading.map { _ in () }.eraseToAnyPublisher(),
+            engine.$currentTrack.removeDuplicates().map { _ in () }.eraseToAnyPublisher(),
+            engine.$displayArtwork.map { $0.map(ObjectIdentifier.init) }.removeDuplicates().map { _ in () }.eraseToAnyPublisher(),
+            engine.$isPlaying.removeDuplicates().map { _ in () }.eraseToAnyPublisher(),
+            engine.$isLoading.removeDuplicates().map { _ in () }.eraseToAnyPublisher(),
             // Do NOT forward isBuffering — it flickers and rebuilds every @EnvironmentObject app list.
-            engine.$errorMessage.map { _ in () }.eraseToAnyPublisher()
+            engine.$errorMessage.removeDuplicates().map { _ in () }.eraseToAnyPublisher()
         )
         .receive(on: RunLoop.main)
         .sink { [weak self] _ in

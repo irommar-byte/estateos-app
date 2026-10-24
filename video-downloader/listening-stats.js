@@ -6,7 +6,6 @@ import {
   hashUserId,
   reconcileSessionStorage,
 } from "./movies-favorites.js";
-import { mergeMusicLibraryStoreKey } from "./music-library.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR =
@@ -57,7 +56,7 @@ function writeStore(userKey, store) {
 }
 
 function userKeyFromReq(req) {
-  reconcileSessionStorage(req, mergeMusicLibraryStoreKey);
+  reconcileSessionStorage(req, mergeListeningStatsStoreKey);
   const userKey = favoritesUserKeyFromReq(req);
   if (!userKey) throw new Error("Brak konta użytkownika.");
   return userKey;

@@ -21,10 +21,9 @@ struct LibraryPlaylistsView: View {
     @State private var showCleanupConfirm = false
     @State private var renameFolder: MusicFolder?
     @State private var renameText = ""
-    private let gridColumns = [
-        GridItem(.flexible(), spacing: 14),
-        GridItem(.flexible(), spacing: 14),
-    ]
+    private var gridColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 148, maximum: 210), spacing: 14)]
+    }
 
     private var sortMode: PlaylistSortMode { PlaylistSortMode(rawValue: playlistsSort) ?? .name }
     private var isEditing: Bool { editMode == .active }
@@ -469,9 +468,13 @@ struct LibraryPlaylistsView: View {
 
     private func playlistCard(_ folder: MusicFolder) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            PlaylistArtworkView(folder: folder, tracks: app.tracks(in: folder.id), size: 160, cornerRadius: 10)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
+            PlaylistArtworkView(
+                folder: folder,
+                tracks: app.tracks(in: folder.id),
+                size: 200,
+                cornerRadius: 10,
+                fillsWidth: true
+            )
 
             HStack(spacing: 6) {
                 Text(folder.name)
@@ -507,8 +510,14 @@ struct LibraryPlaylistsView: View {
     }
 
     private func setPolicyForSelection(_ policy: PlaylistAutoAcquirePolicy) {
-        for id in selectedFolderIDs {
-            PlaylistAutoAcquireStore.set(policy, for: id)
+        for folder in filteredFolders where selectedFolderIDs.contains(folder.id) {
+            let tracks = app.tracks(in: folder.id)
+            app.startPlaylistAutoAcquire(
+                folderId: folder.id,
+                folderName: folder.name,
+                tracks: tracks,
+                policy: policy
+            )
         }
     }
 
@@ -971,7 +980,8 @@ struct LibrarySongsView: View {
 
     var body: some View {
         LibrarySongsListView(
-            tracks: app.libraryTracksForBrowsing.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending },
+            // Posortowane raz na zmianę biblioteki (cache w AppModel), nie przy każdym odświeżeniu.
+            tracks: app.librarySongsSortedByTitle,
             title: app.isOfflinePlaybackActive ? "Utwory · Offline" : "Utwory",
             enablesLibrarySearch: true
         )

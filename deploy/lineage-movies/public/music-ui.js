@@ -7,6 +7,8 @@
   const state = {
     folders: [],
     tracks: [],
+    serverAssets: [],
+    serverAlbumKey: null,
     view: "home",
     folder: null,
     folderTracks: [],
@@ -86,6 +88,85 @@
     return d.innerHTML;
   }
 
+  function fmtSize(bytes) {
+    if (typeof fmtBytes === "function") return fmtBytes(bytes);
+    if (!bytes || bytes <= 0) return "—";
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  }
+
+  function serverAlbumKey(asset) {
+    return JSON.stringify([String(asset.artist || ""), String(asset.album || "")]);
+  }
+
+  function groupServerAlbums(items) {
+    const map = new Map();
+    for (const item of items || []) {
+      if (!item.ready) continue;
+      const key = serverAlbumKey(item);
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          artist: item.artist || "Nieznany wykonawca",
+          album: item.album || "Bez albumu",
+          artistRaw: String(item.artist || ""),
+          albumRaw: String(item.album || ""),
+          thumbnail: item.thumbnail || "",
+          items: [],
+          bytes: 0,
+        });
+      }
+      const group = map.get(key);
+      group.items.push(item);
+      group.bytes += Number(item.bytes) || 0;
+      if (!group.thumbnail && item.thumbnail) group.thumbnail = item.thumbnail;
+    }
+    return [...map.values()].sort((a, b) => {
+      const artistCmp = a.artist.localeCompare(b.artist, "pl");
+      return artistCmp || a.album.localeCompare(b.album, "pl");
+    });
+  }
+
+  async function loadServerAssets() {
+    try {
+      const data = await api("/api/music/assets");
+      state.serverAssets = data.items || [];
+    } catch {
+      state.serverAssets = [];
+    }
+  }
+
+  function triggerBrowserDownload(url, filename) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.download = filename || "download";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  async function downloadServerAsset(asset) {
+    if (!asset?.assetId) return;
+    const tok = await api(`/api/music/play-token/${encodeURIComponent(asset.assetId)}`);
+    const name = (asset.title || "utwor").replace(/[/\\?%*:|"<>]/g, "_") + ".mp3";
+    triggerBrowserDownload(
+      apiUrl(`/api/music/stream/${encodeURIComponent(asset.assetId)}?token=${encodeURIComponent(tok.token)}&download=1`),
+      name
+    );
+  }
+
+  function downloadServerAlbumZip(artistRaw, albumRaw) {
+    triggerBrowserDownload(
+      apiUrl(
+        `/api/music/assets/archive?artist=${encodeURIComponent(artistRaw || "")}&album=${encodeURIComponent(albumRaw || "")}`
+      )
+    );
+  }
+
+
   function renderHome() {
     state.view = "home";
     state.folder = null;
@@ -110,6 +191,9 @@
         <button type="button" class="music-btn" id="musicNewFolderBtn">Nowy folder</button>
       </div>
       <div class="music-grid" id="musicFolderGrid"></div>
+      <h2 class="music-section-title" style="margin-top:32px">Na serwerze</h2>
+      <p class="music-section-sub">Albumy zapisane na NAS — otwórz folder jak w Finderze i pobierz MP3 na ten komputer.</p>
+      <div class="music-grid" id="musicServerGrid"></div>
     `;
 
     const grid = $("musicFolderGrid");
@@ -131,6 +215,28 @@
       });
     }
 
+    const serverGrid = $("musicServerGrid");
+    const albums = groupServerAlbums(state.serverAssets);
+    if (serverGrid) {
+      if (!albums.length) {
+        serverGrid.innerHTML = '<p class="music-section-sub">Brak plików na serwerze — otwórz playlistę i kliknij „Pobierz brakujące”, albo pobierz z iPhone’a (EOS Music).</p>';
+      } else {
+        serverGrid.innerHTML = albums
+          .map(
+            (g) => `
+        <button type="button" class="music-folder-card" data-server-key="${esc(g.key)}">
+          <div class="music-folder-cover">${g.thumbnail ? `<img src="${esc(g.thumbnail)}" alt="" />` : "📁"}</div>
+          <div class="music-folder-name">${esc(g.album)}</div>
+          <div class="music-folder-meta">${esc(g.artist)} · ${g.items.length} ${g.items.length === 1 ? "utwór" : "utworów"} · ${esc(fmtSize(g.bytes))}</div>
+        </button>`
+          )
+          .join("");
+        serverGrid.querySelectorAll("[data-server-key]").forEach((btn) => {
+          btn.onclick = () => renderServerAlbum(btn.dataset.serverKey);
+        });
+      }
+    }
+
     $("musicImportBtn").onclick = () => $("musicImportModal").classList.add("open");
     $("musicNewFolderBtn").onclick = async () => {
       const name = prompt("Nazwa folderu:");
@@ -145,6 +251,86 @@
     $("musicCatalogBtn").onclick = runCatalogSearch;
     $("musicCatalogQ")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") runCatalogSearch();
+    });
+  }
+
+
+  function renderServerAlbum(key) {
+    const albums = groupServerAlbums(state.serverAssets);
+    const group = albums.find((g) => g.key === key);
+    const el = $("musicPanelBody");
+    if (!el) return;
+    if (!group) {
+      state.view = "home";
+      state.serverAlbumKey = null;
+      renderHome();
+      return;
+    }
+    state.view = "server-album";
+    state.serverAlbumKey = key;
+    const tracks = group.items.map((item) => ({
+      url: item.url,
+      title: item.title,
+      artist: item.artist,
+      album: item.album,
+      thumbnail: item.thumbnail,
+      duration: item.duration,
+      downloadJobId: item.assetId,
+      assetId: item.assetId,
+      bytes: item.bytes,
+    }));
+    el.innerHTML = `
+      <button type="button" class="music-btn" id="musicBackHome">← Muzyka</button>
+      <div style="display:flex;gap:20px;align-items:flex-start;margin:16px 0">
+        ${group.thumbnail ? `<img src="${esc(group.thumbnail)}" alt="" style="width:120px;height:120px;border-radius:14px;object-fit:cover" />` : ""}
+        <div>
+          <p class="music-hero-label">FOLDER NA SERWERZE</p>
+          <h2 class="music-section-title">${esc(group.album)}</h2>
+          <p class="music-section-sub">${esc(group.artist)} · ${group.items.length} utworów · ${esc(fmtSize(group.bytes))}</p>
+        </div>
+      </div>
+      <div class="music-toolbar">
+        <button type="button" class="music-btn music-btn-primary" id="musicServerPlayAll">Odtwórz</button>
+        <button type="button" class="music-btn" id="musicServerZip">Pobierz folder (ZIP)</button>
+      </div>
+      <div class="music-track-list" id="musicServerTracks"></div>
+    `;
+    $("musicBackHome").onclick = () => {
+      state.view = "home";
+      state.serverAlbumKey = null;
+      renderHome();
+    };
+    $("musicServerPlayAll").onclick = () => {
+      if (tracks.length) startPlayerQueue(tracks, 0);
+    };
+    $("musicServerZip").onclick = () => downloadServerAlbumZip(group.artistRaw, group.albumRaw);
+    const list = $("musicServerTracks");
+    list.innerHTML = tracks
+      .map(
+        (t, i) => `
+      <div class="music-track-row-wrap">
+        <button type="button" class="music-track-row" data-url="${esc(t.url)}">
+          <span class="music-track-idx">${i + 1}</span>
+          <div><div class="music-track-title">${esc(t.title)}</div><div class="music-track-sub">${esc(fmtSize(t.bytes))}</div></div>
+          <span></span>
+          <span class="music-track-dur">${fmtTime(t.duration)}</span>
+        </button>
+        <button type="button" class="music-btn music-track-add-btn" data-asset-id="${esc(t.assetId)}">Pobierz</button>
+      </div>`
+      )
+      .join("");
+    bindTrackRows(list, tracks, true);
+    list.querySelectorAll("[data-asset-id]").forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const asset = group.items.find((x) => x.assetId === btn.dataset.assetId);
+        try {
+          await downloadServerAsset(asset);
+        } catch (err) {
+          alert(err.message || "Nie udało się pobrać pliku.");
+        }
+      };
     });
   }
 
@@ -344,7 +530,7 @@
       thumbnail: raw.thumbnail,
       duration: raw.duration,
       folderId: raw.folderId || state.folder?.id,
-      downloadJobId: raw.downloadJobId,
+      downloadJobId: raw.downloadJobId || raw.assetId || "",
       artistId: raw.artistId || "",
       albumId: raw.albumId || "",
     };
@@ -866,7 +1052,9 @@
       }
       return;
     }
+    await loadServerAssets();
     if (state.view === "folder" && state.folder) await openFolder(state.folder.id);
+    else if (state.view === "server-album" && state.serverAlbumKey) renderServerAlbum(state.serverAlbumKey);
     else renderHome();
   }
 

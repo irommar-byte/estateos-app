@@ -552,9 +552,7 @@ struct RecentLibraryCell: View {
 
     private var tilesBody: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ArtworkImage(url: item.artworkURL, size: 160, cornerRadius: 10)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
+            ArtworkImage(url: item.artworkURL, size: 200, cornerRadius: 10, fillsWidth: true)
                 .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
 
             Text(item.title)
@@ -573,9 +571,7 @@ struct RecentLibraryCell: View {
 
     private var largeBody: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ArtworkImage(url: item.artworkURL, size: 280, cornerRadius: 14)
-                .frame(maxWidth: .infinity)
-                .aspectRatio(1, contentMode: .fit)
+            ArtworkImage(url: item.artworkURL, size: 320, cornerRadius: 14, fillsWidth: true)
                 .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
 
             VStack(alignment: .leading, spacing: 4) {

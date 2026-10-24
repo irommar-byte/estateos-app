@@ -184,7 +184,29 @@ function writeStore(userKey, items) {
   ensureDir(DATA_DIR);
   const file = favoritesFile(userKey);
   const sorted = [...items].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
-  fs.writeFileSync(file, JSON.stringify(sorted, null, 0) + "\n", { mode: 0o600 });
+  const payload = JSON.stringify(sorted, null, 0) + "\n";
+  if (fs.existsSync(file)) {
+    const current = fs.readFileSync(file, "utf8");
+    if (current === payload) return sorted;
+    try {
+      const backupDir = path.join(DATA_DIR, "backups", userKey);
+      ensureDir(backupDir);
+      fs.writeFileSync(path.join(backupDir, `${Date.now()}.json`), current, { mode: 0o600 });
+      const backups = fs
+        .readdirSync(backupDir)
+        .filter((name) => name.endsWith(".json"))
+        .sort()
+        .reverse();
+      for (const stale of backups.slice(30)) {
+        fs.unlinkSync(path.join(backupDir, stale));
+      }
+    } catch (err) {
+      console.warn("favorites backup:", err?.message || err);
+    }
+  }
+  const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, payload, { mode: 0o600 });
+  fs.renameSync(tmp, file);
   return sorted;
 }
 

@@ -400,7 +400,7 @@ export function startCdaHdSessionKeeper(baseUrl = "https://cda-hd.cc/") {
       // Odśwież zanim sesja padnie (domyślnie co ~2.5h albo gdy brak clearance).
       if (!session.cookies.some((c) => c.name === "cf_clearance") || age > SESSION_MAX_AGE_MS * 0.45) {
         await fetchCdaHdHtmlResilient(baseUrl);
-        console.warn("cda-hd keeper: sesja odświeżona");
+        if (process.env.CDA_HD_VERBOSE === "1") console.warn("cda-hd keeper: sesja odświeżona");
       }
     } catch (err) {
       console.warn("cda-hd keeper:", err?.message || err);

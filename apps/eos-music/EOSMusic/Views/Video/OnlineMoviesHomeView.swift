@@ -5,10 +5,18 @@ struct OnlineMoviesHomeView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var video: VideoAppModel
     @State private var selection: OnlineMovieSelection?
+    @State private var browseTarget: OnlineMoviesBrowseTarget?
     @State private var searchText = ""
     @State private var searchResults: [SearchResultItem] = []
+    @State private var searchPeople: [MovieSearchFacet] = []
+    @State private var searchGenres: [MovieSearchFacet] = []
+    @State private var searchYears: [MovieSearchFacet] = []
+    @State private var searchHasMore = false
+    @State private var searchPage = 1
     @State private var isSearching = false
+    @State private var isLoadingMoreSearch = false
     @State private var searchError: String?
+    @State private var searchSort: MovieBrowseOrdering.Mode = .newest
     @State private var catalogMode: FilmsCatalogMode = .latest
     @State private var catalogKind: FilmsCatalogKind = .all
     @State private var showCatalog = false
@@ -22,36 +30,36 @@ struct OnlineMoviesHomeView: View {
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 28) {
-                if let heroItem {
-                    heroBanner(heroItem)
-                } else if movies.isLoadingHome {
-                    ProgressView("Ładuję \(EOSLibraryBrand.displayName)…")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 80)
-                }
-
-                if !movieFavorites.isEmpty, searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    movieFavoritesShelf
-                }
-
-                if let error = movies.homeError, movies.shelves.isEmpty {
-                    ContentUnavailableView(
-                        "\(EOSLibraryBrand.displayName) niedostępne",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(error)
-                    )
-                    .frame(maxWidth: .infinity)
-                    Button("Spróbuj ponownie") {
-                        Task { await movies.refreshHome() }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(EOSTheme.accent)
-                    .frame(maxWidth: .infinity)
-                }
-
-                if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if isSearchActive {
                     searchSection
                 } else {
+                    if let heroItem {
+                        heroBanner(heroItem)
+                    } else if movies.isLoadingHome {
+                        ProgressView("Ładuję \(EOSLibraryBrand.displayName)…")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 80)
+                    }
+
+                    if !movieFavorites.isEmpty {
+                        movieFavoritesShelf
+                    }
+
+                    if let error = movies.homeError, movies.shelves.isEmpty {
+                        ContentUnavailableView(
+                            "\(EOSLibraryBrand.displayName) niedostępne",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text(error)
+                        )
+                        .frame(maxWidth: .infinity)
+                        Button("Spróbuj ponownie") {
+                            Task { await movies.refreshHome() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(EOSTheme.accent)
+                        .frame(maxWidth: .infinity)
+                    }
+
                     ForEach(movies.shelves) { shelf in
                         OnlineMoviesShelfRow(
                             shelf: shelf,
@@ -60,14 +68,17 @@ struct OnlineMoviesHomeView: View {
                                 catalogKind = kind
                                 showCatalog = true
                             },
-                            onSelect: { selection = OnlineMovieSelection(item: $0) }
+                            onSelect: { selection = OnlineMovieSelection(item: $0) },
+                            onOpenYear: { year, url in
+                                openReleaseYear(year, referenceURL: url)
+                            }
                         )
                         .environmentObject(app)
                     }
-                }
 
-                if !movies.downloads.isEmpty {
-                    downloadsShelf
+                    if !movies.downloads.isEmpty {
+                        downloadsShelf
+                    }
                 }
 
                 Color.clear.frame(height: 40)
@@ -91,6 +102,11 @@ struct OnlineMoviesHomeView: View {
         }
         .navigationDestination(item: $selection) { item in
             OnlineMovieDetailView(selection: item)
+                .environmentObject(app)
+                .environmentObject(video)
+        }
+        .navigationDestination(item: $browseTarget) { target in
+            OnlineMoviesBrowseResultsView(title: target.name, pageURL: target.url)
                 .environmentObject(app)
                 .environmentObject(video)
         }
@@ -133,6 +149,21 @@ struct OnlineMoviesHomeView: View {
 
     private var movieFavorites: [FavoriteItem] {
         app.favoriteItems.filter(\.isMovie)
+    }
+
+    private var isSearchActive: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var visibleSearchResults: [SearchResultItem] {
+        MovieBrowseOrdering.ordered(searchResults, mode: searchSort)
+    }
+
+    private func openReleaseYear(_ year: Int, referenceURL: String?) {
+        browseTarget = OnlineMoviesBrowseTarget(
+            name: "\(year)",
+            url: CdaHdBrowseLink.releaseYearURL(year: year, referenceURL: referenceURL)
+        )
     }
 
     private func heroBanner(_ item: SearchResultItem) -> some View {
@@ -204,6 +235,23 @@ struct OnlineMoviesHomeView: View {
             }
             .buttonStyle(.plain)
 
+            if let year = item.releaseYear {
+                Button {
+                    openReleaseYear(year, referenceURL: item.url)
+                } label: {
+                    Text(String(year))
+                        .font(EOSTypography.caption.weight(.bold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 28)
+                .padding(.top, 18)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+
             FavoriteButton(item: item.movieFavoriteItem, size: 18)
                 .padding(10)
                 .background(.ultraThinMaterial, in: Circle())
@@ -224,7 +272,10 @@ struct OnlineMoviesHomeView: View {
                             title: item.title,
                             thumbnail: item.thumbnail,
                             favoriteItem: item,
-                            badge: "♥"
+                            badge: "♥",
+                            onYear: { year in
+                                openReleaseYear(year, referenceURL: item.url)
+                            }
                         ) {
                             selection = OnlineMovieSelection(favorite: item)
                         }
@@ -247,7 +298,10 @@ struct OnlineMoviesHomeView: View {
                             title: download.title,
                             thumbnail: download.thumbnail,
                             favoriteItem: download.favoriteItem,
-                            badge: "SERWER"
+                            badge: "SERWER",
+                            onYear: { year in
+                                openReleaseYear(year, referenceURL: download.url)
+                            }
                         ) {
                             selection = OnlineMovieSelection(download: download)
                         }
@@ -259,7 +313,7 @@ struct OnlineMoviesHomeView: View {
     }
 
     private var searchSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 22) {
             HStack {
                 Text("Wyniki")
                     .font(EOSTypography.title3)
@@ -276,17 +330,93 @@ struct OnlineMoviesHomeView: View {
                     .padding(.horizontal, 16)
             }
 
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 110), spacing: 12)],
-                spacing: 16
-            ) {
-                ForEach(searchResults) { item in
-                    MoviePosterWithHeart(item: item) {
-                        selection = OnlineMovieSelection(item: item)
+            if !searchPeople.isEmpty {
+                searchFacetRow(title: "Osoby", items: searchPeople)
+            }
+            if !searchGenres.isEmpty {
+                searchFacetRow(title: "Gatunki", items: searchGenres)
+            }
+            if !searchYears.isEmpty {
+                searchFacetRow(title: "Lata", items: searchYears)
+            }
+
+            if !searchResults.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Filmy")
+                        .font(EOSTypography.title3)
+                        .padding(.horizontal, 16)
+                    Picker("Kolejność", selection: $searchSort) {
+                        ForEach(MovieBrowseOrdering.Mode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 110), spacing: 12)],
+                        spacing: 16
+                    ) {
+                        ForEach(visibleSearchResults) { item in
+                            MoviePosterWithHeart(item: item, showRating: true, onYear: { year in
+                                openReleaseYear(year, referenceURL: item.url)
+                            }) {
+                                selection = OnlineMovieSelection(item: item)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+
+                    if searchHasMore {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .onAppear {
+                                Task { await loadMoreSearch() }
+                            }
                     }
                 }
+            } else if !isSearching, searchError == nil, !searchPeople.isEmpty || !searchGenres.isEmpty || !searchYears.isEmpty {
+                Text("Wybierz osobę, gatunek albo rok, żeby zobaczyć filmy.")
+                    .font(EOSTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
+        }
+    }
+
+    private func searchFacetRow(title: String, items: [MovieSearchFacet]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(EOSTypography.title3)
+                .padding(.horizontal, 16)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(items) { item in
+                        Button {
+                            browseTarget = OnlineMoviesBrowseTarget(name: item.name, url: item.url)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.name)
+                                    .font(EOSTypography.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                                if let role = item.role, !role.isEmpty {
+                                    Text(role)
+                                        .font(EOSTypography.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .frame(minWidth: 132, alignment: .leading)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
         }
     }
 
@@ -294,16 +424,49 @@ struct OnlineMoviesHomeView: View {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 2 else {
             searchResults = []
+            searchPeople = []
+            searchGenres = []
+            searchYears = []
+            searchHasMore = false
+            searchPage = 1
             searchError = nil
             return
         }
         isSearching = true
         defer { isSearching = false }
         do {
-            try await Task.sleep(nanoseconds: 350_000_000)
+            try await Task.sleep(nanoseconds: 160_000_000)
             guard searchText.trimmingCharacters(in: .whitespacesAndNewlines) == trimmed else { return }
-            searchResults = try await movies.searchResults(query: trimmed)
-            searchError = searchResults.isEmpty ? "Brak wyników dla „\(trimmed)”." : nil
+            let response = try await movies.search(query: trimmed, page: 1)
+            searchResults = response.results
+            searchPeople = response.people
+            searchGenres = response.genres
+            searchYears = response.years
+            searchPage = response.page ?? 1
+            searchHasMore = response.hasMore ?? false
+            searchError = (
+                searchResults.isEmpty
+                    && searchPeople.isEmpty
+                    && searchGenres.isEmpty
+                    && searchYears.isEmpty
+            ) ? "Brak wyników dla „\(trimmed)”." : nil
+        } catch {
+            searchError = error.localizedDescription
+        }
+    }
+
+    private func loadMoreSearch() async {
+        let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard searchHasMore, !isSearching, !isLoadingMoreSearch, trimmed.count >= 2 else { return }
+        isLoadingMoreSearch = true
+        defer { isLoadingMoreSearch = false }
+        do {
+            let next = searchPage + 1
+            let response = try await movies.search(query: trimmed, page: next)
+            let fresh = response.results.filter { item in !searchResults.contains(where: { $0.id == item.id }) }
+            searchResults.append(contentsOf: fresh)
+            searchPage = next
+            searchHasMore = (response.hasMore ?? false) && !fresh.isEmpty
         } catch {
             searchError = error.localizedDescription
         }
@@ -383,15 +546,19 @@ struct MoviePosterWithHeart: View {
     var badge: String? = nil
     var rating: Double? = nil
     var showRating: Bool = false
+    var year: Int? = nil
+    var onYear: ((Int) -> Void)? = nil
     let onSelect: () -> Void
 
-    init(item: SearchResultItem, showRating: Bool = false, onSelect: @escaping () -> Void) {
+    init(item: SearchResultItem, showRating: Bool = false, onYear: ((Int) -> Void)? = nil, onSelect: @escaping () -> Void) {
         title = item.title
         thumbnail = item.thumbnail
         favoriteItem = item.movieFavoriteItem
         badge = item.contentTypeBadge
         rating = item.rating
         self.showRating = showRating
+        year = item.releaseYear
+        self.onYear = onYear
         self.onSelect = onSelect
     }
 
@@ -402,6 +569,8 @@ struct MoviePosterWithHeart: View {
         badge: String? = nil,
         rating: Double? = nil,
         showRating: Bool = false,
+        year: Int? = nil,
+        onYear: ((Int) -> Void)? = nil,
         onSelect: @escaping () -> Void
     ) {
         self.title = title
@@ -410,26 +579,52 @@ struct MoviePosterWithHeart: View {
         self.badge = badge
         self.rating = rating
         self.showRating = showRating
+        self.year = year ?? CdaHdBrowseLink.year(in: title)
+        self.onYear = onYear
         self.onSelect = onSelect
     }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Button(action: onSelect) {
-                OnlineMoviePosterCard(
-                    title: title,
-                    thumbnail: thumbnail,
-                    badge: badge,
-                    rating: rating,
-                    showRating: showRating
-                )
+        VStack(alignment: .leading, spacing: 4) {
+            ZStack(alignment: .bottomTrailing) {
+                Button(action: onSelect) {
+                    OnlineMoviePosterCard(
+                        title: title,
+                        thumbnail: thumbnail,
+                        badge: badge,
+                        rating: rating,
+                        showRating: showRating
+                    )
+                }
+                .buttonStyle(.plain)
+
+                FavoriteButton(item: favoriteItem, size: 14)
+                    .padding(7)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .padding(6)
+            }
+
+            if let year {
+                yearButton(year)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func yearButton(_ year: Int) -> some View {
+        if let onYear {
+            Button {
+                onYear(year)
+            } label: {
+                Text(String(year))
+                    .font(EOSTypography.caption.weight(.semibold))
+                    .foregroundStyle(EOSTheme.accent)
             }
             .buttonStyle(.plain)
-
-            FavoriteButton(item: favoriteItem, size: 14)
-                .padding(7)
-                .background(.ultraThinMaterial, in: Circle())
-                .padding(6)
+        } else {
+            Text(String(year))
+                .font(EOSTypography.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -441,6 +636,7 @@ private struct OnlineMoviesShelfRow: View {
     let shelf: FilmsHomeShelf
     let onOpenCatalog: (FilmsCatalogMode, FilmsCatalogKind) -> Void
     let onSelect: (SearchResultItem) -> Void
+    let onOpenYear: (Int, String) -> Void
 
     @State private var items: [SearchResultItem] = []
     @State private var page = 1
@@ -486,7 +682,9 @@ private struct OnlineMoviesShelfRow: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 12) {
                     ForEach(items) { item in
-                        MoviePosterWithHeart(item: item, showRating: showRatings) {
+                        MoviePosterWithHeart(item: item, showRating: showRatings, onYear: { year in
+                            onOpenYear(year, item.url)
+                        }) {
                             onSelect(item)
                         }
                         .onAppear {
@@ -558,6 +756,7 @@ struct OnlineMoviesCatalogView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var selection: OnlineMovieSelection?
+    @State private var browseTarget: OnlineMoviesBrowseTarget?
 
     init(mode: FilmsCatalogMode, initialKind: FilmsCatalogKind = .all) {
         self.mode = mode
@@ -569,7 +768,12 @@ struct OnlineMoviesCatalogView: View {
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], spacing: 16) {
                 ForEach(items) { item in
-                    MoviePosterWithHeart(item: item, showRating: mode == .topRated) {
+                    MoviePosterWithHeart(item: item, showRating: mode == .topRated, onYear: { year in
+                        browseTarget = OnlineMoviesBrowseTarget(
+                            name: "\(year)",
+                            url: CdaHdBrowseLink.releaseYearURL(year: year, referenceURL: item.url)
+                        )
+                    }) {
                         selection = OnlineMovieSelection(item: item)
                     }
                     .onAppear {
@@ -610,6 +814,11 @@ struct OnlineMoviesCatalogView: View {
         .task(id: "\(mode.rawValue)|\(kind.rawValue)") { await reload() }
         .navigationDestination(item: $selection) { item in
             OnlineMovieDetailView(selection: item)
+                .environmentObject(app)
+                .environmentObject(video)
+        }
+        .navigationDestination(item: $browseTarget) { target in
+            OnlineMoviesBrowseResultsView(title: target.name, pageURL: target.url)
                 .environmentObject(app)
                 .environmentObject(video)
         }
@@ -657,61 +866,96 @@ struct OnlineMoviesCatalogView: View {
     }
 }
 
-// MARK: - Filmy z danym aktorem
+// MARK: - Filmografia aktora i gatunek
 
-struct OnlineMoviesActorSelection: Identifiable, Hashable {
-    var id: String { name }
+struct OnlineMoviesBrowseTarget: Identifiable, Hashable {
+    var id: String { url.isEmpty ? name : url }
     let name: String
+    let url: String
 }
 
-struct OnlineMoviesActorResultsView: View {
+struct OnlineMoviesBrowseResultsView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var video: VideoAppModel
-    let actorName: String
+    let title: String
+    let pageURL: String
 
     @State private var items: [SearchResultItem] = []
     @State private var page = 1
     @State private var hasMore = false
     @State private var isLoading = true
+    @State private var isLoadingMore = false
     @State private var errorMessage: String?
     @State private var selection: OnlineMovieSelection?
+    @State private var sort: MovieBrowseOrdering.Mode = .newest
+    @State private var nestedBrowse: OnlineMoviesBrowseTarget?
+
+    private var visibleItems: [SearchResultItem] {
+        MovieBrowseOrdering.ordered(items, mode: sort)
+    }
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], spacing: 16) {
-                ForEach(items) { item in
-                    MoviePosterWithHeart(item: item) {
-                        selection = OnlineMovieSelection(item: item)
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Kolejność", selection: $sort) {
+                    ForEach(MovieBrowseOrdering.Mode.allCases) { mode in
+                        Text(mode.title).tag(mode)
                     }
-                    .onAppear {
-                        if item.id == items.last?.id, hasMore, !isLoading {
-                            Task { await loadMore() }
+                }
+                .pickerStyle(.segmented)
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 12)], spacing: 16) {
+                    ForEach(visibleItems) { item in
+                        MoviePosterWithHeart(item: item, showRating: true, onYear: { year in
+                            nestedBrowse = OnlineMoviesBrowseTarget(
+                                name: "\(year)",
+                                url: CdaHdBrowseLink.releaseYearURL(year: year, referenceURL: item.url)
+                            )
+                        }) {
+                            selection = OnlineMovieSelection(item: item)
                         }
                     }
                 }
+
+                if hasMore {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .onAppear {
+                            Task { await loadMore() }
+                        }
+                } else if isLoading, items.isEmpty {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if !isLoading, items.isEmpty, errorMessage == nil {
+                    ContentUnavailableView(
+                        "Brak filmów",
+                        systemImage: "film",
+                        description: Text("Ta lista jest teraz pusta.")
+                    )
+                    .padding(.vertical, 40)
+                }
             }
             .padding(16)
-
-            if isLoading {
-                ProgressView().padding()
-            }
-            if let errorMessage {
-                Text(errorMessage).foregroundStyle(.orange).padding()
-            }
-            if !isLoading, items.isEmpty, errorMessage == nil {
-                ContentUnavailableView(
-                    "Brak wyników",
-                    systemImage: "person.crop.circle.badge.questionmark",
-                    description: Text("Nie znaleziono filmów z „\(actorName)” w \(EOSLibraryBrand.displayName).")
-                )
-                .padding(.vertical, 40)
-            }
         }
-        .navigationTitle(actorName)
+        .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }
         .navigationDestination(item: $selection) { item in
             OnlineMovieDetailView(selection: item)
+                .environmentObject(app)
+                .environmentObject(video)
+        }
+        .navigationDestination(item: $nestedBrowse) { target in
+            OnlineMoviesBrowseResultsView(title: target.name, pageURL: target.url)
                 .environmentObject(app)
                 .environmentObject(video)
         }
@@ -721,28 +965,30 @@ struct OnlineMoviesActorResultsView: View {
         isLoading = true
         errorMessage = nil
         page = 1
+        items = []
+        hasMore = false
         defer { isLoading = false }
         do {
-            let response = try await app.onlineMovies.search(query: actorName, page: 1)
-            items = response.results
-            hasMore = response.hasMore ?? ((response.page ?? 1) < (response.totalPages ?? 1))
+            let response = try await app.onlineMovies.fetchBrowse(url: pageURL, page: 1)
+            items = response.items
+            page = response.page ?? 1
+            hasMore = response.hasMore ?? false
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     private func loadMore() async {
-        guard hasMore, !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
+        guard hasMore, !isLoading, !isLoadingMore else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
         do {
             let next = page + 1
-            let response = try await app.onlineMovies.search(query: actorName, page: next)
-            for item in response.results where !items.contains(where: { $0.id == item.id }) {
-                items.append(item)
-            }
+            let response = try await app.onlineMovies.fetchBrowse(url: pageURL, page: next)
+            let fresh = response.items.filter { item in !items.contains(where: { $0.id == item.id }) }
+            items.append(contentsOf: fresh)
             page = next
-            hasMore = response.hasMore ?? false
+            hasMore = (response.hasMore ?? false) && !fresh.isEmpty
         } catch {
             errorMessage = error.localizedDescription
         }

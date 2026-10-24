@@ -82,6 +82,7 @@ struct VideoItem: Identifiable, Hashable {
     let fileURL: URL?
     let fileSize: Int64?
     let folderId: UUID
+    var artworkURL: URL? = nil
 
     var displaySubtitle: String {
         let ext = (relativePath as NSString).pathExtension.uppercased()
@@ -97,6 +98,76 @@ struct VideoPlaybackSession: Hashable {
     let startIndex: Int
     let folderName: String
     var durationHint: Double? = nil
+    /// Catalog URL of the movie, stable across stream tokens.
+    var resumeKey: String? = nil
+    /// Open already at this position. `nil` starts at the beginning.
+    var startAt: Double? = nil
+}
+
+enum MovieResumePolicy {
+    static let minimumSeconds = 20.0
+    static let endMargin = 45.0
+
+    static func shouldOffer(position: Double, duration: Double?) -> Bool {
+        guard position >= minimumSeconds else { return false }
+        if let duration, duration > 60, position >= duration - endMargin { return false }
+        return true
+    }
+
+    static func clockLabel(seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, secs) }
+        return String(format: "%d:%02d", minutes, secs)
+    }
+}
+
+enum MovieResumeStore {
+    private struct Entry: Codable {
+        var seconds: Double
+        var duration: Double
+    }
+
+    private static let key = "eos.movieResume.v1"
+
+    static func offerSeconds(for id: String) -> Double? {
+        guard let entry = load()[id] else { return nil }
+        let duration = entry.duration > 1 ? entry.duration : nil
+        guard MovieResumePolicy.shouldOffer(position: entry.seconds, duration: duration) else { return nil }
+        return entry.seconds
+    }
+
+    static func save(id: String, seconds: Double, duration: Double) {
+        guard !id.isEmpty else { return }
+        var map = load()
+        if MovieResumePolicy.shouldOffer(position: seconds, duration: duration > 1 ? duration : nil)
+            || (seconds >= MovieResumePolicy.minimumSeconds && duration <= 1) {
+            map[id] = Entry(seconds: seconds, duration: duration)
+        } else if seconds < 5 || (duration > 60 && seconds >= duration - MovieResumePolicy.endMargin) {
+            map.removeValue(forKey: id)
+        } else {
+            return
+        }
+        persist(map)
+    }
+
+    static func clear(id: String) {
+        var map = load()
+        guard map.removeValue(forKey: id) != nil else { return }
+        persist(map)
+    }
+
+    private static func load() -> [String: Entry] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
+        return (try? JSONDecoder().decode([String: Entry].self, from: data)) ?? [:]
+    }
+
+    private static func persist(_ map: [String: Entry]) {
+        guard let data = try? JSONEncoder().encode(map) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
 }
 
 struct VideoTrackOption: Identifiable, Hashable {

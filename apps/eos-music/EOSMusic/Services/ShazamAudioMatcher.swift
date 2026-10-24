@@ -120,7 +120,7 @@ final class ShazamAudioMatcher: NSObject, SHSessionDelegate, @unchecked Sendable
 
     private func publishLevelIfNeeded(_ buffer: AVAudioPCMBuffer) {
         let now = Date()
-        guard now.timeIntervalSince(lastLevelPublish) >= 0.45 else { return }
+        guard now.timeIntervalSince(lastLevelPublish) >= 0.05 else { return }
         lastLevelPublish = now
         guard let channels = buffer.floatChannelData, buffer.frameLength > 0 else { return }
         let samples = channels[0]

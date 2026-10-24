@@ -25,6 +25,7 @@ struct SearchCatalogView: View {
     @State private var isSearchingCatalog = false
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
+    @State private var instantTask: Task<Void, Never>?
     @State private var sharePayload: LibrarySharePayload?
 
     private func sortedAlbums(_ albums: [MusicAlbum]) -> [MusicAlbum] {
@@ -65,7 +66,7 @@ struct SearchCatalogView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
-                .animation(EOSMotion.soft, value: trimmedQuery)
+                // Bez animacji całej listy przy każdej literze (szarpało wyniki).
                 .animation(EOSMotion.soft, value: isSearchingCatalog)
             }
             .background(EOSAmbientBackground())
@@ -451,13 +452,10 @@ struct SearchCatalogView: View {
         app.isOfflinePlaybackActive ? .library : scope
     }
 
+    /// Wyniki z biblioteki liczone raz na zapytanie (w tle) — wcześniej skanowały całą bibliotekę
+    /// kilka razy przy każdym rysowaniu ekranu.
     private var instantLibraryResults: LibrarySearchResults {
-        guard trimmedQuery.count >= 1 else { return .empty }
-        return LibraryData.search(
-            query: trimmedQuery,
-            folders: app.libraryFoldersForBrowsing,
-            tracks: app.libraryTracksForBrowsing
-        )
+        trimmedQuery.isEmpty ? .empty : libraryResults
     }
 
     private var hasResults: Bool {
@@ -473,25 +471,37 @@ struct SearchCatalogView: View {
 
     private func resetAndSearch() {
         catalogResults = nil
-        libraryResults = .empty
-        scheduleSearch(immediate: true)
+        refreshInstantContent()
     }
 
     private func refreshInstantContent() {
         let q = trimmedQuery
-        instantSuggestions = LibraryData.quickSuggestions(
-            query: q,
-            folders: app.libraryFoldersForBrowsing,
-            tracks: app.libraryTracksForBrowsing
-        )
-
-        if q.count >= 1 {
-            libraryResults = instantLibraryResults
-        } else {
+        instantTask?.cancel()
+        if q.isEmpty {
+            instantSuggestions = []
             libraryResults = .empty
             catalogResults = nil
+            scheduleSearch(immediate: false)
+            return
         }
-
+        let folders = app.libraryFoldersForBrowsing
+        let tracks = app.libraryTracksForBrowsing
+        // Krótka pauza między literami + liczenie poza głównym wątkiem: pisanie zostaje płynne.
+        instantTask = Task {
+            try? await Task.sleep(nanoseconds: 90_000_000)
+            guard !Task.isCancelled else { return }
+            let computed = await Task.detached(priority: .userInitiated) {
+                (
+                    LibraryData.quickSuggestions(query: q, folders: folders, tracks: tracks),
+                    LibraryData.search(query: q, folders: folders, tracks: tracks)
+                )
+            }.value
+            guard !Task.isCancelled, q == trimmedQuery else { return }
+            withAnimation(.easeOut(duration: 0.18)) {
+                instantSuggestions = computed.0
+                libraryResults = computed.1
+            }
+        }
         scheduleSearch(immediate: false)
     }
 
@@ -502,24 +512,18 @@ struct SearchCatalogView: View {
             catalogResults = nil
             if q.isEmpty { libraryResults = .empty }
             isSearchingCatalog = false
-            app.isCatalogSearching = false
             return
         }
 
         if effectiveScope == .library || app.isOfflinePlaybackActive {
-            libraryResults = LibraryData.search(
-                query: q,
-                folders: app.libraryFoldersForBrowsing,
-                tracks: app.libraryTracksForBrowsing
-            )
+            // Wyniki z biblioteki liczy już refreshInstantContent (w tle).
             isSearchingCatalog = false
-            app.isCatalogSearching = false
             return
         }
 
         searchTask = Task {
             if !immediate {
-                try? await Task.sleep(nanoseconds: 220_000_000)
+                try? await Task.sleep(nanoseconds: 350_000_000)
             }
             guard !Task.isCancelled else { return }
             await searchCatalog(query: q)
@@ -537,20 +541,14 @@ struct SearchCatalogView: View {
         }
 
         isSearchingCatalog = true
-        app.isCatalogSearching = true
         defer {
             isSearchingCatalog = false
-            app.isCatalogSearching = false
         }
 
-        libraryResults = LibraryData.search(
-            query: query,
-            folders: app.libraryFoldersForBrowsing,
-            tracks: app.libraryTracksForBrowsing
-        )
-
         do {
-            catalogResults = try await app.api.searchMusicCatalog(query: query)
+            let found = try await app.api.searchMusicCatalog(query: query)
+            guard !Task.isCancelled, query == trimmedQuery else { return }
+            withAnimation(.easeOut(duration: 0.2)) { catalogResults = found }
             SearchRecentStore.remember(query)
             recentQueries = SearchRecentStore.load()
         } catch {
