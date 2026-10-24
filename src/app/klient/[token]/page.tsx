@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
@@ -16,6 +16,14 @@ import {
   MapPinned,
   MessageCircle,
   Users,
+  Route,
+  Sparkles,
+  FolderOpen,
+  LayoutGrid,
+  MessagesSquare,
+  Megaphone,
+  FileSignature,
+  Gift,
 } from "lucide-react";
 import PortalLuxHeader from "@/components/portal/lux/PortalLuxHeader";
 import PortalJourneyAxis, { type LuxAxisStage } from "@/components/portal/lux/PortalJourneyAxis";
@@ -37,7 +45,10 @@ import {
   type SellerPortalV2,
 } from "@/components/portal/lux/SellerLux";
 import { portalAction } from "@/components/portal/lux/portalApi";
-import PortalDocuments, { type PortalDocument } from "@/components/portal/lux/PortalDocuments";
+import PortalDocuments, { computeDocumentsSummary, type PortalDocument } from "@/components/portal/lux/PortalDocuments";
+import PortalGroup, { usePortalGroups } from "@/components/portal/lux/PortalGroup";
+import PortalNotificationsBell, { useNoticeReadState } from "@/components/portal/lux/PortalNotificationsBell";
+import { buildPortalNotices, type PortalNotice, type PortalNoticeGroup } from "@/lib/crm/portalNotices";
 import { PortalReferral, PortalReview } from "@/components/portal/lux/PortalReviewReferral";
 import { matchSentiment, type LuxMatch, type LuxPartnerFeedback } from "@/components/portal/lux/types";
 import { type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
@@ -335,6 +346,25 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const syncVersionRef = useRef("");
   const syncBusyRef = useRef(false);
   const [freshMatchBanner, setFreshMatchBanner] = useState<string | null>(null);
+  const [chatInfo, setChatInfo] = useState<{ unread: number; latestAgentId: string | null; latestAt: string | null; preview: string | null }>({
+    unread: 0,
+    latestAgentId: null,
+    latestAt: null,
+    preview: null,
+  });
+  const onChatUnread = useCallback(
+    (info: { unread: number; latestAgentId: string | null; latestAt: string | null; preview: string | null }) =>
+      setChatInfo((prev) =>
+        prev.unread === info.unread && prev.latestAgentId === info.latestAgentId && prev.preview === info.preview ? prev : info,
+      ),
+    [],
+  );
+  const groupDefaults = useMemo(
+    () => ({ journey: true, offers: true, sale: true, listing: false, agreement: false, documents: true, tools: false, chat: true, more: false }),
+    [],
+  );
+  const groups = usePortalGroups(token, groupDefaults);
+  const { read: readNotices, markRead: markNoticesRead } = useNoticeReadState(token);
 
   useEffect(() => {
     void params.then((p) => setToken(p.token));
@@ -700,7 +730,22 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     luxMatches.find((m) => m.favorite)?.offer.price || luxMatches[0]?.offer.price || 0,
   );
   const criteria = portal.searchCriteria;
-  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  /** Rozwija grupę, w której jest element, przewija do niego i krótko go podświetla. */
+  const focusAnchor = (anchor: string, fallbackGroup?: string) => {
+    const el = document.getElementById(anchor);
+    const groupId = el?.closest("[data-group]")?.getAttribute("data-group") || fallbackGroup || null;
+    const wasOpen = groupId ? groups.isOpen(groupId) : true;
+    if (groupId && !wasOpen) groups.setOpen(groupId, true);
+    window.setTimeout(() => {
+      const target = document.getElementById(anchor) || (groupId ? document.getElementById(`grp-${groupId}`) : null);
+      if (!target) return;
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+      target.classList.remove("eos-flash");
+      void target.offsetWidth;
+      target.classList.add("eos-flash");
+    }, wasOpen ? 40 : 420);
+  };
+  const scrollTo = (id: string) => focusAnchor(id);
 
   const nowCard = (
     <ClientPortalNowCard
@@ -985,6 +1030,55 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     { key: "chat", title: "Rozmowa", description: `Napisz do ${agentFirst}`, icon: MessageCircle, onClick: () => scrollTo("portal-chat") },
   ];
 
+  // ── Powiadomienia (dzwonek) i plakietki grup ──
+  const docSummary = computeDocumentsSummary(portal.documents || []);
+  const notices: PortalNotice[] = buildPortalNotices({
+    type: portal.type,
+    isPartner,
+    agentFirst,
+    documents: (portal.permissions?.documents ?? true) ? portal.documents || [] : [],
+    matches: portal.matches,
+    agentReplies: collectAgentOfferReplies(portal.matches),
+    checkback: portal.type === "BUYER" && portal.pendingCheckback && !isPartner
+      ? {
+          activityId: Number((portal.pendingCheckback as { activityId?: number }).activityId || 0),
+          body: String((portal.pendingCheckback as { body?: string }).body || ""),
+          createdAt: (portal.pendingCheckback as { createdAt?: string }).createdAt,
+        }
+      : null,
+    presentation: portal.presentation,
+    meeting: portal.type === "SELLER" ? portal.meeting : null,
+    buyerOffers: seller?.buyerOffers || [],
+    decisions: portal.pendingDecisions || [],
+    agreement:
+      portal.type === "SELLER" && portal.acquisition?.agreementSnapshot && !signed
+        ? { pending: true, updatedAt: portal.acquisition.updatedAt }
+        : null,
+    chat: chatInfo,
+  });
+  const NOTICE_TO_GROUP: Record<PortalNoticeGroup, string> = {
+    journey: "journey",
+    offers: "offers",
+    sale: "sale",
+    listing: "listing",
+    agreement: "agreement",
+    documents: "documents",
+    chat: "chat",
+  };
+  const groupIds = portal.type === "BUYER"
+    ? ["journey", "offers", "documents", "chat", "tools", "more"]
+    : ["journey", "sale", "listing", "agreement", "documents", "chat", "tools", "more"];
+  const groupBadge = (groupId: string) => {
+    const actions = notices.filter((n) => NOTICE_TO_GROUP[n.group] === groupId && n.tone === "action").length;
+    if (groupId === "documents") return Math.max(actions, isPartner ? 0 : docSummary.missing);
+    return actions;
+  };
+  const groupBlink = (groupId: string) => notices.some((n) => NOTICE_TO_GROUP[n.group] === groupId && !readNotices.has(n.id));
+  const navigateNotice = (notice: PortalNotice) => {
+    if (notice.matchId) ensureMatchOpen(notice.matchId);
+    focusAnchor(notice.anchor, NOTICE_TO_GROUP[notice.group]);
+  };
+
   return (
     <main className="client-portal-page pb-24 text-[var(--eos-text)] sm:pb-28">
       <PortalLuxHeader
@@ -999,6 +1093,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         agentPhone={portal.agentPhone || portal.agencyPhone || null}
         partnerName={partnerName}
         onChat={() => scrollTo("portal-chat")}
+        bell={
+          <PortalNotificationsBell notices={notices} read={readNotices} onMarkRead={markNoticesRead} onNavigate={navigateNotice} />
+        }
       >
         {portal.type === "SELLER" && seller ? (
           <>
@@ -1019,186 +1116,330 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         ) : null}
       </PortalLuxHeader>
 
-      <div className="mx-auto max-w-3xl space-y-7 px-4 pt-6 sm:px-6">
-        <PortalJourneyAxis title={portal.type === "BUYER" ? "Droga do kluczy" : "Droga do aktu"} stages={stages} />
-
-        {portal.type === "BUYER" && token && !isPartner ? (
-          <div id="portal-replies" className="scroll-mt-24">
-            <ClientPortalAgentReplyInbox
-              token={token}
-              replies={collectAgentOfferReplies(portal.matches)}
-              onOpenOffer={(matchId) => {
-                ensureMatchOpen(matchId);
-                window.setTimeout(() => {
-                  document.getElementById(`portal-match-${matchId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }, 80);
-              }}
-              onDone={() => void load({ silent: true })}
-            />
+      <div className="mx-auto max-w-3xl space-y-4 px-4 pt-6 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <p className="eos-group-divider flex-1">Na teraz</p>
+          <div className="flex shrink-0 gap-3 text-[12px] font-bold text-[var(--lux-accent)]">
+            <button type="button" onClick={() => groups.setAll(groupIds, false)}>Zwiń wszystko</button>
+            <button type="button" onClick={() => groups.setAll(groupIds, true)}>Rozwiń</button>
           </div>
-        ) : null}
+        </div>
 
-        {portal.meeting && !collapseAgentMeeting && portal.type === "SELLER" ? (
-          <section id="portal-meeting" className="lux-card scroll-mt-24 p-5">
-            <p className="lux-kicker">Spotkanie z agentem</p>
-            <h2 className="lux-serif mt-1.5 text-[24px] font-medium">{formatMeetingWhenPl(portal.meeting.startsAt)}</h2>
-            {portal.meeting.location ? <p className="mt-1 text-sm text-[#5B574F]">{portal.meeting.location}</p> : null}
-            {portal.meeting.prepLabels?.length ? (
-              <ul className="mt-4 space-y-2 text-sm">
-                {portal.meeting.prepLabels.map((label) => (
-                  <li key={label} className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[var(--lux-accent)]" />
-                    {label}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {token ? <ClientPortalScheduleActions token={token} kind="meeting" slot={portal.meeting} onDone={() => load()} /> : null}
-          </section>
-        ) : null}
-
-        {portal.type === "SELLER" && seller && token ? (
-          <SellerBuyerOffers seller={seller} listPrice={listPrice} token={token} agentFirst={agentFirst} onChanged={() => void load({ silent: true })} />
-        ) : null}
-
-        {portal.type === "SELLER" && token ? (
-          <div id="portal-decisions" className="scroll-mt-24">
-            <SellerPortalCollaboration
-              token={token}
-              listingImage={portal.listing?.imageUrl}
-              listingPath={portal.listingPath || []}
-              activeChannels={portal.activeChannels || []}
-              sellerNextStep={portal.sellerNextStep || null}
-              pendingDecisions={portal.pendingDecisions || []}
-              sellerEvents={portal.sellerEvents || null}
-              listingHref={portal.listing?.id ? `/oferta/${portal.listing.id}` : null}
-              onDone={() => void load()}
-            />
+        <PortalGroup
+          id="journey"
+          title={portal.type === "BUYER" ? "Droga do kluczy" : "Droga do aktu"}
+          summary={currentStage ? `Etap ${stages.indexOf(currentStage) + 1} z ${stages.length} · ${currentStage.label}` : "Wszystkie etapy zakończone"}
+          icon={Route}
+          tone="ink"
+          open={groups.isOpen("journey")}
+          onToggle={() => groups.setOpen("journey", !groups.isOpen("journey"))}
+          badge={groupBadge("journey")}
+          blink={groupBlink("journey")}
+        >
+          <div id="portal-journey" className="scroll-mt-24">
+            <PortalJourneyAxis title={portal.type === "BUYER" ? "Droga do kluczy" : "Droga do aktu"} stages={stages} hideTitle />
           </div>
-        ) : null}
+        </PortalGroup>
 
-        {portal.type === "SELLER" && portal.listing ? (
-          <section id="portal-listing" className="lux-card scroll-mt-24 p-5">
-            <p className="lux-kicker">Ogłoszenie i promocja</p>
-            {portal.listingProgress?.length ? <ListingProgressRail stages={portal.listingProgress} /> : null}
-            <PortalPromoPresence
-              listing={portal.listing}
-              listingPath={portal.listingPath || []}
-              activeChannels={portal.activeChannels || []}
-              otherAgencies={portal.otherAgencies || null}
-            />
-          </section>
-        ) : null}
+        <p className="eos-group-divider pt-3">Twoje sprawy</p>
 
-        {portal.type === "SELLER" && seller ? <SellerCompetition seller={seller} /> : null}
-
-        {portal.type === "SELLER" && portal.acquisition?.agreementSnapshot ? (
-          <section id="portal-agreement" className="lux-card scroll-mt-24 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="lux-kicker">Umowa</p>
-                <h2 className="lux-serif mt-1.5 text-[22px] font-medium">Warunki współpracy</h2>
+        {portal.type === "BUYER" ? (
+          <PortalGroup
+            id="offers"
+            title="Propozycje ofert"
+            summary={
+              luxMatches.length
+                ? `${luxMatches.length} ${luxMatches.length === 1 ? "propozycja" : "propozycji"}${pendingMatches.length ? ` · ${pendingMatches.length} czeka na Twoją ocenę` : " · wszystkie ocenione"}`
+                : "Pierwsze propozycje pojawią się tutaj"
+            }
+            icon={Sparkles}
+            tone="gold"
+            open={groups.isOpen("offers")}
+            onToggle={() => groups.setOpen("offers", !groups.isOpen("offers"))}
+            badge={groupBadge("offers")}
+            blink={groupBlink("offers")}
+          >
+            {portal.type === "BUYER" && token && !isPartner ? (
+              <div id="portal-replies" className="scroll-mt-24">
+                <ClientPortalAgentReplyInbox
+                  token={token}
+                  replies={collectAgentOfferReplies(portal.matches)}
+                  onOpenOffer={(matchId) => {
+                    ensureMatchOpen(matchId);
+                    window.setTimeout(() => {
+                      document.getElementById(`portal-match-${matchId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 80);
+                  }}
+                  onDone={() => void load({ silent: true })}
+                />
               </div>
-              <span className="rounded-full bg-black px-3 py-1 text-[11px] font-bold text-[#D8C3A0]">
-                {signed ? "Podpisana" : "Do podpisu"}
-              </span>
-            </div>
-            <pre className="mt-3 max-h-[18rem] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-[#F6F3EE] p-4 text-xs leading-relaxed text-[#2E2C28]">
-              {portal.acquisition.agreementSnapshot}
-            </pre>
-            {token ? (
-              <a href={`/klient/${token}/dokument`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--lux-accent)]">
-                Otwórz dokument <ExternalLink className="size-3.5" />
-              </a>
             ) : null}
-            {(portal.acquisition.formData.paperContracts || []).map((file) => (
-              <a
-                key={file.url}
-                href={file.url.startsWith("http") ? file.url : `https://estateos.pl${file.url.startsWith("/") ? file.url : `/${file.url}`}`}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 flex items-center justify-between rounded-xl bg-[#F6F3EE] px-4 py-3 text-sm font-semibold text-[var(--lux-accent)]"
-              >
-                {file.name} <ExternalLink className="size-3.5" />
-              </a>
-            ))}
-          </section>
-        ) : null}
 
-        {portal.type === "BUYER" && token ? (
-          <div ref={matchesSectionRef} id="portal-offers" className="scroll-mt-24">
-            <ClientPortalOfferBoard
-              token={token}
-              matches={portal.matches}
-              activities={portal.activities}
-              criteria={portal.searchCriteria}
-              intelligenceEnabled={portal.intelligenceEnabled}
-              live={livePortalSync}
-              unscoredCount={portal.unscoredMatchCount}
-              pendingCheckback={Boolean(portal.pendingCheckback)}
-              awaitingFirstOffer={awaitingFirstOffer}
-              freshBanner={freshMatchBanner}
-              savingId={savingId}
-              openMatchIds={openMatchIds}
-              onToggleMatch={toggleMatch}
-              onEnsureMatchOpen={ensureMatchOpen}
-              onSubmit={(matchId, payload) => submitFeedback(matchId, payload)}
-              onAckReply={ackAgentReply}
-              onOpenSheet={(matchId) => setSheetMatchId(matchId)}
-              prefillFor={{
-                matchId: focusMatchId || undefined,
-                offerId: focusOfferId || undefined,
-                sentiment: SENTIMENTS.has(reactPrefill as ClientOfferSentiment)
-                  ? (reactPrefill as ClientOfferSentiment)
-                  : null,
-                phrase: phrasePrefill,
-              }}
-            />
-          </div>
-        ) : null}
+
+            {portal.type === "BUYER" && token ? (
+              <div ref={matchesSectionRef} id="portal-offers" className="scroll-mt-24">
+                <ClientPortalOfferBoard
+                  token={token}
+                  matches={portal.matches}
+                  activities={portal.activities}
+                  criteria={portal.searchCriteria}
+                  intelligenceEnabled={portal.intelligenceEnabled}
+                  live={livePortalSync}
+                  unscoredCount={portal.unscoredMatchCount}
+                  pendingCheckback={Boolean(portal.pendingCheckback)}
+                  awaitingFirstOffer={awaitingFirstOffer}
+                  freshBanner={freshMatchBanner}
+                  savingId={savingId}
+                  openMatchIds={openMatchIds}
+                  onToggleMatch={toggleMatch}
+                  onEnsureMatchOpen={ensureMatchOpen}
+                  onSubmit={(matchId, payload) => submitFeedback(matchId, payload)}
+                  onAckReply={ackAgentReply}
+                  onOpenSheet={(matchId) => setSheetMatchId(matchId)}
+                  prefillFor={{
+                    matchId: focusMatchId || undefined,
+                    offerId: focusOfferId || undefined,
+                    sentiment: SENTIMENTS.has(reactPrefill as ClientOfferSentiment)
+                      ? (reactPrefill as ClientOfferSentiment)
+                      : null,
+                    phrase: phrasePrefill,
+                  }}
+                />
+              </div>
+            ) : null}
+
+
+          </PortalGroup>
+        ) : (
+          <>
+            <PortalGroup
+              id="sale"
+              title="Sprzedaż i decyzje"
+              summary={
+                openBuyerOffers.length
+                  ? `${openBuyerOffers.length} ${openBuyerOffers.length === 1 ? "oferta kupującego czeka" : "oferty kupujących czekają"} na decyzję`
+                  : pendingDecision
+                    ? pendingDecision.title
+                    : "Oferty kupujących, spotkania i decyzje"
+              }
+              icon={Handshake}
+              tone="gold"
+              open={groups.isOpen("sale")}
+              onToggle={() => groups.setOpen("sale", !groups.isOpen("sale"))}
+              badge={groupBadge("sale")}
+              blink={groupBlink("sale")}
+            >
+              {portal.meeting && !collapseAgentMeeting && portal.type === "SELLER" ? (
+                <section id="portal-meeting" className="lux-card scroll-mt-24 p-5">
+                  <p className="lux-kicker">Spotkanie z agentem</p>
+                  <h2 className="lux-serif mt-1.5 text-[24px] font-medium">{formatMeetingWhenPl(portal.meeting.startsAt)}</h2>
+                  {portal.meeting.location ? <p className="mt-1 text-sm text-[#5B574F]">{portal.meeting.location}</p> : null}
+                  {portal.meeting.prepLabels?.length ? (
+                    <ul className="mt-4 space-y-2 text-sm">
+                      {portal.meeting.prepLabels.map((label) => (
+                        <li key={label} className="flex gap-2">
+                          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[var(--lux-accent)]" />
+                          {label}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {token ? <ClientPortalScheduleActions token={token} kind="meeting" slot={portal.meeting} onDone={() => load()} /> : null}
+                </section>
+              ) : null}
+
+
+              {portal.type === "SELLER" && seller && token ? (
+                <SellerBuyerOffers seller={seller} listPrice={listPrice} token={token} agentFirst={agentFirst} onChanged={() => void load({ silent: true })} />
+              ) : null}
+
+
+              {portal.type === "SELLER" && token ? (
+                <div id="portal-decisions" className="scroll-mt-24">
+                  <SellerPortalCollaboration
+                    token={token}
+                    listingImage={portal.listing?.imageUrl}
+                    listingPath={portal.listingPath || []}
+                    activeChannels={portal.activeChannels || []}
+                    sellerNextStep={portal.sellerNextStep || null}
+                    pendingDecisions={portal.pendingDecisions || []}
+                    sellerEvents={portal.sellerEvents || null}
+                    listingHref={portal.listing?.id ? `/oferta/${portal.listing.id}` : null}
+                    onDone={() => void load()}
+                  />
+                </div>
+              ) : null}
+
+
+            </PortalGroup>
+            {portal.listing || seller ? (
+              <PortalGroup
+                id="listing"
+                title="Ogłoszenie i rynek"
+                summary={[portal.listing?.statusLabel, listingLive && portal.activeChannels?.length ? `${portal.activeChannels.length + 1} portale` : null].filter(Boolean).join(" · ") || "Promocja, portale i konkurencja"}
+                icon={Megaphone}
+                tone="blue"
+                open={groups.isOpen("listing")}
+                onToggle={() => groups.setOpen("listing", !groups.isOpen("listing"))}
+                badge={groupBadge("listing")}
+                blink={groupBlink("listing")}
+              >
+                {portal.type === "SELLER" && portal.listing ? (
+                  <section id="portal-listing" className="lux-card scroll-mt-24 p-5">
+                    <p className="lux-kicker">Ogłoszenie i promocja</p>
+                    {portal.listingProgress?.length ? <ListingProgressRail stages={portal.listingProgress} /> : null}
+                    <PortalPromoPresence
+                      listing={portal.listing}
+                      listingPath={portal.listingPath || []}
+                      activeChannels={portal.activeChannels || []}
+                      otherAgencies={portal.otherAgencies || null}
+                    />
+                  </section>
+                ) : null}
+
+
+                {portal.type === "SELLER" && seller ? <SellerCompetition seller={seller} /> : null}
+
+
+              </PortalGroup>
+            ) : null}
+            {portal.acquisition?.agreementSnapshot ? (
+              <PortalGroup
+                id="agreement"
+                title="Umowa"
+                summary={signed ? `Podpisana${portal.acquisition?.signedAt ? ` ${new Date(portal.acquisition.signedAt).toLocaleDateString("pl-PL")}` : ""}` : "Czeka na Twój podpis"}
+                icon={FileSignature}
+                tone="slate"
+                open={groups.isOpen("agreement")}
+                onToggle={() => groups.setOpen("agreement", !groups.isOpen("agreement"))}
+                badge={groupBadge("agreement")}
+                blink={groupBlink("agreement")}
+              >
+                {portal.type === "SELLER" && portal.acquisition?.agreementSnapshot ? (
+                  <section id="portal-agreement" className="lux-card scroll-mt-24 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="lux-kicker">Umowa</p>
+                        <h2 className="lux-serif mt-1.5 text-[22px] font-medium">Warunki współpracy</h2>
+                      </div>
+                      <span className="rounded-full bg-black px-3 py-1 text-[11px] font-bold text-[#D8C3A0]">
+                        {signed ? "Podpisana" : "Do podpisu"}
+                      </span>
+                    </div>
+                    <pre className="mt-3 max-h-[18rem] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-[#F6F3EE] p-4 text-xs leading-relaxed text-[#2E2C28]">
+                      {portal.acquisition.agreementSnapshot}
+                    </pre>
+                    {token ? (
+                      <a href={`/klient/${token}/dokument`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--lux-accent)]">
+                        Otwórz dokument <ExternalLink className="size-3.5" />
+                      </a>
+                    ) : null}
+                    {(portal.acquisition.formData.paperContracts || []).map((file) => (
+                      <a
+                        key={file.url}
+                        href={file.url.startsWith("http") ? file.url : `https://estateos.pl${file.url.startsWith("/") ? file.url : `/${file.url}`}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 flex items-center justify-between rounded-xl bg-[#F6F3EE] px-4 py-3 text-sm font-semibold text-[var(--lux-accent)]"
+                      >
+                        {file.name} <ExternalLink className="size-3.5" />
+                      </a>
+                    ))}
+                  </section>
+                ) : null}
+
+
+              </PortalGroup>
+            ) : null}
+          </>
+        )}
 
         {token && portal.documents?.length && (portal.permissions?.documents ?? true) ? (
-          <PortalDocuments
-            token={token}
-            documents={portal.documents}
-            summary={portal.documentsSummary}
-            agentFirst={agentFirst}
-            canUpload={!isPartner}
-            onChanged={() => void load({ silent: true })}
-          />
+          <PortalGroup
+            id="documents"
+            title="Dokumenty"
+            summary={docSummary.missing ? `Brakuje ${docSummary.missing} z ${docSummary.total}` : `Komplet — ${docSummary.total} z ${docSummary.total}`}
+            icon={FolderOpen}
+            tone="green"
+            open={groups.isOpen("documents")}
+            onToggle={() => groups.setOpen("documents", !groups.isOpen("documents"))}
+            badge={groupBadge("documents")}
+            blink={groupBlink("documents")}
+          >
+            <PortalDocuments
+              token={token}
+              documents={portal.documents}
+              agentFirst={agentFirst}
+              canUpload={!isPartner}
+              onChanged={() => void load({ silent: true })}
+              embedded
+            />
+          </PortalGroup>
         ) : null}
 
-        <PortalToolsGrid
-          kicker="Narzędzia"
-          title={portal.type === "BUYER" ? "Żeby wybrać pewnie" : "Wszystko o sprzedaży"}
-          tools={portal.type === "BUYER" ? buyerTools : sellerTools}
-        />
+        <p className="eos-group-divider pt-3">Kontakt i narzędzia</p>
 
         {token ? (
-          <section id="portal-chat" className="lux-card scroll-mt-24 p-5 sm:p-6">
-            <p className="lux-kicker">Rozmowa</p>
-            <h2 className="lux-serif mt-1.5 text-[22px] font-medium">Masz pytanie? Napisz tutaj</h2>
-            <p className="mt-1 text-sm text-[#5B574F]">
-              {agentFirst} odpowie w tym oknie — dostaniesz też powiadomienie.
-            </p>
-            <div className="mt-4">
-              <ClientPortalLiveChat token={token} agentName={portal.agentName} />
+          <PortalGroup
+            id="chat"
+            title={`Rozmowa z ${agentFirst}`}
+            summary={chatInfo.unread ? `${chatInfo.unread} ${chatInfo.unread === 1 ? "nowa wiadomość" : "nowe wiadomości"}` : "Masz pytanie? Napisz tutaj"}
+            icon={MessagesSquare}
+            tone="rose"
+            open={groups.isOpen("chat")}
+            onToggle={() => groups.setOpen("chat", !groups.isOpen("chat"))}
+            badge={groupBadge("chat")}
+            blink={groupBlink("chat")}
+          >
+            <div id="portal-chat" className="scroll-mt-24">
+              <p className="text-sm text-[#5B574F]">{agentFirst} odpowie w tym oknie — dostaniesz też powiadomienie.</p>
+              <div className="mt-4">
+                <ClientPortalLiveChat token={token} agentName={portal.agentName} onUnreadChange={onChatUnread} />
+              </div>
             </div>
-          </section>
+          </PortalGroup>
         ) : null}
 
-        {portal.appInvite ? <PortalAppInvite invite={portal.appInvite} /> : null}
-
-        {token && !isPartner && (portal.type === "BUYER" ? portal.purchase?.phase === "closed" : listingSold) ? (
-          <PortalReview
-            token={token}
-            agentFirst={agentFirst}
-            review={portal.review}
-            reviewLink={portal.reviewLink}
-            onChanged={() => void load({ silent: true })}
+        <PortalGroup
+          id="tools"
+          title={portal.type === "BUYER" ? "Narzędzia — żeby wybrać pewnie" : "Narzędzia — wszystko o sprzedaży"}
+          summary={(portal.type === "BUYER" ? buyerTools : sellerTools).map((t) => t.title).join(" · ")}
+          icon={LayoutGrid}
+          tone="slate"
+          open={groups.isOpen("tools")}
+          onToggle={() => groups.setOpen("tools", !groups.isOpen("tools"))}
+        >
+          <PortalToolsGrid
+            kicker="Narzędzia"
+            title={portal.type === "BUYER" ? "Żeby wybrać pewnie" : "Wszystko o sprzedaży"}
+            tools={portal.type === "BUYER" ? buyerTools : sellerTools}
           />
-        ) : null}
-        {token ? <PortalReferral token={token} agentFirst={agentFirst} /> : null}
+        </PortalGroup>
+
+        <PortalGroup
+          id="more"
+          title="Więcej"
+          summary="Aplikacja na telefon, opinia i polecenie"
+          icon={Gift}
+          tone="slate"
+          open={groups.isOpen("more")}
+          onToggle={() => groups.setOpen("more", !groups.isOpen("more"))}
+        >
+          {portal.appInvite ? <PortalAppInvite invite={portal.appInvite} /> : null}
+
+          {token && !isPartner && (portal.type === "BUYER" ? portal.purchase?.phase === "closed" : listingSold) ? (
+            <PortalReview
+              token={token}
+              agentFirst={agentFirst}
+              review={portal.review}
+              reviewLink={portal.reviewLink}
+              onChanged={() => void load({ silent: true })}
+            />
+          ) : null}
+          {token ? <PortalReferral token={token} agentFirst={agentFirst} /> : null}
+
+
+        </PortalGroup>
 
         {portal.type === "BUYER" && token && !onboardingDismissed && !isPartner ? (
           <ClientPortalBuyerOnboarding
@@ -1225,6 +1466,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         {token && !isPartner ? (
           <ClientPortalSetupPrompt token={token} deferUntilReady={fromSzukam && !onboardingDismissed} />
         ) : null}
+
 
         <PortalLuxFooter agencyName={portal.agencyName} partner={isPartner} />
       </div>

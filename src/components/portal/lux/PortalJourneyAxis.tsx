@@ -11,11 +11,11 @@ export type LuxAxisStage = {
 };
 
 /** Oś „droga do kluczy”: zakończone etapy z krótkim podsumowaniem, bieżący z treścią, przyszłe z zapowiedzią. */
-export default function PortalJourneyAxis({ title, stages }: { title: string; stages: LuxAxisStage[] }) {
+export default function PortalJourneyAxis({ title, stages, hideTitle }: { title: string; stages: LuxAxisStage[]; hideTitle?: boolean }) {
   return (
     <section aria-label={title}>
-      <p className="lux-kicker">{title}</p>
-      <ol className="mt-4">
+      {!hideTitle ? <p className="lux-kicker">{title}</p> : null}
+      <ol className={hideTitle ? "mt-1" : "mt-4"}>
         {stages.map((stage, index) => {
           const last = index === stages.length - 1;
           const number = index + 1;
@@ -27,8 +27,10 @@ export default function PortalJourneyAxis({ title, stages }: { title: string; st
                     <Check className="size-3.5" strokeWidth={3} aria-hidden />
                   </span>
                 ) : stage.state === "current" ? (
-                  <span className="flex size-[26px] items-center justify-center rounded-full bg-black text-xs font-bold text-[#D8C3A0] shadow-[0_0_0_4px_#F6F3EE,0_0_0_5px_#D8C3A0]">
-                    {number}
+                  <span className="eos-stage-wave flex size-[26px] items-center justify-center rounded-full" aria-label={`Etap ${number} — w trakcie`}>
+                    <span className="eos-stage-wave__core flex size-[26px] items-center justify-center rounded-full bg-black text-xs font-bold text-[#D8C3A0] shadow-[0_0_0_3px_#F6F3EE,0_0_0_4px_#D8C3A0]">
+                      {number}
+                    </span>
                   </span>
                 ) : (
                   <span className="flex size-[26px] items-center justify-center rounded-full border border-[#C9C0B1] text-xs font-semibold text-[#6F6A61]">

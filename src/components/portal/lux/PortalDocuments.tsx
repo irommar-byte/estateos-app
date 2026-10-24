@@ -1,17 +1,37 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { AlertCircle, CheckCircle2, Circle, Clock3, Plus, RefreshCw } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { AlertCircle, CheckCircle2, Circle, Clock3, Eye, MinusCircle, Plus, RefreshCw } from "lucide-react";
+import LuxSheet from "@/components/portal/lux/LuxSheet";
+import PortalFilePreview from "@/components/portal/lux/PortalFilePreview";
+import PortalUploadSheet from "@/components/portal/lux/PortalUploadSheet";
+import { PORTAL_UPLOAD_ACCEPT, PORTAL_UPLOAD_MAX_BYTES, fileKind, formatBytes } from "@/lib/portalUpload";
 
 export type PortalDocument = {
   key: string;
   label: string;
   hint: string | null;
   required: boolean;
-  status: "missing" | "uploaded" | "accepted" | "rejected";
+  custom?: boolean;
+  status: "missing" | "uploaded" | "accepted" | "rejected" | "na";
   fileName: string | null;
   fileUrl: string | null;
+  mimeType?: string | null;
   note: string | null;
+  uploadedAt?: string | null;
+  reviewedAt?: string | null;
+  createdAt?: string | null;
+};
+
+export type PortalDocumentsSummary = {
+  total?: number;
+  required: number;
+  done: number;
+  missing: number;
+  accepted?: number;
+  rejected?: number;
+  toReview?: number;
 };
 
 const STATUS = {
@@ -19,117 +39,237 @@ const STATUS = {
   uploaded: { label: "Wysłane — agent sprawdza", Icon: Clock3, tone: "text-[#C98A1B]" },
   accepted: { label: "Gotowe", Icon: CheckCircle2, tone: "text-[#2F9E6A]" },
   rejected: { label: "Do poprawy", Icon: AlertCircle, tone: "text-[#C2412D]" },
+  na: { label: "Nie dotyczy", Icon: MinusCircle, tone: "text-[#8C877D]" },
 } as const;
 
-/** Dokumenty „co jeszcze brakuje” — wrzucanie zdjęcia albo PDF. */
+function plDocs(n: number) {
+  if (n === 1) return "dokument";
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  return mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? "dokumenty" : "dokumentów";
+}
+
+/** Liczy wszystko z listy — licznik zawsze zgadza się z tym, co klient widzi na ekranie. */
+export function computeDocumentsSummary(documents: PortalDocument[]) {
+  const total = documents.length;
+  const accepted = documents.filter((d) => d.status === "accepted").length;
+  const uploaded = documents.filter((d) => d.status === "uploaded").length;
+  const na = documents.filter((d) => d.status === "na").length;
+  const rejected = documents.filter((d) => d.status === "rejected").length;
+  const missing = documents.filter((d) => d.status === "missing" || d.status === "rejected").length;
+  return { total, accepted, uploaded, na, rejected, missing, done: total - missing };
+}
+
+/** Dokumenty „co jeszcze brakuje” — wrzucanie zdjęcia albo PDF z podglądem przed wysłaniem. */
 export default function PortalDocuments({
   token,
   documents,
-  summary,
   agentFirst,
   canUpload,
   onChanged,
+  embedded,
 }: {
   token: string;
   documents: PortalDocument[];
-  summary?: { required: number; done: number; missing: number } | null;
+  summary?: PortalDocumentsSummary | null;
   agentFirst: string;
   canUpload: boolean;
   onChanged: () => void;
+  /** w grupie zwijanej — bez własnej karty i nagłówka sekcji */
+  embedded?: boolean;
 }) {
-  const [busy, setBusy] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [target, setTarget] = useState<PortalDocument | null>(null);
+  const [preview, setPreview] = useState<PortalDocument | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const targetKey = useRef<string>("");
   if (!documents.length) return null;
 
-  const pick = (key: string) => {
-    targetKey.current = key;
+  const pick = (doc: PortalDocument) => {
+    setTarget(doc);
+    setError("");
     inputRef.current?.click();
   };
 
-  const upload = async (file: File) => {
-    const key = targetKey.current;
-    if (!key) return;
-    setBusy(key);
+  const setNotApplicable = async (doc: PortalDocument, notApplicable: boolean) => {
+    setBusyKey(doc.key);
     setError("");
     try {
-      const form = new FormData();
-      form.append("itemKey", key);
-      form.append("file", file);
-      const res = await fetch(`/api/crm/client-portal/${encodeURIComponent(token)}/documents`, { method: "POST", body: form });
+      const res = await fetch(`/api/crm/client-portal/${encodeURIComponent(token)}/documents`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemKey: doc.key, notApplicable }),
+      });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(json.error || "Nie udało się wysłać pliku."));
+      if (!res.ok) throw new Error(String(json.error || `Serwer odpowiedział błędem ${res.status}. Spróbuj ponownie.`));
       onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Błąd");
+      setError(e instanceof Error ? e.message : "Nie udało się zapisać — sprawdź połączenie z internetem.");
     } finally {
-      setBusy(null);
+      setBusyKey(null);
     }
   };
 
-  const required = summary?.required ?? documents.filter((d) => d.required).length;
-  const done = summary?.done ?? 0;
+  const s = computeDocumentsSummary(documents);
+  const pct = (n: number) => `${s.total ? (n / s.total) * 100 : 0}%`;
 
-  return (
-    <section id="portal-documents" className="lux-card scroll-mt-24 p-5">
-      <p className="lux-kicker">Dokumenty</p>
-      <h2 className="lux-serif mt-1.5 text-[22px] font-medium">
-        {summary?.missing ? `Brakuje ${summary.missing} z ${required}` : "Komplet dokumentów"}
+  const body = (
+    <>
+      {!embedded ? <p className="lux-kicker">Dokumenty</p> : null}
+      <h2 className={`lux-serif ${embedded ? "" : "mt-1.5"} text-[22px] font-medium`}>
+        {s.missing ? `Brakuje ${s.missing} z ${s.total}` : `Komplet — ${s.total} z ${s.total}`}
       </h2>
-      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#F0EBE3]">
-        <div className="h-full rounded-full bg-[#2F9E6A]" style={{ width: `${required ? Math.round((done / required) * 100) : 100}%` }} />
+      <p className="mt-0.5 text-[12px] font-semibold text-[#6F6A61]">
+        {[
+          s.accepted ? `${s.accepted} gotowe` : null,
+          s.uploaded ? `${s.uploaded} u agenta do sprawdzenia` : null,
+          s.rejected ? `${s.rejected} do poprawy` : null,
+          s.na ? `${s.na} nie dotyczy` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || `${s.total} ${plDocs(s.total)} na liście`}
+      </p>
+      <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-[#F0EBE3]" aria-hidden>
+        <motion.div className="h-full bg-[#2F9E6A]" initial={false} animate={{ width: pct(s.accepted) }} />
+        <motion.div className="h-full bg-[#E3B45A]" initial={false} animate={{ width: pct(s.uploaded) }} />
+        <motion.div className="h-full bg-[#CFC7BA]" initial={false} animate={{ width: pct(s.na) }} />
       </div>
       <p className="mt-2 text-[13px] text-[#5B574F]">
-        Wystarczy zdjęcie telefonem albo PDF. {agentFirst} sprawdzi każdy dokument i da znać, jeśli coś trzeba poprawić.
+        Wystarczy zdjęcie telefonem albo PDF (do {formatBytes(PORTAL_UPLOAD_MAX_BYTES)}). Przed wysłaniem zobaczysz podgląd. {agentFirst} sprawdzi każdy dokument i da znać, jeśli coś trzeba poprawić.
       </p>
       <input
         ref={inputRef}
         type="file"
-        accept="image/*,application/pdf"
+        accept={PORTAL_UPLOAD_ACCEPT}
         className="hidden"
         onChange={(e) => {
-          const file = e.target.files?.[0];
+          const picked = e.target.files?.[0] || null;
           e.target.value = "";
-          if (file) void upload(file);
+          if (picked) setFile(picked);
         }}
       />
       <ul className="mt-2 divide-y divide-[#E6E0D6]">
-        {documents.map((doc) => {
-          const st = STATUS[doc.status];
-          return (
-            <li key={doc.key} className="flex items-center gap-3 py-3">
-              <st.Icon className={`size-5 shrink-0 ${st.tone}`} />
-              <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-semibold">
-                  {doc.label}
-                  {!doc.required ? <span className="font-normal text-[#8C877D]"> · jeśli dotyczy</span> : null}
-                </p>
-                <p className={`text-[12px] font-bold ${st.tone}`}>{st.label}</p>
-                {doc.status === "rejected" && doc.note ? <p className="text-[12px] text-[#C2412D]">{doc.note}</p> : null}
-                {doc.status === "missing" && doc.hint ? <p className="text-[12px] text-[#8C877D]">{doc.hint}</p> : null}
-                {doc.fileUrl ? (
-                  <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="block truncate text-[12px] text-[var(--lux-accent)]">
-                    {doc.fileName || "Otwórz plik"}
-                  </a>
-                ) : null}
-              </div>
-              {canUpload && doc.status !== "accepted" ? (
-                <button
-                  type="button"
-                  onClick={() => pick(doc.key)}
-                  disabled={busy === doc.key}
-                  className="flex size-9 shrink-0 items-center justify-center rounded-full bg-black text-[#D8C3A0] disabled:opacity-50"
-                  aria-label={`Dodaj: ${doc.label}`}
-                >
-                  {doc.status === "missing" ? <Plus className="size-4" /> : <RefreshCw className="size-4" />}
-                </button>
-              ) : null}
-            </li>
-          );
-        })}
+        <AnimatePresence initial={false}>
+          {documents.map((doc) => {
+            const st = STATUS[doc.status] || STATUS.missing;
+            const canSend = canUpload && doc.status !== "accepted" && doc.status !== "na";
+            return (
+              <motion.li
+                key={doc.key}
+                id={`portal-doc-${doc.key}`}
+                layout
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="scroll-mt-28 py-3"
+              >
+                <div className="flex items-start gap-3">
+                  <st.Icon className={`mt-0.5 size-5 shrink-0 ${st.tone}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-[15px] font-semibold ${doc.status === "na" ? "text-[#8C877D] line-through decoration-[#CFC7BA]" : ""}`}>
+                      {doc.label}
+                      {!doc.required ? <span className="font-normal text-[#8C877D] no-underline"> · jeśli dotyczy</span> : null}
+                    </p>
+                    {doc.hint ? <p className="mt-0.5 text-[12px] leading-snug text-[#6F6A61]">{doc.hint}</p> : null}
+                    <p className={`mt-1 text-[12px] font-bold ${st.tone}`}>{st.label}</p>
+                    {doc.status === "rejected" && doc.note ? (
+                      <p className="mt-0.5 rounded-lg bg-[#FDF1EE] px-2 py-1 text-[12px] text-[#C2412D]">{agentFirst}: {doc.note}</p>
+                    ) : null}
+                    {doc.fileUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setPreview(doc)}
+                        className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#F6F3EE] px-3 py-1 text-[12px] font-semibold text-[var(--lux-accent)]"
+                      >
+                        <Eye className="size-3.5 shrink-0" />
+                        <span className="truncate">{doc.fileName || "Zobacz plik"}</span>
+                      </button>
+                    ) : null}
+                    {canUpload && !doc.required && (doc.status === "missing" || doc.status === "na") ? (
+                      <button
+                        type="button"
+                        disabled={busyKey === doc.key}
+                        onClick={() => void setNotApplicable(doc, doc.status !== "na")}
+                        className="mt-1.5 block text-[12px] font-semibold text-[#6F6A61] underline decoration-[#CFC7BA] underline-offset-2 disabled:opacity-40"
+                      >
+                        {doc.status === "na" ? "Jednak dotyczy — dodam plik" : "Nie dotyczy mnie"}
+                      </button>
+                    ) : null}
+                  </div>
+                  {canSend ? (
+                    <button
+                      type="button"
+                      onClick={() => pick(doc)}
+                      className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-bold ${
+                        doc.status === "missing" || doc.status === "rejected"
+                          ? "bg-black text-[#D8C3A0]"
+                          : "border border-[#E6E0D6] bg-white text-[#15171A]"
+                      }`}
+                      aria-label={`${doc.status === "missing" ? "Dodaj" : "Wymień"}: ${doc.label}`}
+                    >
+                      {doc.status === "missing" ? <Plus className="size-4" /> : <RefreshCw className="size-3.5" />}
+                      {doc.status === "missing" ? "Dodaj" : doc.status === "rejected" ? "Popraw" : "Wymień"}
+                    </button>
+                  ) : null}
+                </div>
+              </motion.li>
+            );
+          })}
+        </AnimatePresence>
       </ul>
       {error ? <p className="mt-2 text-[13px] font-semibold text-[#C2412D]">{error}</p> : null}
+
+      <PortalUploadSheet
+        key={file ? `${file.name}:${file.size}:${file.lastModified}` : "none"}
+        file={file}
+        targetLabel={target?.label || "Dokument"}
+        targetHint={target?.hint}
+        agentFirst={agentFirst}
+        url={`/api/crm/client-portal/${encodeURIComponent(token)}/documents`}
+        buildForm={(f) => {
+          const form = new FormData();
+          form.append("itemKey", target?.key || "");
+          form.append("file", f);
+          return form;
+        }}
+        onPickAnother={() => inputRef.current?.click()}
+        onClose={() => setFile(null)}
+        onUploaded={() => {
+          setFile(null);
+          onChanged();
+          if (target) {
+            window.setTimeout(() => {
+              document.getElementById(`portal-doc-${target.key}`)?.classList.add("eos-flash");
+            }, 250);
+          }
+        }}
+      />
+
+      <LuxSheet open={Boolean(preview)} onClose={() => setPreview(null)} kicker="Wysłany plik" title={preview?.label}>
+        {preview?.fileUrl ? (
+          <div className="space-y-3">
+            <PortalFilePreview src={preview.fileUrl} name={preview.fileName || preview.label} mimeType={preview.mimeType} height={460} />
+            <div className="flex items-center justify-between gap-3 text-[12px] text-[#6F6A61]">
+              <span className="truncate">
+                {preview.fileName}
+                {preview.uploadedAt ? ` · ${new Date(preview.uploadedAt).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+              </span>
+              <a href={preview.fileUrl} target="_blank" rel="noreferrer" className="shrink-0 font-bold text-[var(--lux-accent)]">
+                {fileKind({ name: preview.fileName || "", type: preview.mimeType || "" }) === "other" ? "Pobierz" : "Otwórz w nowej karcie"}
+              </a>
+            </div>
+          </div>
+        ) : null}
+      </LuxSheet>
+    </>
+  );
+
+  return embedded ? (
+    <div id="portal-documents" className="scroll-mt-24">{body}</div>
+  ) : (
+    <section id="portal-documents" className="lux-card scroll-mt-24 p-5">
+      {body}
     </section>
   );
 }

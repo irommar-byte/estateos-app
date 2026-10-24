@@ -1854,3 +1854,16 @@ model ClientDocumentItem {
   @@unique([clientId, itemKey], map: "ClientDocumentItem_client_key")
   @@index([clientId])
 }
+
+/// Pola dokumentów zapisane przez agenta „na zawsze” — do dodania jednym dotknięciem u kolejnych klientów.
+model AgentDocumentTemplate {
+  id           Int      @id @default(autoincrement())
+  agencyUserId Int
+  label        String   @db.VarChar(160)
+  hint         String?  @db.VarChar(300)
+  required     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now())
+
+  @@index([agencyUserId])
+}

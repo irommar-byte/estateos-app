@@ -1,4 +1,10 @@
     location / {
+        # Panel klienta: pliki do 20 MB (+ zapas na multipart). Bez tego nginx odcina duże pliki 413.
+        client_max_body_size 25m;
+        client_body_timeout 300s;
+        proxy_request_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
         proxy_pass http://estateos_next;
         proxy_http_version 1.1;
         access_log /var/log/nginx/estateos-access.log estateos_timed;

@@ -16,7 +16,6 @@ import {
 } from '@/lib/upload/contactAttachmentUpload';
 import {
   isAllowedContactAttachment,
-  MAX_CONTACT_FILE_BYTES,
 } from '@/lib/contactAttachment';
 import {
   JOURNEY_ACTIVITY,
@@ -256,26 +255,35 @@ export async function markPortalChatRead(clientId: number, viewer: 'client' | 'a
   }
 }
 
+/** Limit pojedynczego pliku w panelu klienta (dokumenty i załączniki czatu). */
+export const PORTAL_MAX_FILE_BYTES = 20 * 1024 * 1024;
+
 export async function savePortalAttachment(params: {
   clientId: number;
   buffer: Buffer;
   mimeType: string;
   originalFilename: string;
 }): Promise<{ ok: true; attachment: PortalAttachment } | { ok: false; status: number; error: string }> {
+  const sizeMb = (bytes: number) => (bytes / (1024 * 1024)).toLocaleString('pl-PL', { maximumFractionDigits: 1 });
   if (params.buffer.length === 0) {
-    return { ok: false, status: 400, error: 'Pusty plik.' };
+    return { ok: false, status: 400, error: 'Plik jest pusty (0 B) — prawdopodobnie nie zapisał się w telefonie do końca. Wybierz go ponownie.' };
   }
-  if (params.buffer.length > MAX_CONTACT_FILE_BYTES) {
+  if (params.buffer.length > PORTAL_MAX_FILE_BYTES) {
     return {
       ok: false,
       status: 413,
-      error: `Plik przekracza limit ${MAX_CONTACT_FILE_BYTES / (1024 * 1024)} MB.`,
+      error: `Plik ma ${sizeMb(params.buffer.length)} MB, a limit to ${PORTAL_MAX_FILE_BYTES / (1024 * 1024)} MB. Zmniejsz go (np. zrób zdjęcie zamiast skanu albo zapisz PDF w mniejszej jakości) i wyślij ponownie.`,
     };
   }
 
   const originalName = formatContactAttachmentName(params.originalFilename, 'zalacznik');
   if (!isAllowedContactAttachment(params.mimeType, originalName)) {
-    return { ok: false, status: 415, error: 'Niedozwolony typ pliku.' };
+    const ext = originalName.includes('.') ? originalName.split('.').pop()?.toUpperCase() : null;
+    return {
+      ok: false,
+      status: 415,
+      error: `Tego typu pliku${ext ? ` (.${ext})` : ''} nie da się wysłać. Wyślij zdjęcie (JPG, PNG, HEIC), PDF albo dokument Word/Excel.`,
+    };
   }
 
   const root = path.join(CONTACT_UPLOAD_BASE_FS, `portal-${params.clientId}`);

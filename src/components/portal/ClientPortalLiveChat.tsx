@@ -12,6 +12,15 @@ import {
 } from "@/lib/contactAttachmentShared";
 import { showWebNotification } from "@/lib/webNotifications";
 import SendPlaneButton from "@/components/ui/SendPlaneButton";
+import PortalFilePreview from "@/components/portal/lux/PortalFilePreview";
+import {
+  PORTAL_UPLOAD_ACCEPT,
+  formatBytes,
+  isUploadProblem,
+  uploadWithProgress,
+  validatePortalFile,
+  type UploadProgress,
+} from "@/lib/portalUpload";
 
 type PortalMessage = {
   id: number;
@@ -50,15 +59,20 @@ function messageTime(value: string) {
 export default function ClientPortalLiveChat({
   token,
   agentName,
+  onUnreadChange,
 }: {
   token: string;
   agentName: string;
+  /** nieprzeczytane wiadomości od agenta — dla dzwonka i plakietki grupy */
+  onUnreadChange?: (info: { unread: number; latestAgentId: string | null; latestAt: string | null; preview: string | null }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<PortalMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [draft, setDraft] = useState("");
-  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [pendingFile, setPendingFileRaw] = useState<File | null>(null);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [busy, setBusy] = useState(false);
   const [peerTyping, setPeerTyping] = useState(false);
   const [error, setError] = useState("");
@@ -70,6 +84,33 @@ export default function ClientPortalLiveChat({
   const holdTimer = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const typingTimer = useRef<number | null>(null);
+
+  const setPendingFile = useCallback((file: File | null) => {
+    setPendingFileRaw(file);
+    setUploadProgress(null);
+    setPendingUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return file ? URL.createObjectURL(file) : null;
+    });
+    if (file) {
+      const problem = validatePortalFile(file);
+      setError(problem ? `${problem.title}. ${problem.detail}` : "");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!onUnreadChange) return;
+    const latest = [...messages].reverse().find((m) => m.fromAgent) || null;
+    onUnreadChange({
+      unread: unreadCount,
+      latestAgentId: latest ? String(latest.id) : null,
+      latestAt: latest?.createdAt || null,
+      preview: latest
+        ? cleanAttachmentOnlyMessage(latest.content, latest.attachments) ||
+          (latest.attachments?.[0] ? contactAttachmentPreviewLabel(latest.attachments[0]) : null)
+        : null,
+    });
+  }, [unreadCount, messages, onUnreadChange]);
 
   const markRead = useCallback(async () => {
     if (!token) return;
@@ -236,15 +277,23 @@ export default function ClientPortalLiveChat({
     try {
       let attachments: ContactAttachmentMeta[] = [];
       if (pendingFile) {
+        const problem = validatePortalFile(pendingFile);
+        if (problem) throw new Error(`${problem.title}. ${problem.detail}`);
         const payload = new FormData();
         payload.append("file", pendingFile);
-        const upload = await fetch(`/api/crm/client-portal/${token}/attachments`, {
-          method: "POST",
-          body: payload,
-        });
-        const uploadJson = await upload.json();
-        if (!upload.ok) throw new Error(uploadJson.error || "Nie udało się wgrać załącznika.");
-        attachments = [uploadJson.attachment];
+        try {
+          const uploadJson = await uploadWithProgress<{ attachment: ContactAttachmentMeta }>({
+            url: `/api/crm/client-portal/${token}/attachments`,
+            form: payload,
+            file: pendingFile,
+            onProgress: setUploadProgress,
+          }).promise;
+          attachments = [uploadJson.attachment];
+        } catch (uploadError) {
+          setUploadProgress(null);
+          if (isUploadProblem(uploadError)) throw new Error(`${uploadError.title}. ${uploadError.detail}`);
+          throw uploadError;
+        }
       }
       const res = await fetch(`/api/crm/client-portal/${token}`, {
         method: "POST",
@@ -456,15 +505,32 @@ export default function ClientPortalLiveChat({
           </div>
 
           {pendingFile ? (
-            <div className="eos-inset-well mx-3 mb-2 flex items-center gap-3 rounded-2xl px-4 py-2.5 sm:mx-5">
-              <Paperclip className="size-4 shrink-0 text-emerald-500" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold">{formatContactAttachmentName(pendingFile.name)}</p>
-                <p className="text-[10px] text-[var(--eos-muted)]">{formatContactBytes(pendingFile.size)}</p>
+            <div className="eos-inset-well mx-3 mb-2 rounded-2xl px-4 py-2.5 sm:mx-5">
+              <div className="flex items-center gap-3">
+                <Paperclip className="size-4 shrink-0 text-emerald-500" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-semibold">{formatContactAttachmentName(pendingFile.name)}</p>
+                  <p className="text-[10px] text-[var(--eos-muted)]">
+                    {uploadProgress
+                      ? uploadProgress.processing
+                        ? "Plik dotarł — zapisuję…"
+                        : `${uploadProgress.percent}% · ${formatBytes(uploadProgress.loaded)} z ${formatBytes(uploadProgress.total)}`
+                      : `${formatContactBytes(pendingFile.size)} z 20 MB · sprawdź podgląd przed wysłaniem`}
+                  </p>
+                </div>
+                <button type="button" onClick={() => setPendingFile(null)} disabled={busy} className="rounded-full p-1.5 text-[var(--eos-muted)] disabled:opacity-30">
+                  <X className="size-4" />
+                </button>
               </div>
-              <button type="button" onClick={() => setPendingFile(null)} className="rounded-full p-1.5 text-[var(--eos-muted)]">
-                <X className="size-4" />
-              </button>
+              {uploadProgress ? (
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/10">
+                  <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-200" style={{ width: `${Math.max(3, uploadProgress.percent)}%` }} />
+                </div>
+              ) : pendingUrl ? (
+                <div className="mt-2">
+                  <PortalFilePreview src={pendingUrl} name={pendingFile.name} mimeType={pendingFile.type} height={180} />
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -475,8 +541,12 @@ export default function ClientPortalLiveChat({
               <Plus className="size-5" />
               <input
                 type="file"
+                accept={PORTAL_UPLOAD_ACCEPT}
                 className="hidden"
-                onChange={(event) => setPendingFile(event.target.files?.[0] ?? null)}
+                onChange={(event) => {
+                  setPendingFile(event.target.files?.[0] ?? null);
+                  event.target.value = "";
+                }}
               />
             </label>
             <input

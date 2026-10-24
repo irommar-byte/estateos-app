@@ -16,6 +16,8 @@ type Props = {
   agentPhone?: string | null;
   partnerName?: string | null;
   onChat: () => void;
+  /** dzwonek z powiadomieniami (prawy górny róg) */
+  bell?: React.ReactNode;
   children?: React.ReactNode;
 };
 
@@ -26,11 +28,13 @@ export default function PortalLuxHeader(props: Props) {
   return (
     <header className="rounded-b-[32px] bg-black px-5 pb-6 pt-5 text-[#F6F3EE] sm:px-8">
       <div className="mx-auto max-w-3xl">
-        <div className="flex items-center justify-between">
-          <img src="/brand/estateos-wordmark.png" alt="EstateOS" className="h-[26px] w-auto" />
-          <span className="flex size-10 items-center justify-center rounded-full border border-[#D8C3A0]/35" aria-hidden>
-            <Bell className="size-[17px] text-[#D8C3A0]" />
-          </span>
+        <div className="flex items-start justify-between">
+          <img src="/brand/estateos-wordmark.png" alt="EstateOS" className="mt-2 h-[26px] w-auto" />
+          {props.bell ?? (
+            <span className="flex size-10 items-center justify-center rounded-full border border-[#D8C3A0]/35" aria-hidden>
+              <Bell className="size-[17px] text-[#D8C3A0]" />
+            </span>
+          )}
         </div>
 
         <div className="mt-5 flex items-center gap-2.5">

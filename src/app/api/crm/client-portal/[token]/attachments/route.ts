@@ -5,6 +5,7 @@ import { savePortalAttachment } from '@/lib/crm/portalChat';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const maxDuration = 300;
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -15,19 +16,22 @@ export async function POST(req: Request, ctx: RouteCtx) {
     select: { id: true },
   });
   if (!client) {
-    return NextResponse.json({ success: false, error: 'Panel niedostępny.' }, { status: 404 });
+    return NextResponse.json({ success: false, error: 'Ten link do panelu wygasł albo został zmieniony. Poproś agenta o nowy link.' }, { status: 404 });
   }
 
   let formData: FormData;
   try {
     formData = await getWebFormData(req);
   } catch {
-    return NextResponse.json({ success: false, error: 'Błąd formularza.' }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: 'Przesyłanie zostało przerwane w trakcie (np. słaby internet albo zamknięta karta). Spróbuj ponownie.' },
+      { status: 400 },
+    );
   }
 
   const file = (formData.get('file') || formData.get('attachment') || formData.get('document')) as File | null;
   if (!file || typeof file.arrayBuffer !== 'function') {
-    return NextResponse.json({ success: false, error: 'Brak pliku.' }, { status: 400 });
+    return NextResponse.json({ success: false, error: 'Plik nie dotarł na serwer. Wybierz go ponownie.' }, { status: 400 });
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());

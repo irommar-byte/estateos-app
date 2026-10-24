@@ -24,10 +24,14 @@ import { parseSearchPolygon } from '@/lib/geo/searchPolygon';
 import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
 import {
   addClientDocumentItem,
+  deleteDocumentTemplate,
   documentsSummary,
+  listDocumentTemplates,
   loadClientDocuments,
   removeClientDocumentItem,
   reviewClientDocument,
+  saveDocumentTemplate,
+  updateClientDocumentItem,
 } from '@/lib/crm/clientDocuments';
 
 export const dynamic = 'force-dynamic';
@@ -60,7 +64,7 @@ async function ownedClient(req: Request, ctx: RouteCtx) {
 export async function GET(req: Request, ctx: RouteCtx) {
   const owned = await ownedClient(req, ctx);
   if ('error' in owned) return owned.error;
-  const { client } = owned;
+  const { client, agencyUserId } = owned;
   const companions = await listPortalCompanions(client.id);
   const matches = await prisma.agencyClientMatch.findMany({
     where: { clientId: client.id, notifiedAt: { not: null } },
@@ -84,6 +88,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     tools: {
       documents,
       documentsSummary: documentsSummary(documents),
+      documentTemplates: await listDocumentTemplates(agencyUserId),
       permissions: parsePortalPermissions(client.portalPermissions),
       portalUrl: client.portalToken ? buildPortalUrl(client.portalToken) : null,
       appInvite: inviteCode
@@ -304,15 +309,38 @@ export async function POST(req: Request, ctx: RouteCtx) {
     }
   }
 
+  const documentsPayload = async () => {
+    const documents = await loadClientDocuments(client.id, client.type);
+    return { documents, documentsSummary: documentsSummary(documents), documentTemplates: await listDocumentTemplates(agencyUserId) };
+  };
+
   if (action === 'add_document') {
     try {
-      const doc = await addClientDocumentItem({
+      const label = String(body.label || '');
+      const hint = body.hint ? String(body.hint) : null;
+      const required = body.required !== false;
+      const doc = await addClientDocumentItem({ clientId: client.id, label, hint, required });
+      // „Zapisz na zawsze” — pole trafia też do szablonów agenta, do użycia u kolejnych klientów.
+      if (body.saveAsTemplate === true) await saveDocumentTemplate({ agencyUserId, label, hint, required });
+      return NextResponse.json({ success: true, document: doc, ...(await documentsPayload()) });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : 'Błąd');
+    }
+  }
+
+  if (action === 'update_document') {
+    try {
+      const doc = await updateClientDocumentItem({
         clientId: client.id,
-        label: String(body.label || ''),
-        hint: body.hint ? String(body.hint) : null,
-        required: body.required !== false,
+        itemKey: String(body.itemKey || ''),
+        label: body.label === undefined ? undefined : String(body.label),
+        hint: body.hint === undefined ? undefined : body.hint === null ? null : String(body.hint),
+        required: body.required === undefined ? undefined : body.required !== false,
       });
-      return NextResponse.json({ success: true, document: doc });
+      if (body.saveAsTemplate === true) {
+        await saveDocumentTemplate({ agencyUserId, label: doc.label, hint: doc.hint, required: doc.required });
+      }
+      return NextResponse.json({ success: true, document: doc, ...(await documentsPayload()) });
     } catch (e) {
       return fail(e instanceof Error ? e.message : 'Błąd');
     }
@@ -320,7 +348,26 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   if (action === 'remove_document') {
     await removeClientDocumentItem(client.id, String(body.itemKey || ''));
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, ...(await documentsPayload()) });
+  }
+
+  if (action === 'save_document_template') {
+    try {
+      const template = await saveDocumentTemplate({
+        agencyUserId,
+        label: String(body.label || ''),
+        hint: body.hint ? String(body.hint) : null,
+        required: body.required !== false,
+      });
+      return NextResponse.json({ success: true, template, documentTemplates: await listDocumentTemplates(agencyUserId) });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : 'Błąd');
+    }
+  }
+
+  if (action === 'delete_document_template') {
+    await deleteDocumentTemplate(agencyUserId, Number(body.templateId));
+    return NextResponse.json({ success: true, documentTemplates: await listDocumentTemplates(agencyUserId) });
   }
 
   return fail('Nieznana akcja.');
