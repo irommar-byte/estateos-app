@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { deliverChatToClient } from '@/lib/crm/clientOutbox';
 import { prisma } from '@/lib/prisma';
@@ -32,6 +33,8 @@ import {
   sendPortalChat,
 } from '@/lib/crm/portalChat';
 import { crmAgentPushData } from '@/lib/crm/agentPush';
+import { documentsSummary, loadClientDocuments } from '@/lib/crm/clientDocuments';
+import { logPortalEvent } from '@/lib/crm/portalEvents';
 import { touchPortalLinkedPresence } from '@/lib/crm/portalPresence';
 import { buildListingProgress, listingStatusLabel } from '@/lib/crm/acquisitionOffer';
 import { isPromotionActive } from '@/lib/listingPromotion';
@@ -68,6 +71,33 @@ import {
 import { mirrorPresentationActivity } from '@/lib/crm/mirrorClientSchedule';
 import { emailClientSchedule } from '@/lib/crm/clientScheduleNotify';
 import { ensurePresentationOfferMatch } from '@/lib/crm/ensurePresentationOfferMatch';
+import {
+  PARTNER_ALLOWED_ACTIONS,
+  createPortalCompanion,
+  listPortalCompanions,
+  loadCompanionFeedback,
+  parsePortalPermissions,
+  resolvePortalAccess,
+  revokePortalCompanion,
+  saveCompanionFeedback,
+  type PortalViewer,
+} from '@/lib/crm/portalAccess';
+import { favoriteBadge, parseFavoriteSnapshot, setMatchFavorite } from '@/lib/crm/portalFavorites';
+import { listAgentFreeSlots, requestSelfBooking } from '@/lib/crm/portalBooking';
+import { parseSearchPolygon } from '@/lib/geo/searchPolygon';
+import {
+  computeNetProceeds,
+  loadListingStats,
+  loadSellerBuyerOffers,
+  loadSellerCompetition,
+  loadShowingFeedbackSummary,
+  parseSellerFinance,
+  respondToBuyerOffer,
+} from '@/lib/crm/sellerPortal';
+import { buildClientVoice } from '@/lib/crm/clientVoice';
+import { buildPortalUrl } from '@/lib/agencyClientNotify';
+import { qrSvg } from '@/lib/qrSvg';
+import { ensureClientInviteCode, inviteDeepLink } from '@/lib/crm/clientInviteCode';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -203,7 +233,13 @@ async function notifyAgent(params: {
 }
 
 export async function GET(_req: Request, ctx: RouteCtx) {
-  const { token } = await ctx.params;
+  const { token: rawToken } = await ctx.params;
+  const access = await resolvePortalAccess(rawToken);
+  if (!access) {
+    return NextResponse.json({ error: 'Nie znaleziono panelu klienta.' }, { status: 404 });
+  }
+  const token = access.portalToken;
+  const viewer: PortalViewer = access.viewer;
   const sessionUserId = bearerUserIdFromRequest(_req);
   const client = await prisma.agencyClient.findFirst({
     where: { portalToken: token, status: 'ACTIVE' },
@@ -257,6 +293,17 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               status: true,
               managementStatus: true,
               images: true,
+              lat: true,
+              lng: true,
+              floor: true,
+              totalFloors: true,
+              yearBuilt: true,
+              hasBalcony: true,
+              hasParking: true,
+              hasElevator: true,
+              hasGarden: true,
+              floorPlanUrl: true,
+              createdAt: true,
             },
           },
         },
@@ -265,6 +312,8 @@ export async function GET(_req: Request, ctx: RouteCtx) {
         select: {
           id: true,
           title: true,
+          area: true,
+          rooms: true,
           price: true,
           priceCurrency: true,
           city: true,
@@ -396,6 +445,17 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               status: true,
               managementStatus: true,
               images: true,
+              lat: true,
+              lng: true,
+              floor: true,
+              totalFloors: true,
+              yearBuilt: true,
+              hasBalcony: true,
+              hasParking: true,
+              hasElevator: true,
+              hasGarden: true,
+              floorPlanUrl: true,
+              createdAt: true,
             },
           },
         },
@@ -583,9 +643,70 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     client.activities[0]?.createdAt,
   ]);
 
+  const permissions = parsePortalPermissions(client.portalPermissions);
+  const companionFeedback = await loadCompanionFeedback(client.id, portalMatches.map((m) => m.id));
+  const companions =
+    viewer.role === 'owner'
+      ? (await listPortalCompanions(client.id)).map((c) => ({
+          id: c.id,
+          name: c.name,
+          url: buildPortalUrl(c.token),
+          lastSeenAt: c.lastSeenAt?.toISOString() ?? null,
+        }))
+      : [];
+  const voice = buildClientVoice({
+    clientId: client.id,
+    firstName: viewer.role === 'partner' ? viewer.name : client.firstName,
+    salutation: viewer.role === 'partner' ? null : client.salutation,
+    agentName,
+  });
+  const appInviteCode = await ensureClientInviteCode(
+    client.id,
+    viewer.role === 'partner' ? viewer.companionId : null,
+  ).catch(() => null);
+  const sellerFinance = parseSellerFinance(client.sellerFinance);
+  const listingPrice = Number(client.linkedOffer?.price || 0);
+  const seller =
+    client.type === 'SELLER'
+      ? {
+          stats: permissions.sellerStats ? await loadListingStats(client.id, client.linkedOffer?.id ?? null) : null,
+          buyerOffers: await loadSellerBuyerOffers(client.id),
+          showingFeedback: permissions.sellerFeedback ? await loadShowingFeedbackSummary(client.id) : null,
+          competition: permissions.sellerCompetition ? await loadSellerCompetition(client.linkedOffer ?? null) : null,
+          finance: sellerFinance,
+          netAtListPrice: listingPrice > 0 ? computeNetProceeds(listingPrice, sellerFinance) : null,
+        }
+      : null;
+  const documents = permissions.documents ? await loadClientDocuments(client.id, client.type).catch(() => []) : [];
+  const lastReview = await prisma.agencyClientActivity
+    .findFirst({
+      where: { clientId: client.id, kind: 'PORTAL_EVENT', title: { startsWith: 'Ocena współpracy' } },
+      orderBy: { createdAt: 'desc' },
+      select: { metadata: true, createdAt: true },
+    })
+    .catch(() => null);
+  const reviewMeta = (lastReview?.metadata || {}) as Record<string, unknown>;
+
   return NextResponse.json({
     success: true,
     portal: {
+      viewer,
+      greeting: voice.greeting.replace(/,$/, ''),
+      clientFirstName: client.firstName,
+      salutation: client.salutation,
+      permissions,
+      companions,
+      appInvite: appInviteCode
+        ? { code: appInviteCode, link: inviteDeepLink(appInviteCode), qrSvg: qrSvg(inviteDeepLink(appInviteCode)) }
+        : null,
+      searchPolygon: parseSearchPolygon(client.buyerPreference?.searchPolygon),
+      seller,
+      documents,
+      documentsSummary: documentsSummary(documents),
+      review: lastReview
+        ? { rating: Number(reviewMeta.rating || 0), comment: reviewMeta.comment ? String(reviewMeta.comment) : null, at: lastReview.createdAt.toISOString() }
+        : null,
+      reviewLink: `https://www.google.com/search?q=${encodeURIComponent(`${agencyName} opinie`)}`,
       clientName: `${client.firstName} ${client.lastName}`.trim(),
       type: client.type,
       agencyName,
@@ -642,6 +763,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             // Internal assistant analysis (confidence, learned budget) stays with the agent.
             intelligenceReason: null,
             clientWhy: intelligenceEnabled ? whyByOffer.get(m.offerId) || null : null,
+            favorite: Boolean(m.clientFavorite),
+            favoriteBadge: m.clientFavorite ? favoriteBadge(parseFavoriteSnapshot(m.favoriteSnapshot), m.offer) : null,
+            partnerFeedback: companionFeedback.get(m.id) || [],
             offer: shapeAgencyClientMatchOffer(m.offer),
           }))
         : [],
@@ -749,12 +873,21 @@ export async function GET(_req: Request, ctx: RouteCtx) {
 }
 
 export async function POST(req: Request, ctx: RouteCtx) {
-  const { token } = await ctx.params;
+  const { token: rawToken } = await ctx.params;
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {
     return NextResponse.json({ error: 'Nieprawidłowe żądanie.' }, { status: 400 });
   }
   const action = String(body.action || '');
+  const access = await resolvePortalAccess(rawToken);
+  if (!access) {
+    return NextResponse.json({ error: 'Panel niedostępny.' }, { status: 404 });
+  }
+  const token = access.portalToken;
+  const viewer: PortalViewer = access.viewer;
+  if (viewer.role === 'partner' && !PARTNER_ALLOWED_ACTIONS.has(action)) {
+    return NextResponse.json({ error: 'Ta czynność jest dostępna tylko dla właściciela panelu.' }, { status: 403 });
+  }
 
   const client = await prisma.agencyClient.findFirst({
     where: { portalToken: token, status: 'ACTIVE' },
@@ -785,7 +918,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
     force: action === 'send_message' || action === 'typing',
   });
 
-  const clientName = `${client.firstName} ${client.lastName}`.trim();
+  const clientName =
+    viewer.role === 'partner' ? viewer.name : `${client.firstName} ${client.lastName}`.trim();
+
+  const v2 = await handlePortalV2Action({ action, body: body as Record<string, unknown>, client, viewer, clientName });
+  if (v2) return v2;
 
   if (action === 'respond_decision') {
     if (client.type !== 'SELLER') {
@@ -1436,4 +1573,254 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400 });
+}
+
+
+// ── Panel klienta v2: ulubione, druga osoba, samodzielne umawianie, obszar, sprzedający ──────────
+
+async function handlePortalV2Action(params: {
+  action: string;
+  body: Record<string, unknown>;
+  client: { id: number; type: string; agencyUserId: number; firstName: string; lastName: string };
+  viewer: PortalViewer;
+  clientName: string;
+}): Promise<NextResponse | null> {
+  const { action, body, client, viewer, clientName } = params;
+  const fail = (e: unknown, status = 400) =>
+    NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status });
+
+  if (action === 'toggle_favorite') {
+    try {
+      await setMatchFavorite({ clientId: client.id, matchId: Number(body.matchId), favorite: body.favorite !== false });
+      if (body.favorite !== false) {
+        const fav = await prisma.agencyClientMatch.findFirst({
+          where: { id: Number(body.matchId), clientId: client.id },
+          select: { offerId: true, offer: { select: { title: true } } },
+        });
+        await logPortalEvent({
+          clientId: client.id,
+          agencyUserId: client.agencyUserId,
+          event: 'favorite',
+          title: `${viewer.role === 'partner' ? viewer.name : clientName} dodał(a) do ulubionych`,
+          body: fav?.offer.title || null,
+          offerId: fav?.offerId ?? null,
+        });
+      }
+      return NextResponse.json({ success: true });
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  if (action === 'partner_feedback') {
+    if (viewer.role !== 'partner') return fail('Ocena drugiej osoby jest dostępna z jej linku.');
+    try {
+      await saveCompanionFeedback({
+        clientId: client.id,
+        companionId: viewer.companionId,
+        matchId: Number(body.matchId),
+        sentiment: String(body.sentiment || ''),
+        note: body.note ? String(body.note) : null,
+      });
+      await logPortalEvent({
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        event: 'partner_rating',
+        title: `${viewer.name} ocenił(a) ofertę`,
+        body: `${viewer.name} (druga osoba u: ${client.firstName}) — ${String(body.sentiment) === 'like' ? 'chce obejrzeć' : String(body.sentiment) === 'dislike' ? 'nie pasuje' : 'do przemyślenia'}`,
+        meta: { matchId: Number(body.matchId), sentiment: String(body.sentiment || '') },
+      });
+      return NextResponse.json({ success: true });
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  if (action === 'create_partner_link') {
+    const permissions = parsePortalPermissions(
+      (await prisma.agencyClient.findUnique({ where: { id: client.id }, select: { portalPermissions: true } }))?.portalPermissions,
+    );
+    if (!permissions.partnerAccess) return fail('Agent wyłączył zapraszanie drugiej osoby.', 403);
+    try {
+      const companion = await createPortalCompanion(client.id, String(body.name || ''));
+      await prisma.agencyClientActivity.create({
+        data: {
+          clientId: client.id,
+          agencyUserId: client.agencyUserId,
+          kind: 'PORTAL_PARTNER_INVITED',
+          title: `Druga osoba w panelu: ${companion.name}`,
+          body: `${clientName} zaprosił(a) do panelu: ${companion.name}.`,
+          metadata: { companionId: companion.id },
+        },
+      });
+      return NextResponse.json({ success: true, companion: { id: companion.id, name: companion.name, url: buildPortalUrl(companion.token) } });
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  if (action === 'revoke_partner_link') {
+    await revokePortalCompanion(client.id, Number(body.companionId));
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'list_free_slots') {
+    const permissions = parsePortalPermissions(
+      (await prisma.agencyClient.findUnique({ where: { id: client.id }, select: { portalPermissions: true } }))?.portalPermissions,
+    );
+    if (!permissions.selfBooking) return NextResponse.json({ success: true, enabled: false, slots: [] });
+    const slots = await listAgentFreeSlots(client.agencyUserId, 10);
+    return NextResponse.json({ success: true, enabled: true, slots });
+  }
+
+  if (action === 'request_booking') {
+    const permissions = parsePortalPermissions(
+      (await prisma.agencyClient.findUnique({ where: { id: client.id }, select: { portalPermissions: true } }))?.portalPermissions,
+    );
+    if (!permissions.selfBooking) return fail('Terminy ustala agent — proszę napisać w rozmowie.', 403);
+    try {
+      const booked = await requestSelfBooking({
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        offerId: Number(body.offerId),
+        startsAt: String(body.startsAt || ''),
+        note: body.note ? String(body.note) : null,
+        requestedBy: clientName,
+      });
+      await logPortalEvent({
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        event: 'self_booking',
+        title: 'Klient wybrał termin oglądania — potwierdź',
+        body: `${clientName}: ${booked.label} · ${booked.title}`.slice(0, 180),
+        offerId: Number(body.offerId),
+        meta: { startsAt: booked.startsAt },
+      });
+      return NextResponse.json({ success: true, booking: booked });
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  if (action === 'save_search_area') {
+    const polygon = body.polygon == null ? null : parseSearchPolygon(body.polygon);
+    if (body.polygon != null && !polygon) return fail('Zaznacz co najmniej 3 punkty na mapie.');
+    const row = await prisma.agencyClient.findUnique({
+      where: { id: client.id },
+      select: { portalPermissions: true, buyerPreference: { select: { id: true } } },
+    });
+    if (!row?.buyerPreference) return fail('Najpierw agent musi ustalić kryteria poszukiwań.');
+    const permissions = parsePortalPermissions(row.portalPermissions);
+    if (permissions.criteriaEdit) {
+      await prisma.agencyClientBuyerPreference.update({
+        where: { clientId: client.id },
+        data: { searchPolygon: polygon ?? Prisma.JsonNull },
+      });
+      const { refreshAgencyClientMatches } = await import('@/lib/agencyClientMatching');
+      await refreshAgencyClientMatches(client.id).catch(() => {});
+    }
+    await prisma.agencyClientActivity.create({
+      data: {
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        kind: 'PORTAL_CRITERIA_REQUEST',
+        title: polygon ? 'Klient narysował obszar poszukiwań' : 'Klient usunął obszar z mapy',
+        body: permissions.criteriaEdit ? 'Zastosowano od razu (klient może zmieniać kryteria).' : 'Czeka na Twoją akceptację.',
+        metadata: { searchPolygon: polygon, status: permissions.criteriaEdit ? 'applied' : 'pending' },
+      },
+    });
+    await notifyAgent({
+      agencyUserId: client.agencyUserId,
+      clientId: client.id,
+      title: polygon ? 'Nowy obszar poszukiwań od klienta' : 'Klient usunął obszar z mapy',
+      body: `${clientName}${permissions.criteriaEdit ? '' : ' — czeka na akceptację'}`,
+      data: { kind: 'PORTAL_CRITERIA_REQUEST' },
+    });
+    return NextResponse.json({ success: true, applied: permissions.criteriaEdit });
+  }
+
+  if (action === 'respond_buyer_offer') {
+    if (client.type !== 'SELLER') return fail('Panel niedostępny.', 404);
+    try {
+      const response = String(body.response || '') as 'accept' | 'counter' | 'reject';
+      if (!['accept', 'counter', 'reject'].includes(response)) return fail('Wybierz odpowiedź.');
+      const row = await respondToBuyerOffer({
+        clientId: client.id,
+        offerId: Number(body.buyerOfferId),
+        response,
+        counterAmount: body.counterAmount == null ? null : Number(body.counterAmount),
+        comment: body.comment ? String(body.comment) : null,
+      });
+      const label =
+        response === 'accept'
+          ? 'przyjmuje ofertę'
+          : response === 'counter'
+            ? `proponuje ${Number(row.counterAmount).toLocaleString('pl-PL')} zł`
+            : 'odrzuca ofertę';
+      await logPortalEvent({
+        clientId: client.id,
+        agencyUserId: client.agencyUserId,
+        event: 'buyer_offer_response',
+        title: `Sprzedający ${label}`,
+        body: `${clientName}: ${row.buyerLabel} · ${row.amount.toLocaleString('pl-PL')} zł`,
+        meta: { buyerOfferId: row.id, response },
+      });
+      return NextResponse.json({ success: true });
+    } catch (e) {
+      return fail(e);
+    }
+  }
+
+  if (action === 'save_seller_finance') {
+    if (client.type !== 'SELLER') return fail('Panel niedostępny.', 404);
+    const current = await prisma.agencyClient.findUnique({ where: { id: client.id }, select: { sellerFinance: true } });
+    const merged = { ...parseSellerFinance(current?.sellerFinance) };
+    const input = (body.finance && typeof body.finance === 'object' ? body.finance : {}) as Record<string, unknown>;
+    for (const key of ['mortgageBalance', 'purchaseYear', 'purchasePrice'] as const) {
+      if (key in input) {
+        const n = Number(input[key]);
+        merged[key] = Number.isFinite(n) && n >= 0 ? n : null;
+      }
+    }
+    await prisma.agencyClient.update({ where: { id: client.id }, data: { sellerFinance: merged } });
+    return NextResponse.json({ success: true, finance: merged });
+  }
+
+  if (action === 'submit_review') {
+    if (viewer.role !== 'owner') return fail('Ocenę wystawia właściciel panelu.', 403);
+    const rating = Math.round(Number(body.rating));
+    if (!(rating >= 1 && rating <= 5)) return fail('Wybierz ocenę od 1 do 5.');
+    const comment = String(body.comment || '').trim().slice(0, 1000) || null;
+    await logPortalEvent({
+      clientId: client.id,
+      agencyUserId: client.agencyUserId,
+      event: 'review',
+      title: `Ocena współpracy: ${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}`,
+      body: `${clientName}${comment ? `: „${comment}”` : ''}`,
+      meta: { rating, comment },
+    });
+    return NextResponse.json({ success: true });
+  }
+
+  if (action === 'send_referral') {
+    const name = String(body.name || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const phone = String(body.phone || '').replace(/[^\d+ ]/g, '').trim().slice(0, 32);
+    const email = String(body.email || '').trim().slice(0, 160);
+    const need = ['BUYER', 'SELLER', 'RENT'].includes(String(body.need)) ? String(body.need) : 'BUYER';
+    const note = String(body.note || '').trim().slice(0, 500) || null;
+    if (!name) return fail('Podaj imię polecanej osoby.');
+    if (!phone && !email) return fail('Podaj telefon albo e-mail.');
+    const needLabel = need === 'SELLER' ? 'chce sprzedać' : need === 'RENT' ? 'szuka najmu' : 'szuka nieruchomości';
+    await logPortalEvent({
+      clientId: client.id,
+      agencyUserId: client.agencyUserId,
+      event: 'referral',
+      title: `Polecenie od ${viewer.role === 'partner' ? viewer.name : clientName}: ${name}`,
+      body: [needLabel, phone, email, note].filter(Boolean).join(' · '),
+      meta: { referral: { name, phone: phone || null, email: email || null, need, note } },
+    });
+    return NextResponse.json({ success: true });
+  }
+
+  return null;
 }

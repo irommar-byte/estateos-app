@@ -69,7 +69,9 @@ export default function ClientPortalMatchCard({
   prefill,
   onSubmit,
   onAckReply,
+  onOpenSheet,
 }: {
+  onOpenSheet?: () => void;
   match: Match;
   token: string;
   saving: boolean;
@@ -147,7 +149,7 @@ export default function ClientPortalMatchCard({
       <div className="flex gap-3 p-3 sm:gap-4 sm:p-4">
         <OfferPhotoCascade
           offer={match.offer}
-          onOpen={expanded ? undefined : onToggle}
+          onOpen={onOpenSheet || (expanded ? undefined : onToggle)}
           thumbClassName="eos-inset-well block h-20 w-20 shrink-0 overflow-hidden rounded-2xl sm:h-24 sm:w-28"
         />
         <button type="button" onClick={onToggle} className="min-w-0 flex-1 text-left">
@@ -179,13 +181,13 @@ export default function ClientPortalMatchCard({
             {match.offer.rooms ? ` · ${match.offer.rooms} pok.` : ""}
           </p>
           <p className="mt-0.5 line-clamp-1 text-xs text-[var(--eos-muted)]">{location}</p>
-          {match.clientWhy ? (
-            <p className="mt-2 text-xs leading-relaxed text-[var(--eos-text)]/90">{match.clientWhy}</p>
+          {(match as { favoriteBadge?: string | null }).favoriteBadge ? (
+            <span className="mt-2 inline-flex rounded-full bg-[#D8C3A0] px-2.5 py-0.5 text-[11px] font-extrabold text-black">
+              {(match as { favoriteBadge?: string | null }).favoriteBadge}
+            </span>
           ) : null}
-          {!expanded ? (
-            <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--eos-subtle)]">
-              Zdjęcie = galeria · początek opisu = szybki podgląd
-            </p>
+          {match.clientWhy ? (
+            <p className="mt-2 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-[var(--eos-text)]/90">{match.clientWhy}</p>
           ) : null}
         </button>
         <button
@@ -198,6 +200,17 @@ export default function ClientPortalMatchCard({
           <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
         </button>
       </div>
+      {onOpenSheet ? (
+        <div className="px-3 pb-3 sm:px-4">
+          <button
+            type="button"
+            onClick={onOpenSheet}
+            className="w-full rounded-full bg-black py-2.5 text-[12px] font-bold text-[#D8C3A0]"
+          >
+            Zdjęcia, rzut i ocena — otwórz ofertę
+          </button>
+        </div>
+      ) : null}
 
       {expanded ? (
         <div className="border-t border-[rgba(196,163,90,0.16)] px-4 pb-4 sm:px-5 sm:pb-5">

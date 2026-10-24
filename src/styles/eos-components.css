@@ -2494,3 +2494,199 @@ html.dark button[class*="bg-[#111]"] {
   flex-shrink: 0;
   align-self: flex-start;
 }
+
+/* ── Panel klienta v2 · motyw premium (jasny kamień + czarny nagłówek, złote detale) ───────── */
+html body .portal-lux {
+  --eos-bg: #f6f3ee;
+  --eos-card: #ffffff;
+  --eos-bg-elevated: #ffffff;
+  --eos-text: #15171a;
+  --eos-input-text: #15171a;
+  --eos-muted: #5b574f;
+  --eos-border: #e6e0d6;
+  --eos-border-strong: rgba(21, 23, 26, 0.14);
+  --eos-input: #f1ece3;
+  --lux-gold: #d8c3a0;
+  --lux-gold-ink: #7a5f33;
+  --lux-ink: #000000;
+  --lux-accent: #0e4d3f;
+  background: #f6f3ee;
+  color: #15171a;
+  color-scheme: light;
+}
+html body .portal-lux .lux-serif {
+  font-family: var(--font-lux-serif), Georgia, serif;
+  letter-spacing: -0.01em;
+}
+html body .portal-lux .eos-lux-panel,
+html body .portal-lux .eos-inset-frame {
+  background: #ffffff;
+  border: 1px solid #ece6dc;
+  box-shadow: 0 14px 34px rgba(21, 23, 26, 0.06);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #15171a;
+}
+html body .portal-lux .eos-inset-well {
+  background: #f6f3ee;
+  border: 1px solid #ece6dc;
+  box-shadow: none;
+}
+html body .portal-lux .eos-portal-label {
+  color: #7a5f33;
+  text-shadow: none;
+  letter-spacing: 0.2em;
+}
+html body .portal-lux .eos-portal-label--ok {
+  color: #0e4d3f;
+}
+html body .portal-lux .eos-portal-label--no {
+  color: #9a3412;
+}
+.portal-lux-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: #000;
+  color: #f6f3ee;
+}
+.portal-lux-bar__back {
+  color: #d8c3a0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.lux-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #7a5f33;
+}
+.lux-card {
+  background: #fff;
+  border-radius: 22px;
+  border: 1px solid #ece6dc;
+  box-shadow: 0 14px 34px rgba(21, 23, 26, 0.06);
+}
+.lux-card--gold {
+  border-top: 2px solid #d8c3a0;
+}
+.lux-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 20px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.lux-btn:active {
+  transform: scale(0.98);
+}
+.lux-btn:disabled {
+  opacity: 0.5;
+}
+.lux-btn--primary {
+  background: #0e4d3f;
+  color: #f6f3ee;
+}
+.lux-btn--ink {
+  background: #000;
+  color: #d8c3a0;
+}
+.lux-btn--ghost {
+  background: #fff;
+  color: #15171a;
+  border: 1px solid #e6e0d6;
+}
+.lux-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid #e6e0d6;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  color: #15171a;
+}
+.lux-chip--on {
+  background: #000;
+  border-color: #000;
+  color: #d8c3a0;
+}
+.lux-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(10, 10, 10, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+@media (min-width: 640px) {
+  .lux-sheet-backdrop {
+    align-items: center;
+  }
+}
+.lux-sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  background: #f6f3ee;
+  border-radius: 28px 28px 0 0;
+  color: #15171a;
+}
+@media (min-width: 640px) {
+  .lux-sheet {
+    border-radius: 28px;
+  }
+}
+.lux-gallery {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.lux-gallery::-webkit-scrollbar {
+  display: none;
+}
+.lux-gallery > * {
+  flex: 0 0 100%;
+  scroll-snap-align: center;
+}
+.lux-map-pin {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.lux-map-pin__photo {
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  border: 3px solid #fff;
+  background-size: cover;
+  background-position: center;
+  background-color: #cfc7ba;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+.lux-map-pin__label {
+  margin-top: -8px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  background: #000;
+  color: #d8c3a0;
+  white-space: nowrap;
+}

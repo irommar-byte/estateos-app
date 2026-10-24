@@ -160,6 +160,18 @@ module.exports = {
       time: true,
     },
     {
+      name: "client-weekly-digest",
+      cwd: root,
+      script: "node",
+      args: "scripts/client-weekly-digest.cjs",
+      env_file: path.join(root, ".env"),
+      env: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
+      env_production: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
+      autorestart: false,
+      cron_restart: "20 7 * * 5",
+      time: true,
+    },
+    {
       name: "seller-marketing-renewals",
       cwd: root,
       script: "node",

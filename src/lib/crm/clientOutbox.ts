@@ -26,6 +26,8 @@ export const OUTBOX_CATEGORIES = {
   documents: 'Dokumenty i umowy',
   card: 'Wizytówka i powitanie',
   decision: 'Prośby o decyzję',
+  alert: 'Alerty o ulubionych ofertach',
+  digest: 'Podsumowanie tygodnia',
 } as const;
 
 export type OutboxCategory = keyof typeof OUTBOX_CATEGORIES;

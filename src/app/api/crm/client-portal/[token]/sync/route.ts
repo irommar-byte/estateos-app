@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { resolvePortalAccess } from '@/lib/crm/portalAccess';
 import { prisma } from '@/lib/prisma';
 import { touchPortalLinkedPresence } from '@/lib/crm/portalPresence';
 import { buildPortalSyncVersion } from '@/lib/crm/portalSyncVersion';
@@ -6,7 +7,8 @@ import { buildPortalSyncVersion } from '@/lib/crm/portalSyncVersion';
 type RouteCtx = { params: Promise<{ token: string }> };
 
 export async function GET(_req: Request, ctx: RouteCtx) {
-  const { token } = await ctx.params;
+  const { token: rawToken } = await ctx.params;
+  const token = (await resolvePortalAccess(rawToken))?.portalToken || rawToken;
   const client = await prisma.agencyClient.findFirst({
     where: { portalToken: token, status: 'ACTIVE' },
     select: {

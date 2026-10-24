@@ -197,7 +197,9 @@ export default function ClientPortalOfferBoard({
   onSubmit,
   onAckReply,
   prefillFor,
+  onOpenSheet,
 }: {
+  onOpenSheet?: (matchId: number) => void;
   token: string;
   matches: PortalMatch[];
   activities: PortalBoardActivity[];
@@ -534,6 +536,7 @@ export default function ClientPortalOfferBoard({
                           saving={savingId === match.id}
                           expanded={openMatchIds.includes(match.id)}
                           onToggle={() => onToggleMatch(match.id)}
+                          onOpenSheet={onOpenSheet ? () => onOpenSheet(match.id) : undefined}
                           prefill={
                             match.id === prefillFor?.matchId || match.offer.id === prefillFor?.offerId
                               ? { sentiment: prefillFor?.sentiment ?? null, phrase: prefillFor?.phrase ?? null }

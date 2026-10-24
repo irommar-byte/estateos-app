@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { offerInsideSearchPolygon } from '@/lib/geo/searchPolygon';
 import {
   passesBuyerThreshold,
   scoreOfferForBuyerPref,
@@ -56,6 +57,7 @@ export async function refreshAgencyClientMatches(clientId: number) {
 
   const upserts: { offerId: number; score: number }[] = [];
   for (const offer of offers) {
+    if (!offerInsideSearchPolygon(client.buyerPreference.searchPolygon, offer)) continue;
     const score = scoreOfferForBuyerPref(client.buyerPreference, offer as Record<string, unknown>);
     if (!passesBuyerThreshold(client.buyerPreference, score)) continue;
     upserts.push({ offerId: offer.id, score: Math.round(score) });
@@ -166,6 +168,7 @@ export async function matchPublishedOfferToAgencyClients(
 
   for (const pref of prefs) {
     if (pref.client.linkedOfferId === offerId) continue;
+    if (!offerInsideSearchPolygon(pref.searchPolygon, offer)) continue;
     const score = scoreOfferForBuyerPref(pref, offer);
     if (!passesBuyerThreshold(pref, score)) continue;
     const rounded = Math.round(score);

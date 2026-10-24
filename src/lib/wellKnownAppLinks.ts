@@ -18,12 +18,12 @@ export function buildAppleAppSiteAssociation(): Record<string, unknown> {
       details: [
         {
           appID: appId,
-          paths: ['/o/*', '/offer/*', '/oferta/*', '/klient/*'],
+          paths: ['/o/*', '/offer/*', '/oferta/*', '/klient/*', '/app/kod/*'],
         },
       ],
     },
     webcredentials: {
-      apps: [appId],
+      apps: [appId, `${process.env.APPLE_TEAM_ID?.trim() || DEFAULT_APPLE_TEAM_ID}.pl.galleryos.app`],
     },
   };
 }

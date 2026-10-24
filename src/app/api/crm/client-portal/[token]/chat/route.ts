@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { resolvePortalAccess } from '@/lib/crm/portalAccess';
 import {
   getPortalChatState,
   isPortalPeerTyping,
@@ -15,7 +16,8 @@ export const revalidate = 0;
 type RouteCtx = { params: Promise<{ token: string }> };
 
 export async function POST(req: Request, ctx: RouteCtx) {
-  const { token } = await ctx.params;
+  const { token: rawToken } = await ctx.params;
+  const token = (await resolvePortalAccess(rawToken))?.portalToken || rawToken;
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const action = String(body.action || '');
   const client = await prisma.agencyClient.findFirst({

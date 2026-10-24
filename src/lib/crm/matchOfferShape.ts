@@ -17,6 +17,18 @@ type MatchOfferSource = {
   transactionType?: string | null;
   images?: unknown;
   imageUrl?: unknown;
+  lat?: number | null;
+  lng?: number | null;
+  floor?: number | null;
+  totalFloors?: number | null;
+  yearBuilt?: number | null;
+  hasBalcony?: boolean | null;
+  hasParking?: boolean | null;
+  hasElevator?: boolean | null;
+  hasGarden?: boolean | null;
+  floorPlanUrl?: string | null;
+  status?: string | null;
+  createdAt?: Date | string | null;
 };
 
 export function shapeAgencyClientMatchOffer(offer: MatchOfferSource) {
@@ -39,5 +51,17 @@ export function shapeAgencyClientMatchOffer(offer: MatchOfferSource) {
     description,
     imageUrl,
     imageUrls: imageUrls.length ? imageUrls : imageUrl ? [imageUrl] : [],
+    lat: offer.lat ?? null,
+    lng: offer.lng ?? null,
+    floor: offer.floor ?? null,
+    totalFloors: offer.totalFloors ?? null,
+    yearBuilt: offer.yearBuilt ?? null,
+    hasBalcony: offer.hasBalcony ?? null,
+    hasParking: offer.hasParking ?? null,
+    hasElevator: offer.hasElevator ?? null,
+    hasGarden: offer.hasGarden ?? null,
+    floorPlanUrl: offer.floorPlanUrl ? absolutizeMediaUrl(offer.floorPlanUrl) : null,
+    status: offer.status ?? null,
+    listedAt: offer.createdAt ? new Date(offer.createdAt).toISOString() : null,
   };
 }

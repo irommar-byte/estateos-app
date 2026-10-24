@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { resolvePortalAccess } from '@/lib/crm/portalAccess';
 import { prisma } from '@/lib/prisma';
 import { JOURNEY_ACTIVITY, resolveMeeting, resolvePresentation } from '@/lib/crm/clientJourney';
 import { buildCalendarIcs } from '@/lib/crm/calendarLinks';
@@ -6,7 +7,8 @@ import { buildCalendarIcs } from '@/lib/crm/calendarLinks';
 type RouteCtx = { params: Promise<{ token: string }> };
 
 export async function GET(req: Request, ctx: RouteCtx) {
-  const { token } = await ctx.params;
+  const { token: rawToken } = await ctx.params;
+  const token = (await resolvePortalAccess(rawToken))?.portalToken || rawToken;
   const kind = new URL(req.url).searchParams.get('kind') === 'meeting' ? 'meeting' : 'presentation';
   const client = await prisma.agencyClient.findFirst({
     where: { portalToken: token, status: 'ACTIVE' },

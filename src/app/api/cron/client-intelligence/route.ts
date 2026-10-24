@@ -1,6 +1,9 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { tickClientIntelligence } from '@/lib/crm/clientIntelligenceRun';
+import { scanFavoriteAlerts } from '@/lib/crm/portalFavorites';
+import { isWithinSendWindow } from '@/lib/crm/intelligenceSchedule';
+import { scanViewingReminders } from '@/lib/crm/viewingReminders';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -23,7 +26,11 @@ function isAuthorized(req: Request): boolean {
 
 async function runTick() {
   const tick = await tickClientIntelligence();
-  return NextResponse.json({ ok: true, ...tick });
+  // Alerty o ulubionych (spadek ceny, rezerwacja, nowe zdjęcia) — tylko w godzinach wysyłki.
+  const favoriteAlerts = isWithinSendWindow() ? await scanFavoriteAlerts().catch(() => null) : null;
+  // Przypomnienia przed potwierdzonym oglądaniem / spotkaniem (co godzinę).
+  const viewingReminders = await scanViewingReminders().catch(() => null);
+  return NextResponse.json({ ok: true, ...tick, favoriteAlerts, viewingReminders });
 }
 
 export async function GET(req: Request) {

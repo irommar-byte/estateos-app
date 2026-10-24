@@ -10,7 +10,36 @@ import {
   CalendarCheck2,
   BriefcaseBusiness,
   ShieldCheck,
+  Calculator,
+  Columns2,
+  Handshake,
+  MapPinned,
+  MessageCircle,
+  Users,
 } from "lucide-react";
+import PortalLuxHeader from "@/components/portal/lux/PortalLuxHeader";
+import PortalJourneyAxis, { type LuxAxisStage } from "@/components/portal/lux/PortalJourneyAxis";
+import PortalLuxFooter from "@/components/portal/lux/PortalLuxFooter";
+import PortalToolsGrid, { type LuxTool } from "@/components/portal/lux/PortalToolsGrid";
+import PortalAppInvite from "@/components/portal/lux/PortalAppInvite";
+import PortalOfferSheet from "@/components/portal/lux/PortalOfferSheet";
+import PortalCompare from "@/components/portal/lux/PortalCompare";
+import PortalPartnerSheet, { type PortalCompanion } from "@/components/portal/lux/PortalPartnerSheet";
+import PortalBookingSheet, { type BookingOffer } from "@/components/portal/lux/PortalBookingSheet";
+import PortalAreaSheet from "@/components/portal/lux/PortalAreaSheet";
+import PortalCostCalculator from "@/components/portal/lux/PortalCostCalculator";
+import {
+  SellerBuyerOffers,
+  SellerCompetition,
+  SellerNetSheet,
+  SellerShowingFeedback,
+  SellerStatsTiles,
+  type SellerPortalV2,
+} from "@/components/portal/lux/SellerLux";
+import { portalAction } from "@/components/portal/lux/portalApi";
+import PortalDocuments, { type PortalDocument } from "@/components/portal/lux/PortalDocuments";
+import { PortalReferral, PortalReview } from "@/components/portal/lux/PortalReviewReferral";
+import { matchSentiment, type LuxMatch, type LuxPartnerFeedback } from "@/components/portal/lux/types";
 import { type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
 import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalOfferBoard from "@/components/portal/ClientPortalOfferBoard";
@@ -77,6 +106,29 @@ type JourneyStage = {
 
 type PortalData = {
   clientName: string;
+  viewer?: { role: "owner" } | { role: "partner"; companionId: number; name: string };
+  greeting?: string;
+  clientFirstName?: string;
+  permissions?: {
+    selfBooking: boolean;
+    criteriaEdit: boolean;
+    earlyAccess: boolean;
+    partnerAccess: boolean;
+    sellerStats: boolean;
+    sellerFeedback: boolean;
+    sellerCompetition: boolean;
+    weeklyDigest: boolean;
+    viewingReminders?: boolean;
+    documents?: boolean;
+  };
+  companions?: PortalCompanion[];
+  appInvite?: { code: string; link: string; qrSvg?: string } | null;
+  searchPolygon?: unknown;
+  seller?: SellerPortalV2 | null;
+  documents?: PortalDocument[];
+  documentsSummary?: { required: number; done: number; missing: number; toReview: number } | null;
+  review?: { rating: number; comment: string | null; at: string } | null;
+  reviewLink?: string;
   syncVersion?: string;
   type: "BUYER" | "SELLER";
   agencyName: string;
@@ -116,6 +168,9 @@ type PortalData = {
     intelligenceSent?: boolean;
     intelligenceReason?: string | null;
     clientWhy?: string | null;
+    favorite?: boolean;
+    favoriteBadge?: string | null;
+    partnerFeedback?: LuxPartnerFeedback[];
     offer: {
       id: number;
       title: string;
@@ -500,6 +555,71 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     }
   };
 
+  const [sheetMatchId, setSheetMatchId] = useState<number | null>(null);
+  const [compareIds, setCompareIds] = useState<number[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [partnerOpen, setPartnerOpen] = useState(false);
+  const [bookingOpen, setBookingOpen] = useState(false);
+  const [bookingOfferId, setBookingOfferId] = useState<number | null>(null);
+  const [areaOpen, setAreaOpen] = useState(false);
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [netOpen, setNetOpen] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    try {
+      const raw = window.localStorage.getItem(`eos-compare:${token}`);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) setCompareIds(parsed.map(Number).filter(Number.isFinite).slice(0, 4));
+    } catch {
+      /* ignore */
+    }
+  }, [token]);
+
+  const toggleCompare = (matchId: number) => {
+    setCompareIds((prev) => {
+      const next = prev.includes(matchId) ? prev.filter((id) => id !== matchId) : [...prev, matchId].slice(-4);
+      try {
+        if (token) window.localStorage.setItem(`eos-compare:${token}`, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
+  const toggleFavorite = async (matchId: number, favorite: boolean) => {
+    if (!token) return;
+    try {
+      await portalAction(token, "toggle_favorite", { matchId, favorite });
+      await load({ silent: true });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Błąd");
+    }
+  };
+
+  const rateFromSheet = async (matchId: number, sentiment: "like" | "maybe" | "dislike", note: string) => {
+    if (!token || !portal) return;
+    if (portal.viewer?.role === "partner") {
+      await portalAction(token, "partner_feedback", { matchId, sentiment, note });
+      await load({ silent: true });
+      return;
+    }
+    const match = portal.matches.find((m) => m.id === matchId);
+    let prev: { liked?: string; disliked?: string; phrases?: string[]; note?: string } = {};
+    try {
+      prev = match?.clientFeedback ? JSON.parse(match.clientFeedback) : {};
+    } catch {
+      prev = {};
+    }
+    await submitFeedback(matchId, {
+      sentiment,
+      liked: String(prev.liked || ""),
+      disliked: String(prev.disliked || ""),
+      phrases: Array.isArray(prev.phrases) ? prev.phrases.map(String) : [],
+      note: note || String(prev.note || ""),
+    });
+  };
   if (loading) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16">
@@ -546,429 +666,650 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const unreadAgentReplies = collectAgentOfferReplies(portal.matches).filter((reply) => reply.unread).length;
   const pendingDecision = (portal.pendingDecisions || []).find((decision) => !decision.clientResponse) || null;
   const listingLive = portal.listing?.status === "ACTIVE" || portal.listing?.status === "PUBLISHED";
+  const isPartner = portal.viewer?.role === "partner";
+  const partnerName = portal.viewer?.role === "partner" ? portal.viewer.name : null;
+  const agentFirst = portal.agentName.split(" ")[0] || portal.agentName;
+  const permissions = portal.permissions || {
+    selfBooking: true,
+    criteriaEdit: false,
+    earlyAccess: true,
+    partnerAccess: true,
+    sellerStats: true,
+    sellerFeedback: true,
+    sellerCompetition: true,
+    weeklyDigest: true,
+  };
+  const luxMatches = portal.matches as unknown as LuxMatch[];
+  const sheetMatch = luxMatches.find((m) => m.id === sheetMatchId) || null;
+  const compareMatches = compareIds.map((id) => luxMatches.find((m) => m.id === id)).filter(Boolean) as LuxMatch[];
+  const ratedCount = luxMatches.filter((m) => matchSentiment(m.clientFeedback)).length;
+  const favoriteCount = luxMatches.filter((m) => m.favorite).length;
+  const likedOffers: BookingOffer[] = luxMatches
+    .filter((m) => matchSentiment(m.clientFeedback) === "like" || m.favorite)
+    .map((m) => ({ offerId: m.offer.id, title: m.offer.title }));
+  const bookingOffers: BookingOffer[] = likedOffers.length
+    ? likedOffers
+    : luxMatches.map((m) => ({ offerId: m.offer.id, title: m.offer.title }));
+  const canSelfBook =
+    portal.type === "BUYER" && !isPartner && permissions.selfBooking && luxMatches.length > 0 &&
+    !(portal.presentation && portal.presentation.status === "pending" && new Date(portal.presentation.startsAt).getTime() > Date.now());
+  const seller = (portal.seller || null) as SellerPortalV2 | null;
+  const listPrice = Number(portal.listing?.price || 0);
+  const openBuyerOffers = seller?.buyerOffers.filter((o) => o.status === "OPEN") || [];
+  const favoritePrice = Number(
+    luxMatches.find((m) => m.favorite)?.offer.price || luxMatches[0]?.offer.price || 0,
+  );
+  const criteria = portal.searchCriteria;
+  const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  const nowCard = (
+    <ClientPortalNowCard
+      input={{
+        type: portal.type,
+        clientFirstName: greetingName.split(" ")[0] || greetingName,
+        agentName: portal.agentName,
+        agentPhone: portal.agentPhone || portal.agencyPhone || null,
+        presentation: portal.presentation,
+        meeting: portal.meeting,
+        hasCheckback: portal.type === "BUYER" && Boolean(portal.pendingCheckback),
+        unreadAgentReplies,
+        pendingOfferCount: pendingMatches.length,
+        totalOfferCount: portal.matches.length,
+        awaitingFirstOffer,
+        firstOfferPendingAgent: firstOfferPendingAgent && portal.matches.length === 0,
+        pendingDecisionTitle:
+          portal.type === "SELLER"
+            ? openBuyerOffers.length
+              ? `${openBuyerOffers.length === 1 ? "Oferta kupującego" : `${openBuyerOffers.length} oferty kupujących`} czeka na odpowiedź`
+              : pendingDecision
+                ? pendingDecision.title
+                : null
+            : null,
+        agreementSigned: portal.acquisition?.status === "SIGNED",
+        hasAgreement: Boolean(portal.acquisition?.agreementSnapshot),
+        listingLive,
+        purchasePhase: portal.purchase?.phase || null,
+      }}
+    />
+  );
+
+  const presentationBlock =
+    portal.presentation && token ? (
+      <div id="portal-presentation" className="scroll-mt-24">
+        <ClientPortalPresentationHero
+          token={token}
+          clientType={portal.type}
+          slot={portal.presentation}
+          agentName={portal.agentName}
+          onDone={() => load()}
+        />
+      </div>
+    ) : null;
+
+  // ── Oś kupującego ──
+  const buyerStageIndex = portal.purchase?.phase === "closed"
+    ? 6
+    : portal.purchase?.phase === "negotiating"
+      ? 3
+      : portal.presentation || likedOffers.length
+        ? 2
+        : luxMatches.length
+          ? 1
+          : criteria
+            ? 1
+            : 0;
+  const stateFor = (index: number, current: number): LuxAxisStage["state"] =>
+    index < current ? "done" : index === current ? "current" : "future";
+  const buyerStages: LuxAxisStage[] = [
+    {
+      id: "criteria",
+      label: "Kryteria",
+      state: stateFor(0, buyerStageIndex),
+      summary: criteria ? (
+        <>
+          {[criteria.location, criteria.maxBudget ? `do ${criteria.maxBudget}` : null, criteria.minRooms ? `od ${criteria.minRooms} pok.` : null]
+            .filter(Boolean)
+            .join(" · ")}
+          {!isPartner ? (
+            <>
+              {" · "}
+              <button type="button" onClick={() => setAreaOpen(true)} className="font-bold text-[var(--lux-accent)]">
+                {portal.searchPolygon ? "obszar na mapie ✓" : "narysuj obszar"}
+              </button>
+            </>
+          ) : null}
+        </>
+      ) : (
+        `${agentFirst} ustala z Tobą, czego szukamy.`
+      ),
+      content: nowCard,
+    },
+    {
+      id: "proposals",
+      label: luxMatches.length ? `Propozycje · ${ratedCount} ${ratedCount === 1 ? "oceniona" : "ocenionych"}` : "Propozycje",
+      state: stateFor(1, buyerStageIndex),
+      summary: luxMatches.length ? (
+        <>
+          {favoriteCount ? `${favoriteCount} ulubionych · ` : ""}
+          <button type="button" onClick={() => scrollTo("portal-offers")} className="font-bold text-[var(--lux-accent)]">
+            zobacz wszystkie
+          </button>
+          {compareIds.length >= 2 ? (
+            <>
+              {" · "}
+              <button type="button" onClick={() => setCompareOpen(true)} className="font-bold text-[var(--lux-accent)]">
+                porównaj
+              </button>
+            </>
+          ) : null}
+        </>
+      ) : (
+        "Pierwsze propozycje pojawią się tutaj."
+      ),
+      content: (
+        <>
+          {nowCard}
+          {portal.pendingCheckback && token && !isPartner ? (
+            <ClientPortalIntelligenceCheckback token={token} checkback={portal.pendingCheckback} onDone={() => void load()} />
+          ) : null}
+        </>
+      ),
+    },
+    {
+      id: "viewings",
+      label: "Oglądania",
+      state: stateFor(2, buyerStageIndex),
+      summary: portal.presentation
+        ? `${new Date(portal.presentation.startsAt).getTime() < Date.now() ? "Ostatnie" : "Najbliższe"}: ${formatMeetingWhenPl(portal.presentation.startsAt)}`
+        : "Gdy coś się spodoba — umówimy oglądanie.",
+      content: (
+        <>
+          {nowCard}
+          {presentationBlock}
+          {canSelfBook ? (
+            <button type="button" onClick={() => { setBookingOfferId(null); setBookingOpen(true); }} className="lux-btn lux-btn--ink w-full">
+              Wybierz termin oglądania z kalendarza {agentFirst}
+            </button>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      id: "offer",
+      label: "Oferta i negocjacje",
+      state: stateFor(3, buyerStageIndex),
+      summary: portal.purchase && portal.purchase.phase !== "viewed"
+        ? `${portal.purchase.title} · ${portal.purchase.statusLabel}`
+        : "Propozycja ceny, odpowiedź sprzedającego, warunki.",
+      content: (
+        <>
+          {nowCard}
+          {portal.purchase ? (
+            <section className="lux-card p-4">
+              <p className="text-[15px] font-bold">{portal.purchase.title}</p>
+              <p className="text-[13px] text-[#5B574F]">{portal.purchase.address}</p>
+              <p className="lux-serif mt-2 text-[22px]">
+                {portal.purchase.price ? `${Number(portal.purchase.price).toLocaleString("pl-PL")} zł` : "Cena do uzgodnienia"}
+              </p>
+              <p className="mt-1 text-[12px] font-bold text-[var(--lux-accent)]">{portal.purchase.statusLabel}</p>
+            </section>
+          ) : null}
+        </>
+      ),
+    },
+    {
+      id: "contract",
+      label: "Umowa, kredyt, notariusz",
+      state: stateFor(4, buyerStageIndex),
+      summary: "Lista dokumentów i terminy w jednym miejscu.",
+    },
+    {
+      id: "keys",
+      label: "Klucze",
+      state: portal.purchase?.phase === "closed" ? "done" : stateFor(5, buyerStageIndex),
+      summary: portal.purchase?.phase === "closed" ? "Gratulacje — nieruchomość jest Twoja." : "Protokół przekazania i stany liczników.",
+    },
+  ];
+
+  // ── Oś sprzedającego ──
+  const signed = portal.acquisition?.status === "SIGNED";
+  const listingSold = ["SOLD", "ARCHIVED"].includes(String(portal.listing?.status || "").toUpperCase());
+  const acceptedOffer = seller?.buyerOffers.find((o) => o.status === "ACCEPTED") || null;
+  const sellerDone = [signed, Boolean(portal.listing), listingLive, Boolean(acceptedOffer) || listingSold, listingSold, listingSold, listingSold];
+  const sellerCurrent = Math.max(0, sellerDone.findIndex((d) => !d));
+  const sellerCurrentIndex = sellerDone.every(Boolean) ? 7 : sellerCurrent;
+  const sellerStages: LuxAxisStage[] = [
+    {
+      id: "agreement",
+      label: "Umowa i wycena",
+      state: stateFor(0, sellerCurrentIndex),
+      summary: signed
+        ? `Podpisana${portal.acquisition?.signedAt ? ` ${new Date(portal.acquisition.signedAt).toLocaleDateString("pl-PL")}` : ""}`
+        : portal.meeting
+          ? `Spotkanie: ${formatMeetingWhenPl(portal.meeting.startsAt)}`
+          : `${agentFirst} przygotowuje umowę.`,
+      content: nowCard,
+    },
+    {
+      id: "prep",
+      label: "Przygotowanie",
+      state: stateFor(1, sellerCurrentIndex),
+      summary: portal.listing ? "Zdjęcia, rzut i opis gotowe." : "Sesja zdjęciowa, rzut i opis.",
+      content: nowCard,
+    },
+    {
+      id: "publish",
+      label: "Publikacja",
+      state: stateFor(2, sellerCurrentIndex),
+      summary: listingLive
+        ? `Aktywne${portal.activeChannels?.length ? ` na ${portal.activeChannels.length + 1} portalach` : ""}`
+        : portal.listing?.statusLabel || "Ogłoszenie trafi na portale po akceptacji.",
+      content: nowCard,
+    },
+    {
+      id: "viewings",
+      label: "Oglądania i oferty",
+      state: stateFor(3, sellerCurrentIndex),
+      summary: seller?.stats
+        ? `${seller.stats.showings} ${seller.stats.showings === 1 ? "oglądanie" : "oglądań"} · ${openBuyerOffers.length} ${openBuyerOffers.length === 1 ? "oferta" : "ofert"} do decyzji`
+        : "Pokazy i oferty kupujących.",
+      content: (
+        <>
+          {nowCard}
+          {presentationBlock}
+          {seller ? (
+            <SellerShowingFeedback
+              seller={seller}
+              agentFirst={agentFirst}
+              agentRecommendation={portal.sellerNextStep?.clientMessage || null}
+            />
+          ) : null}
+        </>
+      ),
+    },
+    {
+      id: "preliminary",
+      label: "Umowa przedwstępna",
+      state: stateFor(4, sellerCurrentIndex),
+      summary: acceptedOffer ? `Przyjęta oferta: ${acceptedOffer.buyerLabel} · ${acceptedOffer.amount.toLocaleString("pl-PL")} zł` : "Zadatek, terminy, warunki kredytu kupującego.",
+      content: nowCard,
+    },
+    { id: "deed", label: "Akt notarialny", state: stateFor(5, sellerCurrentIndex), summary: "Lista dokumentów do sprzedaży i termin u notariusza." },
+    { id: "handover", label: "Przekazanie mieszkania", state: stateFor(6, sellerCurrentIndex), summary: "Protokół, liczniki, klucze." },
+  ];
+
+  const stages = portal.type === "BUYER" ? buyerStages : sellerStages;
+  const currentStage = stages.find((s) => s.state === "current");
+  const doneCount = stages.filter((s) => s.state === "done").length;
+  const headline =
+    portal.type === "BUYER"
+      ? (
+          {
+            criteria: "Ustalamy, czego szukamy.",
+            proposals: luxMatches.length ? "Wybieramy najlepsze propozycje." : "Szukamy dla Ciebie.",
+            viewings: "Jesteśmy na etapie oglądań.",
+            offer: "Negocjujemy warunki.",
+            contract: "Dopinamy formalności.",
+            keys: "Klucze są Twoje.",
+          } as Record<string, string>
+        )[currentStage?.id || "keys"]
+      : (
+          {
+            agreement: "Zaczynamy współpracę.",
+            prep: "Przygotowujemy ogłoszenie.",
+            publish: "Ogłoszenie trafia na rynek.",
+            viewings: portal.listing?.createdAt
+              ? `Sprzedaż trwa — ${Math.max(1, Math.round((Date.now() - new Date(portal.listing.createdAt).getTime()) / 86_400_000))} dni na rynku.`
+              : "Sprzedaż trwa.",
+            preliminary: "Mamy kupującego.",
+            deed: "Przed aktem notarialnym.",
+            handover: "Przekazanie mieszkania.",
+          } as Record<string, string>
+        )[currentStage?.id || "handover"] || "Sprzedane.";
+
+  const buyerTools: LuxTool[] = [
+    ...(compareIds.length
+      ? [{ key: "compare", title: "Porównanie", description: `${compareIds.length} ${compareIds.length === 1 ? "oferta" : "oferty"} obok siebie`, icon: Columns2, onClick: () => setCompareOpen(true), badge: String(compareIds.length) }]
+      : [{ key: "compare", title: "Porównanie", description: "Zaznacz oferty „Do porównania”", icon: Columns2, onClick: () => scrollTo("portal-offers") }]),
+    ...(!isPartner && criteria ? [{ key: "area", title: "Moje kryteria", description: portal.searchPolygon ? "Obszar na mapie zapisany" : "Narysuj obszar na mapie", icon: MapPinned, onClick: () => setAreaOpen(true) }] : []),
+    ...(canSelfBook ? [{ key: "booking", title: "Umów oglądanie", description: `Wolne terminy ${agentFirst}`, icon: CalendarCheck2, onClick: () => { setBookingOfferId(null); setBookingOpen(true); } }] : []),
+    { key: "calc", title: "Rata i koszty", description: "Kredyt, podatek, notariusz, prowizja", icon: Calculator, onClick: () => setCalcOpen(true) },
+    ...(!isPartner && permissions.partnerAccess ? [{ key: "partner", title: "Druga osoba", description: portal.companions?.length ? `${portal.companions.map((c) => c.name).join(", ")} ma dostęp` : "Wybierajcie razem", icon: Users, onClick: () => setPartnerOpen(true) }] : []),
+    { key: "chat", title: "Rozmowa", description: `Napisz do ${agentFirst}`, icon: MessageCircle, onClick: () => scrollTo("portal-chat") },
+  ];
+  const sellerTools: LuxTool[] = [
+    ...(seller ? [{ key: "net", title: "Ile zostanie na rękę", description: "Po prowizji, podatku i spłacie kredytu", icon: Calculator, onClick: () => setNetOpen(true) }] : []),
+    ...(openBuyerOffers.length ? [{ key: "offers", title: "Oferty kupujących", description: `${openBuyerOffers.length} do decyzji`, icon: Handshake, onClick: () => scrollTo("portal-buyer-offers"), badge: String(openBuyerOffers.length) }] : []),
+    ...(portal.listing?.id ? [{ key: "listing", title: "Ogłoszenie", description: "Zobacz, co widzą kupujący", icon: ExternalLink, onClick: () => window.open(`/oferta/${portal.listing?.id}`, "_blank") }] : []),
+    ...(portal.acquisition?.agreementSnapshot && token ? [{ key: "doc", title: "Umowa", description: "Dokument w przeglądarce", icon: BriefcaseBusiness, onClick: () => window.open(`/klient/${token}/dokument`, "_blank") }] : []),
+    { key: "chat", title: "Rozmowa", description: `Napisz do ${agentFirst}`, icon: MessageCircle, onClick: () => scrollTo("portal-chat") },
+  ];
 
   return (
-    <main className="client-portal-page pb-24 pt-4 text-[var(--eos-text)] sm:pb-28">
-    <div className="mx-auto max-w-3xl space-y-6 px-4 sm:px-6">
-      <ClientPortalNowCard
-        input={{
-          type: portal.type,
-          clientFirstName: greetingName.split(" ")[0] || greetingName,
-          agentName: portal.agentName,
-          agentPhone: portal.agentPhone || portal.agencyPhone || null,
-          presentation: portal.presentation,
-          meeting: portal.meeting,
-          hasCheckback: portal.type === "BUYER" && Boolean(portal.pendingCheckback),
-          unreadAgentReplies,
-          pendingOfferCount: pendingMatches.length,
-          totalOfferCount: portal.matches.length,
-          awaitingFirstOffer,
-          firstOfferPendingAgent: firstOfferPendingAgent && portal.matches.length === 0,
-          pendingDecisionTitle: portal.type === "SELLER" && pendingDecision ? pendingDecision.title : null,
-          agreementSigned: portal.acquisition?.status === "SIGNED",
-          hasAgreement: Boolean(portal.acquisition?.agreementSnapshot),
-          listingLive,
-          purchasePhase: portal.purchase?.phase || null,
-        }}
-      />
+    <main className="client-portal-page pb-24 text-[var(--eos-text)] sm:pb-28">
+      <PortalLuxHeader
+        greeting={portal.greeting || `Dzień dobry, ${greetingName}`}
+        headline={headline}
+        bar={{ done: doneCount, total: stages.length }}
+        agencyName={portal.agencyName}
+        agencyLogo={portal.agencyLogo}
+        agentName={portal.agentName}
+        agentPhoto={portal.agentPhoto}
+        agentTitle={portal.agentTitle}
+        agentPhone={portal.agentPhone || portal.agencyPhone || null}
+        partnerName={partnerName}
+        onChat={() => scrollTo("portal-chat")}
+      >
+        {portal.type === "SELLER" && seller ? (
+          <>
+            {portal.listing ? (
+              <div className="mt-4 flex gap-3 rounded-[20px] border border-[#D8C3A0]/20 bg-white/[0.06] p-3">
+                {portal.listing.imageUrl ? (
+                  <img src={portal.listing.imageUrl} alt="" className="size-[84px] shrink-0 rounded-[14px] object-cover" />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[15px] font-bold">{portal.listing.title}</p>
+                  <p className="lux-serif mt-0.5 text-[20px]">{portal.listing.price ? `${portal.listing.price.toLocaleString("pl-PL")} zł` : "Cena na zapytanie"}</p>
+                  <p className="mt-0.5 text-[12px] text-[#BDB6AA]">{portal.listing.statusLabel || ""}</p>
+                </div>
+              </div>
+            ) : null}
+            <SellerStatsTiles stats={seller.stats} />
+          </>
+        ) : null}
+      </PortalLuxHeader>
 
-      {/* Twój agent — zawsze pod ręką */}
-      <section className="eos-inset-frame flex items-center gap-4 rounded-[1.5rem] p-4 sm:p-5">
-        {portal.agentPhoto ? (
-          <img
-            src={portal.agentPhoto}
-            alt={portal.agentName}
-            className="size-14 shrink-0 rounded-full object-cover ring-2 ring-emerald-500/30"
-          />
-        ) : (
-          <div className="eos-inset-well flex size-14 shrink-0 items-center justify-center rounded-full text-lg font-black text-emerald-600">
-            {portal.agentName.charAt(0)}
+      <div className="mx-auto max-w-3xl space-y-7 px-4 pt-6 sm:px-6">
+        <PortalJourneyAxis title={portal.type === "BUYER" ? "Droga do kluczy" : "Droga do aktu"} stages={stages} />
+
+        {portal.type === "BUYER" && token && !isPartner ? (
+          <div id="portal-replies" className="scroll-mt-24">
+            <ClientPortalAgentReplyInbox
+              token={token}
+              replies={collectAgentOfferReplies(portal.matches)}
+              onOpenOffer={(matchId) => {
+                ensureMatchOpen(matchId);
+                window.setTimeout(() => {
+                  document.getElementById(`portal-match-${matchId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }, 80);
+              }}
+              onDone={() => void load({ silent: true })}
+            />
           </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-600">Twój agent</p>
-          <p className="truncate text-base font-bold text-[var(--eos-text)]">{portal.agentName}</p>
-          <p className="truncate text-xs text-[var(--eos-muted)]">
-            {[portal.agentTitle || "Agent nieruchomości", portal.agencyName].filter(Boolean).join(" · ")}
-          </p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          {portal.agentPhone || portal.agencyPhone ? (
-            <a
-              href={`tel:${String(portal.agentPhone || portal.agencyPhone).replace(/[^\d+]/g, "")}`}
-              aria-label="Zadzwoń do agenta"
-              className="flex size-11 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-emerald-600 transition hover:border-emerald-500/40"
-            >
-              <Phone className="size-[18px]" />
-            </a>
-          ) : null}
-          {portal.agentEmail ? (
-            <a
-              href={`mailto:${portal.agentEmail}`}
-              aria-label="Napisz e-mail do agenta"
-              className="flex size-11 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-emerald-600 transition hover:border-emerald-500/40"
-            >
-              <Mail className="size-[18px]" />
-            </a>
-          ) : null}
-        </div>
-      </section>
+        ) : null}
 
-      {portal.presentation && token ? (
-        <div id="portal-presentation" className="scroll-mt-24">
-          <ClientPortalPresentationHero
-            token={token}
-            clientType={portal.type}
-            slot={portal.presentation}
-            agentName={portal.agentName}
-            onDone={() => load()}
-          />
-        </div>
-      ) : null}
-
-      {portal.meeting && collapseAgentMeeting ? (
-        <p className="px-1 text-sm leading-relaxed text-[var(--eos-muted)]">
-          Spotkanie z agentem ({formatMeetingWhenPl(portal.meeting.startsAt)})
-          {portal.meeting.status === "confirmed" ? " — zakończone." : "."} Umowa i ogłoszenie są poniżej.
-        </p>
-      ) : portal.meeting ? (
-        <section id="portal-meeting" className="eos-lux-panel scroll-mt-24 rounded-[1.75rem] p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="eos-portal-label eos-portal-label--ok">
-                {portal.type === "SELLER" ? "Spotkanie z agentem" : "Umówienie spotkania"}
-              </p>
-              <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">
-                {formatMeetingWhenPl(portal.meeting.startsAt)}
-              </h2>
-              {portal.meeting.location ? (
-                <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.meeting.location}</p>
-              ) : null}
-            </div>
-            <span className="eos-raised-chip eos-raised-chip--on shrink-0 self-start whitespace-nowrap rounded-full px-3 py-1 text-[10px]">
-              {portal.meeting.status === "confirmed" ? "Potwierdzone" : "Do potwierdzenia"}
-            </span>
-          </div>
-          {portal.meeting.status === "pending" && portal.meeting.reason ? (
-            <p className="mt-3 text-sm text-amber-700">Prośba o zmianę: {portal.meeting.reason}</p>
-          ) : null}
-          {portal.meeting.prepLabels?.length ? (
-            <div className="mt-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-              <p className="eos-portal-label">Na spotkanie proszę przygotować</p>
-              <ul className="mt-3 space-y-2 text-sm text-[var(--eos-text)]">
+        {portal.meeting && !collapseAgentMeeting && portal.type === "SELLER" ? (
+          <section id="portal-meeting" className="lux-card scroll-mt-24 p-5">
+            <p className="lux-kicker">Spotkanie z agentem</p>
+            <h2 className="lux-serif mt-1.5 text-[24px] font-medium">{formatMeetingWhenPl(portal.meeting.startsAt)}</h2>
+            {portal.meeting.location ? <p className="mt-1 text-sm text-[#5B574F]">{portal.meeting.location}</p> : null}
+            {portal.meeting.prepLabels?.length ? (
+              <ul className="mt-4 space-y-2 text-sm">
                 {portal.meeting.prepLabels.map((label) => (
                   <li key={label} className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[var(--lux-accent)]" />
                     {label}
                   </li>
                 ))}
               </ul>
-            </div>
-          ) : null}
-          {token ? (
-            <ClientPortalScheduleActions
+            ) : null}
+            {token ? <ClientPortalScheduleActions token={token} kind="meeting" slot={portal.meeting} onDone={() => load()} /> : null}
+          </section>
+        ) : null}
+
+        {portal.type === "SELLER" && seller && token ? (
+          <SellerBuyerOffers seller={seller} listPrice={listPrice} token={token} agentFirst={agentFirst} onChanged={() => void load({ silent: true })} />
+        ) : null}
+
+        {portal.type === "SELLER" && token ? (
+          <div id="portal-decisions" className="scroll-mt-24">
+            <SellerPortalCollaboration
               token={token}
-              kind="meeting"
-              slot={portal.meeting}
-              onDone={() => load()}
+              listingImage={portal.listing?.imageUrl}
+              listingPath={portal.listingPath || []}
+              activeChannels={portal.activeChannels || []}
+              sellerNextStep={portal.sellerNextStep || null}
+              pendingDecisions={portal.pendingDecisions || []}
+              sellerEvents={portal.sellerEvents || null}
+              listingHref={portal.listing?.id ? `/oferta/${portal.listing.id}` : null}
+              onDone={() => void load()}
             />
-          ) : null}
-        </section>
-      ) : null}
-
-      {portal.type === "BUYER" && portal.purchase ? (
-        <section className="eos-lux-panel rounded-[1.75rem] p-6">
-          <p className="eos-portal-label eos-portal-label--ok">
-            {portal.purchase.phase === "closed"
-              ? "Twoja nieruchomość"
-              : portal.purchase.phase === "negotiating"
-                ? "Transakcja"
-                : "Po oglądaniu"}
-          </p>
-          <h2 className="mt-1 text-2xl font-black text-[var(--eos-text)]">{portal.purchase.title}</h2>
-          {portal.purchase.address ? (
-            <p className="mt-1 text-sm text-[var(--eos-muted)]">{portal.purchase.address}</p>
-          ) : null}
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xl font-black text-emerald-600">
-              {portal.purchase.price
-                ? `${Number(portal.purchase.price).toLocaleString("pl-PL")} PLN`
-                : "Cena do uzgodnienia"}
-            </p>
-            <span className="eos-raised-chip eos-raised-chip--on whitespace-nowrap rounded-full px-3 py-1 text-[10px]">
-              {portal.purchase.statusLabel}
-            </span>
           </div>
-          <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
-            {portal.purchase.phase === "closed"
-              ? "Ta oferta jest kupiona. Akt notarialny i klucze domyka agent."
-              : portal.purchase.phase === "negotiating"
-                ? "Pokaz już był. Trwa rozmowa o cenie — zakup zamknie się dopiero przy akcie."
-                : "Oglądanie się odbyło. To jeszcze nie zakup. Kolejny krok to rezerwacja i uzgodniona cena."}
-          </p>
-        </section>
-      ) : null}
+        ) : null}
 
-      {portal.type === "BUYER" && portal.pendingCheckback && token ? (
-        <ClientPortalIntelligenceCheckback
-          token={token}
-          checkback={portal.pendingCheckback}
-          onDone={() => void load()}
-        />
-      ) : null}
+        {portal.type === "SELLER" && portal.listing ? (
+          <section id="portal-listing" className="lux-card scroll-mt-24 p-5">
+            <p className="lux-kicker">Ogłoszenie i promocja</p>
+            {portal.listingProgress?.length ? <ListingProgressRail stages={portal.listingProgress} /> : null}
+            <PortalPromoPresence
+              listing={portal.listing}
+              listingPath={portal.listingPath || []}
+              activeChannels={portal.activeChannels || []}
+              otherAgencies={portal.otherAgencies || null}
+            />
+          </section>
+        ) : null}
 
-      {portal.type === "BUYER" && token ? (
-        <div id="portal-replies" className="scroll-mt-24">
-        <ClientPortalAgentReplyInbox
-          token={token}
-          replies={collectAgentOfferReplies(portal.matches)}
-          onOpenOffer={(matchId) => {
-            ensureMatchOpen(matchId);
-            window.setTimeout(() => {
-              document.getElementById(`portal-match-${matchId}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }, 80);
-          }}
-          onDone={() => void load({ silent: true })}
-        />
-        </div>
-      ) : null}
+        {portal.type === "SELLER" && seller ? <SellerCompetition seller={seller} /> : null}
 
-      {portal.journey?.length ? <ClientPortalJourney stages={portal.journey} clientType={portal.type} /> : null}
-
-      {portal.type === "BUYER" && token && !onboardingDismissed ? (
-        <ClientPortalBuyerOnboarding
-          token={token}
-          agentName={portal.agentName}
-          hasPendingOffer={pendingMatches.length > 0}
-          welcomeEmailSent={welcomeEmailSent}
-          intelligenceEnabled={Boolean(portal.intelligenceEnabled)}
-          onDismiss={() => {
-            setFromSzukam(false);
-            setOnboardingDismissed(true);
-            try {
-              window.localStorage.setItem(buyerOnboardingStorageKey(token), "1");
-            } catch {
-              /* ignore */
-            }
-          }}
-          onShowOffers={() => {
-            matchesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          }}
-        />
-      ) : null}
-
-      {portal.type === "SELLER" && portal.acquisition ? (
-        <section id="portal-agreement" className="eos-lux-panel scroll-mt-24 space-y-5 rounded-[1.75rem] p-5 sm:p-7">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <p className="eos-portal-label eos-portal-label--ok flex items-center gap-2">
-                <BriefcaseBusiness className="size-4" />
-                Umowa
-              </p>
-              <h2 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Umowa i ustalenia</h2>
-              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--eos-muted)]">
-                Warunki współpracy ustalone na spotkaniu. Ten etap prowadzi agent — nie musisz nic zaznaczać.
-              </p>
+        {portal.type === "SELLER" && portal.acquisition?.agreementSnapshot ? (
+          <section id="portal-agreement" className="lux-card scroll-mt-24 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="lux-kicker">Umowa</p>
+                <h2 className="lux-serif mt-1.5 text-[22px] font-medium">Warunki współpracy</h2>
+              </div>
+              <span className="rounded-full bg-black px-3 py-1 text-[11px] font-bold text-[#D8C3A0]">
+                {signed ? "Podpisana" : "Do podpisu"}
+              </span>
             </div>
-            <span className={`eos-raised-chip inline-flex shrink-0 items-center gap-1.5 self-start whitespace-nowrap rounded-full px-3 py-2 text-[10px] ${
-              portal.acquisition.status === "SIGNED" ? "eos-raised-chip--on" : ""
-            }`}>
-              {portal.acquisition.status === "SIGNED" ? <ShieldCheck className="size-3.5" /> : <CalendarCheck2 className="size-3.5" />}
-              {portal.acquisition.status === "SIGNED" ? "Umowa podpisana" : "W przygotowaniu"}
-            </span>
+            <pre className="mt-3 max-h-[18rem] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-[#F6F3EE] p-4 text-xs leading-relaxed text-[#2E2C28]">
+              {portal.acquisition.agreementSnapshot}
+            </pre>
+            {token ? (
+              <a href={`/klient/${token}/dokument`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--lux-accent)]">
+                Otwórz dokument <ExternalLink className="size-3.5" />
+              </a>
+            ) : null}
+            {(portal.acquisition.formData.paperContracts || []).map((file) => (
+              <a
+                key={file.url}
+                href={file.url.startsWith("http") ? file.url : `https://estateos.pl${file.url.startsWith("/") ? file.url : `/${file.url}`}`}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 flex items-center justify-between rounded-xl bg-[#F6F3EE] px-4 py-3 text-sm font-semibold text-[var(--lux-accent)]"
+              >
+                {file.name} <ExternalLink className="size-3.5" />
+              </a>
+            ))}
+          </section>
+        ) : null}
+
+        {portal.type === "BUYER" && token ? (
+          <div ref={matchesSectionRef} id="portal-offers" className="scroll-mt-24">
+            <ClientPortalOfferBoard
+              token={token}
+              matches={portal.matches}
+              activities={portal.activities}
+              criteria={portal.searchCriteria}
+              intelligenceEnabled={portal.intelligenceEnabled}
+              live={livePortalSync}
+              unscoredCount={portal.unscoredMatchCount}
+              pendingCheckback={Boolean(portal.pendingCheckback)}
+              awaitingFirstOffer={awaitingFirstOffer}
+              freshBanner={freshMatchBanner}
+              savingId={savingId}
+              openMatchIds={openMatchIds}
+              onToggleMatch={toggleMatch}
+              onEnsureMatchOpen={ensureMatchOpen}
+              onSubmit={(matchId, payload) => submitFeedback(matchId, payload)}
+              onAckReply={ackAgentReply}
+              onOpenSheet={(matchId) => setSheetMatchId(matchId)}
+              prefillFor={{
+                matchId: focusMatchId || undefined,
+                offerId: focusOfferId || undefined,
+                sentiment: SENTIMENTS.has(reactPrefill as ClientOfferSentiment)
+                  ? (reactPrefill as ClientOfferSentiment)
+                  : null,
+                phrase: phrasePrefill,
+              }}
+            />
           </div>
+        ) : null}
 
-          {portal.acquisition.agreementSnapshot ? (
-            <div>
-              <p className="mb-3 text-sm font-black text-[var(--eos-text)]">Uzgodnione warunki współpracy</p>
-              <pre className="eos-inset-well max-h-[24rem] overflow-y-auto whitespace-pre-wrap rounded-2xl p-5 text-xs leading-relaxed text-slate-800">
-                {portal.acquisition.agreementSnapshot}
-              </pre>
-              {token ? (
-                <a
-                  href={`/klient/${token}/dokument`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700"
-                >
-                  Otwórz dokument w przeglądarce
-                  <ExternalLink className="size-3.5" />
-                </a>
-              ) : null}
-              {(portal.acquisition.formData.paperContracts || []).length > 0 ? (
-                <div className="mt-3 space-y-2">
-                  <p className="text-sm font-black text-[var(--eos-text)]">Podpisana umowa (skan)</p>
-                  {portal.acquisition.formData.paperContracts.map((file) => (
-                    <a
-                      key={file.url}
-                      href={file.url.startsWith("http") ? file.url : `https://estateos.pl${file.url.startsWith("/") ? file.url : `/${file.url}`}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="eos-inset-well flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold text-emerald-700"
-                    >
-                      {file.name}
-                      <ExternalLink className="size-3.5" />
-                    </a>
-                  ))}
-                </div>
-              ) : null}
-              {portal.acquisition.status === "SIGNED" ? (
-                <div className="eos-inset-well mt-3 rounded-xl border-emerald-500/30 bg-emerald-500/10 p-4">
-                  <p className="flex items-center gap-2 font-black text-emerald-700"><ShieldCheck className="size-4" /> Dokument podpisany</p>
-                  <p className="mt-1 text-xs text-[var(--eos-muted)]">
-                    {portal.acquisition.signerName} · {portal.acquisition.signedAt ? new Date(portal.acquisition.signedAt).toLocaleString("pl-PL") : ""}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <p className="eos-inset-well rounded-2xl border border-dashed border-[var(--eos-border)] p-5 text-sm text-[var(--eos-muted)]">
-              Agent przygotowuje umowę i ustalenia ze spotkania. Dokument pojawi się tutaj, gdy będzie gotowy.
-            </p>
-          )}
-        </section>
-      ) : null}
-
-      {portal.type === "SELLER" ? (
-        <section id="portal-listing" className="eos-lux-panel scroll-mt-24 rounded-[1.75rem] p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="eos-portal-label eos-portal-label--ok">Sprzedaż</p>
-              <h2 className="mt-1 text-xl font-bold text-[var(--eos-text)]">
-                {portal.listing?.title || "Przygotowanie ogłoszenia"}
-              </h2>
-            </div>
-            <span className="eos-raised-chip eos-raised-chip--on mt-1 shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] leading-none">
-              {portal.listing?.statusLabel || "W przygotowaniu"}
-            </span>
-          </div>
-          {portal.listingProgress?.length ? <ListingProgressRail stages={portal.listingProgress} /> : null}
-          {portal.listing ? (
-          <>
-          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center">
-            {portal.listing.imageUrl && (
-              <img
-                src={portal.listing.imageUrl}
-                alt={portal.listing.title}
-                className="h-32 w-full rounded-2xl object-cover sm:w-48"
-              />
-            )}
-            <div className="space-y-2">
-              <p className="text-2xl font-black text-emerald-600">
-                {portal.listing.price ? `${portal.listing.price.toLocaleString("pl-PL")} PLN` : "Cena na zapytanie"}
-              </p>
-              <p className="text-sm font-semibold text-[var(--eos-text)]">
-                {[portal.listing.city, portal.listing.district].filter(Boolean).join(" · ")}
-              </p>
-              {portal.listing.status === "ACTIVE" || portal.listing.status === "PUBLISHED" ? (
-                <>
-                  <p className="text-xs text-[var(--eos-muted)]">
-                    Ogłoszenie jest aktywne w bazie kupujących EstateOS™ oraz w aplikacji.
-                  </p>
-                  <Link
-                    href={`/oferta/${portal.listing.id}`}
-                    target="_blank"
-                    className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600 hover:underline"
-                  >
-                    Zobacz publiczną stronę ogłoszenia <ExternalLink className="size-3.5" />
-                  </Link>
-                </>
-              ) : portal.listing.officeReviewStatus === "OFFICE_REVIEW" ||
-                portal.listing.statusLabel === "Oferta weryfikowana przez biuro" ? (
-                <p className="text-xs text-[var(--eos-muted)]">
-                  Oferta jest weryfikowana przez biuro. Po akceptacji kierownika zobaczysz publikację tutaj.
-                </p>
-              ) : (
-                <p className="text-xs text-[var(--eos-muted)]">
-                  Szkic jest u agenta. Nie jest jeszcze publiczny — zobaczysz publikację i wystawienia w ścieżce poniżej.
-                </p>
-              )}
-            </div>
-          </div>
-          <PortalPromoPresence
-            listing={portal.listing}
-            listingPath={portal.listingPath || []}
-            activeChannels={portal.activeChannels || []}
-            otherAgencies={portal.otherAgencies || null}
-          />
-          </>
-          ) : (
-            <p className="mt-4 text-sm text-[var(--eos-muted)]">
-              Po podpisaniu umowy agent przygotuje ogłoszenie. Szkic, zdjęcia i publikacja pojawią się tutaj.
-            </p>
-          )}
-        </section>
-      ) : null}
-
-      {portal.type === "SELLER" && token ? (
-        <div id="portal-decisions" className="scroll-mt-24">
-        <SellerPortalCollaboration
-          token={token}
-          listingImage={portal.listing?.imageUrl}
-          listingPath={portal.listingPath || []}
-          activeChannels={portal.activeChannels || []}
-          sellerNextStep={portal.sellerNextStep || null}
-          pendingDecisions={portal.pendingDecisions || []}
-          sellerEvents={portal.sellerEvents || null}
-          listingHref={
-            portal.listing?.id ? `/oferta/${portal.listing.id}` : null
-          }
-          onDone={() => void load()}
-        />
-        </div>
-      ) : null}
-
-      {portal.type === "BUYER" && token ? (
-        <div ref={matchesSectionRef} id="portal-offers" className="scroll-mt-24">
-          <ClientPortalOfferBoard
+        {token && portal.documents?.length && (portal.permissions?.documents ?? true) ? (
+          <PortalDocuments
             token={token}
-            matches={portal.matches}
-            activities={portal.activities}
-            criteria={portal.searchCriteria}
-            intelligenceEnabled={portal.intelligenceEnabled}
-            live={livePortalSync}
-            unscoredCount={portal.unscoredMatchCount}
-            pendingCheckback={Boolean(portal.pendingCheckback)}
-            awaitingFirstOffer={awaitingFirstOffer}
-            freshBanner={freshMatchBanner}
-            savingId={savingId}
-            openMatchIds={openMatchIds}
-            onToggleMatch={toggleMatch}
-            onEnsureMatchOpen={ensureMatchOpen}
-            onSubmit={(matchId, payload) => submitFeedback(matchId, payload)}
-            onAckReply={ackAgentReply}
-            prefillFor={{
-              matchId: focusMatchId || undefined,
-              offerId: focusOfferId || undefined,
-              sentiment: SENTIMENTS.has(reactPrefill as ClientOfferSentiment)
-                ? (reactPrefill as ClientOfferSentiment)
-                : null,
-              phrase: phrasePrefill,
+            documents={portal.documents}
+            summary={portal.documentsSummary}
+            agentFirst={agentFirst}
+            canUpload={!isPartner}
+            onChanged={() => void load({ silent: true })}
+          />
+        ) : null}
+
+        <PortalToolsGrid
+          kicker="Narzędzia"
+          title={portal.type === "BUYER" ? "Żeby wybrać pewnie" : "Wszystko o sprzedaży"}
+          tools={portal.type === "BUYER" ? buyerTools : sellerTools}
+        />
+
+        {token ? (
+          <section id="portal-chat" className="lux-card scroll-mt-24 p-5 sm:p-6">
+            <p className="lux-kicker">Rozmowa</p>
+            <h2 className="lux-serif mt-1.5 text-[22px] font-medium">Masz pytanie? Napisz tutaj</h2>
+            <p className="mt-1 text-sm text-[#5B574F]">
+              {agentFirst} odpowie w tym oknie — dostaniesz też powiadomienie.
+            </p>
+            <div className="mt-4">
+              <ClientPortalLiveChat token={token} agentName={portal.agentName} />
+            </div>
+          </section>
+        ) : null}
+
+        {portal.appInvite ? <PortalAppInvite invite={portal.appInvite} /> : null}
+
+        {token && !isPartner && (portal.type === "BUYER" ? portal.purchase?.phase === "closed" : listingSold) ? (
+          <PortalReview
+            token={token}
+            agentFirst={agentFirst}
+            review={portal.review}
+            reviewLink={portal.reviewLink}
+            onChanged={() => void load({ silent: true })}
+          />
+        ) : null}
+        {token ? <PortalReferral token={token} agentFirst={agentFirst} /> : null}
+
+        {portal.type === "BUYER" && token && !onboardingDismissed && !isPartner ? (
+          <ClientPortalBuyerOnboarding
+            token={token}
+            agentName={portal.agentName}
+            hasPendingOffer={pendingMatches.length > 0}
+            welcomeEmailSent={welcomeEmailSent}
+            intelligenceEnabled={Boolean(portal.intelligenceEnabled)}
+            onDismiss={() => {
+              setFromSzukam(false);
+              setOnboardingDismissed(true);
+              try {
+                window.localStorage.setItem(buyerOnboardingStorageKey(token), "1");
+              } catch {
+                /* ignore */
+              }
+            }}
+            onShowOffers={() => {
+              matchesSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
             }}
           />
+        ) : null}
+
+        {token && !isPartner ? (
+          <ClientPortalSetupPrompt token={token} deferUntilReady={fromSzukam && !onboardingDismissed} />
+        ) : null}
+
+        <PortalLuxFooter agencyName={portal.agencyName} partner={isPartner} />
+      </div>
+
+      {portal.type === "BUYER" && compareIds.length ? (
+        <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+          <button
+            type="button"
+            onClick={() => (compareIds.length >= 2 ? setCompareOpen(true) : scrollTo("portal-offers"))}
+            className="flex items-center gap-3 rounded-full bg-black px-5 py-3 text-[14px] font-bold text-[#D8C3A0] shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+          >
+            <Columns2 className="size-4" />
+            {compareIds.length >= 2 ? `Porównaj ${compareIds.length} oferty` : "Wybierz jeszcze jedną ofertę do porównania"}
+          </button>
         </div>
       ) : null}
 
+      <PortalOfferSheet
+        match={sheetMatch}
+        onClose={() => setSheetMatchId(null)}
+        isPartner={isPartner}
+        partnerName={partnerName}
+        inCompare={sheetMatch ? compareIds.includes(sheetMatch.id) : false}
+        onToggleCompare={() => sheetMatch && toggleCompare(sheetMatch.id)}
+        onToggleFavorite={() => sheetMatch && void toggleFavorite(sheetMatch.id, !sheetMatch.favorite)}
+        onRate={(sentiment, note) => (sheetMatch ? rateFromSheet(sheetMatch.id, sentiment, note) : Promise.resolve())}
+        onBook={() => {
+          if (!sheetMatch) return;
+          setBookingOfferId(sheetMatch.offer.id);
+          setSheetMatchId(null);
+          setBookingOpen(true);
+        }}
+        canBook={canSelfBook}
+      />
       {token ? (
-        <section id="portal-chat" className="eos-inset-frame scroll-mt-24 rounded-[1.75rem] p-5 sm:p-6">
-          <p className="eos-portal-label eos-portal-label--ok">Rozmowa z agentem</p>
-          <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">Masz pytanie? Napisz tutaj</h2>
-          <p className="mt-1 text-sm text-[var(--eos-muted)]">
-            {portal.agentName} odpowie w tym oknie — dostaniesz też powiadomienie.
-          </p>
-          <div className="mt-4">
-            <ClientPortalLiveChat token={token} agentName={portal.agentName} />
-          </div>
-        </section>
+        <>
+          <PortalCompare
+            open={compareOpen}
+            onClose={() => setCompareOpen(false)}
+            matches={compareMatches}
+            onOpenOffer={(m) => {
+              setCompareOpen(false);
+              setSheetMatchId(m.id);
+            }}
+            onRemove={(id) => toggleCompare(id)}
+            agentName={portal.agentName}
+          />
+          <PortalPartnerSheet
+            open={partnerOpen}
+            onClose={() => setPartnerOpen(false)}
+            token={token}
+            companions={portal.companions || []}
+            onChanged={() => void load({ silent: true })}
+          />
+          <PortalBookingSheet
+            open={bookingOpen}
+            onClose={() => setBookingOpen(false)}
+            token={token}
+            offers={bookingOffers}
+            initialOfferId={bookingOfferId}
+            agentName={agentFirst}
+            onBooked={() => void load({ silent: true })}
+          />
+          <PortalAreaSheet
+            open={areaOpen}
+            onClose={() => setAreaOpen(false)}
+            token={token}
+            initial={(portal.searchPolygon as Array<[number, number]> | null) || null}
+            criteriaEditAllowed={permissions.criteriaEdit}
+            agentName={agentFirst}
+            onSaved={() => void load({ silent: true })}
+          />
+          <PortalCostCalculator open={calcOpen} onClose={() => setCalcOpen(false)} initialPrice={favoritePrice} />
+          {seller ? (
+            <SellerNetSheet
+              open={netOpen}
+              onClose={() => setNetOpen(false)}
+              seller={seller}
+              defaultPrice={listPrice}
+              token={token}
+              onSaved={() => void load({ silent: true })}
+            />
+          ) : null}
+        </>
       ) : null}
-
-      {token ? (
-        <ClientPortalSetupPrompt
-          token={token}
-          deferUntilReady={fromSzukam && !onboardingDismissed}
-        />
-      ) : null}
-    </div>
     </main>
   );
 }

@@ -1189,6 +1189,8 @@ model AgencyClient {
   intelligenceMode          String             @default("APPROVAL") @db.VarChar(16)
   /// Rodzaje wiadomości, które agent pozwolił wysyłać temu klientowi bez akceptacji (np. ["reminder","schedule"]).
   autoSendCategories        Json?
+  portalPermissions         Json?
+  sellerFinance             Json?
   /// PAN / PANI — forma grzecznościowa w wiadomościach; null = zwrot po imieniu.
   salutation                String?            @db.VarChar(8)
   createdAt                 DateTime           @default(now())
@@ -1237,6 +1239,7 @@ model AgencyClientBuyerPreference {
   lat               Float?
   lng               Float?
   radius            Float?
+  searchPolygon     Json?
 
   client AgencyClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
@@ -1252,6 +1255,9 @@ model AgencyClientMatch {
   clientFeedbackAt   DateTime?
   intelligenceSent   Boolean   @default(false)
   intelligenceReason String?   @db.Text
+  clientFavorite     Boolean   @default(false)
+  favoriteSnapshot   Json?
+  favoriteAt         DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -1739,4 +1745,112 @@ model CrmOutbox {
 
   @@index([agencyUserId, status, createdAt])
   @@index([clientId, status])
+}
+
+model AgencyClientCompanion {
+  id         Int       @id @default(autoincrement())
+  clientId   Int
+  token      String    @unique @db.VarChar(64)
+  name       String    @db.VarChar(120)
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([clientId])
+}
+
+model AgencyClientCompanionFeedback {
+  id          Int      @id @default(autoincrement())
+  companionId Int
+  matchId     Int
+  sentiment   String   @db.VarChar(16)
+  note        String?  @db.VarChar(500)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@unique([companionId, matchId], map: "AgencyClientCompanionFeedback_companion_match_key")
+  @@index([matchId])
+}
+
+model SellerBuyerOffer {
+  id                 Int       @id @default(autoincrement())
+  clientId           Int
+  agencyUserId       Int
+  buyerLabel         String    @db.VarChar(120)
+  amount             Int
+  financing          String    @default("cash") @db.VarChar(32)
+  deposit            Int?
+  deedWeeks          Int?
+  handoverDays       Int?
+  note               String?   @db.Text
+  recommendation     String?   @db.Text
+  recommendationKind String?   @db.VarChar(16)
+  status             String    @default("OPEN") @db.VarChar(16)
+  clientResponse     String?   @db.VarChar(16)
+  clientComment      String?   @db.Text
+  counterAmount      Int?
+  respondBy          DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @default(now())
+
+  @@index([clientId])
+}
+
+model SellerShowingFeedback {
+  id           Int       @id @default(autoincrement())
+  clientId     Int
+  agencyUserId Int
+  tags         Json
+  note         String?   @db.VarChar(500)
+  visitAt      DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([clientId])
+}
+
+model ClientAppDevice {
+  id          Int      @id @default(autoincrement())
+  clientId    Int
+  companionId Int?
+  apnsToken   String   @unique @db.VarChar(200)
+  platform    String   @default("ios") @db.VarChar(16)
+  prefs       Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@index([clientId])
+}
+
+model ClientInviteCode {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique @db.Char(6)
+  clientId    Int
+  companionId Int?
+  createdAt   DateTime  @default(now())
+  redeemedAt  DateTime?
+  revokedAt   DateTime?
+
+  @@index([clientId])
+}
+
+model ClientDocumentItem {
+  id         Int       @id @default(autoincrement())
+  clientId   Int
+  itemKey    String    @db.VarChar(64)
+  label      String    @db.VarChar(160)
+  hint       String?   @db.VarChar(300)
+  required   Boolean   @default(true)
+  status     String    @default("missing") @db.VarChar(16)
+  fileUrl    String?   @db.VarChar(500)
+  fileName   String?   @db.VarChar(200)
+  mimeType   String?   @db.VarChar(120)
+  note       String?   @db.VarChar(500)
+  sortOrder  Int       @default(0)
+  uploadedAt DateTime?
+  reviewedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now())
+
+  @@unique([clientId, itemKey], map: "ClientDocumentItem_client_key")
+  @@index([clientId])
 }
