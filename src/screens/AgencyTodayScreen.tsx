@@ -35,6 +35,7 @@ import {
   type TodayOutboxItem,
 } from '../services/agentTodayService';
 import { onOutboxChanged, openOutboxReview } from '../lib/outboxEvents';
+import PortalActivityFeed from '../components/agency/PortalActivityFeed';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -768,6 +769,7 @@ export default function AgencyTodayScreen() {
             ) : null}
           </>
         ) : null}
+        {!loading ? <PortalActivityFeed token={token} palette={palette} onOpenClient={(id) => openClient(id)} /> : null}
       </ScrollView>
 
       {toast ? (

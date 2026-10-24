@@ -53,6 +53,7 @@ import IntelligenceAssistantCard, {
 } from '../components/agency/IntelligenceAssistantCard';
 import SellerMarketingCard from '../components/agency/SellerMarketingCard';
 import ClientAutoSendCard from '../components/agency/ClientAutoSendCard';
+import ClientPortalToolsCard from '../components/agency/ClientPortalToolsCard';
 import ClientPersonHub from '../components/agency/ClientPersonHub';
 import ClientPersonCard from '../components/agency/ClientPersonCard';
 import ClientPresentationComposer from '../components/agency/ClientPresentationComposer';
@@ -1602,6 +1603,7 @@ export default function AgencyClientDetailScreen() {
                   colors={colors}
                   onChanged={() => void load()}
                 />
+                <ClientPortalToolsCard token={token} clientId={clientId} clientType={client.type} colors={colors} />
                 </>
               ) : (
               <>

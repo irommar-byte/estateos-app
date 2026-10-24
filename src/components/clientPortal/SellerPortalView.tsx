@@ -51,6 +51,8 @@ type Props = {
   accountSection: React.ReactNode;
   pushSection: React.ReactNode | null;
   onBack: () => void;
+  /** Tylko treść (bez nagłówka i przewijania) — do osadzenia w panelu „lux”. */
+  embedded?: boolean;
 };
 
 function formatDate(iso: string | null | undefined) {
@@ -95,6 +97,7 @@ export default function SellerPortalView({
   accountSection,
   pushSection,
   onBack,
+  embedded = false,
 }: Props) {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>(
@@ -166,58 +169,8 @@ export default function SellerPortalView({
     await Linking.openURL(url);
   };
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View
-        style={[
-          styles.header,
-          { paddingTop: insetsTop + 6, borderBottomColor: colors.border },
-        ]}
-      >
-        <Pressable onPress={onBack} hitSlop={12} style={styles.headerBtn}>
-          <Ionicons name="chevron-back" size={24} color={colors.green} />
-        </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={{ color: colors.secondary, fontSize: 12, fontWeight: "600" }}
-            numberOfLines={1}
-          >
-            {portal.agencyName || "EstateOS"}
-          </Text>
-          <Text style={{ color: colors.text, fontSize: 22, fontWeight: "700" }}>
-            Moja oferta
-          </Text>
-          <Text
-            style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }}
-            numberOfLines={1}
-          >
-            {portal.clientName} · {portal.agentName}
-          </Text>
-        </View>
-        <Pressable
-          onPress={canChat ? onOpenChat : undefined}
-          disabled={!canChat}
-          hitSlop={8}
-          style={[styles.headerBtn, !canChat ? { opacity: 0.35 } : null]}
-        >
-          <Ionicons
-            name="chatbubble-ellipses-outline"
-            size={22}
-            color={colors.green}
-          />
-        </Pressable>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.green}
-          />
-        }
-      >
+  const content = (
+    <>
         {accountSection}
         {pushSection}
 
@@ -914,6 +867,64 @@ export default function SellerPortalView({
             ) : null}
           </View>
         </ProfileCardShell>
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View
+        style={[
+          styles.header,
+          { paddingTop: insetsTop + 6, borderBottomColor: colors.border },
+        ]}
+      >
+        <Pressable onPress={onBack} hitSlop={12} style={styles.headerBtn}>
+          <Ionicons name="chevron-back" size={24} color={colors.green} />
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{ color: colors.secondary, fontSize: 12, fontWeight: "600" }}
+            numberOfLines={1}
+          >
+            {portal.agencyName || "EstateOS"}
+          </Text>
+          <Text style={{ color: colors.text, fontSize: 22, fontWeight: "700" }}>
+            Moja oferta
+          </Text>
+          <Text
+            style={{ color: colors.secondary, fontSize: 13, marginTop: 2 }}
+            numberOfLines={1}
+          >
+            {portal.clientName} · {portal.agentName}
+          </Text>
+        </View>
+        <Pressable
+          onPress={canChat ? onOpenChat : undefined}
+          disabled={!canChat}
+          hitSlop={8}
+          style={[styles.headerBtn, !canChat ? { opacity: 0.35 } : null]}
+        >
+          <Ionicons
+            name="chatbubble-ellipses-outline"
+            size={22}
+            color={colors.green}
+          />
+        </Pressable>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.green}
+          />
+        }
+      >
+        {content}
       </ScrollView>
     </View>
   );
