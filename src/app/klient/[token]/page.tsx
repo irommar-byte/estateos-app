@@ -1,10 +1,9 @@
 "use client";
 
+import { portalToast } from "@/lib/portalUi";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
 import Link from "next/link";
 import {
-  Radar,
   CheckCircle2,
   ExternalLink,
   CalendarCheck2,
@@ -28,6 +27,10 @@ import {
 import PortalLuxHeader from "@/components/portal/lux/PortalLuxHeader";
 import PortalJourneyAxis, { type LuxAxisStage } from "@/components/portal/lux/PortalJourneyAxis";
 import PortalLuxFooter from "@/components/portal/lux/PortalLuxFooter";
+import PortalUiHost from "@/components/portal/lux/PortalUiHost";
+import PortalStickyBar from "@/components/portal/lux/PortalStickyBar";
+import PortalMilestone from "@/components/portal/lux/PortalMilestone";
+import PortalLoadingSkeleton from "@/components/portal/lux/PortalLoadingSkeleton";
 import PortalToolsGrid, { type LuxTool } from "@/components/portal/lux/PortalToolsGrid";
 import PortalAppInvite from "@/components/portal/lux/PortalAppInvite";
 import PortalOfferSheet from "@/components/portal/lux/PortalOfferSheet";
@@ -74,7 +77,7 @@ import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
 import { collectAgentOfferReplies, type ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
 import { initialOpenMatchIds } from "@/lib/crm/clientPortalOfferBoard";
 import ClientPortalAgentReplyInbox from "@/components/portal/ClientPortalAgentReplyInbox";
-import ClientPortalNowCard from "@/components/portal/ClientPortalNowCard";
+import ClientPortalNowCard, { resolvePortalNow, type PortalNowInput } from "@/components/portal/ClientPortalNowCard";
 import { Mail, Phone } from "lucide-react";
 
 type SearchCriteria = {
@@ -366,6 +369,22 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     [],
   );
   const groups = usePortalGroups(token, groupDefaults);
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
+  const portalLoaded = Boolean(portal);
+  useEffect(() => {
+    if (!portalLoaded || typeof IntersectionObserver === "undefined") return;
+    const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-group]"));
+    const io = new IntersectionObserver(
+      (entries) => {
+        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+        const id = top?.target.getAttribute("data-group");
+        if (id) setActiveGroup(id);
+      },
+      { rootMargin: "-120px 0px -55% 0px" },
+    );
+    sections.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [portalLoaded]);
   const { read: readNotices, markRead: markNoticesRead } = useNoticeReadState(token);
 
   useEffect(() => {
@@ -557,7 +576,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      alert(String(json?.error || "Nie udało się potwierdzić odczytu."));
+      portalToast.error("Nie udało się potwierdzić odczytu", String(json?.error || ""));
       return;
     }
     await load({ silent: true });
@@ -579,10 +598,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
       await load({ silent: true });
       if (json.intelligenceReply?.action === "error" && json.intelligenceReply?.message) {
-        alert(String(json.intelligenceReply.message));
+        portalToast.info("Wiadomość od asystenta", String(json.intelligenceReply.message));
+      } else {
+        const sentimentLabel =
+          payload.sentiment === "like" ? "Chcesz obejrzeć" : payload.sentiment === "dislike" ? "Nie pasuje" : payload.sentiment === "maybe" ? "Do przemyślenia" : null;
+        portalToast.success("Ocena zapisana", sentimentLabel ? `${sentimentLabel} — agent zobaczy to od razu.` : "Agent zobaczy ją od razu.");
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Błąd");
+      portalToast.error("Nie udało się wysłać oceny", e);
     } finally {
       setSavingId(null);
     }
@@ -625,9 +648,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     if (!token) return;
     try {
       await portalAction(token, "toggle_favorite", { matchId, favorite });
+      portalToast.success(favorite ? "Dodano do ulubionych" : "Usunięto z ulubionych", favorite ? "Damy znać, gdy zmieni się cena." : undefined);
       await load({ silent: true });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Błąd");
+      portalToast.error("Nie udało się zapisać ulubionej", e);
     }
   };
 
@@ -653,23 +677,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       note: note || String(prev.note || ""),
     });
   };
+  if (loading && !fromSzukam) return <PortalLoadingSkeleton />;
   if (loading) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16">
         {fromSzukam ? (
           <ClientPortalOfferSearchPanel compact />
-        ) : (
-          <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-center">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-              className="text-emerald-500"
-            >
-              <Radar size={40} />
-            </motion.div>
-            <p className="text-sm font-semibold text-[var(--eos-text)]">Ładujemy panel…</p>
-          </div>
-        )}
+        ) : null}
         {fromSzukam && welcomeEmailSent ? (
           <p className="mt-4 text-center text-xs leading-relaxed text-[var(--eos-muted)]">
             Link do panelu leci też na Twój e-mail.
@@ -750,9 +764,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   };
   const scrollTo = (id: string) => focusAnchor(id);
 
-  const nowCard = (
-    <ClientPortalNowCard
-      input={{
+  const nowInput: PortalNowInput = {
         type: portal.type,
         clientFirstName: greetingName.split(" ")[0] || greetingName,
         agentName: portal.agentName,
@@ -777,9 +789,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         hasAgreement: Boolean(portal.acquisition?.agreementSnapshot),
         listingLive,
         purchasePhase: portal.purchase?.phase || null,
-      }}
-    />
-  );
+  };
+  const nowCard = <ClientPortalNowCard input={nowInput} />;
 
   const presentationBlock =
     portal.presentation && token ? (
@@ -1082,6 +1093,46 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     focusAnchor(notice.anchor, NOTICE_TO_GROUP[notice.group]);
   };
 
+  // Jedna rzecz do zrobienia teraz: najpierw to, co prowadzi etap, potem najnowsze powiadomienie z akcją.
+  const now = resolvePortalNow(nowInput);
+  const topAction = notices.find((n) => n.tone === "action" && !readNotices.has(n.id)) || notices.find((n) => n.tone === "action") || null;
+  const nextStep =
+    now.tone === "action" && now.cta
+      ? { title: now.title, body: now.body, tone: "action" as const, cta: now.cta.label, onClick: () => focusAnchor(now.cta!.target, "journey") }
+      : topAction
+        ? { title: topAction.title, body: topAction.body || null, tone: "action" as const, cta: "Przejdź", onClick: () => navigateNotice(topAction) }
+        : {
+            title: now.title,
+            body: now.body,
+            tone: now.tone,
+            onClick: now.cta ? () => focusAnchor(now.cta!.target, "journey") : () => focusAnchor("portal-journey", "journey"),
+          };
+  const GROUP_LABEL: Record<string, string> = {
+    journey: "Etapy",
+    offers: "Propozycje",
+    sale: "Sprzedaż",
+    listing: "Ogłoszenie",
+    agreement: "Umowa",
+    documents: "Dokumenty",
+    chat: "Rozmowa",
+    tools: "Narzędzia",
+    more: "Więcej",
+  };
+  const groupAvailable: Record<string, boolean> = {
+    journey: true,
+    offers: portal.type === "BUYER",
+    sale: portal.type === "SELLER",
+    listing: portal.type === "SELLER" && Boolean(portal.listing || seller),
+    agreement: portal.type === "SELLER" && Boolean(portal.acquisition?.agreementSnapshot),
+    documents: Boolean(token && portal.documents?.length && (portal.permissions?.documents ?? true)),
+    chat: Boolean(token),
+    tools: true,
+    more: true,
+  };
+  const stickyChips = groupIds
+    .filter((id) => groupAvailable[id])
+    .map((id) => ({ id, label: GROUP_LABEL[id] || id, badge: groupBadge(id), blink: groupBlink(id) }));
+
   return (
     <main className="client-portal-page pb-24 text-[var(--eos-text)] sm:pb-28">
       <PortalLuxHeader
@@ -1099,6 +1150,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         bell={
           <PortalNotificationsBell notices={notices} read={readNotices} onMarkRead={markNoticesRead} onNavigate={navigateNotice} />
         }
+        nextStep={nextStep}
       >
         {portal.type === "SELLER" && seller ? (
           <>
@@ -1485,8 +1537,49 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
 
 
-        <PortalLuxFooter agencyName={portal.agencyName} partner={isPartner} />
+        <PortalLuxFooter
+          agencyName={portal.agencyName}
+          partner={isPartner}
+          agentName={portal.agentName}
+          agentTitle={portal.agentTitle}
+          agentPhoto={portal.agentPhoto}
+          agentPhone={portal.agentPhone || portal.agencyPhone || null}
+          agencyEmail={portal.agentEmail || portal.agencyEmail || null}
+          agencyWebsite={portal.agencyWebsite}
+          agencyAddress={portal.agencyAddress}
+        />
       </div>
+
+      <PortalStickyBar
+        agencyName={portal.agencyName}
+        agencyLogo={portal.agencyLogo}
+        stageLabel={currentStage ? currentStage.label : portal.type === "BUYER" ? "Klucze są Twoje" : "Sprzedane"}
+        done={doneCount}
+        total={stages.length}
+        chips={stickyChips}
+        activeChip={activeGroup}
+        onChip={(id) => focusAnchor(`grp-${id}`, id)}
+        onChat={() => scrollTo("portal-chat")}
+        bell={
+          <PortalNotificationsBell
+            variant="bar"
+            notices={notices}
+            read={readNotices}
+            onMarkRead={markNoticesRead}
+            onNavigate={navigateNotice}
+          />
+        }
+      />
+      {token ? (
+        <PortalMilestone
+          token={token}
+          stageIndex={currentStage ? stages.indexOf(currentStage) : stages.length}
+          stageLabels={stages.map((st) => st.label.split(" · ")[0])}
+          docsComplete={Boolean(portal.documents?.length) && docSummary.missing === 0}
+          agentFirst={agentFirst}
+        />
+      ) : null}
+      <PortalUiHost />
 
       {portal.type === "BUYER" && compareIds.length ? (
         <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">

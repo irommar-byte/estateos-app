@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { Bell, BellRing, CheckCheck, ChevronDown, Circle } from "lucide-react";
 import LuxSheet from "@/components/portal/lux/LuxSheet";
 import { NOTICE_GROUP_LABEL, type PortalNotice } from "@/lib/crm/portalNotices";
@@ -69,25 +68,20 @@ export default function PortalNotificationsBell({
   read,
   onMarkRead,
   onNavigate,
+  variant = "header",
 }: {
   notices: PortalNotice[];
   read: Set<string>;
   onMarkRead: (ids: string[]) => void;
   onNavigate: (notice: PortalNotice) => void;
+  /** header — w czarnym nagłówku z podpowiedzią „zjedź niżej”; bar — mały, w przypiętym pasku */
+  variant?: "header" | "bar";
 }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"new" | "read" | "all">("new");
   const fresh = useMemo(() => notices.filter((n) => !read.has(n.id)), [notices, read]);
   const seen = useMemo(() => notices.filter((n) => read.has(n.id)), [notices, read]);
   const list = tab === "new" ? fresh : tab === "read" ? seen : notices;
-  const [floating, setFloating] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setFloating(window.scrollY > 320);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   const openSheet = () => {
     setTab(fresh.length ? "new" : "all");
@@ -101,13 +95,13 @@ export default function PortalNotificationsBell({
   };
 
   const ringing = fresh.length > 0;
-  const button = (variant: "header" | "floating") => (
+  const button = (
     <button
       type="button"
       onClick={openSheet}
       aria-label={ringing ? `Powiadomienia: ${fresh.length} nowych` : "Powiadomienia"}
-      className={`relative flex size-10 items-center justify-center rounded-full ${
-        variant === "header" ? "border border-[#D8C3A0]/35" : "bg-black shadow-[0_12px_30px_rgba(0,0,0,0.35)]"
+      className={`relative flex items-center justify-center rounded-full border border-[#D8C3A0]/35 ${
+        variant === "header" ? "size-10" : "size-9"
       } ${ringing ? "eos-bell-halo" : ""}`}
     >
       {ringing ? (
@@ -126,8 +120,8 @@ export default function PortalNotificationsBell({
   return (
     <>
       <div className="flex flex-col items-end gap-1.5">
-        {button("header")}
-        {ringing ? (
+        {button}
+        {ringing && variant === "header" ? (
           <button
             type="button"
             onClick={() => go(fresh[0])}
@@ -139,18 +133,6 @@ export default function PortalNotificationsBell({
         ) : null}
       </div>
 
-      <AnimatePresence>
-        {floating ? (
-          <motion.div
-            className="fixed right-4 top-4 z-[60]"
-            initial={{ opacity: 0, scale: 0.6, y: -10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.6, y: -10 }}
-          >
-            {button("floating")}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
 
       <LuxSheet open={open} onClose={() => setOpen(false)} kicker="Powiadomienia" title={fresh.length ? `${fresh.length} ${plNew(fresh.length)}` : "Wszystko przeczytane"}>
         <div className="grid grid-cols-3 gap-2">

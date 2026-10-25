@@ -2845,3 +2845,61 @@ html body .portal-lux .eos-portal-label--no {
     animation: none;
   }
 }
+
+/* ── Panel klienta: szkielet, pieczęć etapu, bieżący segment, skróty (2026-10-25) ── */
+.eos-skel {
+  display: inline-block;
+  background: linear-gradient(90deg, #efeae1 0%, #f8f5ef 50%, #efeae1 100%);
+  background-size: 200% 100%;
+  animation: eos-skel 1.4s ease-in-out infinite;
+}
+.eos-skel--dark {
+  background: linear-gradient(90deg, rgba(216, 195, 160, 0.1) 0%, rgba(216, 195, 160, 0.22) 50%, rgba(216, 195, 160, 0.1) 100%);
+  background-size: 200% 100%;
+}
+@keyframes eos-skel {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.eos-seg-current {
+  animation: eos-seg-pulse 2.4s ease-in-out infinite;
+}
+@keyframes eos-seg-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.eos-seal-rays {
+  background: repeating-conic-gradient(from 0deg, rgba(216, 195, 160, 0.55) 0deg 2deg, transparent 2deg 15deg);
+  -webkit-mask: radial-gradient(circle, transparent 52%, #000 54%, #000 68%, transparent 70%);
+  mask: radial-gradient(circle, transparent 52%, #000 54%, #000 68%, transparent 70%);
+  animation: eos-seal-spin 9s linear infinite;
+}
+@keyframes eos-seal-spin {
+  to { transform: rotate(360deg); }
+}
+.eos-chips {
+  scrollbar-width: none;
+}
+.eos-chips::-webkit-scrollbar {
+  display: none;
+}
+.eos-group__head {
+  transition: background-color 0.2s ease;
+}
+.eos-group__head:hover {
+  background-color: #fbf9f5;
+}
+.eos-group__head:active {
+  background-color: #f6f3ee;
+}
+.portal-lux :is(button, a, [role="button"]):focus-visible {
+  outline: 2px solid #d8c3a0;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eos-skel,
+  .eos-seg-current,
+  .eos-seal-rays {
+    animation: none;
+  }
+}

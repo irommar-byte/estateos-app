@@ -1,5 +1,6 @@
 "use client";
 
+import { portalToast } from "@/lib/portalUi";
 import { useState } from "react";
 import { MessageCircleQuestion } from "lucide-react";
 import { formatPln, formatPpsm } from "@/lib/market/format";
@@ -54,7 +55,7 @@ export default function ClientPortalIntelligenceCheckback({
       onDone();
     } catch (e) {
       setPicked(null);
-      alert(e instanceof Error ? e.message : "Błąd");
+      portalToast.error("Nie udało się wysłać odpowiedzi", e);
     } finally {
       setBusy(false);
     }

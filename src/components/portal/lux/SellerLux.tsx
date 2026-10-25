@@ -1,5 +1,6 @@
 "use client";
 
+import { portalConfirm, portalToast } from "@/lib/portalUi";
 import { useMemo, useState } from "react";
 import LuxSheet from "./LuxSheet";
 import { formatPln, portalAction } from "./portalApi";
@@ -91,7 +92,16 @@ function BuyerOfferCard({
   const open = offer.status === "OPEN";
 
   const respond = async (response: "accept" | "counter" | "reject") => {
-    if (response === "reject" && !confirm("Odrzucić tę ofertę?")) return;
+    if (
+      response === "reject" &&
+      !(await portalConfirm({
+        title: "Odrzucić tę ofertę?",
+        body: `Kupujący (${offer.buyerLabel}) dostanie odpowiedź od agenta. Tej decyzji nie da się cofnąć w panelu.`,
+        confirmLabel: "Odrzuć ofertę",
+        destructive: true,
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await portalAction(token, "respond_buyer_offer", {
@@ -100,9 +110,13 @@ function BuyerOfferCard({
         counterAmount: response === "counter" ? Number(counter.replace(/\s/g, "")) : null,
         comment,
       });
+      portalToast.success(
+        response === "accept" ? "Oferta przyjęta" : response === "counter" ? "Kontroferta wysłana" : "Oferta odrzucona",
+        "Agent dostał Twoją decyzję i odezwie się z dalszymi krokami.",
+      );
       onChanged();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Błąd");
+      portalToast.error("Nie udało się wysłać decyzji", e);
     } finally {
       setBusy(false);
     }

@@ -1,5 +1,6 @@
 "use client";
 
+import { portalToast } from "@/lib/portalUi";
 import { useState } from "react";
 import type { AgentOfferReplyCard } from "@/lib/crm/clientPortalFeedback";
 
@@ -31,7 +32,7 @@ export default function ClientPortalAgentReplyInbox({
       onDone();
       if (openAfter) onOpenOffer(matchId);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Błąd");
+      portalToast.error("Nie udało się potwierdzić odczytu", error);
     } finally {
       setBusyId(null);
     }

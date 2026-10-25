@@ -1,5 +1,6 @@
 "use client";
 
+import { portalConfirm, portalToast } from "@/lib/portalUi";
 import { useState } from "react";
 import { Copy, Share2, Trash2 } from "lucide-react";
 import LuxSheet from "./LuxSheet";
@@ -47,13 +48,24 @@ export default function PortalPartnerSheet({
       await navigator.share({ title: "Wspólny wybór mieszkania", text, url: c.url }).catch(() => {});
     } else {
       await navigator.clipboard?.writeText(c.url).catch(() => {});
-      alert("Link skopiowany.");
+      portalToast.success("Link skopiowany", `Wyślij go osobie: ${c.name}.`);
     }
   };
 
   const revoke = async (c: PortalCompanion) => {
-    if (!confirm(`Odebrać dostęp: ${c.name}?`)) return;
-    await portalAction(token, "revoke_partner_link", { companionId: c.id }).catch(() => {});
+    const ok = await portalConfirm({
+      title: `Odebrać dostęp: ${c.name}?`,
+      body: "Ten link przestanie działać od razu. Zawsze możesz zaprosić tę osobę ponownie.",
+      confirmLabel: "Odbierz dostęp",
+      destructive: true,
+    });
+    if (!ok) return;
+    try {
+      await portalAction(token, "revoke_partner_link", { companionId: c.id });
+      portalToast.success("Dostęp odebrany", `${c.name} nie zobaczy już panelu.`);
+    } catch (e) {
+      portalToast.error("Nie udało się odebrać dostępu", e);
+    }
     onChanged();
   };
 
