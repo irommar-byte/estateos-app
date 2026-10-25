@@ -91,7 +91,7 @@ export default function PortalBookingSheet({
           </button>
         </div>
       ) : !enabled ? (
-        <p className="text-[14px] leading-relaxed text-[#45423C]">
+        <p className="text-[14px] leading-relaxed text-[var(--lux-ink-2)]">
           Terminy oglądań ustala {agentName}. Napisz w rozmowie, kiedy Ci pasuje — odezwie się z propozycją.
         </p>
       ) : (
@@ -105,7 +105,7 @@ export default function PortalBookingSheet({
                 id="booking-offer"
                 value={offerId}
                 onChange={(e) => setOfferId(Number(e.target.value))}
-                className="mt-2 h-12 w-full rounded-2xl border border-[#E6E0D6] bg-white px-3 text-[15px]"
+                className="mt-2 h-12 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] px-3 text-[15px]"
               >
                 {offers.map((o) => (
                   <option key={o.offerId} value={o.offerId}>
@@ -117,10 +117,10 @@ export default function PortalBookingSheet({
           ) : offers[0] ? (
             <p className="text-[14px] font-semibold">{offers[0].title}</p>
           ) : (
-            <p className="text-[14px] text-[#45423C]">Najpierw zaznacz „Chcę obejrzeć” przy ofercie, która Cię interesuje.</p>
+            <p className="text-[14px] text-[var(--lux-ink-2)]">Najpierw zaznacz „Chcę obejrzeć” przy ofercie, która Cię interesuje.</p>
           )}
 
-          <p className="mt-4 text-[13px] text-[#5B574F]">Wolne godziny {agentName} w najbliższych dniach:</p>
+          <p className="mt-4 text-[13px] text-[var(--lux-ink-2)]">Wolne godziny {agentName} w najbliższych dniach:</p>
           {slots == null && !error ? <p className="mt-3 text-[14px]">Sprawdzam kalendarz…</p> : null}
           {slots && !slots.length ? (
             <p className="mt-3 text-[14px]">Brak wolnych terminów w najbliższych dniach — napisz w rozmowie.</p>
@@ -155,9 +155,9 @@ export default function PortalBookingSheet({
             onChange={(e) => setNote(e.target.value)}
             rows={2}
             placeholder="np. przyjdę z partnerem"
-            className="mt-2 w-full rounded-2xl border border-[#E6E0D6] bg-white p-3 text-[15px]"
+            className="mt-2 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] p-3 text-[15px]"
           />
-          {error ? <p className="mt-2 text-[13px] text-[#9a3412]">{error}</p> : null}
+          {error ? <p className="mt-2 text-[13px] text-[var(--lux-danger)]">{error}</p> : null}
           <button
             type="button"
             className="lux-btn lux-btn--primary mt-4 w-full"
@@ -166,7 +166,7 @@ export default function PortalBookingSheet({
           >
             {busy ? "Wysyłam…" : "Poproś o ten termin"}
           </button>
-          <p className="mt-2 text-center text-[12px] text-[#5B574F]">Termin stanie się pewny, gdy agent go potwierdzi.</p>
+          <p className="mt-2 text-center text-[12px] text-[var(--lux-ink-2)]">Termin stanie się pewny, gdy agent go potwierdzi.</p>
         </>
       )}
     </LuxSheet>

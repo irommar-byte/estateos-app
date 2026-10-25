@@ -28,7 +28,7 @@ export function PortalReview({
       <div className="mt-3 flex gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
           <button key={n} type="button" disabled={sent} onClick={() => setRating(n)} aria-label={`${n} na 5`}>
-            <Star className={`size-8 ${n <= rating ? "fill-[#D8A93B] text-[#D8A93B]" : "text-[#C9C2B5]"}`} />
+            <Star className={`size-8 ${n <= rating ? "fill-[#D8A93B] text-[#D8A93B]" : "text-[var(--lux-ink-3)]"}`} />
           </button>
         ))}
       </div>
@@ -38,7 +38,7 @@ export function PortalReview({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Kilka słów (opcjonalnie)"
-            className="mt-3 min-h-[72px] w-full rounded-2xl border border-[#E6E0D6] bg-white p-3 text-[15px] outline-none"
+            className="mt-3 min-h-[72px] w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] p-3 text-[15px] outline-none"
           />
           <button
             type="button"
@@ -76,12 +76,12 @@ export function PortalReferral({ token, agentFirst }: { token: string; agentFirs
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const field = "mt-2 h-12 w-full rounded-2xl border border-[#E6E0D6] bg-white px-3 text-[15px] outline-none";
+  const field = "mt-2 h-12 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] px-3 text-[15px] outline-none";
   return (
     <section className="lux-card p-5">
       <p className="lux-kicker">Polecenie</p>
       <h2 className="lux-serif mt-1.5 text-[22px] font-medium">Znasz kogoś, kto kupuje albo sprzedaje?</h2>
-      <p className="mt-1 text-[14px] text-[#5B574F]">
+      <p className="mt-1 text-[14px] text-[var(--lux-ink-2)]">
         {sent ? `Dziękujemy! ${agentFirst} odezwie się do tej osoby.` : `Podaj kontakt — ${agentFirst} zadzwoni i powie, że to od Ciebie.`}
       </p>
       {!open ? (
@@ -106,7 +106,7 @@ export function PortalReferral({ token, agentFirst }: { token: string; agentFirs
             ))}
           </div>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Coś, co warto wiedzieć (opcjonalnie)" className={field} />
-          {error ? <p className="mt-2 text-[13px] font-semibold text-[#C2412D]">{error}</p> : null}
+          {error ? <p className="mt-2 text-[13px] font-semibold text-[var(--lux-danger)]">{error}</p> : null}
           <button
             type="button"
             disabled={!name.trim() || !phone.trim() || busy}

@@ -129,11 +129,11 @@ export default function PortalAreaSheet({
 
   return (
     <LuxSheet open={open} onClose={onClose} kicker="Moje kryteria" title="Gdzie chcesz mieszkać?" wide>
-      <p className="text-[14px] leading-relaxed text-[#45423C]">
+      <p className="text-[14px] leading-relaxed text-[var(--lux-ink-2)]">
         Stukaj w mapę, żeby zaznaczyć granice obszaru — wystarczą 3–4 punkty.
         {criteriaEditAllowed ? "" : ` Zmianę zatwierdzi ${agentName}.`}
       </p>
-      <div ref={containerRef} className="mt-3 h-[420px] w-full overflow-hidden rounded-[22px] bg-[#E9E4DA]" />
+      <div ref={containerRef} className="mt-3 h-[420px] w-full overflow-hidden rounded-[22px] bg-[var(--lux-well)]" />
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" className="lux-chip" disabled={!points.length} onClick={() => update(points.slice(0, -1))}>
           Cofnij punkt

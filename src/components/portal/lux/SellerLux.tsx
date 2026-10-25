@@ -136,7 +136,7 @@ function BuyerOfferCard({
           <p className="lux-kicker !text-[10px]">{offer.buyerLabel}</p>
           <p className="lux-serif mt-1.5 text-[28px]">{formatPln(offer.amount)}</p>
           {diffPct != null ? (
-            <p className="text-[13px] text-[#5B574F]">
+            <p className="text-[13px] text-[var(--lux-ink-2)]">
               {diffPct >= 0 ? "+" : "−"}
               {Math.abs(diffPct).toFixed(1).replace(".", ",")}% od ceny w ogłoszeniu
             </p>
@@ -152,21 +152,21 @@ function BuyerOfferCard({
           </span>
         ) : null}
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-px bg-[#F1ECE3]">
+      <div className="mt-4 grid grid-cols-2 gap-px bg-[var(--lux-well)]">
         {facts.map(([label, value]) => (
-          <div key={label} className="bg-white px-4 py-3">
-            <p className="text-[11px] text-[#5B574F]">{label}</p>
+          <div key={label} className="bg-[var(--lux-card)] px-4 py-3">
+            <p className="text-[11px] text-[var(--lux-ink-2)]">{label}</p>
             <p className="mt-0.5 text-[14px] font-bold">{value}</p>
           </div>
         ))}
       </div>
       <div className="p-4">
         {offer.recommendation ? (
-          <p className="text-[13px] leading-relaxed text-[#2E2C28]">
+          <p className="text-[13px] leading-relaxed text-[var(--lux-ink)]">
             <b>{agentFirst}:</b> {offer.recommendation}
           </p>
         ) : null}
-        {offer.clientComment && !open ? <p className="mt-2 text-[12px] text-[#5B574F]">Twój komentarz: „{offer.clientComment}”</p> : null}
+        {offer.clientComment && !open ? <p className="mt-2 text-[12px] text-[var(--lux-ink-2)]">Twój komentarz: „{offer.clientComment}”</p> : null}
         {open ? (
           <>
             {mode === "counter" ? (
@@ -179,7 +179,7 @@ function BuyerOfferCard({
                   inputMode="numeric"
                   value={counter}
                   onChange={(e) => setCounter(e.target.value)}
-                  className="h-12 w-full rounded-2xl border border-[#E6E0D6] bg-white px-3 text-[16px] font-semibold"
+                  className="h-12 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] px-3 text-[16px] font-semibold"
                 />
               </div>
             ) : null}
@@ -192,7 +192,7 @@ function BuyerOfferCard({
               onChange={(e) => setComment(e.target.value)}
               rows={2}
               placeholder={`Komentarz dla ${agentFirst} (opcjonalnie)`}
-              className="mt-3 w-full rounded-2xl border border-[#E6E0D6] bg-white p-3 text-[14px]"
+              className="mt-3 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] p-3 text-[14px]"
             />
             <div className="mt-3 grid grid-cols-3 gap-1.5">
               <button type="button" disabled={busy} onClick={() => void respond("accept")} className="min-h-[46px] rounded-xl bg-[var(--lux-accent)] text-[12px] font-bold text-[#F6F3EE]">
@@ -206,7 +206,7 @@ function BuyerOfferCard({
               >
                 {mode === "counter" ? "Wyślij kwotę" : "Kontroferta"}
               </button>
-              <button type="button" disabled={busy} onClick={() => void respond("reject")} className="min-h-[46px] rounded-xl border border-[#E6E0D6] bg-white text-[12px] font-semibold">
+              <button type="button" disabled={busy} onClick={() => void respond("reject")} className="min-h-[46px] rounded-xl border border-[var(--lux-line)] bg-[var(--lux-card)] text-[12px] font-semibold">
                 Odrzucam
               </button>
             </div>
@@ -252,14 +252,14 @@ export function SellerShowingFeedback({ seller, agentRecommendation, agentFirst 
   return (
     <section className="lux-card p-4">
       <p className="lux-serif text-[19px] font-medium">Co mówią kupujący</p>
-      <p className="mt-0.5 text-[12px] text-[#5B574F]">
+      <p className="mt-0.5 text-[12px] text-[var(--lux-ink-2)]">
         {fb.showings} {fb.showings === 1 ? "oglądanie" : fb.showings < 5 ? "oglądania" : "oglądań"} · uwagi anonimowe
       </p>
       <div className="mt-3.5 space-y-2.5">
         {fb.items.map((item) => (
           <div key={item.tag} className="flex items-center gap-2.5">
             <span className="w-[120px] text-[12px] font-semibold">{item.tag}</span>
-            <div className="h-2 flex-1 rounded-full bg-[#F1ECE3]">
+            <div className="h-2 flex-1 rounded-full bg-[var(--lux-well)]">
               <div className="h-2 rounded-full" style={{ width: `${(item.count / max) * 100}%`, background: item.negative ? "#B07A3A" : "var(--lux-accent)" }} />
             </div>
             <span className="w-6 text-right text-[12px] font-bold">{item.count}</span>
@@ -267,8 +267,8 @@ export function SellerShowingFeedback({ seller, agentRecommendation, agentFirst 
         ))}
       </div>
       {agentRecommendation ? (
-        <div className="mt-3.5 rounded-[14px] bg-[#F6F3EE] p-3">
-          <p className="text-[12px] font-extrabold text-[#7A5F33]">Rekomendacja {agentFirst}</p>
+        <div className="mt-3.5 rounded-[14px] bg-[var(--lux-well)] p-3">
+          <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">Rekomendacja {agentFirst}</p>
           <p className="mt-1 text-[13px] leading-relaxed">{agentRecommendation}</p>
         </div>
       ) : null}
@@ -292,14 +292,14 @@ export function SellerCompetition({ seller }: { seller: SellerPortalV2 }) {
       <h2 className="lux-serif mt-1.5 text-[24px] font-medium">Konkurencja w okolicy</h2>
       <div className="lux-card mt-3 px-4">
         {rows.map(([label, value, own], i) => (
-          <div key={label} className={`flex justify-between gap-3 py-3 text-[13px] ${i ? "border-t border-[#F1ECE3]" : ""}`}>
-            <span className={own ? "font-bold" : "text-[#45423C]"}>{label}</span>
+          <div key={label} className={`flex justify-between gap-3 py-3 text-[13px] ${i ? "border-t border-[var(--lux-line)]" : ""}`}>
+            <span className={own ? "font-bold" : "text-[var(--lux-ink-2)]"}>{label}</span>
             <span className={own ? "font-extrabold text-[var(--lux-accent)]" : "font-semibold"}>{value}</span>
           </div>
         ))}
       </div>
       {better != null ? (
-        <p className="mt-2 px-1 text-[12px] text-[#5B574F]">
+        <p className="mt-2 px-1 text-[12px] text-[var(--lux-ink-2)]">
           {better ? "Twoja cena za metr jest konkurencyjna wobec podobnych ofert." : "Podobne oferty są tańsze za metr — warto o tym porozmawiać z agentem."}
         </p>
       ) : null}
@@ -361,10 +361,10 @@ export function SellerNetSheet({
   const num = (v: string) => Number(v.replace(/\s/g, "").replace(",", ".")) || 0;
   const field = (id: string, label: string, value: number, set: (n: number) => void, suffix: string) => (
     <label htmlFor={id} className="block">
-      <span className="text-[12px] font-bold text-[#45423C]">{label}</span>
-      <span className="mt-1 flex h-12 items-center rounded-2xl border border-[#E6E0D6] bg-white px-3">
+      <span className="text-[12px] font-bold text-[var(--lux-ink-2)]">{label}</span>
+      <span className="mt-1 flex h-12 items-center rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] px-3">
         <input id={id} inputMode="numeric" value={value ? String(value) : ""} onChange={(e) => set(num(e.target.value))} className="min-w-0 flex-1 bg-transparent text-[16px] font-semibold outline-none" />
-        <span className="text-[13px] text-[#5B574F]">{suffix}</span>
+        <span className="text-[13px] text-[var(--lux-ink-2)]">{suffix}</span>
       </span>
     </label>
   );
@@ -405,7 +405,7 @@ export function SellerNetSheet({
           <span className="lux-serif text-[30px]">{formatPln(calc.net)}</span>
         </div>
       </div>
-      <p className="mt-3 text-[12px] leading-relaxed text-[#5B574F]">{calc.taxNote} Wyliczenie orientacyjne — przed aktem potwierdzi je notariusz.</p>
+      <p className="mt-3 text-[12px] leading-relaxed text-[var(--lux-ink-2)]">{calc.taxNote} Wyliczenie orientacyjne — przed aktem potwierdzi je notariusz.</p>
       <button type="button" className="lux-btn lux-btn--ghost mt-3 w-full" disabled={saving} onClick={() => void save()}>
         {saving ? "Zapisuję…" : "Zapamiętaj moje dane"}
       </button>

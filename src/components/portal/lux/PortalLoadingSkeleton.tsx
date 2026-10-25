@@ -23,7 +23,7 @@ export default function PortalLoadingSkeleton() {
       </div>
       <div className="mx-auto max-w-3xl space-y-4 px-4 pt-6 sm:px-6">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="flex items-center gap-3 rounded-[24px] border border-[#ECE6DC] bg-white p-4">
+          <div key={i} className="flex items-center gap-3 rounded-[24px] border border-[var(--lux-line)] bg-[var(--lux-card)] p-4">
             <span className="eos-skel size-10 rounded-[13px]" />
             <span className="flex-1 space-y-2">
               <span className="eos-skel block h-3.5 w-1/3 rounded" />

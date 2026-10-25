@@ -167,7 +167,7 @@ export default function PortalCompare({
   const ppsmMax = Math.max(...(ppsmValues.filter(Boolean) as number[]));
 
   return createPortal(
-    <div className="portal-lux fixed inset-0 z-[90] overflow-y-auto bg-[#F6F3EE]" role="dialog" aria-modal="true" aria-label="Porównanie ofert">
+    <div className="portal-lux fixed inset-0 z-[90] overflow-y-auto bg-[var(--lux-well)]" role="dialog" aria-modal="true" aria-label="Porównanie ofert">
       <header className="rounded-b-[28px] bg-black px-5 pb-5 pt-4 text-[#F6F3EE]">
         <div className="mx-auto max-w-3xl">
           <div className="flex items-center gap-2.5">
@@ -208,7 +208,7 @@ export default function PortalCompare({
       </header>
 
       <div className="mx-auto max-w-3xl px-5 pb-16">
-        <nav aria-label="Widok porównania" className="mt-4 grid grid-cols-3 gap-1 rounded-[14px] bg-[#EAE4DA] p-1">
+        <nav aria-label="Widok porównania" className="mt-4 grid grid-cols-3 gap-1 rounded-[14px] bg-[var(--lux-well)] p-1">
           {([
             ["params", "Parametry"],
             ["visual", "Wizualnie"],
@@ -219,7 +219,7 @@ export default function PortalCompare({
               type="button"
               onClick={() => setTab(key)}
               aria-pressed={tab === key}
-              className={`h-[38px] rounded-[10px] text-[13px] ${tab === key ? "bg-white font-bold shadow-sm" : "font-semibold text-[#45423C]"}`}
+              className={`h-[38px] rounded-[10px] text-[13px] ${tab === key ? "bg-[var(--lux-card)] font-bold shadow-sm" : "font-semibold text-[var(--lux-ink-2)]"}`}
             >
               {label}
             </button>
@@ -230,7 +230,7 @@ export default function PortalCompare({
           <section className="mt-5">
             <div className="flex items-baseline justify-between">
               <h3 className="lux-serif text-[22px] font-medium">Parametry</h3>
-              <label className="flex items-center gap-1.5 text-[12px] font-semibold text-[#45423C]">
+              <label className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--lux-ink-2)]">
                 <input type="checkbox" checked={onlyDiff} onChange={(e) => setOnlyDiff(e.target.checked)} className="accent-[#0E4D3F]" />
                 Tylko różnice
               </label>
@@ -245,8 +245,8 @@ export default function PortalCompare({
                 ))}
               </div>
               {visibleRows.map((row) => (
-                <div key={row.label} className="grid items-center border-t border-[#F1ECE3] px-3 py-2.5 text-[13px]" style={{ gridTemplateColumns: `96px repeat(${matches.length}, minmax(0, 1fr))` }}>
-                  <span className="text-[#5B574F]">{row.label}</span>
+                <div key={row.label} className="grid items-center border-t border-[var(--lux-line)] px-3 py-2.5 text-[13px]" style={{ gridTemplateColumns: `96px repeat(${matches.length}, minmax(0, 1fr))` }}>
+                  <span className="text-[var(--lux-ink-2)]">{row.label}</span>
                   {row.values.map((v, i) => (
                     <span key={i} className={`text-center ${row.best === i ? "font-extrabold text-[var(--lux-accent)]" : ""}`}>
                       {v}
@@ -255,7 +255,7 @@ export default function PortalCompare({
                 </div>
               ))}
             </div>
-            <p className="mt-2 px-1 text-[12px] text-[#5B574F]">Pogrubiona zieleń = najlepsza wartość w wierszu.</p>
+            <p className="mt-2 px-1 text-[12px] text-[var(--lux-ink-2)]">Pogrubiona zieleń = najlepsza wartość w wierszu.</p>
           </section>
         ) : null}
 
@@ -268,7 +268,7 @@ export default function PortalCompare({
                 {matches.map((m, i) => (
                   <div key={m.id} className="flex items-center gap-2.5">
                     <span className="w-[18px] text-[12px] font-extrabold">{LETTERS[i]}</span>
-                    <div className="h-2.5 flex-1 rounded-full bg-[#F1ECE3]">
+                    <div className="h-2.5 flex-1 rounded-full bg-[var(--lux-well)]">
                       <div className="h-2.5 rounded-full bg-[var(--lux-accent)] transition-all duration-700" style={{ width: `${Math.max(4, Math.min(100, m.score))}%` }} />
                     </div>
                     <span className="w-9 text-right text-[12px] font-bold">{m.score}%</span>
@@ -280,7 +280,7 @@ export default function PortalCompare({
               <div className="lux-card p-4">
                 <p className="text-[13px] font-bold">Cena za m²</p>
                 <div className="relative mt-4 h-[64px]">
-                  <div className="absolute inset-x-0 top-[28px] h-2 rounded-full bg-[#F1ECE3]" />
+                  <div className="absolute inset-x-0 top-[28px] h-2 rounded-full bg-[var(--lux-well)]" />
                   {matches.map((m, i) => {
                     const v = offerPpsm(m.offer);
                     if (!v) return null;
@@ -295,8 +295,8 @@ export default function PortalCompare({
                       </span>
                     );
                   })}
-                  <span className="absolute left-0 top-[44px] text-[11px] text-[#5B574F]">{ppsmMin.toLocaleString("pl-PL")} zł</span>
-                  <span className="absolute right-0 top-[44px] text-[11px] text-[#5B574F]">{ppsmMax.toLocaleString("pl-PL")} zł/m²</span>
+                  <span className="absolute left-0 top-[44px] text-[11px] text-[var(--lux-ink-2)]">{ppsmMin.toLocaleString("pl-PL")} zł</span>
+                  <span className="absolute right-0 top-[44px] text-[11px] text-[var(--lux-ink-2)]">{ppsmMax.toLocaleString("pl-PL")} zł/m²</span>
                 </div>
               </div>
             ) : null}
@@ -305,7 +305,7 @@ export default function PortalCompare({
                 <p className="text-[13px] font-bold">Czy się zgadzacie?</p>
                 <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${matches.length}, minmax(0, 1fr))` }}>
                   {agreement.map((a, i) => (
-                    <div key={i} className={`rounded-xl p-2 text-center text-[12px] font-bold ${a === "Zgoda" ? "bg-[#EEF4F1] text-[var(--lux-accent)]" : a ? "bg-[#FBF1E6] text-[#7A5F33]" : "bg-[#F6F3EE] text-[#6F6A61]"}`}>
+                    <div key={i} className={`rounded-xl p-2 text-center text-[12px] font-bold ${a === "Zgoda" ? "bg-[var(--lux-well)] text-[var(--lux-accent)]" : a ? "bg-[var(--lux-well)] text-[var(--lux-gold-ink)]" : "bg-[var(--lux-well)] text-[var(--lux-ink-3)]"}`}>
                       {LETTERS[i]} · {a || "brak ocen"}
                     </div>
                   ))}
@@ -331,18 +331,18 @@ export default function PortalCompare({
           <section className="mt-5">
             <h3 className="lux-serif text-[22px] font-medium">Na mapie</h3>
             {mapboxgl.accessToken ? (
-              <div ref={mapBox} className="mt-3 h-[380px] w-full overflow-hidden rounded-[22px] bg-[#E9E4DA]" />
+              <div ref={mapBox} className="mt-3 h-[380px] w-full overflow-hidden rounded-[22px] bg-[var(--lux-well)]" />
             ) : (
               <p className="mt-3 text-[14px]">Mapa jest chwilowo niedostępna.</p>
             )}
             {sel ? (
               <button type="button" onClick={() => onOpenOffer(sel)} className="lux-card mt-3 flex w-full items-center gap-3 p-3.5 text-left">
-                <span className="size-16 shrink-0 rounded-[14px] bg-[#CFC7BA] bg-cover bg-center" style={{ backgroundImage: `url("${sel.offer.imageUrl}")` }} />
+                <span className="size-16 shrink-0 rounded-[14px] bg-[var(--lux-line-strong)] bg-cover bg-center" style={{ backgroundImage: `url("${sel.offer.imageUrl}")` }} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-[14px] font-extrabold">
                     {LETTERS[selected]} · {sel.offer.district || sel.offer.city} · {formatPln(sel.offer.price)}
                   </span>
-                  <span className="block truncate text-[12px] text-[#5B574F]">{sel.offer.title}</span>
+                  <span className="block truncate text-[12px] text-[var(--lux-ink-2)]">{sel.offer.title}</span>
                 </span>
               </button>
             ) : null}

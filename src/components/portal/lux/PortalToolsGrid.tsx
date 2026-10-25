@@ -33,8 +33,8 @@ export default function PortalToolsGrid({ kicker, title, tools }: { kicker: stri
                   <span className="rounded-full bg-black px-2 py-0.5 text-[10px] font-bold text-[#D8C3A0]">{tool.badge}</span>
                 ) : null}
               </span>
-              <span className="text-[14px] font-bold text-[#15171A]">{tool.title}</span>
-              <span className="text-[12px] leading-snug text-[#5B574F]">{tool.description}</span>
+              <span className="text-[14px] font-bold text-[var(--lux-ink)]">{tool.title}</span>
+              <span className="text-[12px] leading-snug text-[var(--lux-ink-2)]">{tool.description}</span>
             </button>
           );
         })}

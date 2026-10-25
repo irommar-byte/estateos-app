@@ -46,7 +46,7 @@ export default function LuxSheet({
         onClick={(e) => e.stopPropagation()}
       >
         {title ? (
-          <div className="sticky top-0 z-10 flex items-start justify-between gap-3 bg-[#F6F3EE]/95 px-5 pb-3 pt-5 backdrop-blur">
+          <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-5 pb-3 pt-5 backdrop-blur [background:color-mix(in_srgb,var(--lux-bg)_94%,transparent)]">
             <div className="min-w-0">
               {kicker ? <p className="lux-kicker">{kicker}</p> : null}
               <h2 className="lux-serif mt-1 text-[24px] font-medium leading-tight">{title}</h2>
@@ -55,7 +55,7 @@ export default function LuxSheet({
               type="button"
               onClick={onClose}
               aria-label="Zamknij"
-              className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E6E0D6] bg-white"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--lux-line)] bg-[var(--lux-card)]"
             >
               <X className="size-4" />
             </button>

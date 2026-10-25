@@ -35,11 +35,11 @@ export type PortalDocumentsSummary = {
 };
 
 const STATUS = {
-  missing: { label: "Brakuje", Icon: Circle, tone: "text-[#8C877D]" },
-  uploaded: { label: "Wysłane — agent sprawdza", Icon: Clock3, tone: "text-[#C98A1B]" },
-  accepted: { label: "Gotowe", Icon: CheckCircle2, tone: "text-[#2F9E6A]" },
-  rejected: { label: "Do poprawy", Icon: AlertCircle, tone: "text-[#C2412D]" },
-  na: { label: "Nie dotyczy", Icon: MinusCircle, tone: "text-[#8C877D]" },
+  missing: { label: "Brakuje", Icon: Circle, tone: "text-[var(--lux-ink-3)]" },
+  uploaded: { label: "Wysłane — agent sprawdza", Icon: Clock3, tone: "text-[var(--lux-warn)]" },
+  accepted: { label: "Gotowe", Icon: CheckCircle2, tone: "text-[var(--lux-good)]" },
+  rejected: { label: "Do poprawy", Icon: AlertCircle, tone: "text-[var(--lux-danger)]" },
+  na: { label: "Nie dotyczy", Icon: MinusCircle, tone: "text-[var(--lux-ink-3)]" },
 } as const;
 
 function plDocs(n: number) {
@@ -120,7 +120,7 @@ export default function PortalDocuments({
       <h2 className={`lux-serif ${embedded ? "" : "mt-1.5"} text-[22px] font-medium`}>
         {s.missing ? `Brakuje ${s.missing} z ${s.total}` : `Komplet — ${s.total} z ${s.total}`}
       </h2>
-      <p className="mt-0.5 text-[12px] font-semibold text-[#6F6A61]">
+      <p className="mt-0.5 text-[12px] font-semibold text-[var(--lux-ink-3)]">
         {[
           s.accepted ? `${s.accepted} gotowe` : null,
           s.uploaded ? `${s.uploaded} u agenta do sprawdzenia` : null,
@@ -130,12 +130,12 @@ export default function PortalDocuments({
           .filter(Boolean)
           .join(" · ") || `${s.total} ${plDocs(s.total)} na liście`}
       </p>
-      <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-[#F0EBE3]" aria-hidden>
+      <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-[var(--lux-well)]" aria-hidden>
         <motion.div className="h-full bg-[#2F9E6A]" initial={false} animate={{ width: pct(s.accepted) }} />
         <motion.div className="h-full bg-[#E3B45A]" initial={false} animate={{ width: pct(s.uploaded) }} />
-        <motion.div className="h-full bg-[#CFC7BA]" initial={false} animate={{ width: pct(s.na) }} />
+        <motion.div className="h-full bg-[var(--lux-line-strong)]" initial={false} animate={{ width: pct(s.na) }} />
       </div>
-      <p className="mt-2 text-[13px] text-[#5B574F]">
+      <p className="mt-2 text-[13px] text-[var(--lux-ink-2)]">
         Wystarczy zdjęcie telefonem albo PDF (do {formatBytes(PORTAL_UPLOAD_MAX_BYTES)}). Przed wysłaniem zobaczysz podgląd. {agentFirst} sprawdzi każdy dokument i da znać, jeśli coś trzeba poprawić.
       </p>
       <input
@@ -149,7 +149,7 @@ export default function PortalDocuments({
           if (picked) setFile(picked);
         }}
       />
-      <ul className="mt-2 divide-y divide-[#E6E0D6]">
+      <ul className="mt-2 divide-y divide-[var(--lux-line)]">
         <AnimatePresence initial={false}>
           {documents.map((doc) => {
             const st = STATUS[doc.status] || STATUS.missing;
@@ -167,20 +167,20 @@ export default function PortalDocuments({
                 <div className="flex items-start gap-3">
                   <st.Icon className={`mt-0.5 size-5 shrink-0 ${st.tone}`} />
                   <div className="min-w-0 flex-1">
-                    <p className={`text-[15px] font-semibold ${doc.status === "na" ? "text-[#8C877D] line-through decoration-[#CFC7BA]" : ""}`}>
+                    <p className={`text-[15px] font-semibold ${doc.status === "na" ? "text-[var(--lux-ink-3)] line-through decoration-[var(--lux-line-strong)]" : ""}`}>
                       {doc.label}
-                      {!doc.required ? <span className="font-normal text-[#8C877D] no-underline"> · jeśli dotyczy</span> : null}
+                      {!doc.required ? <span className="font-normal text-[var(--lux-ink-3)] no-underline"> · jeśli dotyczy</span> : null}
                     </p>
-                    {doc.hint ? <p className="mt-0.5 text-[12px] leading-snug text-[#6F6A61]">{doc.hint}</p> : null}
+                    {doc.hint ? <p className="mt-0.5 text-[12px] leading-snug text-[var(--lux-ink-3)]">{doc.hint}</p> : null}
                     <p className={`mt-1 text-[12px] font-bold ${st.tone}`}>{st.label}</p>
                     {doc.status === "rejected" && doc.note ? (
-                      <p className="mt-0.5 rounded-lg bg-[#FDF1EE] px-2 py-1 text-[12px] text-[#C2412D]">{agentFirst}: {doc.note}</p>
+                      <p className="mt-0.5 rounded-lg bg-[var(--lux-danger-soft)] px-2 py-1 text-[12px] text-[var(--lux-danger)]">{agentFirst}: {doc.note}</p>
                     ) : null}
                     {doc.fileUrl ? (
                       <button
                         type="button"
                         onClick={() => setPreview(doc)}
-                        className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full bg-[#F6F3EE] px-3 py-1 text-[12px] font-semibold text-[var(--lux-accent)]"
+                        className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full bg-[var(--lux-well)] px-3 py-1 text-[12px] font-semibold text-[var(--lux-accent)]"
                       >
                         <Eye className="size-3.5 shrink-0" />
                         <span className="truncate">{doc.fileName || "Zobacz plik"}</span>
@@ -191,7 +191,7 @@ export default function PortalDocuments({
                         type="button"
                         disabled={busyKey === doc.key}
                         onClick={() => void setNotApplicable(doc, doc.status !== "na")}
-                        className="mt-1.5 block text-[12px] font-semibold text-[#6F6A61] underline decoration-[#CFC7BA] underline-offset-2 disabled:opacity-40"
+                        className="mt-1.5 block text-[12px] font-semibold text-[var(--lux-ink-3)] underline decoration-[var(--lux-line-strong)] underline-offset-2 disabled:opacity-40"
                       >
                         {doc.status === "na" ? "Jednak dotyczy — dodam plik" : "Nie dotyczy mnie"}
                       </button>
@@ -203,8 +203,8 @@ export default function PortalDocuments({
                       onClick={() => pick(doc)}
                       className={`flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-bold ${
                         doc.status === "missing" || doc.status === "rejected"
-                          ? "bg-black text-[#D8C3A0]"
-                          : "border border-[#E6E0D6] bg-white text-[#15171A]"
+                          ? "bg-[var(--lux-solid)] text-[var(--lux-solid-ink)]"
+                          : "border border-[var(--lux-line)] bg-[var(--lux-card)] text-[var(--lux-ink)]"
                       }`}
                       aria-label={`${doc.status === "missing" ? "Dodaj" : "Wymień"}: ${doc.label}`}
                     >
@@ -218,7 +218,7 @@ export default function PortalDocuments({
           })}
         </AnimatePresence>
       </ul>
-      {error ? <p className="mt-2 text-[13px] font-semibold text-[#C2412D]">{error}</p> : null}
+      {error ? <p className="mt-2 text-[13px] font-semibold text-[var(--lux-danger)]">{error}</p> : null}
 
       <PortalUploadSheet
         key={file ? `${file.name}:${file.size}:${file.lastModified}` : "none"}
@@ -250,7 +250,7 @@ export default function PortalDocuments({
         {preview?.fileUrl ? (
           <div className="space-y-3">
             <PortalFilePreview src={preview.fileUrl} name={preview.fileName || preview.label} mimeType={preview.mimeType} height={460} />
-            <div className="flex items-center justify-between gap-3 text-[12px] text-[#6F6A61]">
+            <div className="flex items-center justify-between gap-3 text-[12px] text-[var(--lux-ink-3)]">
               <span className="truncate">
                 {preview.fileName}
                 {preview.uploadedAt ? ` · ${new Date(preview.uploadedAt).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}

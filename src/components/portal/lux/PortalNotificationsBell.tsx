@@ -145,7 +145,7 @@ export default function PortalNotificationsBell({
               key={t.k}
               type="button"
               onClick={() => setTab(t.k)}
-              className={`rounded-[16px] border px-3 py-2.5 text-left ${tab === t.k ? "border-black bg-black text-[#D8C3A0]" : "border-[#E6E0D6] bg-white text-[#15171A]"}`}
+              className={`rounded-[16px] border px-3 py-2.5 text-left ${tab === t.k ? "border-[var(--lux-solid)] bg-[var(--lux-solid)] text-[var(--lux-solid-ink)]" : "border-[var(--lux-line)] bg-[var(--lux-card)] text-[var(--lux-ink)]"}`}
             >
               <span className="lux-serif block text-[24px] leading-none">{t.n}</span>
               <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.12em] opacity-80">{t.label}</span>
@@ -173,27 +173,27 @@ export default function PortalNotificationsBell({
                     type="button"
                     onClick={() => go(n)}
                     className={`flex w-full items-start gap-3 rounded-[18px] border p-3 text-left transition-colors ${
-                      isNew ? "border-[#E9C27A] bg-white" : "border-[#ECE6DC] bg-[#FBF9F5]"
+                      isNew ? "border-[var(--lux-gold-line)] bg-[var(--lux-card)]" : "border-[var(--lux-line)] bg-[var(--lux-well)]"
                     }`}
                   >
-                    <Circle className={`mt-1 size-2.5 shrink-0 ${isNew ? "fill-[#C2412D] text-[#C2412D]" : "fill-transparent text-[#CFC7BA]"}`} />
+                    <Circle className={`mt-1 size-2.5 shrink-0 ${isNew ? "fill-[#C2412D] text-[var(--lux-danger)]" : "fill-transparent text-[var(--lux-ink-3)]"}`} />
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
-                        <span className="rounded-full bg-[#F4EBDA] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[#7A5F33]">
+                        <span className="rounded-full bg-[var(--lux-gold-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--lux-gold-ink)]">
                           {NOTICE_GROUP_LABEL[n.group]}
                         </span>
-                        {n.tone === "action" ? <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#C2412D]">do zrobienia</span> : null}
-                        <span className="ml-auto shrink-0 text-[11px] text-[#8C877D]">{relTime(n.at)}</span>
+                        {n.tone === "action" ? <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--lux-danger)]">do zrobienia</span> : null}
+                        <span className="ml-auto shrink-0 text-[11px] text-[var(--lux-ink-3)]">{relTime(n.at)}</span>
                       </span>
-                      <span className={`mt-1 block text-[14px] ${isNew ? "font-bold" : "font-semibold text-[#45423C]"}`}>{n.title}</span>
-                      {n.body ? <span className="mt-0.5 line-clamp-2 block text-[12.5px] text-[#6F6A61]">{n.body}</span> : null}
+                      <span className={`mt-1 block text-[14px] ${isNew ? "font-bold" : "font-semibold text-[var(--lux-ink-2)]"}`}>{n.title}</span>
+                      {n.body ? <span className="mt-0.5 line-clamp-2 block text-[12.5px] text-[var(--lux-ink-3)]">{n.body}</span> : null}
                     </span>
                   </button>
                 </li>
               );
             })
           ) : (
-            <li className="rounded-[18px] bg-white p-5 text-center text-[13px] text-[#6F6A61]">
+            <li className="rounded-[18px] bg-[var(--lux-card)] p-5 text-center text-[13px] text-[var(--lux-ink-3)]">
               {tab === "new" ? "Nie ma nic nowego. Damy znać, gdy coś się pojawi." : "Brak powiadomień."}
             </li>
           )}

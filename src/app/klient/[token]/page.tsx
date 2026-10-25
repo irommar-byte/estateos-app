@@ -906,7 +906,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           {portal.purchase ? (
             <section className="lux-card p-4">
               <p className="text-[15px] font-bold">{portal.purchase.title}</p>
-              <p className="text-[13px] text-[#5B574F]">{portal.purchase.address}</p>
+              <p className="text-[13px] text-[var(--lux-ink-2)]">{portal.purchase.address}</p>
               <p className="lux-serif mt-2 text-[22px]">
                 {portal.purchase.price ? `${Number(portal.purchase.price).toLocaleString("pl-PL")} zł` : "Cena do uzgodnienia"}
               </p>
@@ -1296,7 +1296,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 <section id="portal-meeting" className="lux-card scroll-mt-24 p-5">
                   <p className="lux-kicker">Spotkanie z agentem</p>
                   <h2 className="lux-serif mt-1.5 text-[24px] font-medium">{formatMeetingWhenPl(portal.meeting.startsAt)}</h2>
-                  {portal.meeting.location ? <p className="mt-1 text-sm text-[#5B574F]">{portal.meeting.location}</p> : null}
+                  {portal.meeting.location ? <p className="mt-1 text-sm text-[var(--lux-ink-2)]">{portal.meeting.location}</p> : null}
                   {portal.meeting.prepLabels?.length ? (
                     <ul className="mt-4 space-y-2 text-sm">
                       {portal.meeting.prepLabels.map((label) => (
@@ -1389,7 +1389,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                         {signed ? "Podpisana" : "Do podpisu"}
                       </span>
                     </div>
-                    <pre className="mt-3 max-h-[18rem] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-[#F6F3EE] p-4 text-xs leading-relaxed text-[#2E2C28]">
+                    <pre className="mt-3 max-h-[18rem] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-[var(--lux-well)] p-4 text-xs leading-relaxed text-[var(--lux-ink)]">
                       {portal.acquisition.agreementSnapshot}
                     </pre>
                     {token ? (
@@ -1403,7 +1403,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                         href={file.url.startsWith("http") ? file.url : `https://estateos.pl${file.url.startsWith("/") ? file.url : `/${file.url}`}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="mt-2 flex items-center justify-between rounded-xl bg-[#F6F3EE] px-4 py-3 text-sm font-semibold text-[var(--lux-accent)]"
+                        className="mt-2 flex items-center justify-between rounded-xl bg-[var(--lux-well)] px-4 py-3 text-sm font-semibold text-[var(--lux-accent)]"
                       >
                         {file.name} <ExternalLink className="size-3.5" />
                       </a>
@@ -1455,7 +1455,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             blink={groupBlink("chat")}
           >
             <div id="portal-chat" className="scroll-mt-24">
-              <p className="text-sm text-[#5B574F]">{agentFirst} odpowie w tym oknie — dostaniesz też powiadomienie.</p>
+              <p className="text-sm text-[var(--lux-ink-2)]">{agentFirst} odpowie w tym oknie — dostaniesz też powiadomienie.</p>
               <div className="mt-4">
                 <ClientPortalLiveChat token={token} agentName={portal.agentName} onUnreadChange={onChatUnread} />
               </div>

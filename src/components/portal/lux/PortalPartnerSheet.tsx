@@ -71,18 +71,18 @@ export default function PortalPartnerSheet({
 
   return (
     <LuxSheet open={open} onClose={onClose} kicker="Wybieramy razem" title="Dostęp dla drugiej osoby">
-      <p className="text-[14px] leading-relaxed text-[#45423C]">
+      <p className="text-[14px] leading-relaxed text-[var(--lux-ink-2)]">
         Partner albo ktoś z rodziny dostaje własny link. Ocenia oferty osobno, a w porównaniu widać, gdzie się zgadzacie.
         Agent widzi oba zdania.
       </p>
 
       {companions.length ? (
-        <div className="lux-card mt-4 divide-y divide-[#F1ECE3] px-4">
+        <div className="lux-card mt-4 divide-y divide-[var(--lux-line)] px-4">
           {companions.map((c) => (
             <div key={c.id} className="flex items-center gap-3 py-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-bold">{c.name}</p>
-                <p className="text-[12px] text-[#5B574F]">
+                <p className="text-[12px] text-[var(--lux-ink-2)]">
                   {c.lastSeenAt ? `Ostatnio w panelu: ${new Date(c.lastSeenAt).toLocaleDateString("pl-PL")}` : "Jeszcze nie otworzył(a) linku"}
                 </p>
               </div>
@@ -127,13 +127,13 @@ export default function PortalPartnerSheet({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="np. Jan"
-            className="h-12 min-w-0 flex-1 rounded-full border border-[#E6E0D6] bg-white px-4 text-[15px]"
+            className="h-12 min-w-0 flex-1 rounded-full border border-[var(--lux-line)] bg-[var(--lux-card)] px-4 text-[15px]"
           />
           <button type="button" className="lux-btn lux-btn--ink" disabled={busy || !name.trim()} onClick={() => void create()}>
             Utwórz link
           </button>
         </div>
-        {error ? <p className="mt-2 text-[13px] text-[#9a3412]">{error}</p> : null}
+        {error ? <p className="mt-2 text-[13px] text-[var(--lux-danger)]">{error}</p> : null}
       </div>
     </LuxSheet>
   );

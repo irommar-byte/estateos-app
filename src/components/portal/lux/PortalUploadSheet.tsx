@@ -127,7 +127,7 @@ export default function PortalUploadSheet<T = Record<string, unknown>>({
             role="dialog"
             aria-modal="true"
             aria-label={`Wysyłanie: ${targetLabel}`}
-            className="relative max-h-[94dvh] w-full max-w-[560px] overflow-y-auto rounded-t-[28px] bg-[#F6F3EE] text-[#15171A] shadow-[0_30px_80px_rgba(0,0,0,0.35)] sm:rounded-[28px]"
+            className="relative max-h-[94dvh] w-full max-w-[560px] overflow-y-auto rounded-t-[28px] bg-[var(--lux-well)] text-[var(--lux-ink)] shadow-[0_30px_80px_rgba(0,0,0,0.35)] sm:rounded-[28px]"
             initial={{ y: 60, scale: 0.96, opacity: 0 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}
             exit={{ y: 60, scale: 0.97, opacity: 0 }}
@@ -140,14 +140,14 @@ export default function PortalUploadSheet<T = Record<string, unknown>>({
                   {phase === "done" ? "Wysłane" : phase === "uploading" ? "Wysyłanie" : phase === "error" ? "Nie wysłano" : "Sprawdź przed wysłaniem"}
                 </p>
                 <h2 className="lux-serif mt-1 text-[22px] font-medium leading-tight">{targetLabel}</h2>
-                {targetHint && phase === "review" ? <p className="mt-1 text-[12px] text-[#6F6A61]">{targetHint}</p> : null}
+                {targetHint && phase === "review" ? <p className="mt-1 text-[12px] text-[var(--lux-ink-3)]">{targetHint}</p> : null}
               </div>
               <button
                 type="button"
                 onClick={close}
                 disabled={phase === "uploading"}
                 aria-label="Zamknij"
-                className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#E6E0D6] bg-white disabled:opacity-30"
+                className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--lux-line)] bg-[var(--lux-card)] disabled:opacity-30"
               >
                 <X className="size-4" />
               </button>
@@ -179,15 +179,15 @@ export default function PortalUploadSheet<T = Record<string, unknown>>({
               </motion.div>
 
               {/* Plik i rozmiar względem limitu */}
-              <div className="rounded-[18px] border border-[#E6E0D6] bg-white p-4">
+              <div className="rounded-[18px] border border-[var(--lux-line)] bg-[var(--lux-card)] p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="min-w-0 truncate text-[14px] font-bold">{file.name}</p>
-                  <p className={`shrink-0 text-[13px] font-bold ${tooBig ? "text-[#C2412D]" : "text-[#15171A]"}`}>{formatBytes(file.size)}</p>
+                  <p className={`shrink-0 text-[13px] font-bold ${tooBig ? "text-[var(--lux-danger)]" : "text-[var(--lux-ink)]"}`}>{formatBytes(file.size)}</p>
                 </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#F0EBE3]">
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--lux-well)]">
                   <div className={`h-full rounded-full ${tooBig ? "bg-[#C2412D]" : "bg-[#D8C3A0]"}`} style={{ width: `${usage}%` }} />
                 </div>
-                <p className="mt-1.5 text-[11px] text-[#8C877D]">
+                <p className="mt-1.5 text-[11px] text-[var(--lux-ink-3)]">
                   {formatBytes(file.size)} z {formatBytes(PORTAL_UPLOAD_MAX_BYTES)} dozwolonych
                 </p>
               </div>
@@ -216,7 +216,7 @@ export default function PortalUploadSheet<T = Record<string, unknown>>({
               ) : null}
 
               {phase === "done" ? (
-                <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="text-center text-[14px] font-semibold text-[#2F9E6A]">
+                <motion.p initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="text-center text-[14px] font-semibold text-[var(--lux-good)]">
                   Gotowe — {agentFirst} dostał powiadomienie i sprawdzi dokument.
                 </motion.p>
               ) : null}
@@ -226,14 +226,14 @@ export default function PortalUploadSheet<T = Record<string, unknown>>({
                   initial={{ x: -8 }}
                   animate={{ x: [0, -6, 6, -3, 3, 0] }}
                   transition={{ duration: 0.4 }}
-                  className="rounded-[18px] border border-[#F1C9C1] bg-[#FDF1EE] p-4"
+                  className="rounded-[18px] border border-[var(--lux-danger-line)] bg-[var(--lux-danger-soft)] p-4"
                   role="alert"
                 >
-                  <p className="flex items-center gap-2 text-[14px] font-bold text-[#C2412D]">
+                  <p className="flex items-center gap-2 text-[14px] font-bold text-[var(--lux-danger)]">
                     <AlertTriangle className="size-4 shrink-0" />
                     {problem.title}
                   </p>
-                  <p className="mt-1 text-[13px] leading-relaxed text-[#5B574F]">{problem.detail}</p>
+                  <p className="mt-1 text-[13px] leading-relaxed text-[var(--lux-ink-2)]">{problem.detail}</p>
                 </motion.div>
               ) : null}
 

@@ -84,7 +84,7 @@ export default function PortalOfferSheet({
   };
 
   return createPortal(
-    <div className="portal-lux fixed inset-0 z-[90] overflow-y-auto bg-[#F6F3EE]" role="dialog" aria-modal="true" aria-label={offer.title}>
+    <div className="portal-lux fixed inset-0 z-[90] overflow-y-auto bg-[var(--lux-well)]" role="dialog" aria-modal="true" aria-label={offer.title}>
       <div className="relative bg-black">
         <div
           ref={galleryRef}
@@ -117,7 +117,7 @@ export default function PortalOfferSheet({
             <Heart className={`size-5 ${match.favorite ? "fill-[#D8C3A0] text-[#D8C3A0]" : "text-white"}`} />
           </button>
         ) : null}
-        <span className="absolute bottom-4 left-4 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-[#15171A]">
+        <span className="absolute bottom-4 left-4 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-[var(--lux-ink)]">
           {Math.min(index + 1, photos.length)} / {photos.length}
         </span>
         {match.favoriteBadge ? (
@@ -132,7 +132,7 @@ export default function PortalOfferSheet({
           <p className="lux-kicker">{[offer.district, offer.city].filter(Boolean).join(" · ")}</p>
           <h2 className="lux-serif mt-1.5 text-[26px] font-medium leading-tight">{offer.title}</h2>
           <p className="lux-serif mt-2 text-[28px]">{formatPln(offer.price)}</p>
-          <p className="text-[13px] text-[#5B574F]">
+          <p className="text-[13px] text-[var(--lux-ink-2)]">
             {[ppsm ? `${ppsm.toLocaleString("pl-PL")} zł/m²` : null, ...specs].filter(Boolean).join(" · ")}
           </p>
           {amenities.length ? (
@@ -148,8 +148,8 @@ export default function PortalOfferSheet({
 
         {match.clientWhy ? (
           <section className="lux-card p-4">
-            <p className="text-[12px] font-extrabold text-[#7A5F33]">Dlaczego ta oferta</p>
-            <p className="mt-1 whitespace-pre-line text-[14px] leading-relaxed text-[#2E2C28]">{match.clientWhy}</p>
+            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">Dlaczego ta oferta</p>
+            <p className="mt-1 whitespace-pre-line text-[14px] leading-relaxed text-[var(--lux-ink)]">{match.clientWhy}</p>
           </section>
         ) : null}
 
@@ -159,20 +159,20 @@ export default function PortalOfferSheet({
               <img src={offer.floorPlanUrl} alt="Rzut mieszkania" className="size-20 rounded-xl bg-white object-contain" />
               <span className="flex-1">
                 <span className="block text-[15px] font-bold">Rzut mieszkania</span>
-                <span className="text-[12px] text-[#5B574F]">Stuknij, żeby powiększyć</span>
+                <span className="text-[12px] text-[var(--lux-ink-2)]">Stuknij, żeby powiększyć</span>
               </span>
-              <Maximize2 className="size-5 text-[#7A5F33]" />
+              <Maximize2 className="size-5 text-[var(--lux-gold-ink)]" />
             </button>
           </section>
         ) : null}
 
         {match.partnerFeedback?.length && !isPartner ? (
           <section className="lux-card p-4">
-            <p className="text-[12px] font-extrabold text-[#7A5F33]">Oceny osób, które wybierają z Tobą</p>
+            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">Oceny osób, które wybierają z Tobą</p>
             {match.partnerFeedback.map((f) => (
               <p key={f.companionId} className="mt-1.5 text-[14px]">
                 <b>{f.name}:</b> {SENTIMENT_LABEL[f.sentiment]}
-                {f.note ? <span className="text-[#5B574F]"> — „{f.note}”</span> : null}
+                {f.note ? <span className="text-[var(--lux-ink-2)]"> — „{f.note}”</span> : null}
               </p>
             ))}
           </section>
@@ -192,8 +192,8 @@ export default function PortalOfferSheet({
                   own === s
                     ? s === "like"
                       ? "bg-[var(--lux-accent)] text-[#F6F3EE]"
-                      : "bg-black text-[#D8C3A0]"
-                    : "border border-[#E6E0D6] bg-white text-[#15171A]"
+                      : "bg-[var(--lux-solid)] text-[var(--lux-solid-ink)]"
+                    : "border border-[var(--lux-line)] bg-[var(--lux-card)] text-[var(--lux-ink)]"
                 }`}
               >
                 {busy === s ? "…" : SENTIMENT_LABEL[s]}
@@ -209,7 +209,7 @@ export default function PortalOfferSheet({
             onChange={(e) => setNote(e.target.value)}
             rows={2}
             placeholder="Co dokładnie się podoba albo przeszkadza? (opcjonalnie)"
-            className="mt-3 w-full rounded-2xl border border-[#E6E0D6] bg-white p-3 text-[14px]"
+            className="mt-3 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] p-3 text-[14px]"
           />
         </section>
 
@@ -230,8 +230,8 @@ export default function PortalOfferSheet({
 
         {offer.description ? (
           <section className="lux-card p-4">
-            <p className="text-[12px] font-extrabold text-[#7A5F33]">Opis</p>
-            <p className="mt-1 whitespace-pre-line text-[14px] leading-relaxed text-[#2E2C28]">{offer.description}</p>
+            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">Opis</p>
+            <p className="mt-1 whitespace-pre-line text-[14px] leading-relaxed text-[var(--lux-ink)]">{offer.description}</p>
           </section>
         ) : null}
       </div>

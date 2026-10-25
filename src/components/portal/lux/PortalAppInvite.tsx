@@ -46,7 +46,7 @@ export default function PortalAppInvite({
   const isIos = surface.startsWith("ios");
   const isAndroid = surface.startsWith("android");
   const code = (
-    <span className="font-mono text-[24px] font-bold tracking-[0.28em] text-[#15171A]" aria-label={`Kod: ${invite.code.split("").join(" ")}`}>
+    <span className="font-mono text-[24px] font-bold tracking-[0.28em] text-[var(--lux-ink)]" aria-label={`Kod: ${invite.code.split("").join(" ")}`}>
       {invite.code.slice(0, 3)} {invite.code.slice(3)}
     </span>
   );
@@ -58,7 +58,7 @@ export default function PortalAppInvite({
         <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center">
           {invite.qrSvg ? (
             <div
-              className="mx-auto size-[168px] shrink-0 overflow-hidden rounded-2xl border border-[#E6E0D6] bg-white p-2 sm:mx-0 [&>svg]:h-full [&>svg]:w-full"
+              className="mx-auto size-[168px] shrink-0 overflow-hidden rounded-2xl border border-[var(--lux-line)] bg-white p-2 sm:mx-0 [&>svg]:h-full [&>svg]:w-full"
               dangerouslySetInnerHTML={{ __html: invite.qrSvg }}
             />
           ) : null}
@@ -67,14 +67,14 @@ export default function PortalAppInvite({
               <QrCode className="size-4" aria-hidden /> Panel na telefonie
             </p>
             <h3 className="lux-serif mt-1.5 text-[21px] font-medium leading-tight">Zeskanuj aparatem telefonu</h3>
-            <p className="mt-2 text-[13px] leading-relaxed text-[#45423C]">
+            <p className="mt-2 text-[13px] leading-relaxed text-[var(--lux-ink-2)]">
               Działa na każdym telefonie — iPhone i Android. Panel otworzy się w przeglądarce; możesz dodać go na ekran
               główny jak aplikację i włączyć powiadomienia.
             </p>
-            <p className="mt-3 text-[12px] text-[#6F6A61]">
+            <p className="mt-3 text-[12px] text-[var(--lux-ink-3)]">
               Masz iPhone&apos;a z aplikacją EstateOS? Wpisz w niej kod {code}
             </p>
-            {expiry ? <p className="mt-1 text-[11px] text-[#8C877D]">Kod ważny do: {expiry}. QR nie wygasa.</p> : null}
+            {expiry ? <p className="mt-1 text-[11px] text-[var(--lux-ink-3)]">Kod ważny do: {expiry}. QR nie wygasa.</p> : null}
           </div>
         </div>
       </section>
@@ -89,7 +89,7 @@ export default function PortalAppInvite({
       <h3 className="lux-serif mt-1.5 text-[21px] font-medium leading-tight">
         {standalone ? "Wszystko gotowe" : isAndroid ? "Dodaj panel do ekranu głównego" : "Ikona na ekranie albo aplikacja"}
       </h3>
-      <p className="mt-2 text-[13px] leading-relaxed text-[#45423C]">
+      <p className="mt-2 text-[13px] leading-relaxed text-[var(--lux-ink-2)]">
         {standalone
           ? "Otwierasz panel z ikony — wiadomości od agenta przyjdą jako powiadomienia, jeśli je włączysz."
           : isAndroid
@@ -103,12 +103,12 @@ export default function PortalAppInvite({
       ) : null}
 
       {isIos ? (
-        <div className="mt-5 rounded-2xl bg-[#F6F3EE] p-4">
-          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[#7A5F33]">Aplikacja EstateOS</p>
-          <p className="mt-1 text-[13px] leading-relaxed text-[#45423C]">
+        <div className="mt-5 rounded-2xl bg-[var(--lux-well)] p-4">
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-[var(--lux-gold-ink)]">Aplikacja EstateOS</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-[var(--lux-ink-2)]">
             Pobierz aplikację, wybierz „Mam kod od agenta” i wpisz {code}
           </p>
-          {expiry ? <p className="mt-1 text-[11px] text-[#8C877D]">Kod ważny do: {expiry}</p> : null}
+          {expiry ? <p className="mt-1 text-[11px] text-[var(--lux-ink-3)]">Kod ważny do: {expiry}</p> : null}
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <AppStoreBadgeLink compact appleOnly label="Pobierz EstateOS w App Store" />
             <button
@@ -123,7 +123,7 @@ export default function PortalAppInvite({
       ) : null}
 
       {isAndroid ? (
-        <p className="mt-4 flex items-center gap-2 text-[11px] text-[#8C877D]">
+        <p className="mt-4 flex items-center gap-2 text-[11px] text-[var(--lux-ink-3)]">
           <Monitor className="size-3.5" /> Na komputerze ten sam panel otworzysz z linku od agenta.
         </p>
       ) : null}

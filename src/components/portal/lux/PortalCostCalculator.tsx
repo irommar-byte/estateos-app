@@ -18,8 +18,8 @@ function notaryFee(value: number): number {
 function Field({ id, label, value, onChange, suffix }: { id: string; label: string; value: number; onChange: (v: number) => void; suffix: string }) {
   return (
     <label htmlFor={id} className="block">
-      <span className="text-[12px] font-bold text-[#45423C]">{label}</span>
-      <span className="mt-1 flex h-12 items-center rounded-2xl border border-[#E6E0D6] bg-white px-3">
+      <span className="text-[12px] font-bold text-[var(--lux-ink-2)]">{label}</span>
+      <span className="mt-1 flex h-12 items-center rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] px-3">
         <input
           id={id}
           inputMode="decimal"
@@ -27,7 +27,7 @@ function Field({ id, label, value, onChange, suffix }: { id: string; label: stri
           onChange={(e) => onChange(Number(e.target.value.replace(/\s/g, "").replace(",", ".")) || 0)}
           className="min-w-0 flex-1 bg-transparent text-[16px] font-semibold outline-none"
         />
-        <span className="text-[13px] text-[#5B574F]">{suffix}</span>
+        <span className="text-[13px] text-[var(--lux-ink-2)]">{suffix}</span>
       </span>
     </label>
   );
@@ -66,7 +66,7 @@ export default function PortalCostCalculator({ open, onClose, initialPrice }: { 
         <Field id="calc-years" label="Okres kredytu" value={years} onChange={setYears} suffix="lat" />
         <Field id="calc-comm" label="Prowizja biura" value={commission} onChange={setCommission} suffix="%" />
       </div>
-      <label className="mt-3 flex items-center justify-between rounded-2xl border border-[#E6E0D6] bg-white px-4 py-3 text-[14px]">
+      <label className="mt-3 flex items-center justify-between rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] px-4 py-3 text-[14px]">
         Rynek pierwotny (bez podatku PCC)
         <input type="checkbox" checked={primary} onChange={(e) => setPrimary(e.target.checked)} className="size-5 accent-[#0E4D3F]" />
       </label>
@@ -95,7 +95,7 @@ export default function PortalCostCalculator({ open, onClose, initialPrice }: { 
         </div>
         <p className="mt-1 text-[12px] text-[#BDB6AA]">Wkład własny + koszty transakcji.</p>
       </div>
-      <p className="mt-3 text-[12px] leading-relaxed text-[#5B574F]">
+      <p className="mt-3 text-[12px] leading-relaxed text-[var(--lux-ink-2)]">
         Wyliczenie orientacyjne (maksymalna taksa notarialna, rata równa). Dokładne koszty potwierdzi notariusz i bank.
       </p>
     </LuxSheet>

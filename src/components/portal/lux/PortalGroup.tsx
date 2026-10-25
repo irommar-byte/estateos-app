@@ -6,15 +6,6 @@ import { ChevronDown, type LucideIcon } from "lucide-react";
 
 export type GroupTone = "ink" | "gold" | "green" | "blue" | "rose" | "slate";
 
-const TONES: Record<GroupTone, { bg: string; fg: string }> = {
-  ink: { bg: "#15171A", fg: "#D8C3A0" },
-  gold: { bg: "#F4EBDA", fg: "#7A5F33" },
-  green: { bg: "#E5F3EC", fg: "#2F7D58" },
-  blue: { bg: "#E7EEF8", fg: "#2F5D9E" },
-  rose: { bg: "#FBEAE6", fg: "#B4432F" },
-  slate: { bg: "#EEECE8", fg: "#5B574F" },
-};
-
 /** Zapamiętany stan zwinięcia grup (w tej przeglądarce). */
 export function usePortalGroups(token: string | null, defaults: Record<string, boolean>) {
   const key = token ? `eos-portal-groups:${token}` : null;
@@ -89,12 +80,11 @@ export default function PortalGroup({
   blink?: boolean;
   children: React.ReactNode;
 }) {
-  const t = TONES[tone];
   const attention = Boolean(blink && badge);
   return (
     <section id={`grp-${id}`} data-group={id} className={`eos-group ${attention ? "eos-group--attention" : ""}`}>
       <button type="button" className="eos-group__head" onClick={onToggle} aria-expanded={open} aria-controls={`grp-body-${id}`}>
-        <span className="eos-group__icon relative" style={{ background: t.bg, color: t.fg }}>
+        <span className={`eos-group__icon eos-tone--${tone} relative`}>
           <Icon className="size-[19px]" />
           {badge ? (
             <span
@@ -108,11 +98,11 @@ export default function PortalGroup({
           ) : null}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-[16px] font-bold text-[#15171A]">{title}</span>
-          {summary ? <span className="mt-0.5 block truncate text-[12.5px] text-[#6F6A61]">{summary}</span> : null}
+          <span className="block text-[16px] font-bold text-[var(--lux-ink)]">{title}</span>
+          {summary ? <span className="mt-0.5 block truncate text-[12.5px] text-[var(--lux-ink-3)]">{summary}</span> : null}
         </span>
-        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.25 }} className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#F6F3EE]">
-          <ChevronDown className="size-4 text-[#5B574F]" />
+        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.25 }} className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--lux-well)]">
+          <ChevronDown className="size-4 text-[var(--lux-ink-2)]" />
         </motion.span>
       </button>
       <motion.div
@@ -123,7 +113,7 @@ export default function PortalGroup({
         style={{ overflow: "hidden" }}
         aria-hidden={!open}
       >
-        <div className="space-y-5 border-t border-[#F0EBE3] px-4 pb-5 pt-4 sm:px-5">{children}</div>
+        <div className="space-y-5 border-t border-[var(--lux-line)] px-4 pb-5 pt-4 sm:px-5">{children}</div>
       </motion.div>
     </section>
   );

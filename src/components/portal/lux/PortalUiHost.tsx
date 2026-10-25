@@ -83,11 +83,11 @@ export default function PortalUiHost() {
               animate={{ y: 0, scale: 1, opacity: 1 }}
               exit={{ y: 20, opacity: 0 }}
               transition={{ type: "spring", stiffness: 380, damping: 30 }}
-              className="w-full max-w-[400px] rounded-[26px] bg-[#F6F3EE] p-6 text-[#15171A] shadow-[0_30px_80px_rgba(0,0,0,0.4)]"
+              className="w-full max-w-[400px] rounded-[26px] bg-[var(--lux-bg)] p-6 text-[var(--lux-ink)] shadow-[0_30px_80px_rgba(0,0,0,0.4)]"
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="lux-serif text-[22px] font-medium leading-tight">{confirm.title}</h2>
-              {confirm.body ? <p className="mt-2 text-[14px] leading-relaxed text-[#5B574F]">{confirm.body}</p> : null}
+              {confirm.body ? <p className="mt-2 text-[14px] leading-relaxed text-[var(--lux-ink-2)]">{confirm.body}</p> : null}
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => confirm.resolve(false)} className="lux-btn lux-btn--ghost">
                   {confirm.cancelLabel || "Anuluj"}
@@ -96,7 +96,7 @@ export default function PortalUiHost() {
                   type="button"
                   autoFocus
                   onClick={() => confirm.resolve(true)}
-                  className={`lux-btn ${confirm.destructive ? "bg-[#C2412D] text-white" : "lux-btn--ink"}`}
+                  className={`lux-btn ${confirm.destructive ? "bg-[var(--lux-danger)] text-white" : "lux-btn--ink"}`}
                 >
                   {confirm.confirmLabel}
                 </button>
