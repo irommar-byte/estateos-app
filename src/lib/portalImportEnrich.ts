@@ -107,7 +107,7 @@ async function forwardGeocodeStreetInCity(
   const query = buildForwardGeocodeSearchText(street.trim(), city.trim());
   const url = mapboxForwardGeocodeUrl(query, token, { limit: 5, autocomplete: false, cityHint: city });
   try {
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(8_000) });
     if (!response.ok) return null;
     const payload = await response.json();
     const features = Array.isArray(payload?.features) ? payload.features : [];

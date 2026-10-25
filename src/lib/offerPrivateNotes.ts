@@ -1,3 +1,4 @@
+import { decodeResponseText } from '@/lib/http/decodeResponseText';
 import { prisma } from '@/lib/prisma';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 import type { KeiImportContext } from '@/lib/keiAmerListingExtras';
@@ -410,7 +411,7 @@ export async function refreshOfferSourceStatusIfStale(
     if (!res.ok) {
       isActive = res.status === 404 || res.status === 410 ? 0 : 0;
     } else {
-      const html = await res.text();
+      const html = await decodeResponseText(res);
       isActive = isPortalListingInactiveHtml(html) ? 0 : 1;
       if (String(row.importSource || '') === 'NIERUCHOMOSCI_ONLINE') {
         let parsed: Record<string, unknown> = {};

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
 import { runKeiImportJob } from '@/lib/keiAmerImportJobs';
-import { tickKeiAutoImport } from '@/lib/keiAutoImport';
+import { tickKeiAutoImport, touchKeiWorkerHeartbeat } from '@/lib/keiAutoImport';
 import { claimNextKeiImportJob } from '@/lib/keiImportLease';
 import { prisma } from '@/lib/prisma';
 
@@ -32,8 +32,9 @@ async function main() {
     try {
       const now = Date.now();
       if (now >= nextAutoTickAt) {
+        await touchKeiWorkerHeartbeat().catch(() => undefined);
         const tick = await tickKeiAutoImport();
-        if (tick.ran || !['disabled', 'not_due', 'job_running'].includes(tick.reason)) {
+        if (tick.ran || !['disabled', 'not_due', 'job_running', 'outside_hours', 'daily_limit', 'error_backoff'].includes(tick.reason)) {
           console.info('[kei-import-worker] auto tick', tick);
         }
         nextAutoTickAt = now + AUTO_TICK_MS;
@@ -42,7 +43,14 @@ async function main() {
       const jobId = await claimNextKeiImportJob(ownerId);
       if (jobId) {
         console.info(`[kei-import-worker] claimed ${jobId}`);
-        await runKeiImportJob(jobId, ownerId);
+        await touchKeiWorkerHeartbeat().catch(() => undefined);
+        const heartbeat = setInterval(() => void touchKeiWorkerHeartbeat().catch(() => undefined), 60_000);
+        heartbeat.unref();
+        try {
+          await runKeiImportJob(jobId, ownerId);
+        } finally {
+          clearInterval(heartbeat);
+        }
         failureDelayMs = 1_000;
         continue;
       }

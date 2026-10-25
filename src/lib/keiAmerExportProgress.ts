@@ -8,6 +8,10 @@ export type KeiAiRewriteProgress = {
   skipReason?: string;
 };
 
+/** Dlaczego pozycja nie weszła: duplikat to norma, błąd wymaga uwagi. */
+export type KeiSkipKind = 'duplicate' | 'blocked' | 'inactive' | 'quality' | 'error' | 'cancelled';
+export type KeiPublishState = 'published' | 'review';
+
 export type KeiExportProgressEvent =
   | { type: 'connected'; message: string; jobId?: string }
   | { type: 'batch_start'; total: number }
@@ -48,6 +52,16 @@ export type KeiExportProgressEvent =
       source: 'override' | 'auto';
     }
   | {
+      /** Dane do karty postępu (miniatura, tytuł, cena) — po pobraniu z portalu. */
+      type: 'item_meta';
+      index: number;
+      thumbUrl?: string | null;
+      title?: string | null;
+      price?: number | null;
+      area?: number | null;
+      district?: string | null;
+    }
+  | {
       type: 'item_done';
       index: number;
       keiListingId: string;
@@ -55,6 +69,11 @@ export type KeiExportProgressEvent =
       portalUrl: string;
       publicUrl: string;
       editUrl: string;
+      /** published = na rynku; review = szkic czeka na przejrzenie agenta. */
+      publishState?: KeiPublishState;
+      aiRewritten?: boolean;
+      imageCount?: number;
+      note?: string;
     }
   | {
       type: 'item_skip';
@@ -63,8 +82,16 @@ export type KeiExportProgressEvent =
       portalUrl: string;
       reason: string;
       existingOfferId?: number;
+      kind?: KeiSkipKind;
     }
-  | { type: 'batch_done'; message: string; exportedCount: number; skippedCount: number }
+  | {
+      type: 'batch_done';
+      message: string;
+      exportedCount: number;
+      skippedCount: number;
+      aiRewrittenCount?: number;
+      reviewCount?: number;
+    }
   | { type: 'error'; message: string }
   | {
       type: 'result';

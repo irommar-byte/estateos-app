@@ -9,7 +9,20 @@ export type KeiAmerListingDisposition = {
   outreachByAdminId: number | null;
   importedOfferId: number | null;
   importedAt: string | null;
+  failCount: number;
+  lastFailAt: string | null;
+  lastFailReason: string | null;
+  /** Ogłoszenie w przerwie po nieudanej próbie albo trwale odrzucone. */
+  coolingDown: boolean;
+  ignored: boolean;
+  /** Zaproszenie starsze niż {@link KEI_OUTREACH_EXPIRY_DAYS} dni już nie blokuje. */
+  outreachExpired: boolean;
 };
+
+/** Po tylu dniach bez odzewu zaproszenie właściciela przestaje blokować import i ponowny kontakt. */
+export const KEI_OUTREACH_EXPIRY_DAYS = 21;
+/** Przerwy po kolejnych nieudanych próbach importu (h). Po ostatniej — trwale pomijane. */
+const FAIL_COOLDOWN_HOURS = [6, 24, 72];
 
 export async function ensureKeiAmerListingStateTable(): Promise<void> {
   // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
@@ -37,17 +50,43 @@ type Row = {
   outreachByAdminId: number | null;
   importedOfferId: number | null;
   importedAt: Date | null;
+  failCount?: number | null;
+  lastFailAt?: Date | null;
+  lastFailReason?: string | null;
+  ignoredAt?: Date | null;
 };
 
+const SELECT_COLUMNS = `portalUrl, keiListingId, outreachSentAt, outreachByAdminId, importedOfferId, importedAt,
+            failCount, lastFailAt, lastFailReason, ignoredAt`;
+
+function isCoolingDown(failCount: number, lastFailAt: Date | null, now = Date.now()): boolean {
+  if (failCount <= 0 || !lastFailAt) return false;
+  if (failCount > FAIL_COOLDOWN_HOURS.length) return true;
+  const hours = FAIL_COOLDOWN_HOURS[failCount - 1];
+  return now - lastFailAt.getTime() < hours * 3_600_000;
+}
+
 function mapRow(row: Row): KeiAmerListingDisposition {
+  const failCount = Number(row.failCount || 0);
+  const lastFailAt = row.lastFailAt ? new Date(row.lastFailAt) : null;
+  const outreachAt = row.outreachSentAt ? new Date(row.outreachSentAt) : null;
+  const outreachExpired = Boolean(
+    outreachAt && Date.now() - outreachAt.getTime() > KEI_OUTREACH_EXPIRY_DAYS * 86_400_000,
+  );
   return {
     portalUrl: row.portalUrl,
     keiListingId: row.keiListingId,
-    outreachSent: Boolean(row.outreachSentAt),
-    outreachSentAt: row.outreachSentAt?.toISOString() ?? null,
+    outreachSent: Boolean(outreachAt) && !outreachExpired,
+    outreachSentAt: outreachAt?.toISOString() ?? null,
     outreachByAdminId: row.outreachByAdminId,
     importedOfferId: row.importedOfferId,
-    importedAt: row.importedAt?.toISOString() ?? null,
+    importedAt: row.importedAt ? new Date(row.importedAt).toISOString() : null,
+    failCount,
+    lastFailAt: lastFailAt?.toISOString() ?? null,
+    lastFailReason: row.lastFailReason ?? null,
+    coolingDown: isCoolingDown(failCount, lastFailAt),
+    ignored: Boolean(row.ignoredAt),
+    outreachExpired,
   };
 }
 
@@ -61,7 +100,7 @@ export async function getKeiListingDispositions(
 
   const placeholders = normalized.map(() => '?').join(', ');
   const rows = (await prisma.$queryRawUnsafe(
-    `SELECT portalUrl, keiListingId, outreachSentAt, outreachByAdminId, importedOfferId, importedAt
+    `SELECT ${SELECT_COLUMNS}
      FROM KeiAmerListingState
      WHERE portalUrl IN (${placeholders})`,
     ...normalized,
@@ -81,6 +120,9 @@ export async function assertKeiListingAvailableForImport(portalUrl: string): Pro
   }
   if (disposition?.outreachSent) {
     throw new Error('Do tego ogłoszenia wysłano już zaproszenie właściciela — import zablokowany.');
+  }
+  if (disposition?.ignored) {
+    throw new Error('Ogłoszenie oznaczone jako pomijane.');
   }
 }
 
@@ -115,15 +157,19 @@ export async function markKeiListingOutreachSent(options: {
      VALUES (?, ?, NOW(3), ?)
      ON DUPLICATE KEY UPDATE
        keiListingId = COALESCE(VALUES(keiListingId), keiListingId),
-       outreachSentAt = COALESCE(outreachSentAt, VALUES(outreachSentAt)),
-       outreachByAdminId = COALESCE(outreachByAdminId, VALUES(outreachByAdminId))`,
+       outreachSentAt = CASE
+         WHEN outreachSentAt IS NULL OR outreachSentAt < DATE_SUB(NOW(3), INTERVAL ${KEI_OUTREACH_EXPIRY_DAYS} DAY)
+           THEN VALUES(outreachSentAt)
+         ELSE outreachSentAt
+       END,
+       outreachByAdminId = VALUES(outreachByAdminId)`,
     portalUrl,
     options.keiListingId || null,
     options.adminUserId,
   );
 
   const row = (await prisma.$queryRawUnsafe(
-    `SELECT portalUrl, keiListingId, outreachSentAt, outreachByAdminId, importedOfferId, importedAt
+    `SELECT ${SELECT_COLUMNS}
      FROM KeiAmerListingState WHERE portalUrl = ? LIMIT 1`,
     portalUrl,
   )) as Row[];
@@ -148,9 +194,58 @@ export async function markKeiListingImported(options: {
        importedOfferId = VALUES(importedOfferId),
        importedAt = VALUES(importedAt),
        outreachSentAt = NULL,
-       outreachByAdminId = NULL`,
+       outreachByAdminId = NULL,
+       failCount = 0,
+       lastFailAt = NULL,
+       lastFailReason = NULL`,
     portalUrl,
     options.keiListingId || null,
     options.offerId,
+  );
+}
+
+/** Nieudana próba importu — kolejne próby dopiero po przerwie (6 h → 24 h → 72 h → trwale). */
+export async function markKeiListingFailed(options: {
+  portalUrl: string;
+  keiListingId?: string;
+  reason: string;
+}): Promise<void> {
+  const portalUrl = normalizeKeiPortalUrl(options.portalUrl);
+  if (!portalUrl) return;
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO KeiAmerListingState (portalUrl, keiListingId, failCount, lastFailAt, lastFailReason)
+     VALUES (?, ?, 1, NOW(3), ?)
+     ON DUPLICATE KEY UPDATE
+       keiListingId = COALESCE(VALUES(keiListingId), keiListingId),
+       failCount = failCount + 1,
+       lastFailAt = NOW(3),
+       lastFailReason = VALUES(lastFailReason)`,
+    portalUrl,
+    options.keiListingId || null,
+    String(options.reason || '').slice(0, 500),
+  );
+}
+
+/** Cofnięcie zaproszenia (np. wiadomość nie została wysłana) — ogłoszenie wraca do puli. */
+export async function revokeKeiListingOutreach(portalUrl: string): Promise<void> {
+  const normalized = normalizeKeiPortalUrl(portalUrl);
+  if (!normalized) return;
+  await prisma.$executeRawUnsafe(
+    `UPDATE KeiAmerListingState SET outreachSentAt = NULL, outreachByAdminId = NULL WHERE portalUrl = ?`,
+    normalized,
+  );
+}
+
+/** Ręczne pominięcie ogłoszenia (np. agencja udająca właściciela) lub jego przywrócenie. */
+export async function setKeiListingIgnored(portalUrl: string, ignored: boolean, keiListingId?: string): Promise<void> {
+  const normalized = normalizeKeiPortalUrl(portalUrl);
+  if (!normalized) return;
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO KeiAmerListingState (portalUrl, keiListingId, ignoredAt)
+     VALUES (?, ?, ${ignored ? 'NOW(3)' : 'NULL'})
+     ON DUPLICATE KEY UPDATE ignoredAt = ${ignored ? 'NOW(3)' : 'NULL'},
+       failCount = ${ignored ? 'failCount' : '0'}`,
+    normalized,
+    keiListingId || null,
   );
 }

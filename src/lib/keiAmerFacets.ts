@@ -10,7 +10,8 @@ import {
   type KeiPropertyKind,
   type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
-import { getDistrictsForCity, normalizeText } from '@/lib/location/locationCatalog';
+import { getDistrictsForCity } from '@/lib/location/locationCatalog';
+import { extractWarsawDistrictFromKeiAddress } from '@/lib/keiAmerDistrict';
 
 export type KeiFacetOption = {
   id: string;
@@ -29,6 +30,7 @@ export type KeiSearchFacets = {
   ok: true;
   propertyKind: KeiPropertyKind;
   transactionKind: KeiTransactionKind;
+  /** Liczby pochodzą z próbki najnowszych ogłoszeń, nie z całej bazy KEI. */
   sampled: number;
   districts: KeiFacetOption[];
   priceRanges: KeiFacetOption[];
@@ -46,10 +48,6 @@ type RangeDef = {
 const FACETS_TTL_MS = 5 * 60 * 1000;
 const facetsCache = new Map<string, { expires: number; value: KeiSearchFacets }>();
 
-function normalizeForMatch(value: string): string {
-  return normalizeText(value).replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
 function isoDay(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -64,33 +62,7 @@ function startOfDayOffset(days: number): Date {
   return date;
 }
 
-export function extractWarsawDistrictFromKeiAddress(address: string): string {
-  const raw = String(address || '').trim();
-  if (!raw) return '';
-
-  const districts = getDistrictsForCity('Warszawa');
-  const hay = normalizeForMatch(raw);
-  const sorted = [...districts].sort(
-    (a, b) => normalizeForMatch(b).length - normalizeForMatch(a).length,
-  );
-
-  for (const district of sorted) {
-    const needle = normalizeForMatch(district);
-    if (!needle) continue;
-    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`);
-    if (re.test(hay)) return district;
-  }
-
-  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    const second = normalizeForMatch(parts[1]);
-    const hit = districts.find((district) => normalizeForMatch(district) === second);
-    if (hit) return hit;
-  }
-
-  return '';
-}
+export { extractWarsawDistrictFromKeiAddress };
 
 function inRange(value: number | null, min?: number, max?: number): boolean {
   if (value == null || !Number.isFinite(value)) return false;
@@ -175,7 +147,7 @@ export function buildKeiSearchFacets(
   const dates: Date[] = [];
 
   for (const row of rows) {
-    const district = extractWarsawDistrictFromKeiAddress(`${row.adres || ''} ${row.tekst || ''}`);
+    const district = extractWarsawDistrictFromKeiAddress(row.adres || '');
     if (district) districtCounts.set(district, (districtCounts.get(district) || 0) + 1);
 
     const price = parseKeiNumeric(row.cena);

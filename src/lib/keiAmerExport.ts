@@ -5,7 +5,7 @@ import { isOtodomImportAiConfigured } from '@/lib/otodomImportRewrite';
 import { peekLastImageInfo } from '@/lib/otodomImportFloorPlan';
 import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
 import { activateOfferPublication } from '@/lib/offerPublication';
-import type { KeiExportProgressEmitter } from '@/lib/keiAmerExportProgress';
+import type { KeiExportProgressEmitter, KeiPublishState, KeiSkipKind } from '@/lib/keiAmerExportProgress';
 import {
   findWarsawPortalListings,
   findKeiListingsByIdsOrUrls,
@@ -17,7 +17,11 @@ import {
   type KeiPropertyKind,
   type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
-import { assertKeiListingAvailableForImport, markKeiListingImported } from '@/lib/keiAmerListingState';
+import {
+  assertKeiListingAvailableForImport,
+  markKeiListingFailed,
+  markKeiListingImported,
+} from '@/lib/keiAmerListingState';
 import { importUrlLookupCandidates } from '@/lib/importDuplicateGuard';
 import { buildKeiImportContext, keiContextFromSelection, type KeiImportContext } from '@/lib/keiAmerListingExtras';
 
@@ -105,6 +109,10 @@ function resolveFloorPlanSelectionForExport(
   };
 }
 
+/**
+ * Filtr KEI uzupełnia typ tylko wtedy, gdy portal go nie podał — dane z portalu są pewniejsze
+ * niż klasyfikacja KEI (unikamy domu opisanego jako mieszkanie).
+ */
 function alignDraftWithKeiExportFilters(
   draft: OtodomImportDraft,
   propertyKind: KeiPropertyKind,
@@ -112,9 +120,25 @@ function alignDraftWithKeiExportFilters(
 ): OtodomImportDraft {
   return {
     ...draft,
-    transactionType: transactionKind === 'rent' ? 'RENT' : 'SALE',
-    propertyType: propertyKind === 'house' ? 'HOUSE' : 'FLAT',
+    transactionType: draft.transactionType || (transactionKind === 'rent' ? 'RENT' : 'SALE'),
+    propertyType: draft.propertyType || (propertyKind === 'house' ? 'HOUSE' : 'FLAT'),
   };
+}
+
+const DEFAULT_MIN_IMAGES_TO_PUBLISH = 3;
+const ITEM_TIME_BUDGET_MS = 4 * 60_000;
+
+function withTimeBudget<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} trwało zbyt długo — pominięto, spróbujemy później.`)), ms);
+      timer.unref?.();
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 export type KeiExportItemResult = {
@@ -123,6 +147,8 @@ export type KeiExportItemResult = {
   offerId: number;
   publicUrl: string;
   editUrl: string;
+  publishState?: KeiPublishState;
+  aiRewritten?: boolean;
 };
 
 export type KeiExportSkippedItem = {
@@ -130,6 +156,7 @@ export type KeiExportSkippedItem = {
   portalUrl: string;
   reason: string;
   existingOfferId?: number;
+  kind?: KeiSkipKind;
 };
 
 export async function peekKeiPortalListing(portalUrl: string) {
@@ -174,6 +201,9 @@ export async function exportKeiListingsToEstateOS(options?: {
   shouldCancel?: () => boolean | Promise<boolean>;
   smartAddEnabled?: boolean;
   smartAddDecisionsByUrl?: Record<string, Record<string, boolean>>;
+  /** publish = od razu na rynek; review = szkic do przejrzenia. */
+  publishMode?: 'publish' | 'review';
+  minImages?: number;
 }): Promise<{
   ok: true;
   exported: KeiExportItemResult[];
@@ -231,15 +261,22 @@ export async function exportKeiListingsToEstateOS(options?: {
     throw new Error(`Użytkownik docelowy #${targetUserId} nie istnieje.`);
   }
 
-  type ExportTarget = { keiListingId: string; portalUrl: string; kei: KeiImportContext | null };
+  type ExportTarget = {
+    keiListingId: string;
+    portalUrl: string;
+    kei: KeiImportContext | null;
+    /** Indeks pozycji w jobie (kolejność wyboru) — postęp trafia do właściwej karty. */
+    slot: number;
+  };
 
   let exportTargets: ExportTarget[] = [];
 
   if (selections.length > 0) {
-    exportTargets = selections.map((row) => ({
+    exportTargets = selections.map((row, slot) => ({
       keiListingId: row.keiId || row.portalUrl,
       portalUrl: row.portalUrl,
       kei: keiContextFromSelection(row),
+      slot,
     }));
 
     // Thin selections (legacy auto / old app) — fetch only missing KEI rows, stop early.
@@ -293,15 +330,16 @@ export async function exportKeiListingsToEstateOS(options?: {
 
     if (listings.length === 0) {
       throw new Error(
-        `Nie znaleziono ogłoszeń (${keiPropertyKindLabel(propertyKind)}, ${keiTransactionKindLabel(transactionKind)}) w Warszawie z linkiem OtoDom / OLX / Nieruchomosci-Online.`,
+        `Nie znaleziono ogłoszeń (${keiPropertyKindLabel(propertyKind)}, ${keiTransactionKindLabel(transactionKind)}) z linkiem OtoDom / OLX / Nieruchomosci-Online.`,
       );
     }
 
     exportTargets = listings
-      .map((listing) => ({
+      .map((listing, slot) => ({
         keiListingId: listing.id,
         portalUrl: String(listing.www || '').trim(),
         kei: buildKeiImportContext(listing),
+        slot,
       }))
       .filter((row) => row.portalUrl);
   }
@@ -330,7 +368,28 @@ export async function exportKeiListingsToEstateOS(options?: {
 
   const exported: KeiExportItemResult[] = [];
   const skipped: KeiExportSkippedItem[] = [];
-  let itemIndex = 0;
+  const publishMode = options?.publishMode === 'review' ? 'review' : 'publish';
+  const minImages = Math.max(0, Math.min(20, Math.floor(Number(options?.minImages ?? DEFAULT_MIN_IMAGES_TO_PUBLISH)) || 0));
+  let aiRewrittenCount = 0;
+  let reviewCount = 0;
+
+  const skip = (
+    target: { keiListingId: string; portalUrl: string; slot: number },
+    reason: string,
+    kind: KeiSkipKind,
+    existingOfferId?: number,
+  ) => {
+    skipped.push({ keiListingId: target.keiListingId, portalUrl: target.portalUrl, reason, existingOfferId, kind });
+    emit?.({
+      type: 'item_skip',
+      index: target.slot,
+      keiListingId: target.keiListingId,
+      portalUrl: target.portalUrl,
+      reason,
+      existingOfferId,
+      kind,
+    });
+  };
 
   for (const target of exportTargets) {
     if (fillUntilPublished && exported.length >= count) break;
@@ -340,8 +399,7 @@ export async function exportKeiListingsToEstateOS(options?: {
 
     const portalUrl = target.portalUrl;
     const keiListingId = target.keiListingId;
-    const currentIndex = itemIndex;
-    itemIndex += 1;
+    const currentIndex = target.slot;
 
     emit?.({
       type: 'item_start',
@@ -349,31 +407,16 @@ export async function exportKeiListingsToEstateOS(options?: {
       total: plannedTotal,
       keiListingId,
       portalUrl,
+      address: target.kei?.address ?? undefined,
     });
 
     if (!portalUrl || !isSupportedImportOfferUrl(portalUrl)) {
-      skipped.push({
-        keiListingId,
-        portalUrl: portalUrl || '(pusty)',
-        reason: 'Nieobsługiwany link portalu.',
-      });
-      emit?.({
-        type: 'item_skip',
-        index: currentIndex,
-        keiListingId,
-        portalUrl: portalUrl || '(pusty)',
-        reason: 'Nieobsługiwany link portalu.',
-      });
+      skip({ ...target, portalUrl: portalUrl || '(pusty)' }, 'Nieobsługiwany link portalu.', 'blocked');
       continue;
     }
 
     try {
-      emit?.({
-        type: 'step',
-        index: currentIndex,
-        step: 'check_duplicate',
-        label: 'Sprawdzanie duplikatu',
-      });
+      emit?.({ type: 'step', index: currentIndex, step: 'check_duplicate', label: 'Sprawdzanie w bazie' });
 
       try {
         await assertKeiListingAvailableForImport(portalUrl);
@@ -382,64 +425,50 @@ export async function exportKeiListingsToEstateOS(options?: {
           outreachBlock instanceof Error
             ? outreachBlock.message
             : 'Wysłano zaproszenie właściciela — import zablokowany.';
-        skipped.push({ keiListingId, portalUrl, reason });
-        emit?.({
-          type: 'item_skip',
-          index: currentIndex,
-          keiListingId,
-          portalUrl,
-          reason,
-        });
+        skip(target, reason, /zaimportowane/i.test(reason) ? 'duplicate' : 'blocked');
         continue;
       }
 
       const existingByUrl = await findExistingImportedOfferByPortalUrl(portalUrl);
       if (existingByUrl) {
-        skipped.push({
-          keiListingId,
-          portalUrl,
-          reason: 'Już zaimportowane (URL) — pominięto.',
-          existingOfferId: existingByUrl.id,
-        });
-        emit?.({
-          type: 'item_skip',
-          index: currentIndex,
-          keiListingId,
-          portalUrl,
-          reason: 'Już zaimportowane — pominięto.',
-          existingOfferId: existingByUrl.id,
-        });
+        skip(target, 'Już zaimportowane — pominięto.', 'duplicate', existingByUrl.id);
         continue;
       }
 
-      emit?.({
-        type: 'step',
-        index: currentIndex,
-        step: 'fetch_portal',
-        label: 'Pobieranie danych z portalu',
-      });
+      emit?.({ type: 'step', index: currentIndex, step: 'fetch_portal', label: 'Pobieranie danych z portalu' });
+
+      const itemStartedAt = Date.now();
+      const remainingBudget = () => Math.max(15_000, ITEM_TIME_BUDGET_MS - (Date.now() - itemStartedAt));
 
       const draft = alignDraftWithKeiExportFilters(
-        await enrichOtodomImportDraft(await importOfferFromUrl(portalUrl)),
+        await withTimeBudget(
+          enrichOtodomImportDraft(await importOfferFromUrl(portalUrl)),
+          remainingBudget(),
+          'Pobieranie z portalu',
+        ),
         propertyKind,
         transactionKind,
       );
+
+      emit?.({
+        type: 'item_meta',
+        index: currentIndex,
+        thumbUrl: draft.imageUrls?.[0] ?? null,
+        title: draft.title || null,
+        price: Number.isFinite(Number(draft.price)) ? Number(draft.price) : null,
+        area: Number.isFinite(Number(draft.area)) ? Number(draft.area) : null,
+        district: draft.district && draft.district !== 'OTHER' ? draft.district : target.kei?.district ?? null,
+      });
+
       const existing = await findExistingImportedOffer(draft);
       if (existing) {
-        skipped.push({
-          keiListingId,
-          portalUrl,
-          reason: 'Już zaimportowane — pominięto.',
-          existingOfferId: existing.id,
-        });
-        emit?.({
-          type: 'item_skip',
-          index: currentIndex,
-          keiListingId,
-          portalUrl,
-          reason: 'Już zaimportowane — pominięto.',
-          existingOfferId: existing.id,
-        });
+        skip(target, 'Już w bazie (ten sam lokal) — pominięto.', 'duplicate', existing.id);
+        continue;
+      }
+
+      if (!draft.imageUrls?.length) {
+        await markKeiListingFailed({ portalUrl, keiListingId, reason: 'Brak zdjęć w ogłoszeniu.' }).catch(() => undefined);
+        skip(target, 'Ogłoszenie bez zdjęć — pominięto.', 'quality');
         continue;
       }
 
@@ -467,9 +496,7 @@ export async function exportKeiListingsToEstateOS(options?: {
         type: 'step',
         index: currentIndex,
         step: 'create_offer',
-        label: isOtodomImportAiConfigured()
-          ? 'Przeróbka opisu (AI) i tworzenie oferty'
-          : 'Tworzenie oferty w EstateOS',
+        label: isOtodomImportAiConfigured() ? 'Opis przygotowuje AI' : 'Tworzenie oferty',
         detail: draft.title,
       });
 
@@ -477,90 +504,104 @@ export async function exportKeiListingsToEstateOS(options?: {
         throw new Error('Import anulowany.');
       }
 
+      // Bez wyścigu z limitem czasu: tworzenie ma skutki uboczne (oferta, zdjęcia) — pilnują go timeouty pobierania.
       const created = await createOfferFromOtodomDraft(draft, targetUserId, undefined, {
-        kei: target.kei,
-        agentCommissionPercent,
-        maxImportImages: KEI_MAX_IMPORT_IMAGES,
-        floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
-        shouldCancel: checkCancel,
-        smartAddDecisions: options?.smartAddDecisionsByUrl?.[portalUrl],
-        onCopyProgress: (label, detail, meta) => {
-          emit?.({
-            type: 'step',
-            index: currentIndex,
-            step: 'create_offer',
-            label,
-            detail: meta?.rewrittenByAi
-              ? 'AI ✓'
-              : detail || 'reguły',
-          });
-        },
-        onImageProgress: (progress) => {
-          emit?.({
-            type: 'image_progress',
-            index: currentIndex,
-            imageIndex: progress.index,
-            imageTotal: progress.total,
-            asFloorPlan: Boolean(progress.asFloorPlan),
-            label: progress.label,
-          });
-          emit?.({
-            type: 'step',
-            index: currentIndex,
-            step: 'images',
-            label: progress.label,
-            detail: progress.asFloorPlan ? 'Rzut lokalu' : undefined,
-          });
-        },
-      });
+          kei: target.kei,
+          agentCommissionPercent,
+          maxImportImages: KEI_MAX_IMPORT_IMAGES,
+          floorPlanImageIndex: floorPlanChoice.enabled ? floorPlanChoice.imageIndex : null,
+          shouldCancel: checkCancel,
+          smartAddEnabled: options?.smartAddEnabled !== false,
+          smartAddDecisions: options?.smartAddDecisionsByUrl?.[portalUrl],
+          onCopyProgress: (label, detail, meta) => {
+            emit?.({
+              type: 'step',
+              index: currentIndex,
+              step: 'create_offer',
+              label,
+              detail: meta?.rewrittenByAi ? 'AI ✓' : detail || 'reguły',
+            });
+          },
+          onImageProgress: (progress) => {
+            emit?.({
+              type: 'image_progress',
+              index: currentIndex,
+              imageIndex: progress.index,
+              imageTotal: progress.total,
+              asFloorPlan: Boolean(progress.asFloorPlan),
+              label: progress.label,
+            });
+            emit?.({
+              type: 'step',
+              index: currentIndex,
+              step: 'images',
+              label: progress.label,
+              detail: progress.asFloorPlan ? 'Rzut lokalu' : undefined,
+            });
+          },
+        });
 
       if (!created.ok) {
-        skipped.push({
-          keiListingId,
-          portalUrl,
-          reason: created.message || 'Import nie powiódł się.',
-          existingOfferId: created.existingOfferId,
-        });
-        emit?.({
-          type: 'item_skip',
-          index: currentIndex,
-          keiListingId,
-          portalUrl,
-          reason: created.message || 'Import nie powiódł się.',
-          existingOfferId: created.existingOfferId,
-        });
+        skip(
+          target,
+          created.message || 'Import nie powiódł się.',
+          created.existingOfferId ? 'duplicate' : 'error',
+          created.existingOfferId,
+        );
         continue;
       }
 
-      emit?.({
-        type: 'step',
-        index: currentIndex,
-        step: 'activate',
-        label: 'Aktywacja publikacji',
-        detail: `#${created.offerId}`,
-      });
+      const aiRewritten = Boolean(created.presentation?.rewrittenByAi);
+      if (aiRewritten) aiRewrittenCount += 1;
+      const imageCount = Number(created.images?.uploaded || 0);
 
-      await activateOfferPublication({
-        userId: targetUserId,
-        offerId: created.offerId,
-        kind: 'PLUS_CREDIT',
-        skipEntitlementConsume: true,
-      });
+      // Kontrola jakości: za mało zdjęć albo tryb „do przejrzenia” → szkic zamiast publikacji.
+      let publishState: KeiPublishState = 'published';
+      let note: string | undefined;
+      if (publishMode === 'review') {
+        publishState = 'review';
+        note = 'Tryb „do przejrzenia” — szkic czeka na agenta.';
+      } else if (imageCount < minImages) {
+        publishState = 'review';
+        note = `Tylko ${imageCount} zdjęć (min. ${minImages}) — zostawiono jako szkic.`;
+      }
 
-      const resultItem = {
+      if (publishState === 'published') {
+        emit?.({
+          type: 'step',
+          index: currentIndex,
+          step: 'activate',
+          label: 'Publikacja na rynku',
+          detail: `#${created.offerId}`,
+        });
+        try {
+          await activateOfferPublication({
+            userId: targetUserId,
+            offerId: created.offerId,
+            kind: 'PLUS_CREDIT',
+            skipEntitlementConsume: true,
+          });
+        } catch (activationError) {
+          publishState = 'review';
+          note = `Oferta utworzona, publikacja nie powiodła się: ${
+            activationError instanceof Error ? activationError.message : 'nieznany błąd'
+          }`;
+        }
+      }
+      if (publishState === 'review') reviewCount += 1;
+
+      const resultItem: KeiExportItemResult = {
         keiListingId,
         portalUrl,
         offerId: created.offerId,
         publicUrl: created.publicUrl,
         editUrl: created.editUrl,
+        publishState,
+        aiRewritten,
       };
 
       exported.push(resultItem);
-      await markKeiListingImported({
-        portalUrl,
-        keiListingId,
-        offerId: created.offerId,
-      });
+      await markKeiListingImported({ portalUrl, keiListingId, offerId: created.offerId });
       emit?.({
         type: 'item_done',
         index: currentIndex,
@@ -569,53 +610,52 @@ export async function exportKeiListingsToEstateOS(options?: {
         portalUrl,
         publicUrl: created.publicUrl,
         editUrl: created.editUrl,
+        publishState,
+        aiRewritten,
+        imageCount,
+        note,
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'Nieznany błąd importu.';
-      skipped.push({
-        keiListingId,
-        portalUrl,
-        reason,
-      });
-      emit?.({
-        type: 'item_skip',
-        index: currentIndex,
-        keiListingId,
-        portalUrl,
-        reason,
-      });
+      if (/anulow/i.test(reason)) throw error;
+      await markKeiListingFailed({ portalUrl, keiListingId, reason }).catch(() => undefined);
+      skip(target, reason, /404|nieaktualn|usunięt|niedostępn/i.test(reason) ? 'inactive' : 'error');
     }
   }
 
-  if (exported.length === 0) {
-    const alreadyImported = skipped.filter((item) => item.existingOfferId).length;
-    if (selections.length > 0 && alreadyImported > 0) {
+  if (exported.length === 0 && !fillUntilPublished) {
+    const alreadyImported = skipped.filter((item) => item.kind === 'duplicate').length;
+    if (alreadyImported > 0 && alreadyImported === skipped.length) {
       throw new Error(
-        `Wybrane ogłoszenia są już w bazie (${alreadyImported} pominiętych). Odznacz je lub wybierz inne.`,
+        `Wybrane ogłoszenia są już w bazie (${alreadyImported}). Odznacz je lub wybierz inne.`,
       );
     }
-    if (alreadyImported > 0) {
-      throw new Error(
-        `Wszystkie sprawdzone ogłoszenia są już w bazie (${alreadyImported} pominiętych). Brak nowych do eksportu.`,
-      );
-    }
-    throw new Error('Nie udało się wyeksportować żadnego ogłoszenia.');
+    const firstError = skipped.find((item) => item.kind === 'error')?.reason;
+    throw new Error(firstError ? `Nie udało się zaimportować: ${firstError}` : 'Nie udało się zaimportować żadnego ogłoszenia.');
   }
 
   const kindLabel = keiPropertyKindLabel(propertyKind);
   const txLabel = keiTransactionKindLabel(transactionKind);
+  const duplicateCount = skipped.filter((item) => item.kind === 'duplicate').length;
+  const otherSkipped = skipped.length - duplicateCount;
   const skippedNote =
-    skipped.length > 0 ? ` Pominięto ${skipped.length} (w tym już zaimportowane).` : '';
+    (duplicateCount > 0 ? ` ${duplicateCount} już w bazie.` : '') +
+    (otherSkipped > 0 ? ` ${otherSkipped} pominiętych.` : '') +
+    (reviewCount > 0 ? ` ${reviewCount} jako szkic do przejrzenia.` : '');
   const message =
-    exported.length === 1
-      ? `Utworzono i aktywowano ofertę #${exported[0].offerId} (${kindLabel}, ${txLabel}) dla użytkownika #${targetUserId} (${agentCommissionPercent}% prowizji).${skippedNote}`
-      : `Utworzono i aktywowano ${exported.length} ofert (${kindLabel}, ${txLabel}) dla użytkownika #${targetUserId} (${agentCommissionPercent}% prowizji).${skippedNote}`;
+    exported.length === 0
+      ? `Brak nowych ofert w tym cyklu (${kindLabel}, ${txLabel}).${skippedNote}`
+      : exported.length === 1
+      ? `Gotowa oferta #${exported[0].offerId} (${kindLabel}, ${txLabel}).${skippedNote}`
+      : `Gotowe ${exported.length} ofert (${kindLabel}, ${txLabel}).${skippedNote}`;
 
   emit?.({
     type: 'batch_done',
     message,
     exportedCount: exported.length,
     skippedCount: skipped.length,
+    aiRewrittenCount,
+    reviewCount,
   });
 
   const first = exported[0];

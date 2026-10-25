@@ -1,9 +1,15 @@
+import { decodeResponseText } from '@/lib/http/decodeResponseText';
+
 /**
  * Lightweight check whether a portal listing URL is still publicly available.
  * Does not run the full import pipeline.
  */
+/**
+ * active: true = wisi, false = na pewno zdjęte (404/410 lub komunikat portalu),
+ * null = nie da się stwierdzić (ochrona przed botami 403/429, błąd serwera, limit czasu) — nie blokujemy.
+ */
 export async function verifyPortalListingActive(portalUrl: string): Promise<{
-  active: boolean;
+  active: boolean | null;
   reason: string | null;
   httpStatus: number | null;
 }> {
@@ -37,20 +43,19 @@ export async function verifyPortalListingActive(portalUrl: string): Promise<{
     }
     if (status >= 400) {
       return {
-        active: false,
-        reason: `Portal zwrócił błąd HTTP ${status}.`,
+        active: null,
+        reason: `Portal nie pozwolił sprawdzić ogłoszenia (HTTP ${status}).`,
         httpStatus: status,
       };
     }
 
-    const html = (await res.text()).slice(0, 180_000).toLowerCase();
+    const html = (await decodeResponseText(res)).slice(0, 180_000).toLowerCase();
     const inactiveMarkers = [
       'ogłoszenie nieaktualne',
       'ogłoszenie wygasło',
       'ogłoszenie zostało usunięte',
       'to ogłoszenie jest już nieaktualne',
       'listing is no longer available',
-      'page not found',
       'nie znaleziono ogłoszenia',
       'oferta została zakończona',
       'ogłoszenie archiwalne',
@@ -69,9 +74,9 @@ export async function verifyPortalListingActive(portalUrl: string): Promise<{
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Błąd weryfikacji';
     if (/abort/i.test(message)) {
-      return { active: false, reason: 'Timeout weryfikacji portalu.', httpStatus: null };
+      return { active: null, reason: 'Portal nie odpowiedział na czas.', httpStatus: null };
     }
-    return { active: false, reason: `Nie udało się sprawdzić portalu: ${message}`, httpStatus: null };
+    return { active: null, reason: `Nie udało się sprawdzić portalu: ${message}`, httpStatus: null };
   }
 }
 

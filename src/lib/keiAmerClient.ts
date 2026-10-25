@@ -1,3 +1,6 @@
+import { districtMatches, isWarsawAddress } from '@/lib/keiAmerDistrict';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { decodeResponseText } from '@/lib/http/decodeResponseText';
 const KEI_BASE = 'https://amer.kei.pl/newAmer';
 const KEI_ORIGIN = 'https://amer.kei.pl';
 
@@ -43,23 +46,31 @@ export function keiTransactionKindFromRow(row: Pick<KeiListingRow, 'rodzaj'>): K
   return 'sale';
 }
 
-/** KEI `typ` w wierszu: 1 = mieszkanie, 2 = dom (czasem tekst). */
+/**
+ * Rodzaj nieruchomości z wiersza — tylko gdy KEI podał go jawnie słowem.
+ * W wierszach pole `typ` bywa liczbą pokoi („3P”), więc cyfry nie rozstrzygają: o typie decyduje
+ * filtr zapytania `getOgl.php?typ=…`, a lokalnie odrzucamy wyłącznie jawne sprzeczności.
+ */
+export function keiExplicitPropertyKindFromRow(row: Pick<KeiListingRow, 'typ'> & { typ_?: string }): KeiPropertyKind | null {
+  const hay = `${row.typ || ''} ${row.typ_ || ''}`.trim().toLowerCase();
+  if (/\bdom|szeregow|bliźniak|blizniak/.test(hay)) return 'house';
+  if (/miesz|apartament|kawalerk/.test(hay)) return 'apartment';
+  return null;
+}
+
+/** Zgodność wsteczna — dla wierszy bez jawnego typu zwraca rodzaj „mieszkanie”. */
 export function keiPropertyKindFromRow(row: Pick<KeiListingRow, 'typ'>): KeiPropertyKind {
-  const hay = String(row.typ || '').trim().toLowerCase();
-  if (hay === '2' || hay.includes('dom')) return 'house';
-  if (hay === '1' || hay.includes('miesz')) return 'apartment';
-  return 'apartment';
+  return keiExplicitPropertyKindFromRow(row) ?? 'apartment';
 }
 
 export function rowMatchesKeiFilters(
-  row: Pick<KeiListingRow, 'rodzaj' | 'typ'>,
+  row: Pick<KeiListingRow, 'rodzaj' | 'typ'> & { typ_?: string },
   propertyKind: KeiPropertyKind,
   transactionKind: KeiTransactionKind,
 ): boolean {
-  return (
-    keiPropertyKindFromRow(row) === propertyKind &&
-    keiTransactionKindFromRow(row) === transactionKind
-  );
+  const explicitKind = keiExplicitPropertyKindFromRow(row);
+  if (explicitKind && explicitKind !== propertyKind) return false;
+  return keiTransactionKindFromRow(row) === transactionKind;
 }
 
 export function keiPropertyKindLabel(kind: KeiPropertyKind): string {
@@ -159,22 +170,39 @@ export function isSupportedKeiPortalUrl(url: string): boolean {
   }
 }
 
+/** Warszawa po adresie (pierwszy człon) — wzmianka „20 min do Warszawy” w opisie nie wystarcza. */
 export function isWarsawListing(row: KeiListingRow): boolean {
-  const hay = `${row.adres || ''} ${row.tekst || ''}`.toLowerCase();
-  return hay.includes('warszawa') || hay.includes('wawa');
+  return isWarsawAddress(row.adres, row.adres ? null : row.tekst);
 }
 
-/** Parse KEI price/area strings like "1 250 000 zł" / "62,5 m2". */
+/**
+ * Liczby z KEI: „1 250 000 zł”, „1,250,000”, „1.250.000”, „62,5 m2”, „1 250 000,50”.
+ * Ostatni separator z 1–2 cyframi po nim to część dziesiętna; grupy po 3 cyfry to tysiące.
+ */
 export function parseKeiNumeric(raw: unknown): number | null {
-  const text = String(raw ?? '')
+  let text = String(raw ?? '')
     .replace(/\u00a0/g, ' ')
     .replace(/zł|pln|m²|m2|metr.*/gi, '')
+    .replace(/[^\d.,\s-]/g, '')
     .trim();
   if (!text) return null;
-  const normalized = text.includes(',') && !text.includes('.')
-    ? text.replace(/\s+/g, '').replace(',', '.')
-    : text.replace(/\s+/g, '').replace(/,(?=\d{3}\b)/g, '');
-  const n = Number(normalized.replace(/[^\d.-]/g, ''));
+  text = text.replace(/\s+/g, '');
+  if (!/\d/.test(text)) return null;
+  const lastComma = text.lastIndexOf(',');
+  const lastDot = text.lastIndexOf('.');
+  const lastSep = Math.max(lastComma, lastDot);
+  let normalized = text;
+  if (lastSep >= 0) {
+    const decimals = text.length - lastSep - 1;
+    const sepCount = (text.match(/[.,]/g) || []).length;
+    const isDecimal = decimals > 0 && decimals <= 2 && !(sepCount > 1 && decimals === 3);
+    if (isDecimal) {
+      normalized = `${text.slice(0, lastSep).replace(/[.,]/g, '')}.${text.slice(lastSep + 1)}`;
+    } else {
+      normalized = text.replace(/[.,]/g, '');
+    }
+  }
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
 }
 
@@ -222,11 +250,8 @@ export function rowMatchesKeiSearchFilters(
   const transactionKind = filters.transactionKind ?? 'sale';
   if (!rowMatchesKeiFilters(row, propertyKind, transactionKind)) return false;
 
-  const district = String(filters.district || '').trim().toLowerCase();
-  if (district) {
-    const hay = `${row.adres || ''} ${row.tekst || ''}`.toLowerCase();
-    if (!hay.includes(district)) return false;
-  }
+  const district = String(filters.district || '').trim();
+  if (district && !districtMatches(district, row.adres)) return false;
 
   const price = parseKeiNumeric(row.cena);
   if (filters.minPrice != null && Number.isFinite(filters.minPrice)) {
@@ -261,6 +286,69 @@ export function rowMatchesKeiSearchFilters(
   return true;
 }
 
+const KEI_FETCH_TIMEOUT_MS = 25_000;
+const KEI_SHARED_SESSION_MAX_AGE_MS = 15 * 60 * 1000;
+
+function sessionCipherKey(): Buffer | null {
+  const secret = process.env.NEXTAUTH_SECRET || process.env.FB_TOKEN_KEY || '';
+  if (!secret) return null;
+  return createHash('sha256').update(`kei-session:${secret}`).digest();
+}
+
+function sealCookie(cookie: string): string | null {
+  const key = sessionCipherKey();
+  if (!key) return null;
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([cipher.update(cookie, 'utf8'), cipher.final()]);
+  return `${iv.toString('base64')}.${cipher.getAuthTag().toString('base64')}.${enc.toString('base64')}`;
+}
+
+function openCookie(sealed: string): string | null {
+  const key = sessionCipherKey();
+  const [iv, tag, data] = String(sealed || '').split('.');
+  if (!key || !iv || !tag || !data) return null;
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(iv, 'base64'));
+    decipher.setAuthTag(Buffer.from(tag, 'base64'));
+    return Buffer.concat([decipher.update(Buffer.from(data, 'base64')), decipher.final()]).toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Serwer WWW i worker korzystają z jednej sesji KEI (zaszyfrowane ciasteczko w bazie),
+ * żeby nie logować się równolegle na to samo konto i nie wylogowywać się nawzajem.
+ */
+async function readSharedKeiSession(): Promise<{ cookie: string; at: number } | null> {
+  try {
+    const { prisma } = await import('@/lib/prisma');
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT keiSessionCookie AS cookie, keiSessionAt AS at FROM KeiAutoImportSchedule WHERE id = 1 LIMIT 1`,
+    )) as Array<{ cookie: string | null; at: Date | null }>;
+    const row = rows[0];
+    if (!row?.cookie || !row.at) return null;
+    const cookie = openCookie(row.cookie);
+    return cookie ? { cookie, at: new Date(row.at).getTime() } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeSharedKeiSession(cookie: string | null): Promise<void> {
+  try {
+    const { prisma } = await import('@/lib/prisma');
+    const sealed = cookie ? sealCookie(cookie) : null;
+    await prisma.$executeRawUnsafe(
+      `UPDATE KeiAutoImportSchedule SET keiSessionCookie = ?, keiSessionAt = ${sealed ? 'NOW(3)' : 'NULL'} WHERE id = 1`,
+      sealed,
+    );
+  } catch {
+    /* wspólna sesja to optymalizacja — bez niej każdy proces loguje się sam */
+  }
+}
+
 export async function ensureKeiAmerSession(force = false): Promise<{ ok: boolean; message: string }> {
   const { login, password } = getKeiCredentials();
   if (!login || !password) {
@@ -272,25 +360,45 @@ export async function ensureKeiAmerSession(force = false): Promise<{ ok: boolean
     return { ok: true, message: 'Sesja KEI AMER aktywna.' };
   }
 
+  if (!force) {
+    const shared = await readSharedKeiSession();
+    if (shared && Date.now() - shared.at < KEI_SHARED_SESSION_MAX_AGE_MS) {
+      cachedCookieHeader = shared.cookie;
+      lastLoginAt = shared.at;
+      return { ok: true, message: 'Sesja KEI AMER aktywna.' };
+    }
+  }
+
   const body = new URLSearchParams({
     login,
     haslo: password,
-    token: '123qaz',
+    token: process.env.KEI_AMER_LOGIN_TOKEN?.trim() || '123qaz',
     cookie: 'on',
     browser: 'chrome',
   });
 
-  const res = await fetch(`${KEI_BASE}/Cgi/loguj.php`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: '*/*',
-    },
-    body,
-    redirect: 'manual',
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${KEI_BASE}/Cgi/loguj.php`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: '*/*',
+      },
+      body,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(KEI_FETCH_TIMEOUT_MS),
+    });
+  } catch (error) {
+    cachedCookieHeader = null;
+    lastLoginAt = 0;
+    const reason = error instanceof Error && /timeout|abort/i.test(error.name + error.message)
+      ? 'KEI AMER nie odpowiada (limit czasu logowania).'
+      : 'Brak połączenia z KEI AMER.';
+    return { ok: false, message: reason };
+  }
 
-  const text = await res.text();
+  const text = await decodeResponseText(res);
   let parsed: { success?: boolean; msg?: string } | null = null;
   try {
     parsed = parseKeiJsonPayload(text) as { success?: boolean; msg?: string };
@@ -301,6 +409,7 @@ export async function ensureKeiAmerSession(force = false): Promise<{ ok: boolean
   if (!parsed?.success) {
     cachedCookieHeader = null;
     lastLoginAt = 0;
+    await writeSharedKeiSession(null);
     return {
       ok: false,
       message: parsed?.msg || `Logowanie KEI nie powiodło się (${res.status}).`,
@@ -309,6 +418,7 @@ export async function ensureKeiAmerSession(force = false): Promise<{ ok: boolean
 
   cachedCookieHeader = mergeSetCookie(null, collectSetCookies(res));
   lastLoginAt = Date.now();
+  await writeSharedKeiSession(cachedCookieHeader);
   return { ok: true, message: 'Zalogowano do KEI AMER.' };
 }
 
@@ -317,9 +427,9 @@ export function getKeiCookieHeader(): string | null {
 }
 
 export async function keiAmerFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  await ensureKeiAmerSession();
-  if (!cachedCookieHeader) {
-    throw new Error('KEI_SESSION_MISSING');
+  const session = await ensureKeiAmerSession();
+  if (!session.ok || !cachedCookieHeader) {
+    throw new Error(session.message || 'KEI_SESSION_MISSING');
   }
 
   const normalized = path.startsWith('http')
@@ -335,15 +445,37 @@ export async function keiAmerFetch(path: string, init: RequestInit = {}): Promis
     );
   }
 
-  const res = await fetch(normalized, { ...init, headers, redirect: 'manual' });
+  const res = await fetch(normalized, {
+    ...init,
+    headers,
+    redirect: 'manual',
+    signal: init.signal ?? AbortSignal.timeout(KEI_FETCH_TIMEOUT_MS),
+  });
   cachedCookieHeader = mergeSetCookie(cachedCookieHeader, collectSetCookies(res));
   return res;
+}
+
+/** Sesja wygasła, jeśli KEI przekierowuje, zwraca pustkę, HTML logowania albo success:false. */
+function looksLikeExpiredSession(res: Response, text: string, payload: unknown): boolean {
+  if (res.status >= 300 && res.status < 400) return true;
+  if (res.status === 401 || res.status === 403) return true;
+  if (!text.trim()) return true;
+  if (payload && typeof payload === 'object' && (payload as { success?: unknown }).success === false) return true;
+  return false;
 }
 
 function normalizeListingRows(payload: KeiListingsResponse): KeiListingRow[] {
   if (!payload?.ogl) return [];
   if (Array.isArray(payload.ogl)) return payload.ogl;
   return [];
+}
+
+/** Strony listy KEI z ostatnich 45 s — przewijanie podglądu nie odpytuje KEI od nowa za każdym razem. */
+const KEI_PAGE_CACHE_MS = 45_000;
+const keiPageCache = new Map<string, { at: number; total: number; rows: KeiListingRow[] }>();
+
+export function clearKeiListingsCache(): void {
+  keiPageCache.clear();
 }
 
 export async function fetchKeiListingsPage(params: {
@@ -369,13 +501,44 @@ export async function fetchKeiListingsPage(params: {
     page: String(Math.floor((params.start ?? 0) / (params.limit ?? 50)) + 1),
   });
 
-  const res = await keiAmerFetch(`Cgi/getOgl.php?${qs.toString()}`, { method: 'GET' });
-  const text = await res.text();
-  const payload = parseKeiJsonPayload(text) as KeiListingsResponse;
-  return {
-    total: Number(payload?.total ?? 0),
-    rows: normalizeListingRows(payload),
-  };
+  const path = `Cgi/getOgl.php?${qs.toString()}`;
+  const cached = keiPageCache.get(path);
+  if (cached && Date.now() - cached.at < KEI_PAGE_CACHE_MS) {
+    return { total: cached.total, rows: cached.rows };
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const res = await keiAmerFetch(path, { method: 'GET' });
+    const text = await decodeResponseText(res);
+    let payload: KeiListingsResponse | null = null;
+    let parseFailed = false;
+    try {
+      payload = parseKeiJsonPayload(text) as KeiListingsResponse;
+    } catch {
+      parseFailed = true;
+    }
+    if (parseFailed || looksLikeExpiredSession(res, text, payload)) {
+      if (attempt === 0) {
+        // Jedno ponowne logowanie — wygasła sesja nie może wyglądać jak „brak ogłoszeń”.
+        cachedCookieHeader = null;
+        lastLoginAt = 0;
+        const relogin = await ensureKeiAmerSession(true);
+        if (!relogin.ok) throw new Error(`KEI AMER: ${relogin.message}`);
+        continue;
+      }
+      throw new Error('KEI AMER: sesja wygasła, a ponowne logowanie nie pomogło. Sprawdź konto KEI.');
+    }
+    const result = {
+      total: Number(payload?.total ?? 0),
+      rows: normalizeListingRows(payload as KeiListingsResponse),
+    };
+    keiPageCache.set(path, { at: Date.now(), ...result });
+    if (keiPageCache.size > 200) {
+      const oldest = keiPageCache.keys().next().value;
+      if (oldest) keiPageCache.delete(oldest);
+    }
+    return result;
+  }
+  throw new Error('KEI AMER: nie udało się pobrać listy ogłoszeń.');
 }
 
 /**

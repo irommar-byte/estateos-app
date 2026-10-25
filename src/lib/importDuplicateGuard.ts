@@ -197,3 +197,39 @@ export async function releaseImportExternalClaim(source: string, externalId: str
     id,
   ).catch(() => undefined);
 }
+
+/**
+ * Hurtowe sprawdzenie „czy już w bazie” dla listy linków — jedno zapytanie zamiast jednego na wiersz.
+ * Zwraca mapę: oryginalny URL → ID oferty.
+ */
+export async function findImportedOfferIdsByPortalUrls(portalUrls: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const unique = [...new Set(portalUrls.map((url) => String(url || '').trim()).filter(Boolean))];
+  if (unique.length === 0) return out;
+
+  const candidateToOriginal = new Map<string, string>();
+  for (const url of unique) {
+    for (const candidate of importUrlLookupCandidates(url)) {
+      if (!candidateToOriginal.has(candidate)) candidateToOriginal.set(candidate, url);
+    }
+  }
+  const candidates = [...candidateToOriginal.keys()];
+  await ensureOfferPrivateNoteTable();
+
+  for (let i = 0; i < candidates.length; i += 400) {
+    const chunk = candidates.slice(i, i + 400);
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT opn.offerId, opn.importExternalUrl
+       FROM OfferPrivateNote opn
+       JOIN \`Offer\` o ON o.id = opn.offerId
+       WHERE opn.importExternalUrl IN (${chunk.map(() => '?').join(', ')})`,
+      ...chunk,
+    )) as Array<{ offerId: number; importExternalUrl: string }>;
+    for (const row of rows) {
+      const original = candidateToOriginal.get(String(row.importExternalUrl));
+      const offerId = Number(row.offerId);
+      if (original && Number.isFinite(offerId) && offerId > 0 && !out.has(original)) out.set(original, offerId);
+    }
+  }
+  return out;
+}

@@ -1,3 +1,4 @@
+import { decodeResponseText } from '@/lib/http/decodeResponseText';
 import { canonicalizeCity, canonicalizeDistrict, isStrictCity, pickDistrictFromPlaceName } from '@/lib/location/locationCatalog';
 import { locationNamesEquivalent } from '@/lib/location/locationNameMatch';
 import { upgradeListingImageUrls } from '@/lib/listingImageUrlUpgrade';
@@ -575,7 +576,8 @@ export async function fetchOtodomOfferHtml(url: string): Promise<string> {
       throw new Error(`OtoDom zwrócił HTTP ${response.status}.`);
     }
 
-    return await response.text();
+    // Dekodowanie wg kodowania strony — Nieruchomosci-Online i starsze serwisy nie zawsze są w UTF-8.
+    return await decodeResponseText(response);
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Przekroczono limit czasu pobierania strony OtoDom.');

@@ -1,5 +1,7 @@
 import type { KeiListingRow } from '@/lib/keiAmerClient';
 import { parseKeiNumeric } from '@/lib/keiAmerClient';
+import { extractWarsawDistrictFromKeiAddress } from '@/lib/keiAmerDistrict';
+import { stripReplacementChars } from '@/lib/http/decodeResponseText';
 
 export type KeiImportContext = {
   keiId: string;
@@ -15,10 +17,11 @@ export type KeiImportContext = {
 };
 
 function cleanText(raw: unknown): string | null {
-  const text = String(raw ?? '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const text = stripReplacementChars(
+    String(raw ?? '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' '),
+  );
   return text || null;
 }
 
@@ -30,9 +33,10 @@ export function parseKeiPhone(raw: unknown): string | null {
   return digits;
 }
 
-export function parseKeiRooms(raw: unknown): number | null {
+/** Pokoje z KEI („3P”, „3 pok.”). Gołej cyfry nie czytamy — w polu `typ` to bywa kod rodzaju. */
+export function parseKeiRooms(raw: unknown, allowBareNumber = false): number | null {
   const text = String(raw ?? '').trim();
-  const match = text.match(/(\d+)\s*p\b/i) || text.match(/^(\d+)$/);
+  const match = text.match(/(\d+)\s*(?:p\b|pok)/i) || (allowBareNumber ? text.match(/^(\d+)$/) : null);
   if (!match) return null;
   const rooms = Number(match[1]);
   return Number.isFinite(rooms) && rooms >= 1 && rooms <= 12 ? rooms : null;
@@ -48,9 +52,9 @@ export function buildKeiImportContext(row: Partial<KeiListingRow> | null | undef
   const keiId = String(row.id || '').trim();
   const phone = parseKeiPhone(row.telefon);
   const address = cleanText(row.adres);
-  let district = cleanText(row.dzielnica || row.dzielnica_);
+  let district = cleanText(row.dzielnica || row.dzielnica_) || extractWarsawDistrictFromKeiAddress(String(row.adres || '')) || null;
   const street = cleanText(row.ulica);
-  const rooms = parseKeiRooms(row.typ || row.typ_);
+  const rooms = parseKeiRooms(row.typ) ?? parseKeiRooms(row.typ_, true);
   const pricePerSqm = parseKeiNumeric(row.cena_m);
   const listedAt = cleanText(row.data);
   const listingText = cleanText(row.tekst);

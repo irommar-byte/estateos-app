@@ -4,10 +4,11 @@ import {
   exportKeiListingsToEstateOS,
   type KeiFloorPlanSelection,
 } from '@/lib/keiAmerExport';
-import type { KeiExportProgressEvent } from '@/lib/keiAmerExportProgress';
+import type { KeiExportProgressEvent, KeiPublishState, KeiSkipKind } from '@/lib/keiAmerExportProgress';
 import type { KeiPropertyKind, KeiTransactionKind } from '@/lib/keiAmerClient';
 import {
   KEI_LEASE_HEARTBEAT_MS,
+  KEI_MAX_ATTEMPTS,
   ownsKeiImportLease,
   releaseKeiImportLease,
   renewKeiImportLease,
@@ -30,6 +31,18 @@ export type KeiImportJobItem = {
   publicUrl?: string;
   editUrl?: string;
   reason?: string;
+  /** Karta postępu: miniatura i podstawowe dane oferty z portalu. */
+  thumbUrl?: string | null;
+  title?: string | null;
+  price?: number | null;
+  area?: number | null;
+  district?: string | null;
+  skipKind?: KeiSkipKind;
+  publishState?: KeiPublishState;
+  aiRewritten?: boolean;
+  imageCount?: number;
+  startedAt?: string;
+  finishedAt?: string;
 };
 
 export type KeiImportJobStatus = 'queued' | 'running' | 'done' | 'error' | 'cancelled';
@@ -87,6 +100,10 @@ export type KeiImportJobCreateInput = {
   floorPlanSelections?: Record<string, KeiFloorPlanSelection>;
   smartAddEnabled?: boolean;
   smartAddDecisionsByUrl?: Record<string, Record<string, boolean>>;
+  /** publish = od razu na rynek; review = szkic do przejrzenia przez agenta. */
+  publishMode?: 'publish' | 'review';
+  /** Minimalna liczba zdjęć, żeby oferta poszła od razu na rynek. */
+  minImages?: number;
   /** Cron vs ręczny Importuj — jeden job na raz, żeby się nie gryzły. */
   source?: KeiImportJobSource;
 };
@@ -128,12 +145,27 @@ function mergeCompletedSteps(
 }
 
 function applyEventToItems(items: KeiImportJobItem[], event: KeiExportProgressEvent): KeiImportJobItem[] {
+  if (event.type === 'item_meta') {
+    return items.map((item) =>
+      item.index !== event.index
+        ? item
+        : {
+            ...item,
+            thumbUrl: event.thumbUrl ?? item.thumbUrl,
+            title: event.title ?? item.title,
+            price: event.price ?? item.price,
+            area: event.area ?? item.area,
+            district: event.district ?? item.district,
+          },
+    );
+  }
   if (event.type === 'item_start') {
     return items.map((item) =>
       item.index !== event.index
         ? item
         : {
             ...item,
+            startedAt: new Date().toISOString(),
             status: 'active',
             keiListingId: event.keiListingId,
             portalUrl: event.portalUrl,
@@ -219,10 +251,15 @@ function applyEventToItems(items: KeiImportJobItem[], event: KeiExportProgressEv
             ...item,
             status: 'done',
             currentStep: null,
-            stepLabel: 'Gotowe',
+            stepLabel: event.publishState === 'review' ? 'Szkic do przejrzenia' : 'Opublikowano',
+            stepDetail: event.note ?? item.stepDetail,
             offerId: event.offerId,
             publicUrl: event.publicUrl,
             editUrl: event.editUrl,
+            publishState: event.publishState ?? 'published',
+            aiRewritten: event.aiRewritten,
+            imageCount: event.imageCount,
+            finishedAt: new Date().toISOString(),
             completedSteps: [...KEI_STEPS],
           },
     );
@@ -235,10 +272,21 @@ function applyEventToItems(items: KeiImportJobItem[], event: KeiExportProgressEv
             ...item,
             status: 'skipped',
             currentStep: null,
-            stepLabel: 'Pominięto',
+            stepLabel:
+              event.kind === 'duplicate'
+                ? 'Już w bazie'
+                : event.kind === 'error'
+                  ? 'Błąd'
+                  : event.kind === 'inactive'
+                    ? 'Nieaktualne na portalu'
+                    : event.kind === 'quality'
+                      ? 'Za słabe dane'
+                      : 'Pominięto',
             reason: event.existingOfferId
               ? `${event.reason} (oferta #${event.existingOfferId})`
               : event.reason,
+            skipKind: event.kind ?? (event.existingOfferId ? 'duplicate' : 'error'),
+            finishedAt: new Date().toISOString(),
             completedSteps: [],
           },
     );
@@ -369,27 +417,15 @@ export async function getKeiImportJob(jobId: string): Promise<KeiImportJobSnapsh
 
 export async function listActiveKeiImportJobs(adminUserId?: number): Promise<KeiImportJobSnapshot[]> {
   await ensureKeiAmerImportJobTable();
-  const rows = (
-    adminUserId
-      ? await prisma.$queryRawUnsafe(
-          `SELECT id, adminUserId, status, message, propertyKind, transactionKind, payloadJson, itemsJson,
-                  resultJson, cancelRequested, createdAt, updatedAt, finishedAt
-           FROM KeiAmerImportJob
-           WHERE status IN ('queued', 'running')
-              OR (finishedAt IS NOT NULL AND finishedAt > DATE_SUB(NOW(3), INTERVAL 2 HOUR))
-           ORDER BY updatedAt DESC
-           LIMIT 20`,
-        )
-      : await prisma.$queryRawUnsafe(
-          `SELECT id, adminUserId, status, message, propertyKind, transactionKind, payloadJson, itemsJson,
-                  resultJson, cancelRequested, createdAt, updatedAt, finishedAt
-           FROM KeiAmerImportJob
-           WHERE status IN ('queued', 'running')
-              OR (finishedAt IS NOT NULL AND finishedAt > DATE_SUB(NOW(3), INTERVAL 2 HOUR))
-           ORDER BY updatedAt DESC
-           LIMIT 20`,
-        )
-  ) as JobRow[];
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT id, adminUserId, status, message, propertyKind, transactionKind, payloadJson, itemsJson,
+            resultJson, cancelRequested, createdAt, updatedAt, finishedAt
+     FROM KeiAmerImportJob
+     WHERE status IN ('queued', 'running')
+        OR (finishedAt IS NOT NULL AND finishedAt > DATE_SUB(NOW(3), INTERVAL 2 HOUR))
+     ORDER BY updatedAt DESC
+     LIMIT 20`,
+  )) as JobRow[];
 
   // Prefer admin's jobs first, but return shared account queue (all admins see running imports).
   const mapped = rows.map(mapRow);
@@ -503,6 +539,10 @@ export async function createKeiImportJob(input: KeiImportJobCreateInput): Promis
     selections: input.selections,
     floorPlanOverrides: input.floorPlanOverrides,
     floorPlanSelections: input.floorPlanSelections,
+    smartAddEnabled: input.smartAddEnabled,
+    smartAddDecisionsByUrl: input.smartAddDecisionsByUrl,
+    publishMode: input.publishMode,
+    minImages: input.minImages,
     source: input.source === 'auto' ? 'auto' : 'manual',
   };
 
@@ -577,8 +617,19 @@ export async function runKeiImportJob(jobId: string, leaseOwner: string): Promis
       if (event.type === 'item_start') {
         message = `Import ${event.index + 1}/${event.total}…`;
       }
+      // Kroki pośrednie (zdjęcia, opis) zapisujemy najwyżej co ~700 ms — mniej zapisów całego JSON.
+      const important = event.type !== 'step' && event.type !== 'image_progress' && event.type !== 'ai_rewrite';
+      const now = Date.now();
+      if (!important && now - lastPersistAt < 700) {
+        pendingFlush = true;
+        return;
+      }
+      lastPersistAt = now;
+      pendingFlush = false;
       await writeJobFields(jobId, { items, message }, leaseOwner);
     };
+    let lastPersistAt = 0;
+    let pendingFlush = false;
 
     let progressChain: Promise<void> = Promise.resolve();
     const enqueueProgress = (event: KeiExportProgressEvent) => {
@@ -598,13 +649,20 @@ export async function runKeiImportJob(jobId: string, leaseOwner: string): Promis
         fillUntilPublished: payload.source === 'auto',
         shouldCancel: () => isCancelRequested(jobId, leaseOwner),
         onProgress: enqueueProgress,
-        smartAddEnabled: true,
+        smartAddEnabled: payload.smartAddEnabled !== false,
         smartAddDecisionsByUrl: payload.smartAddDecisionsByUrl,
+        publishMode: payload.publishMode,
+        minImages: payload.minImages,
       });
       await progressChain;
+      void pendingFlush;
 
       if (!(await ownsKeiImportLease(jobId, leaseOwner))) return;
       const cancelled = await isCancelRequested(jobId, leaseOwner);
+      if (!cancelled && payload.source === 'auto') {
+        // Pula kandydatów była większa niż cel — niewykorzystane pozycje nie wiszą jako „w kolejce”.
+        items = items.filter((item) => item.status !== 'pending');
+      }
       items = items.map((item) =>
         cancelled && (item.status === 'pending' || item.status === 'active')
           ? {
@@ -682,21 +740,48 @@ export async function runKeiImportJob(jobId: string, leaseOwner: string): Promis
 
 export async function hasActiveKeiImportJob(): Promise<boolean> {
   await ensureKeiAmerImportJobTable();
+  // Zadanie, którego worker już nie podejmie (wyczerpane próby), nie blokuje nowych importów.
+  await prisma.$executeRawUnsafe(
+    `UPDATE KeiAmerImportJob
+     SET status = 'error',
+         message = 'Import zatrzymany po wyczerpaniu limitu prób workera.',
+         finishedAt = NOW(3),
+         leaseOwner = NULL,
+         leaseUntil = NULL
+     WHERE attemptCount >= ?
+       AND (status = 'queued' OR (status = 'running' AND (leaseUntil IS NULL OR leaseUntil < NOW(3))))`,
+    KEI_MAX_ATTEMPTS,
+  );
   const rows = (await prisma.$queryRawUnsafe<Array<{ total: number | bigint }>>(
     `SELECT COUNT(*) AS total FROM KeiAmerImportJob
-     WHERE status IN ('queued', 'running')`,
+     WHERE cancelRequested = 0
+       AND (
+         status = 'queued'
+         OR (status = 'running' AND leaseUntil > DATE_SUB(NOW(3), INTERVAL 10 MINUTE))
+       )`,
   )) as Array<{ total: number | bigint }>;
   return Number(rows[0]?.total || 0) > 0;
 }
 
 /**
  * Kolejkuje job. Wykonanie należy wyłącznie do procesu `kei-import-worker`.
+ * Blokada nazwana MySQL sprawia, że ręczny i automatyczny import nie wejdą równocześnie.
  */
 export async function enqueueKeiImportJob(input: KeiImportJobCreateInput): Promise<KeiImportJobSnapshot> {
-  if (await hasActiveKeiImportJob()) {
-    throw new Error('Inny import KEI już trwa. Poczekaj, aż się skończy — automatyczny i ręczny nie mogą iść naraz.');
+  const lockRows = (await prisma.$queryRawUnsafe(
+    `SELECT GET_LOCK('kei_import_enqueue', 5) AS got`,
+  )) as Array<{ got: number | bigint | null }>;
+  if (Number(lockRows[0]?.got) !== 1) {
+    throw new Error('Inny import KEI właśnie startuje. Spróbuj za chwilę.');
   }
-  return createKeiImportJob(input);
+  try {
+    if (await hasActiveKeiImportJob()) {
+      throw new Error('Inny import KEI już trwa. Poczekaj, aż się skończy — automatyczny i ręczny nie mogą iść naraz.');
+    }
+    return await createKeiImportJob(input);
+  } finally {
+    await prisma.$queryRawUnsafe(`SELECT RELEASE_LOCK('kei_import_enqueue')`).catch(() => undefined);
+  }
 }
 
 export function isKeiImportJobTerminal(status: KeiImportJobStatus): boolean {

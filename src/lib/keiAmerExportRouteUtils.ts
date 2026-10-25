@@ -23,15 +23,43 @@ export function parseFloorPlanSelections(raw: unknown) {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+function parseSmartAddDecisions(raw: unknown): Record<string, Record<string, boolean>> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, Record<string, boolean>> = {};
+  for (const [url, decisions] of Object.entries(raw as Record<string, unknown>).slice(0, 80)) {
+    if (!decisions || typeof decisions !== 'object') continue;
+    const clean: Record<string, boolean> = {};
+    for (const [field, value] of Object.entries(decisions as Record<string, unknown>)) {
+      if (typeof value === 'boolean') clean[field.slice(0, 64)] = value;
+    }
+    if (Object.keys(clean).length) out[url] = clean;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function parseKeiExportBody(body: Record<string, unknown>) {
   const selections = Array.isArray(body?.selections)
     ? body.selections
-        .map((row: Record<string, unknown>) => ({
-          keiId: String(row?.keiId || ''),
-          portalUrl: String(row?.portalUrl || ''),
-          address: String(row?.address || '').trim() || undefined,
-        }))
-        .filter((row: { portalUrl: string }) => row.portalUrl)
+        .slice(0, 80)
+        .map((row: Record<string, unknown>) => {
+          const text = (value: unknown, max = 300) => {
+            const out = String(value ?? '').trim().slice(0, max);
+            return out || undefined;
+          };
+          const rooms = Number(row?.rooms);
+          return {
+            keiId: String(row?.keiId || '').trim().slice(0, 64),
+            portalUrl: String(row?.portalUrl || '').trim().slice(0, 600),
+            address: text(row?.address),
+            phone: text(row?.phone, 32),
+            district: text(row?.district, 96),
+            street: text(row?.street, 160),
+            rooms: Number.isFinite(rooms) && rooms > 0 && rooms <= 20 ? Math.floor(rooms) : undefined,
+            listedAt: text(row?.listedAt, 40),
+            directOwner: row?.directOwner === true || row?.directOwner === 1 || row?.directOwner === '1',
+          };
+        })
+        .filter((row: { portalUrl: string }) => /^https?:\/\//i.test(row.portalUrl))
     : undefined;
 
   const targetUserId = Number(body?.targetUserId);
@@ -49,9 +77,6 @@ export function parseKeiExportBody(body: Record<string, unknown>) {
     floorPlanOverrides: parseFloorPlanOverrides(body?.floorPlanOverrides),
     floorPlanSelections: parseFloorPlanSelections(body?.floorPlanSelections),
     smartAddEnabled: typeof body?.smartAddEnabled === 'boolean' ? body.smartAddEnabled : undefined,
-    smartAddDecisionsByUrl:
-      body?.smartAddDecisionsByUrl && typeof body.smartAddDecisionsByUrl === 'object'
-        ? (body.smartAddDecisionsByUrl as Record<string, Record<string, boolean>>)
-        : undefined,
+    smartAddDecisionsByUrl: parseSmartAddDecisions(body?.smartAddDecisionsByUrl),
   };
 }

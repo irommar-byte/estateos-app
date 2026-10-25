@@ -1,7 +1,14 @@
-import { findExistingImportedOfferByPortalUrl } from '@/lib/otodomImportCreate';
+import { findImportedOfferIdsByPortalUrls } from '@/lib/importDuplicateGuard';
+import { districtMatches } from '@/lib/keiAmerDistrict';
+import type { KeiAutoImportSettings } from '@/lib/keiAutoImportShared';
 import {
   ensureKeiAmerSession,
+  fetchKeiListingsPage,
   findWarsawPortalListingsPaged,
+  isWarsawListing,
+  parseKeiListingDate,
+  parseKeiNumeric,
+  type KeiListingRow,
   isSupportedKeiPortalUrl,
   keiPropertyKindFromRow,
   keiPropertyKindLabel,
@@ -14,7 +21,7 @@ import {
   type KeiTransactionKind,
 } from '@/lib/keiAmerClient';
 import { buildKeiImportContext } from '@/lib/keiAmerListingExtras';
-import { getKeiListingDispositions, normalizeKeiPortalUrl } from '@/lib/keiAmerListingState';
+import { getKeiListingDispositions, markKeiListingFailed, normalizeKeiPortalUrl } from '@/lib/keiAmerListingState';
 import { verifyPortalListingsActive } from '@/lib/keiAmerPortalVerify';
 
 export type KeiPreviewListing = {
@@ -42,6 +49,9 @@ export type KeiPreviewListing = {
   rooms: number | null;
   listedAt: string | null;
   directOwner: boolean;
+  /** Ostatnia próba importu się nie udała — kolejna dopiero po przerwie. */
+  coolingDown: boolean;
+  lastFailReason: string | null;
 };
 
 function portalHostFromUrl(url: string): string {
@@ -102,9 +112,12 @@ async function mapRowsToPreviewListings(
     portalUrls.push(portalUrl);
   }
 
-  const dispositions = await getKeiListingDispositions(portalUrls);
+  const [dispositions, importedByUrl] = await Promise.all([
+    getKeiListingDispositions(portalUrls),
+    findImportedOfferIdsByPortalUrls(portalUrls),
+  ]);
   const verifications = options?.verifyPortal
-    ? await verifyPortalListingsActive(portalUrls, 3)
+    ? await verifyPortalListingsActive(portalUrls, 4)
     : null;
 
   for (const row of rows) {
@@ -113,16 +126,16 @@ async function mapRowsToPreviewListings(
     const portalUrl = normalizeKeiPortalUrl(String(row.www || '').trim());
     if (!portalUrl || !isSupportedKeiPortalUrl(portalUrl)) continue;
 
-    const existing = await findExistingImportedOfferByPortalUrl(portalUrl);
+    const existingId = importedByUrl.get(portalUrl) ?? null;
     const disposition = dispositions.get(portalUrl);
-    const alreadyImported = Boolean(existing) || Boolean(disposition?.importedOfferId);
+    const alreadyImported = Boolean(existingId) || Boolean(disposition?.importedOfferId);
     const outreachSent = Boolean(disposition?.outreachSent);
-    const existingOfferId = existing?.id ?? disposition?.importedOfferId ?? null;
+    const existingOfferId = existingId ?? disposition?.importedOfferId ?? null;
     const host = portalHostFromUrl(portalUrl);
     const rowTx = keiTransactionKindFromRow(row);
     const verify = verifications?.get(portalUrl) ?? null;
-    const portalActive = verify ? verify.active : null;
-    const portalCheckReason = verify?.reason ?? null;
+    const portalActive = disposition?.ignored ? false : verify ? verify.active : null;
+    const portalCheckReason = disposition?.ignored ? 'Oznaczone jako pomijane.' : verify?.reason ?? null;
 
     let blockedReason: KeiPreviewListing['blockedReason'] = null;
     if (alreadyImported) blockedReason = 'imported';
@@ -154,6 +167,8 @@ async function mapRowsToPreviewListings(
       rooms: kei?.rooms || null,
       listedAt: kei?.listedAt || row.data || null,
       directOwner: Boolean(kei?.directOwner),
+      coolingDown: Boolean(disposition?.coolingDown),
+      lastFailReason: disposition?.lastFailReason ?? null,
     });
   }
 
@@ -264,44 +279,140 @@ export type KeiImportSelection = {
   directOwner?: boolean;
 };
 
-/** To samo co „Wybierz najnowsze”: feed od najnowszych, bez już zaimportowanych / zablokowanych. */
+function portalIdFromUrl(url: string): 'otodom' | 'olx' | 'nieruchomosci-online' | null {
+  const host = portalHostFromUrl(url);
+  if (host.includes('otodom')) return 'otodom';
+  if (host.includes('olx')) return 'olx';
+  if (host.includes('nieruchomosci-online')) return 'nieruchomosci-online';
+  return null;
+}
+
+/** Reguły harmonogramu na surowym wierszu KEI — przed jakimkolwiek zapytaniem do portalu. */
+export function rowMatchesAutoSettings(row: KeiListingRow, settings: KeiAutoImportSettings, now = Date.now()): boolean {
+  const portal = portalIdFromUrl(String(row.www || ''));
+  if (!portal || (settings.portals.length && !settings.portals.includes(portal))) return false;
+  if (settings.districts.length && !settings.districts.some((district) => districtMatches(district, row.adres))) {
+    return false;
+  }
+  const price = parseKeiNumeric(row.cena);
+  if (settings.minPrice != null && (price == null || price < settings.minPrice)) return false;
+  if (settings.maxPrice != null && (price == null || price > settings.maxPrice)) return false;
+  const area = parseKeiNumeric(row.pow);
+  if (settings.minArea != null && (area == null || area < settings.minArea)) return false;
+  if (settings.maxArea != null && (area == null || area > settings.maxArea)) return false;
+  const kei = buildKeiImportContext(row);
+  if (settings.minRooms != null && (kei?.rooms == null || kei.rooms < settings.minRooms)) return false;
+  if (settings.maxRooms != null && (kei?.rooms == null || kei.rooms > settings.maxRooms)) return false;
+  if (settings.directOwnerOnly && !kei?.directOwner) return false;
+  if (settings.requirePhone && !kei?.phone) return false;
+  if (settings.maxAgeHours != null) {
+    const listed = parseKeiListingDate(row.data);
+    // Data KEI ma dokładność do dnia — liczymy od końca tego dnia, żeby nie wyciąć dzisiejszych.
+    if (!listed) return false;
+    const endOfDay = new Date(listed);
+    endOfDay.setHours(23, 59, 59, 999);
+    if (now - endOfDay.getTime() > settings.maxAgeHours * 3_600_000) return false;
+  }
+  return true;
+}
+
+/**
+ * Kandydaci do automatycznego cyklu: jeden liniowy przebieg po najnowszych stronach KEI,
+ * filtry z ustawień, hurtowe sprawdzenie duplikatów/zaproszeń/przerw po błędach,
+ * a na końcu weryfikacja, czy ogłoszenie nadal wisi na portalu.
+ */
 export async function pickNewestKeiListingsForImport(options: {
   propertyKind: KeiPropertyKind;
   transactionKind: KeiTransactionKind;
   count: number;
+  settings?: KeiAutoImportSettings;
 }): Promise<KeiImportSelection[]> {
-  const publishCount = Math.max(1, Math.min(25, Math.floor(options.count) || 1));
-  const poolSize = Math.min(80, Math.max(publishCount * 8, publishCount));
-  const picked: KeiImportSelection[] = [];
-  const seen = new Set<string>();
+  const session = await ensureKeiAmerSession();
+  if (!session.ok) throw new Error(session.message);
 
-  for (let page = 1; page <= 16 && picked.length < poolSize; page += 1) {
-    const preview = await previewKeiExportListings({
+  const publishCount = Math.max(1, Math.min(25, Math.floor(options.count) || 1));
+  const poolSize = Math.min(40, Math.max(publishCount * 4, publishCount + 5));
+  const settings = options.settings;
+  const okres = settings?.maxAgeHours != null && settings.maxAgeHours <= 24 * 7 ? '1' : '0';
+  const limit = 50;
+  const maxPages = 12;
+  const seen = new Set<string>();
+  const candidates: Array<{ row: KeiListingRow; portalUrl: string }> = [];
+
+  for (let page = 0; page < maxPages && candidates.length < poolSize * 2; page += 1) {
+    const { rows } = await fetchKeiListingsPage({
+      start: page * limit,
+      limit,
+      sort: 'data',
+      dir: 'DESC',
       propertyKind: options.propertyKind,
       transactionKind: options.transactionKind,
-      page,
-      pageSize: 25,
-      mode: 'feed',
+      okres,
     });
-    for (const row of preview.listings) {
-      if (row.blockedReason || seen.has(row.portalUrl)) continue;
-      seen.add(row.portalUrl);
-      picked.push({
-        keiId: row.keiId,
-        portalUrl: row.portalUrl,
-        address: row.address,
-        phone: row.phone || undefined,
-        district: row.district || undefined,
-        street: row.street || undefined,
-        rooms: row.rooms ?? undefined,
-        listedAt: row.listedAt || row.date || undefined,
-        directOwner: Boolean(row.directOwner),
-      });
-      if (picked.length >= poolSize) break;
+    const pageRows: Array<{ row: KeiListingRow; portalUrl: string }> = [];
+    let tooOld = 0;
+    for (const row of rows) {
+      const portalUrl = normalizeKeiPortalUrl(String(row.www || '').trim());
+      if (!portalUrl || seen.has(portalUrl) || !isSupportedKeiPortalUrl(portalUrl)) continue;
+      seen.add(portalUrl);
+      if (!isWarsawListing(row)) continue;
+      if (!rowMatchesKeiFilters(row, options.propertyKind, options.transactionKind)) continue;
+      if (settings && !rowMatchesAutoSettings(row, settings)) {
+        if (settings.maxAgeHours != null) {
+          const listed = parseKeiListingDate(row.data);
+          if (listed && Date.now() - listed.getTime() > (settings.maxAgeHours + 24) * 3_600_000) tooOld += 1;
+        }
+        continue;
+      }
+      pageRows.push({ row, portalUrl });
     }
-    if (!preview.hasNextPage) break;
+
+    if (pageRows.length) {
+      const urls = pageRows.map((item) => item.portalUrl);
+      const [dispositions, importedByUrl] = await Promise.all([
+        getKeiListingDispositions(urls),
+        findImportedOfferIdsByPortalUrls(urls),
+      ]);
+      for (const item of pageRows) {
+        const disposition = dispositions.get(item.portalUrl);
+        if (importedByUrl.has(item.portalUrl) || disposition?.importedOfferId) continue;
+        if (disposition?.outreachSent || disposition?.ignored || disposition?.coolingDown) continue;
+        candidates.push(item);
+      }
+    }
+    // Sortujemy od najnowszych — gdy cała strona jest starsza niż limit wieku, dalej będzie tylko starsze.
+    if (rows.length < limit || (rows.length > 0 && tooOld >= rows.length * 0.9)) break;
   }
 
+  if (candidates.length === 0) return [];
+
+  const toVerify = candidates.slice(0, poolSize + Math.ceil(poolSize / 2));
+  const verifications = await verifyPortalListingsActive(toVerify.map((item) => item.portalUrl), 5);
+  const picked: KeiImportSelection[] = [];
+  for (const item of toVerify) {
+    const verify = verifications.get(item.portalUrl);
+    if (verify?.active === false) {
+      await markKeiListingFailed({
+        portalUrl: item.portalUrl,
+        keiListingId: item.row.id,
+        reason: verify.reason || 'Ogłoszenie nieaktualne na portalu.',
+      }).catch(() => undefined);
+      continue;
+    }
+    const kei = buildKeiImportContext(item.row);
+    picked.push({
+      keiId: String(item.row.id || ''),
+      portalUrl: item.portalUrl,
+      address: item.row.adres || undefined,
+      phone: kei?.phone || undefined,
+      district: kei?.district || undefined,
+      street: kei?.street || undefined,
+      rooms: kei?.rooms ?? undefined,
+      listedAt: kei?.listedAt || item.row.data || undefined,
+      directOwner: Boolean(kei?.directOwner),
+    });
+    if (picked.length >= poolSize) break;
+  }
   return picked;
 }
 

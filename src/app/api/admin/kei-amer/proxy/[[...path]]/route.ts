@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin/requireAdmin';
+import { decodeBytes } from '@/lib/http/decodeResponseText';
 import {
   ensureKeiAmerSession,
   keiAmerFetch,
@@ -35,6 +36,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ path?: stri
   }
 
   const target = buildTargetPath(path, req.nextUrl.search);
+  if (/wylog|logout/i.test(target)) {
+    // Sesja KEI jest wspólna z automatycznym importem — wylogowanie tutaj zatrzymałoby worker.
+    return NextResponse.json(
+      { error: 'Wylogowanie z KEI w panelu jest wyłączone — z tej sesji korzysta automatyczny import.' },
+      { status: 403 },
+    );
+  }
   const upstream = await keiAmerFetch(target, { method: 'GET' });
 
   if (upstream.status >= 300 && upstream.status < 400) {
@@ -49,7 +57,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ path?: stri
   const bodyBuffer = Buffer.from(await upstream.arrayBuffer());
 
   if (contentType.includes('text/html')) {
-    const html = rewriteKeiProxyHtml(bodyBuffer.toString('utf8'), PROXY_PREFIX);
+    const html = rewriteKeiProxyHtml(decodeBytes(bodyBuffer, contentType), PROXY_PREFIX);
     return new NextResponse(html, {
       status: upstream.status,
       headers: {
@@ -80,6 +88,13 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ path?: str
   }
 
   const target = buildTargetPath(path, req.nextUrl.search);
+  if (/wylog|logout/i.test(target)) {
+    // Sesja KEI jest wspólna z automatycznym importem — wylogowanie tutaj zatrzymałoby worker.
+    return NextResponse.json(
+      { error: 'Wylogowanie z KEI w panelu jest wyłączone — z tej sesji korzysta automatyczny import.' },
+      { status: 403 },
+    );
+  }
   const contentType = req.headers.get('content-type') || 'application/x-www-form-urlencoded';
   const body = await req.arrayBuffer();
 
@@ -93,7 +108,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ path?: str
   const responseBody = Buffer.from(await upstream.arrayBuffer());
 
   if (upstreamType.includes('text/html')) {
-    const html = rewriteKeiProxyHtml(responseBody.toString('utf8'), PROXY_PREFIX);
+    const html = rewriteKeiProxyHtml(decodeBytes(responseBody, upstream.headers.get('content-type')), PROXY_PREFIX);
     return new NextResponse(html, {
       status: upstream.status,
       headers: {
