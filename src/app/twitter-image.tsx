@@ -1,11 +1,13 @@
 import { ImageResponse } from "next/og";
+import { loadOgFonts } from "@/lib/og/ogFonts";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const alt = "EstateOS - Global Premium Real Estate";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export default function OpenGraphImage() {
+export default async function OpenGraphImage() {
+  const fonts = await loadOgFonts();
   return new ImageResponse(
     (
       <div
@@ -17,7 +19,7 @@ export default function OpenGraphImage() {
           alignItems: "center",
           justifyContent: "center",
           background: "linear-gradient(145deg, #000000 0%, #0a0f0d 45%, #000000 100%)",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "Inter",
         }}
       >
         <div
@@ -65,6 +67,6 @@ export default function OpenGraphImage() {
         </p>
       </div>
     ),
-    { ...size },
+    { ...size, fonts },
   );
 }

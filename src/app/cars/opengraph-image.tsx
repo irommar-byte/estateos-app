@@ -1,12 +1,14 @@
 import { ImageResponse } from "next/og";
+import { loadOgFonts } from "@/lib/og/ogFonts";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 export const alt =
   "EstateOS™Car — wystaw auto za darmo. Zastrzeż VIN, kupujący sprawdzi historię i OC.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export default function CarsOpenGraphImage() {
+export default async function CarsOpenGraphImage() {
+  const fonts = await loadOgFonts();
   return new ImageResponse(
     (
       <div
@@ -18,7 +20,7 @@ export default function CarsOpenGraphImage() {
           alignItems: "center",
           justifyContent: "center",
           background: "linear-gradient(145deg, #000000 0%, #071018 45%, #000000 100%)",
-          fontFamily: "system-ui, sans-serif",
+          fontFamily: "Inter",
         }}
       >
         <div
@@ -100,6 +102,6 @@ export default function CarsOpenGraphImage() {
         </p>
       </div>
     ),
-    { ...size },
+    { ...size, fonts },
   );
 }
