@@ -35,6 +35,7 @@ import {
 import { groupPortalPath } from "../../lib/portalActivityStacks";
 import MarketingChannelBrand from "../marketing/MarketingChannelBrand";
 import { parseSellerEventProposal } from "../../lib/sellerEventStage";
+import FacebookPromotionPanel from "./FacebookPromotionPanel";
 import SellerActiveEventsPanel, {
   sellerEventsMetricSummary,
 } from "./SellerActiveEventsPanel";
@@ -920,193 +921,22 @@ export default function SellerMarketingCard({
           >
             <PortalBrandMark id="facebook" size="sm" />
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: "800" }}>
-                Grupy Facebook · {sellerMarketing?.facebookGroups?.length || 0}
-              </Text>
+              <Text style={{ color: colors.text, fontWeight: "800" }}>Facebook · strona firmy i grupy</Text>
               <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}>
-                {facebookPending
-                  ? `Dokończ wpis na „${facebookPending.groupName}”`
-                  : "Wystaw ogłoszenie, potem wklej link do posta"}
+                Publikacja na stronie, udostępnienia w grupach, zasięg
               </Text>
             </View>
-            <Ionicons
-              name={openSections.facebook || facebookPending ? "chevron-up" : "chevron-down"}
-              size={18}
-              color={colors.secondary}
-            />
+            <Ionicons name={openSections.facebook ? "chevron-up" : "chevron-down"} size={18} color={colors.secondary} />
           </Pressable>
-          {openSections.facebook || facebookPending ? (
-        <View>
-          <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18, marginTop: 8 }}>
-            Otworzy się Facebook z kartą ogłoszenia. Żeby klik w panelu otwierał
-            ogłoszenie, wklej link do konkretnego posta (⋯ → Kopiuj link).
-          </Text>
-          {facebookPending ? (
-            <View
-              style={[
-                styles.channelRow,
-                {
-                  borderColor: "rgba(24,119,242,0.45)",
-                  backgroundColor: "rgba(24,119,242,0.12)",
-                  marginTop: 10,
-                },
-              ]}
-            >
-              <View style={{ flex: 1, gap: 8 }}>
-                <Text style={{ color: colors.text, fontWeight: "800" }}>
-                  Wklej link do posta na „{facebookPending.groupName}”
-                </Text>
-                <Text style={{ color: colors.secondary, fontSize: 12, lineHeight: 18 }}>
-                  Facebook nie oddaje adresu ogłoszenia. Pod wrzuconym postem: ⋯ → Kopiuj link.
-                </Text>
-                <TextInput
-                  value={fbGroupNameDraft}
-                  onChangeText={setFbGroupNameDraft}
-                  placeholder="Nazwa grupy"
-                  placeholderTextColor={colors.secondary}
-                  style={[
-                    styles.input,
-                    { color: colors.text, borderColor: colors.border },
-                  ]}
-                />
-                <TextInput
-                  value={fbPostUrl}
-                  onChangeText={setFbPostUrl}
-                  placeholder="https://www.facebook.com/groups/…/posts/…"
-                  placeholderTextColor={colors.secondary}
-                  autoCapitalize="none"
-                  style={[
-                    styles.input,
-                    { color: colors.text, borderColor: colors.border },
-                  ]}
-                />
-                <View style={styles.switchRow}>
-                  <Text style={{ color: colors.text, flex: 1 }}>
-                    Pokaż klientowi
-                  </Text>
-                  <Switch
-                    value={fbShowClient}
-                    onValueChange={setFbShowClient}
-                  />
-                </View>
-                <Pressable
-                  disabled={Boolean(busy) || !isFacebookPostPermalink(fbPostUrl)}
-                  onPress={() => void confirmFacebookShare()}
-                  style={[
-                    styles.fbShareBtn,
-                    !isFacebookPostPermalink(fbPostUrl) ? { opacity: 0.45 } : null,
-                  ]}
-                >
-                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
-                    ZAPISZ W ŚCIEŻCE
-                  </Text>
-                </Pressable>
-                <Pressable onPress={() => setFacebookPending(null)}>
-                  <Text style={{ color: colors.secondary, fontWeight: "700" }}>
-                    Nie teraz
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : null}
-          {(sellerMarketing?.facebookShareOffers?.length || 0) > 1 ? (
-            <View style={styles.chips}>
-              {sellerMarketing?.facebookShareOffers?.slice(0, 8).map((offer) => (
-                <Pressable
-                  key={offer.id}
-                  onPress={() => setPickedFbOfferId(offer.id)}
-                  style={[
-                    styles.chip,
-                    {
-                      borderColor:
-                        (pickedFbOfferId || linkedOfferId) === offer.id
-                          ? "#1877F2"
-                          : colors.border,
-                      backgroundColor:
-                        (pickedFbOfferId || linkedOfferId) === offer.id
-                          ? "rgba(24,119,242,0.16)"
-                          : colors.input,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: colors.text,
-                      fontSize: 11,
-                      fontWeight: "700",
-                    }}
-                    numberOfLines={1}
-                  >
-                    {offer.id === linkedOfferId ? "Ta oferta" : offer.title}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-          {(sellerMarketing?.facebookGroups || []).slice(0, fbListLimit).map((group) => (
-            <View
-              key={group.key}
-              style={[
-                styles.channelRow,
-                {
-                  borderColor: "rgba(24,119,242,0.35)",
-                  backgroundColor: "rgba(24,119,242,0.08)",
-                },
-              ]}
-            >
-              <View
-                style={[styles.channelIcon, { backgroundColor: "#1877F2" }]}
-              >
-                <Ionicons name="logo-facebook" size={17} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.text, fontWeight: "800" }}>
-                  {group.groupName}
-                </Text>
-                <Text
-                  style={{ color: colors.secondary, fontSize: 11, marginTop: 2 }}
-                >
-                  {group.postCount}× · {formatDateLabel(group.lastPostedAt)}
-                </Text>
-              </View>
-              {linkedOfferId ? (
-                <Pressable
-                  disabled={Boolean(busy)}
-                  onPress={() =>
-                    void shareToFacebookGroup(group, linkedOfferId)
-                  }
-                  hitSlop={8}
-                >
-                  <Ionicons name="refresh-outline" size={19} color="#1877F2" />
-                </Pressable>
-              ) : null}
-              <Pressable
-                disabled={Boolean(busy)}
-                onPress={() =>
-                  void shareToFacebookGroup(
-                    group,
-                    pickedFbOfferId || linkedOfferId || 0,
-                  )
-                }
-                style={[styles.fbShareBtn, { opacity: busy === "facebook" ? 0.6 : 1 }]}
-              >
-                <Text style={{ color: "#fff", fontSize: 10, fontWeight: "900" }}>
-                  WYSTAW
-                </Text>
-              </Pressable>
-            </View>
-          ))}
-          {(sellerMarketing?.facebookGroups?.length || 0) > fbListLimit ? (
-            <Pressable
-              onPress={() => setFbListLimit((current) => current + 8)}
-              style={[styles.secondaryBtn, { borderColor: colors.border }]}
-            >
-              <Text style={{ color: colors.accent, fontWeight: "800" }}>
-                Pokaż pozostałe {(sellerMarketing?.facebookGroups?.length || 0) - fbListLimit} grup
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
+          {openSections.facebook ? (
+            <FacebookPromotionPanel
+              token={token}
+              clientId={clientId}
+              offers={(sellerMarketing?.facebookShareOffers || []).map((o) => ({ id: o.id, title: o.title }))}
+              initialOfferId={linkedOfferId}
+              colors={colors}
+              onRecorded={onRefresh}
+            />
           ) : null}
         </View>
 
