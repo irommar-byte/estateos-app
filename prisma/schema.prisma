@@ -1882,3 +1882,78 @@ model AgentDocumentTemplate {
 
   @@index([agencyUserId])
 }
+
+/// Strona firmy na Facebooku, na którą EstateOS publikuje ogłoszenia (jedna na biuro albo agenta bez biura).
+model MarketingFacebookPage {
+  id            Int       @id @default(autoincrement())
+  /// company:<id> albo user:<id>
+  scopeKey      String    @unique @db.VarChar(40)
+  pageId        String    @db.VarChar(64)
+  pageName      String    @db.VarChar(191)
+  pageUrl       String?   @db.VarChar(255)
+  followers     Int?
+  tokenEnc      String    @db.Text
+  connectedById Int
+  connectedAt   DateTime  @default(now())
+  lastError     String?   @db.VarChar(500)
+  lastErrorAt   DateTime?
+}
+
+/// Grupy na Facebooku, w których biuro udostępnia ogłoszenia (z miastem i liczbą członków).
+model MarketingFacebookGroup {
+  id           Int       @id @default(autoincrement())
+  scopeKey     String    @db.VarChar(40)
+  name         String    @db.VarChar(191)
+  url          String    @db.VarChar(500)
+  city         String?   @db.VarChar(96)
+  members      Int?
+  note         String?   @db.VarChar(300)
+  active       Boolean   @default(true)
+  createdById  Int
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @default(now())
+  lastPostedAt DateTime?
+
+  @@index([scopeKey])
+}
+
+/// Każda publikacja ogłoszenia (post na stronie firmy, udostępnienie w grupie) z własnym linkiem śledzącym.
+model MarketingPublication {
+  id           Int       @id @default(autoincrement())
+  scopeKey     String    @db.VarChar(40)
+  offerId      Int
+  clientId     Int?
+  agencyUserId Int
+  /// fb_page | fb_group
+  channel      String    @db.VarChar(24)
+  groupId      Int?
+  code         String    @unique @db.VarChar(24)
+  externalId   String?   @db.VarChar(120)
+  postUrl      String?   @db.VarChar(500)
+  /// pending | live | removed | failed
+  status       String    @default("pending") @db.VarChar(16)
+  error        String?   @db.VarChar(500)
+  activityId   Int?
+  visits       Int       @default(0)
+  inquiries    Int       @default(0)
+  lastVisitAt  DateTime?
+  stats        Json?
+  statsAt      DateTime?
+  publishedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([offerId])
+  @@index([scopeKey, createdAt])
+  @@index([groupId])
+}
+
+/// Unikalne wejścia z linku śledzącego (jedna osoba liczona raz dziennie).
+model MarketingVisit {
+  id            Int      @id @default(autoincrement())
+  publicationId Int
+  visitorHash   String   @db.Char(64)
+  day           String   @db.Char(10)
+  createdAt     DateTime @default(now())
+
+  @@unique([publicationId, visitorHash, day], map: "MarketingVisit_pub_visitor_day")
+}

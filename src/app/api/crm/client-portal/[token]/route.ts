@@ -98,6 +98,7 @@ import { buildClientVoice } from '@/lib/crm/clientVoice';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { qrSvg } from '@/lib/qrSvg';
 import { ensureClientInvite, inviteLink } from '@/lib/crm/clientInviteCode';
+import { offerReach } from '@/lib/crm/facebookPromotion';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -797,6 +798,11 @@ export async function GET(_req: Request, ctx: RouteCtx) {
             createdAt: client.linkedOffer.createdAt.toISOString(),
           }
         : null,
+      // Zasięg z publikacji EstateOS (strona firmy, grupy, linki śledzące) — tylko prawdziwe liczby.
+      reach:
+        client.type === 'SELLER' && listingVisible && client.linkedOffer?.id
+          ? await offerReach(client.linkedOffer.id).catch(() => null)
+          : null,
       listingProgress: listingVisible
         ? buildListingProgress({
             signed: acquired,

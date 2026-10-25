@@ -183,5 +183,17 @@ module.exports = {
       cron_restart: "25 9 * * *",
       time: true,
     },
+    {
+      name: "marketing-insights",
+      cwd: root,
+      script: "node",
+      args: "scripts/marketing-insights.cjs",
+      env_file: path.join(root, ".env"),
+      env: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
+      env_production: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
+      autorestart: false,
+      cron_restart: "40 */3 * * *",
+      time: true,
+    },
   ],
 };

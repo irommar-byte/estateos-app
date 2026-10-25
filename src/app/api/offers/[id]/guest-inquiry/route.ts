@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { submitOfferGuestInquiry } from '@/lib/offerGuestInquiry';
 import { checkRateLimit, rateLimitResponse } from '@/lib/securityRateLimit';
+import { trackPublicationInquiry } from '@/lib/crm/facebookPromotion';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -45,6 +46,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
+
+    // Zapytanie po wejściu z promocji (link /r/<kod>) — przypisujemy je do tej publikacji.
+    const source = (req.headers.get('cookie') || '').match(/(?:^|;\s*)eos_z=([A-Za-z0-9_-]{6,24})/)?.[1];
+    if (source) await trackPublicationInquiry(source, offerId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

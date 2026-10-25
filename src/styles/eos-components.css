@@ -3374,3 +3374,148 @@ html.dark .portal-lux .eos-tone--green { background: rgba(99, 207, 153, 0.13); c
 html.dark .portal-lux .eos-tone--blue { background: rgba(120, 165, 240, 0.14); color: #9bbcf3; }
 html.dark .portal-lux .eos-tone--rose { background: rgba(240, 138, 115, 0.13); color: #f3a593; }
 html.dark .portal-lux .eos-tone--slate { background: rgba(255, 255, 255, 0.07); color: #c8c0b3; }
+
+/* ── Zasięg promocji (profil sprzedającego) ── */
+.reach-card {
+  margin-top: 1.2rem;
+}
+.reach-card__title {
+  font-family: var(--font-lux-serif), Georgia, serif;
+  font-size: 22px;
+  line-height: 1.2;
+  color: var(--lux-ink);
+}
+.reach-card__sub {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lux-ink-2);
+}
+.reach-card__tiles {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .reach-card__tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.reach-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 18px;
+  padding: 14px;
+  background: var(--lux-well);
+  border: 1px solid var(--lux-line);
+}
+.reach-tile__icon {
+  width: 17px;
+  height: 17px;
+  color: var(--lux-gold-ink);
+  margin-bottom: 6px;
+}
+.reach-tile__value {
+  font-family: var(--font-lux-serif), Georgia, serif;
+  font-size: 28px;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  color: var(--lux-ink);
+}
+.reach-tile__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--lux-ink-2);
+}
+.reach-tile__hint {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--lux-ink-3);
+}
+.reach-list {
+  margin-top: 12px;
+  border-radius: 18px;
+  border: 1px solid var(--lux-line);
+  overflow: hidden;
+}
+.reach-list li + li {
+  border-top: 1px solid var(--lux-line);
+}
+.reach-list__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  text-decoration: none;
+  background: var(--lux-card);
+  transition: background-color 0.2s ease;
+}
+.reach-list__row--link:hover {
+  background: var(--lux-well);
+}
+.reach-list__mark {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(24, 119, 242, 0.12);
+  color: #1877f2;
+  font-weight: 800;
+  font-size: 16px;
+}
+.reach-list__mark--page {
+  background: #1877f2;
+  color: #fff;
+}
+.reach-list__name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--lux-ink);
+}
+.reach-list__meta {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  color: var(--lux-ink-3);
+}
+.reach-list__nums {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--lux-ink-2);
+  white-space: nowrap;
+}
+.reach-list__go {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--lux-ink-3);
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+.reach-list__row--link:hover .reach-list__go {
+  color: var(--lux-gold-ink);
+  transform: translate(2px, -2px);
+}
+html.dark .portal-lux .reach-list__mark {
+  background: rgba(106, 167, 255, 0.14);
+  color: #8ab8ff;
+}
+html.dark .portal-lux .reach-list__mark--page {
+  background: #1877f2;
+  color: #fff;
+}

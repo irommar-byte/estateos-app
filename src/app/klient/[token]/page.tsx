@@ -71,6 +71,7 @@ import ClientPortalPresentationHero, {
 import ListingProgressRail from "@/components/portal/ListingProgressRail";
 import SellerPortalCollaboration from "@/components/portal/SellerPortalCollaboration";
 import PortalPromoPresence from "@/components/portal/PortalPromoPresence";
+import PortalReachCard, { type PortalReach } from "@/components/portal/lux/PortalReachCard";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { buyerOnboardingStorageKey, isBuyerOnboardingDismissed } from "@/lib/clientPortalPath";
 import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
@@ -218,6 +219,7 @@ type PortalData = {
     createdAt?: string | null;
   } | null;
   listingProgress?: Array<{ id: string; label: string; done: boolean; current: boolean }>;
+  reach?: PortalReach | null;
   listingPath?: Array<{
     id: number;
     kind: string;
@@ -1357,6 +1359,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                       activeChannels={portal.activeChannels || []}
                       otherAgencies={portal.otherAgencies || null}
                     />
+                    <PortalReachCard reach={portal.reach} agentFirst={agentFirst} />
                   </section>
                 ) : null}
 
