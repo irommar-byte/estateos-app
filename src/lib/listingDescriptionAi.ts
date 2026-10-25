@@ -13,7 +13,7 @@ import {
 import {
   callOpenAiText,
   getOpenAiApiKey,
-  OPENAI_MODEL_LEGACY,
+  OPENAI_MODEL_DEFAULT,
   openAiErrorMessage,
 } from '@/lib/openAiClient';
 
@@ -387,9 +387,7 @@ function parseAiJsonPayload(raw: string): { description: string; title: string |
 }
 
 /**
- * Opis ogłoszenia idzie od razu na gpt-4o-mini.
- * gpt-5-mini na tym projekcie OpenAI zwraca 403, a próba + dociąganie długości
- * przekraczały 60 s i nginx ucinał odpowiedź (aplikacja: „Nie udało się wygenerować opisu GPT”).
+ * Opis ogłoszenia: gpt-6-luna bez rozumowania (szybko, ~1 s/tys. znaków), awaryjnie gpt-4o-mini.
  * Mocniejszy model tylko gdy OPENAI_LISTING_REWRITE_MODEL jest ustawiony jawnie.
  */
 export function resolveListingDescriptionModel(hasNotes: boolean): string {
@@ -397,13 +395,13 @@ export function resolveListingDescriptionModel(hasNotes: boolean): string {
     return (
       process.env.OPENAI_LISTING_REWRITE_MODEL?.trim() ||
       process.env.OPENAI_LISTING_MODEL?.trim() ||
-      OPENAI_MODEL_LEGACY
+      OPENAI_MODEL_DEFAULT
     );
   }
   return (
     process.env.OPENAI_LISTING_CHEAP_MODEL?.trim() ||
     process.env.OPENAI_LISTING_MODEL?.trim() ||
-    OPENAI_MODEL_LEGACY
+    OPENAI_MODEL_DEFAULT
   );
 }
 
@@ -429,6 +427,7 @@ async function expandDescriptionOnce(params: {
       model: params.model,
       skipReasoningFallback: true,
       logPrefix: 'listing-description-ai-expand',
+      feature: 'listing-description',
       maxOutputTokens: maxTokensForLength(Math.min(1600, missing + 400)),
       json: true,
       system: `Rozszerz opis nieruchomości do wymaganej długości. Zwróć JSON {"description":"pełny opis","title":null}.
@@ -507,6 +506,7 @@ export async function generateListingDescriptionWithGpt(
     skipReasoningFallback: true,
     json: true,
     logPrefix: 'listing-description-ai',
+    feature: 'listing-description',
   });
 
   let { description, title } = parseAiJsonPayload(text);

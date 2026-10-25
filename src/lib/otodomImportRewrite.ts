@@ -332,6 +332,19 @@ function validateAiOutput(title: string, descriptionHtml: string, sourcePlain: s
   return null;
 }
 
+const IMPORT_REWRITE_SCHEMA = {
+  name: 'import_rewrite',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['title', 'descriptionHtml'],
+    properties: {
+      title: { type: 'string', description: 'Tytuł oferty, do 90 znaków.' },
+      descriptionHtml: { type: 'string', description: 'Opis w HTML (p, ul, li, strong).' },
+    },
+  },
+};
+
 async function rewriteWithOpenAI(
   draft: OtodomImportDraft,
   apiKey: string,
@@ -352,14 +365,12 @@ async function rewriteWithOpenAI(
 - Zachowaj WSZYSTKIE fakty: metraże, pokoje, wyposażenie, remonty, komunikacja, sklepy, place zabaw, stan prawny.`
     : `- Ton biura nieruchomości; bez ceny głównej w tekście.`;
 
-  const prompt = `Przepisz tytuł i opis ogłoszenia importowanego z portalu w tonie profesjonalnego agenta.
+  // Stałe reguły idą w instrukcjach systemowych (OpenAI cache'uje powtarzalny początek — taniej i szybciej),
+  // a w treści zapytania tylko dane konkretnego ogłoszenia.
+  const systemPrompt = `Redagujesz ogłoszenia nieruchomości po polsku jako agent biura. Nigdy nie używasz języka właściciela.
+Przepisujesz tytuł i opis ogłoszenia importowanego z portalu w tonie profesjonalnego agenta.
 
-TRANSAKCJA: ${txPhrase}
-LOKALIZACJA: ${draft.city}, ${draft.district || ''}
-Metraż: ${draft.area ?? '—'} m² · Pokoje: ${draft.rooms ?? '—'} · Piętro: ${draft.floor ?? '—'}/${draft.totalFloors ?? '—'}
-Atuty (pomocniczo): ${amenities}
-
-STRUKTURA HTML (p, ul, li, strong):
+STRUKTURA HTML opisu (tylko znaczniki p, ul, li, strong):
 1. Wstęp agenta (Prezentujemy Państwu…)
 2. Opis lokalu i układu (lista pomieszczeń jeśli są w źródle)
 3. Wyposażenie i stan
@@ -367,16 +378,24 @@ STRUKTURA HTML (p, ul, li, strong):
 5. Stan prawny
 6. Zaproszenie do kontaktu i prezentacji
 
-TEKST ŹRÓDŁOWY (tylko fakty — przepisz, nie kopiuj):
-${plain || '(brak)'}
-
+ZASADY:
 ${voiceRules}
+- Tytuł: konkretny, do 90 znaków, bez wykrzykników i bez ceny.
+- Bez numerów telefonów, adresów e-mail i nazw innych biur.
+- Pisz poprawną polszczyzną z polskimi znakami.`;
 
-JSON: {"title":"...","descriptionHtml":"..."}`;
+  const prompt = `TRANSAKCJA: ${txPhrase}
+LOKALIZACJA: ${draft.city}, ${draft.district || ''}
+Metraż: ${draft.area ?? '—'} m² · Pokoje: ${draft.rooms ?? '—'} · Piętro: ${draft.floor ?? '—'}/${draft.totalFloors ?? '—'}
+Atuty (pomocniczo): ${amenities}
+
+TEKST ŹRÓDŁOWY (tylko fakty — przepisz, nie kopiuj):
+${plain || '(brak)'}`;
 
   let lastReason = 'nieznany błąd';
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  // Ścisły format odpowiedzi eliminuje błędy parsowania — wystarczą dwie próby (druga z uwagami walidatora).
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const userContent =
         attempt > 0
@@ -385,13 +404,14 @@ JSON: {"title":"...","descriptionHtml":"..."}`;
       const { text: raw } = await callOpenAiText({
         apiKey,
         model: resolveOpenAiModel('OPENAI_OTODOM_MODEL'),
-        system:
-          'Redagujesz ogłoszenia nieruchomości po polsku jako agent biura. Nigdy nie używasz języka właściciela. Zwracasz wyłącznie JSON.',
+        system: systemPrompt,
         user: userContent,
         maxOutputTokens: 4000,
-        temperature: attempt === 0 ? 0.72 : attempt === 1 ? 0.58 : 0.45,
-        json: true,
+        temperature: attempt === 0 ? 0.72 : 0.5,
+        jsonSchema: IMPORT_REWRITE_SCHEMA,
+        reasoningEffort: (process.env.OPENAI_REWRITE_REASONING?.trim() as 'none' | 'low' | 'medium') || 'low',
         logPrefix: 'otodom-import',
+        feature: 'import-rewrite',
       });
 
       const parsed = JSON.parse(raw) as { title?: string; descriptionHtml?: string };

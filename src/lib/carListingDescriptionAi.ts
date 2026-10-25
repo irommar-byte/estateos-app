@@ -154,6 +154,7 @@ async function expandCarDescriptionOnce(params: {
       model: params.model,
       skipReasoningFallback: true,
       logPrefix: "car-listing-description-ai-expand",
+      feature: "car-description",
       maxOutputTokens: maxTokensForLength(Math.min(1200, missing + 200)),
       system: `Dopisz brakujące fakty do opisu pojazdu. Zwróć CAŁY opis. Cel: ${params.targetLength} znaków (±50). Bez wody i powtórzeń. ${
         params.useEmojis ? "Zachowaj oszczędne emoji." : "Bez emoji."
@@ -208,6 +209,7 @@ export async function generateCarListingDescriptionWithGpt(
     maxOutputTokens: maxTokensForLength(targetLength),
     skipReasoningFallback: true,
     logPrefix: "car-listing-description-ai",
+    feature: "car-description",
   });
 
   if (!text || text.length < 80) {
