@@ -29,9 +29,12 @@ function base64UrlToBytes(value: string) {
 export default function ClientPortalSetupPrompt({
   token,
   deferUntilReady = false,
+  forceShow = false,
 }: {
   token: string;
   deferUntilReady?: boolean;
+  /** pokaż mimo wcześniejszego „przypomnij później” (np. pierwsze wejście z linku od agenta) */
+  forceShow?: boolean;
 }) {
   const [visible, setVisible] = useState(false);
   const [installed, setInstalled] = useState(false);
@@ -138,7 +141,7 @@ export default function ClientPortalSetupPrompt({
     const pushPending =
       "Notification" in window && Notification.permission !== "granted" && standaloneNow;
     const timer =
-      dismissedRecently && !pushPending ? null : window.setTimeout(() => setVisible(true), 700);
+      dismissedRecently && !pushPending && !forceShow ? null : window.setTimeout(() => setVisible(true), 700);
 
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();
@@ -173,7 +176,7 @@ export default function ClientPortalSetupPrompt({
     };
     // Prompt jest inicjalizowany jeden raz dla danego panelu.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dismissedKey, deferUntilReady]);
+  }, [dismissedKey, deferUntilReady, forceShow]);
 
   if (!visible) return null;
 
@@ -221,7 +224,7 @@ export default function ClientPortalSetupPrompt({
     notifyState === "enabled" && (installed || !guide.pushLockedUntilStandalone);
 
   return (
-    <section className="relative overflow-hidden rounded-[1.45rem] border border-emerald-400/25 bg-gradient-to-br from-emerald-500/8 via-[var(--eos-card)] to-sky-500/8 p-4 shadow-[0_12px_36px_rgba(16,185,129,0.08)] sm:p-5">
+    <section id="portal-install" className="relative scroll-mt-24 overflow-hidden rounded-[1.45rem] border border-emerald-400/25 bg-gradient-to-br from-emerald-500/8 via-[var(--eos-card)] to-sky-500/8 p-4 shadow-[0_12px_36px_rgba(16,185,129,0.08)] sm:p-5">
       <button
         type="button"
         onClick={dismiss}
@@ -352,16 +355,16 @@ export default function ClientPortalSetupPrompt({
         </p>
       ) : null}
 
-      {allDone ? null : (
+      {allDone || !surface.startsWith("ios") ? null : (
         <div className="mt-4 rounded-2xl bg-[#141416] px-3 py-3.5 text-center">
           <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/55">Albo gotowa aplikacja</p>
           <p className="mt-1.5 text-xs leading-relaxed text-white/80">
             Pobierz EstateOS z App Store. Tam też włączysz powiadomienia — bez dodawania znaczka strony.
           </p>
           <div className="mt-3">
-            <AppStoreBadgeLink compact androidComingSoon label="Pobierz EstateOS w App Store" />
+            <AppStoreBadgeLink compact appleOnly label="Pobierz EstateOS w App Store" />
           </div>
-          {surface.startsWith("ios") ? (
+          {surface === "ios-safari" ? (
             <button
               type="button"
               onClick={() => {

@@ -97,7 +97,7 @@ import {
 import { buildClientVoice } from '@/lib/crm/clientVoice';
 import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { qrSvg } from '@/lib/qrSvg';
-import { ensureClientInviteCode, inviteDeepLink } from '@/lib/crm/clientInviteCode';
+import { ensureClientInvite, inviteLink } from '@/lib/crm/clientInviteCode';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -660,7 +660,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     salutation: viewer.role === 'partner' ? null : client.salutation,
     agentName,
   });
-  const appInviteCode = await ensureClientInviteCode(
+  const appInvite = await ensureClientInvite(
     client.id,
     viewer.role === 'partner' ? viewer.companionId : null,
   ).catch(() => null);
@@ -696,8 +696,13 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       salutation: client.salutation,
       permissions,
       companions,
-      appInvite: appInviteCode
-        ? { code: appInviteCode, link: inviteDeepLink(appInviteCode), qrSvg: qrSvg(inviteDeepLink(appInviteCode)) }
+      appInvite: appInvite
+        ? {
+            code: appInvite.code,
+            link: inviteLink(appInvite),
+            expiresAt: appInvite.expiresAt,
+            qrSvg: qrSvg(inviteLink(appInvite)),
+          }
         : null,
       searchPolygon: parseSearchPolygon(client.buyerPreference?.searchPolygon),
       seller,

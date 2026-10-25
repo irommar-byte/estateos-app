@@ -11,7 +11,7 @@ import {
   revokePortalCompanion,
 } from '@/lib/crm/portalAccess';
 import { qrSvg } from '@/lib/qrSvg';
-import { ensureClientInviteCode, inviteDeepLink, regenerateClientInviteCode } from '@/lib/crm/clientInviteCode';
+import { ensureClientInvite, inviteLink, regenerateClientInvite } from '@/lib/crm/clientInviteCode';
 import {
   SHOWING_FEEDBACK_TAGS,
   computeNetProceeds,
@@ -79,7 +79,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
     take: 5,
     select: { id: true, title: true, createdAt: true, metadata: true },
   });
-  const inviteCode = await ensureClientInviteCode(client.id).catch(() => null);
+  const invite = await ensureClientInvite(client.id).catch(() => null);
   const finance = parseSellerFinance(client.sellerFinance);
   const listPrice = Number(client.linkedOffer?.price || 0);
   const documents = await loadClientDocuments(client.id, client.type).catch(() => []);
@@ -91,8 +91,14 @@ export async function GET(req: Request, ctx: RouteCtx) {
       documentTemplates: await listDocumentTemplates(agencyUserId),
       permissions: parsePortalPermissions(client.portalPermissions),
       portalUrl: client.portalToken ? buildPortalUrl(client.portalToken) : null,
-      appInvite: inviteCode
-        ? { code: inviteCode, link: inviteDeepLink(inviteCode), qrSvg: qrSvg(inviteDeepLink(inviteCode)) }
+      appInvite: invite
+        ? {
+            code: invite.code,
+            link: inviteLink(invite),
+            expiresAt: invite.expiresAt,
+            qrSvg: qrSvg(inviteLink(invite)),
+            portalLink: client.portalToken ? buildPortalUrl(client.portalToken) : null,
+          }
         : null,
       companions: companions.map((c) => ({
         id: c.id,
@@ -153,8 +159,11 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   if (action === 'regenerate_invite') {
-    const code = await regenerateClientInviteCode(client.id);
-    return NextResponse.json({ success: true, appInvite: { code, link: inviteDeepLink(code) } });
+    const invite = await regenerateClientInvite(client.id);
+    return NextResponse.json({
+      success: true,
+      appInvite: { code: invite.code, link: inviteLink(invite), expiresAt: invite.expiresAt, qrSvg: qrSvg(inviteLink(invite)) },
+    });
   }
 
   if (action === 'revoke_companion') {

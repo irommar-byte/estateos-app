@@ -31,6 +31,8 @@ type Props = {
   androidBetaBadge?: string;
   showAndroidBetaHint?: boolean;
   androidBetaHint?: string;
+  /** Tylko App Store — bez znaczka Google Play (np. panel klienta na iPhonie). */
+  appleOnly?: boolean;
 };
 
 export default function AppStoreBadgeLink({
@@ -44,6 +46,7 @@ export default function AppStoreBadgeLink({
   androidBetaBadge = "Beta",
   showAndroidBetaHint = false,
   androidBetaHint = "",
+  appleOnly = false,
 }: Props) {
   const [appleBadgeError, setAppleBadgeError] = useState(false);
   const [googleBadgeError, setGoogleBadgeError] = useState(false);
@@ -153,7 +156,7 @@ export default function AppStoreBadgeLink({
             />
           )}
         </a>
-        {androidSlot}
+        {appleOnly ? null : androidSlot}
       </div>
       {useAndroidBeta && showAndroidBetaHint && androidBetaHint ? (
         <p className="max-w-md text-center text-[11px] leading-relaxed text-white/55 sm:text-xs">

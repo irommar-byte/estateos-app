@@ -1,18 +1,22 @@
 import { NextResponse } from 'next/server';
-import { inviteRateLimited, redeemClientInviteCode } from '@/lib/crm/clientInviteCode';
+import { parseInviteLink, redeemInviteCode, redeemInviteLinkKey, requestIp } from '@/lib/crm/clientInviteCode';
 
 export const dynamic = 'force-dynamic';
 
-/** Wejście klienta do aplikacji: 6-cyfrowy kod (z QR albo wpisany) → token panelu. */
+/**
+ * Wejście klienta do aplikacji → token panelu.
+ * Body: { code: "123456" } (wpisane) albo { link: "https://estateos.pl/app/kod/…" } (zeskanowany QR).
+ */
 export async function POST(req: Request) {
-  const ip = (req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown').split(',')[0].trim();
-  if (inviteRateLimited(ip)) {
-    return NextResponse.json({ error: 'Zbyt wiele prób. Spróbuj za kilka minut.' }, { status: 429 });
-  }
+  const ip = requestIp(req.headers);
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-  const result = await redeemClientInviteCode(String(body.code || ''));
-  if (!result) {
-    return NextResponse.json({ error: 'Nieprawidłowy kod. Sprawdź cyfry albo poproś agenta o nowy.' }, { status: 404 });
+  const fromLink = parseInviteLink(String(body.link || ''));
+  const linkKey = String(body.linkKey || '') || fromLink.linkKey;
+  const result = linkKey
+    ? await redeemInviteLinkKey(linkKey, ip)
+    : await redeemInviteCode(String(body.code || fromLink.code || ''), ip);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error, reason: result.reason }, { status: result.status });
   }
   return NextResponse.json({ success: true, portalToken: result.portalToken });
 }

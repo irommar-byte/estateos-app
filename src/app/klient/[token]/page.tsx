@@ -133,7 +133,7 @@ type PortalData = {
     documents?: boolean;
   };
   companions?: PortalCompanion[];
-  appInvite?: { code: string; link: string; qrSvg?: string } | null;
+  appInvite?: { code: string; link: string; qrSvg?: string; expiresAt?: string | null } | null;
   searchPolygon?: unknown;
   seller?: SellerPortalV2 | null;
   documents?: PortalDocument[];
@@ -338,6 +338,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [phrasePrefill, setPhrasePrefill] = useState<string | null>(null);
   const [fromSzukam, setFromSzukam] = useState(false);
   const [welcomeEmailSent, setWelcomeEmailSent] = useState(false);
+  const [fromInvite, setFromInvite] = useState(false);
+  const [installRequested, setInstallRequested] = useState(false);
   const [releaseAttempted, setReleaseAttempted] = useState(false);
   const [firstOfferPendingAgent, setFirstOfferPendingAgent] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
@@ -378,6 +380,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     setPhrasePrefill(query.get("phrase"));
     setFromSzukam(query.get("from") === "szukam");
     setWelcomeEmailSent(query.get("mail") === "1");
+    setFromInvite(query.get("witaj") === "1");
   }, []);
 
   useEffect(() => {
@@ -1125,6 +1128,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </div>
         </div>
 
+        {token && !isPartner ? (
+          <ClientPortalSetupPrompt
+            token={token}
+            deferUntilReady={fromSzukam && !onboardingDismissed}
+            forceShow={fromInvite || installRequested}
+          />
+        ) : null}
+
         <PortalGroup
           id="journey"
           title={portal.type === "BUYER" ? "Droga do kluczy" : "Droga do aktu"}
@@ -1425,7 +1436,16 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           open={groups.isOpen("more")}
           onToggle={() => groups.setOpen("more", !groups.isOpen("more"))}
         >
-          {portal.appInvite ? <PortalAppInvite invite={portal.appInvite} /> : null}
+          {portal.appInvite ? (
+          <PortalAppInvite invite={portal.appInvite} token={token || undefined} onShowInstall={
+            isPartner
+              ? undefined
+              : () => {
+                  setInstallRequested(true);
+                  window.setTimeout(() => focusAnchor("portal-install"), 900);
+                }
+          } />
+        ) : null}
 
           {token && !isPartner && (portal.type === "BUYER" ? portal.purchase?.phase === "closed" : listingSold) ? (
             <PortalReview
@@ -1463,9 +1483,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           />
         ) : null}
 
-        {token && !isPartner ? (
-          <ClientPortalSetupPrompt token={token} deferUntilReady={fromSzukam && !onboardingDismissed} />
-        ) : null}
 
 
         <PortalLuxFooter agencyName={portal.agencyName} partner={isPartner} />

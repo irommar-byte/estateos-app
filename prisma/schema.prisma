@@ -1824,13 +1824,28 @@ model ClientAppDevice {
 model ClientInviteCode {
   id          Int       @id @default(autoincrement())
   code        String    @unique @db.Char(6)
+  /// Długi, niezgadywalny klucz do linku w QR (/app/kod/<linkKey>). Ważny do odwołania.
+  linkKey     String?   @unique @db.VarChar(40)
   clientId    Int
   companionId Int?
   createdAt   DateTime  @default(now())
+  /// Do kiedy działa wpisywany 6-cyfrowy kod (null = createdAt + 48 h).
+  expiresAt   DateTime?
   redeemedAt  DateTime?
   revokedAt   DateTime?
 
   @@index([clientId])
+}
+
+/// Próby wejścia kodem — limit wspólny dla wszystkich procesów serwera.
+model ClientInviteAttempt {
+  id        Int      @id @default(autoincrement())
+  ipHash    String   @db.Char(64)
+  success   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([ipHash, createdAt])
+  @@index([createdAt])
 }
 
 model ClientDocumentItem {
