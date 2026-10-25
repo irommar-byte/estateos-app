@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { logEvent } from '@/lib/observability';
-import { addExternalPortalListing } from '@/lib/crm/sellerMarketing';
+import { addExternalPortalListing, loadAgentFacebookDestinations } from '@/lib/crm/sellerMarketing';
 import { isFacebookPostPermalink } from '@/lib/crm/marketingChannel';
 import { resolveOfferImageUrls } from '@/lib/offers/primaryImage';
 import { absolutizeMediaUrl, resolvePublicAppOrigin } from '@/lib/offerShareLanding';
@@ -276,6 +276,27 @@ export async function removeFacebookGroup(userId: number, id: number) {
  * Grupy dla danego ogłoszenia: najpierw z miasta ogłoszenia, potem od największych.
  * Grupy z historii (stary sposób zapisu) przenosimy raz do listy biura.
  */
+async function importHistoryGroups(scopeKey: string, userId: number) {
+  const any = await prisma.marketingFacebookGroup.count({ where: { scopeKey } });
+  if (any) return;
+  const history = await loadAgentFacebookDestinations(userId).catch(() => []);
+  for (const dest of history.slice(0, 60)) {
+    const url = normalizeGroupUrl(dest.groupUrl || '');
+    if (!url) continue;
+    await prisma.marketingFacebookGroup
+      .create({
+        data: {
+          scopeKey,
+          name: dest.groupName.slice(0, 191),
+          url,
+          createdById: userId,
+          lastPostedAt: dest.lastPostedAt ? new Date(dest.lastPostedAt) : null,
+        },
+      })
+      .catch(() => null);
+  }
+}
+
 async function listGroupsForOffer(scopeKey: string, city: string | null) {
   const rows = await prisma.marketingFacebookGroup.findMany({ where: { scopeKey, active: true }, take: 200 });
   const c = String(city || '').toLowerCase();
@@ -792,6 +813,7 @@ export async function promotionOverview(userId: number, offerId: number | null) 
     ? await prisma.offer.findFirst({ where: { id: offerId, userId }, select: { id: true, city: true, title: true } })
     : null;
   if (offer) await refreshPageStats({ scopeKey, offerId: offer.id, limit: 5 }).catch(() => null);
+  await importHistoryGroups(scopeKey, userId).catch(() => null);
   const groups = await listGroupsForOffer(scopeKey, offer?.city || null);
   const reach = offer ? await offerReach(offer.id, scopeKey) : null;
   const postedGroupNames = new Set((reach?.items || []).filter((i) => i.channel === 'fb_group').map((i) => i.name));
