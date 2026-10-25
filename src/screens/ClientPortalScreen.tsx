@@ -28,7 +28,7 @@ import {
   resolveAssistantPulse,
   type OfferStackId,
 } from '../lib/clientPortalBoard';
-import { rememberPortalSession } from '../lib/clientPortalSession';
+import { forgetPortalSession, rememberPortalSession } from '../lib/clientPortalSession';
 import { useAppActiveInterval } from '../hooks/useAppActivePoll';
 import {
   getClientPortalPushPermissionStatus,
@@ -1044,7 +1044,38 @@ export default function ClientPortalScreen() {
             <Ionicons name="chevron-forward" size={18} color="#8C877D" />
           </Pressable>
 
-          <Text style={{ textAlign: 'center', color: lp.muted, fontSize: 12, marginTop: 22 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 18, marginTop: 26 }}>
+            {!user ? (
+              <Pressable onPress={() => openPortalAuth('login')} hitSlop={8}>
+                <Text style={{ color: lp.accent, fontSize: 13, fontWeight: '700' }}>Zaloguj się jako agent</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              hitSlop={8}
+              onPress={() =>
+                Alert.alert(
+                  'Wyjść z panelu na tym telefonie?',
+                  'Aplikacja przestanie otwierać ten panel przy starcie. Wrócisz do niego linkiem od agenta albo kodem.',
+                  [
+                    { text: 'Anuluj', style: 'cancel' },
+                    {
+                      text: 'Wyjdź',
+                      style: 'destructive',
+                      onPress: () => {
+                        void forgetPortalSession(portalToken).then(() => {
+                          navigation.navigate('MainTabs', { screen: 'Profil' });
+                        });
+                      },
+                    },
+                  ],
+                )
+              }
+            >
+              <Text style={{ color: lp.muted, fontSize: 13, fontWeight: '700' }}>Wyjdź z panelu</Text>
+            </Pressable>
+          </View>
+
+          <Text style={{ textAlign: 'center', color: lp.muted, fontSize: 12, marginTop: 14 }}>
             {lux.agencyName} · panel klienta EstateOS{isPartner ? ' · widok drugiej osoby' : ''}
           </Text>
         </View>

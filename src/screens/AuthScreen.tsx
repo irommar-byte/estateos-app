@@ -21,6 +21,7 @@ import {
 import { useAuthStore } from '../store/useAuthStore';
 import { Ionicons } from '@expo/vector-icons';
 import { INVITE_ONLY_ENTRY } from '../lib/entryGate';
+import { openClientCodeEntry } from '../lib/clientCodeEntry';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as FileSystem from 'expo-file-system';
@@ -1428,6 +1429,36 @@ export default function AuthScreen({
               </Text>
             </Text>
           </Pressable>
+          ) : null}
+
+          {isLogin ? (
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                openClientCodeEntry();
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => ({
+                marginTop: 22,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                padding: 14,
+                borderRadius: 16,
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: theme.subtitle,
+                opacity: pressed ? 0.75 : 1,
+              })}
+            >
+              <Ionicons name="key-outline" size={20} color={theme.text} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: 15, fontWeight: '700' }}>Mam kod od agenta</Text>
+                <Text style={{ color: theme.subtitle, fontSize: 12, marginTop: 2 }}>
+                  Otwórz swój panel klienta — bez zakładania konta
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.subtitle} />
+            </Pressable>
           ) : null}
 
         </ScrollView>

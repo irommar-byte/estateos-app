@@ -14,7 +14,8 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { extractInviteCode, redeemClientInviteCode } from '../services/clientPortalService';
+import { extractInviteCode, isInviteLink, redeemClientInviteCode, redeemClientInviteLink } from '../services/clientPortalService';
+import { getActivePortalToken, listPortalSessions } from '../lib/clientPortalSession';
 import { extractPortalTokenFromDeeplink } from '../utils/deeplinkParse';
 
 type Mode = 'choose' | 'client' | 'scan';
@@ -22,19 +23,38 @@ type Mode = 'choose' | 'client' | 'scan';
 const ACCENT = '#10b981';
 
 /**
- * Ekran wejścia (gdy nikt nie jest zalogowany):
- *  „Jestem agentem” → zwykłe logowanie (bez rejestracji),
- *  „Jestem klientem” → skan QR od agenta albo 6-cyfrowy kod.
+ * Wejście klienta: skan QR od agenta albo 6-cyfrowy kod.
+ *  • jako pełny ekran (tryb „tylko na zaproszenie”, INVITE_ONLY_ENTRY) — z wyborem agent/klient,
+ *  • jako okno „Mam kod od agenta” (domyślnie) — startMode="client" + onClose; aplikacja działa normalnie.
  */
 export default function EntryGateScreen({
   onAgent,
   onClientToken,
+  startMode = 'choose',
+  onClose,
 }: {
-  onAgent: () => void;
+  onAgent?: () => void;
   onClientToken: (portalToken: string) => void;
+  startMode?: 'choose' | 'client';
+  onClose?: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const [mode, setMode] = useState<Mode>('choose');
+  const [mode, setMode] = useState<Mode>(startMode);
+  const [lastSession, setLastSession] = useState<{ token: string; label: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const [active, sessions] = await Promise.all([getActivePortalToken(), listPortalSessions()]);
+      const token = active || sessions[0]?.token || null;
+      if (!alive || !token) return;
+      const row = sessions.find((s) => s.token === token);
+      setLastSession({ token, label: [row?.clientName, row?.agencyName].filter(Boolean).join(' · ') || 'Twój panel' });
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -69,8 +89,29 @@ export default function EntryGateScreen({
     }
   };
 
+  const redeemLink = async (raw: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      const portalToken = await redeemClientInviteLink(raw);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      onClientToken(portalToken);
+    } catch (e) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setError(e instanceof Error ? e.message : 'Nie udało się. Spróbuj ponownie.');
+      setMode('client');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onScanned = (raw: string) => {
     if (scannedRef.current || busy) return;
+    if (isInviteLink(raw)) {
+      scannedRef.current = true;
+      void redeemLink(raw);
+      return;
+    }
     const portalToken = extractPortalTokenFromDeeplink(raw);
     if (portalToken) {
       scannedRef.current = true;
@@ -157,7 +198,7 @@ export default function EntryGateScreen({
           <Pressable
             onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onAgent();
+              onAgent?.();
             }}
             style={({ pressed }) => [styles.option, pressed && styles.pressed]}
           >
@@ -175,12 +216,26 @@ export default function EntryGateScreen({
         </View>
       ) : (
         <View style={styles.body}>
-          <Pressable onPress={() => { setMode('choose'); setError(''); setCode(''); }} hitSlop={12} style={styles.back}>
-            <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.7)" />
-            <Text style={styles.backText}>Wróć</Text>
+          <Pressable
+            onPress={() => {
+              if (startMode === 'client' && onClose) {
+                onClose();
+                return;
+              }
+              setMode('choose');
+              setError('');
+              setCode('');
+            }}
+            hitSlop={12}
+            style={styles.back}
+          >
+            <Ionicons name={startMode === 'client' ? 'close' : 'chevron-back'} size={20} color="rgba(255,255,255,0.7)" />
+            <Text style={styles.backText}>{startMode === 'client' ? 'Zamknij' : 'Wróć'}</Text>
           </Pressable>
           <Text style={styles.title}>Kod od agenta</Text>
-          <Text style={styles.subtitle}>Wpisz 6 cyfr albo zeskanuj kod QR z wiadomości.</Text>
+          <Text style={styles.subtitle}>
+            Wpisz 6 cyfr albo zeskanuj kod QR. Najprościej: otwórz link z wiadomości od agenta — panel otworzy się sam.
+          </Text>
 
           <Pressable onPress={() => inputRef.current?.focus()} style={styles.codeRow}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -213,6 +268,22 @@ export default function EntryGateScreen({
             <Ionicons name="scan-outline" size={20} color="#fff" />
             <Text style={styles.scanBtnText}>Zeskanuj kod QR</Text>
           </Pressable>
+
+          {lastSession ? (
+            <Pressable
+              onPress={() => onClientToken(lastSession.token)}
+              style={({ pressed }) => [styles.lastBtn, pressed && styles.pressed]}
+            >
+              <Ionicons name="time-outline" size={18} color="#000" />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.lastTitle}>Wróć do ostatniego panelu</Text>
+                <Text style={styles.lastSub} numberOfLines={1}>
+                  {lastSession.label}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(0,0,0,0.5)" />
+            </Pressable>
+          ) : null}
         </View>
       )}
     </KeyboardAvoidingView>
@@ -274,6 +345,18 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.25)',
   },
   scanBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  lastBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+  },
+  lastTitle: { color: '#000', fontSize: 15, fontWeight: '700' },
+  lastSub: { color: 'rgba(0,0,0,0.55)', fontSize: 12, marginTop: 1 },
   scanTop: { position: 'absolute', left: 20, right: 20, flexDirection: 'row', justifyContent: 'flex-end' },
   roundBtn: {
     width: 40,

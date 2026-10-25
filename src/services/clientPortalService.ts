@@ -469,6 +469,27 @@ export async function redeemClientInviteCode(code: string): Promise<string> {
   return String(data.portalToken);
 }
 
+/** Zeskanowany QR / otwarty link /app/kod/… → token panelu (serwer sam wybierze klucz albo cyfry). */
+export async function redeemClientInviteLink(link: string): Promise<string> {
+  const { response, data } = await mobileFetchJson<{ portalToken?: string; error?: string }>(
+    `${API_URL}/api/crm/client-portal/redeem`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ link: String(link || '').trim() }),
+    },
+  );
+  if (!response.ok || !data?.portalToken) {
+    throw new Error(data?.error || `Nie udało się otworzyć panelu (błąd ${response.status}). Spróbuj ponownie.`);
+  }
+  return String(data.portalToken);
+}
+
+/** Czy tekst wygląda na link zaproszenia EstateOS. */
+export function isInviteLink(raw: string): boolean {
+  return /\/app\/kod\/[^/?#\s]+/i.test(String(raw || ''));
+}
+
 /** Wyciąga 6-cyfrowy kod z linku zaproszenia (QR) albo z wpisanego tekstu. */
 export function extractInviteCode(raw: string): string | null {
   const text = String(raw || '').trim();

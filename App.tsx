@@ -137,7 +137,8 @@ import { extractIdFromDeeplink, extractPortalTokenFromDeeplink } from './src/uti
 import { getActivePortalToken, rememberPortalSession } from './src/lib/clientPortalSession';
 import EntryGateScreen from './src/screens/EntryGateScreen';
 import { INVITE_ONLY_ENTRY } from './src/lib/entryGate';
-import { extractInviteCode, redeemClientInviteCode } from './src/services/clientPortalService';
+import { redeemClientInviteLink } from './src/services/clientPortalService';
+import ClientCodeHost from './src/components/clientPortal/ClientCodeHost';
 import { registerClientPortalPushIfPossible } from './src/hooks/usePushNotifications';
 import { isClientPortalPushKind } from './src/lib/clientPortalPushTarget';
 import {
@@ -1834,6 +1835,10 @@ export default function App() {
   const authUser = useAuthStore((state) => state.user);
   const [entryGate, setEntryGate] = useState<'checking' | 'show' | 'hidden'>(INVITE_ONLY_ENTRY ? 'checking' : 'hidden');
   const clientAutoOpenRef = useRef(false);
+  /** Karta „Masz kod od agenta?” — tylko przy pierwszym starcie bez konta i bez zapamiętanego panelu. */
+  const [welcomeEligible, setWelcomeEligible] = useState(false);
+  /** wymusza ponowne sprawdzenie auto-otwarcia panelu, gdy token pojawi się po splashu */
+  const [autoOpenTick, setAutoOpenTick] = useState(0);
   const autoOpenPortalTokenRef = useRef<string | null>(null);
   const pendingPushTargetRef = useRef<PushNavigationTarget | null>(null);
   const handledResponseKeysRef = useRef<Record<string, number>>({});
@@ -1892,14 +1897,12 @@ export default function App() {
     (url: string | null) => {
       if (!url) return;
 
-      if (/\/app\/kod\/\d{6}/.test(url)) {
-        const inviteCode = extractInviteCode(url);
-        if (inviteCode) {
-          void redeemClientInviteCode(inviteCode)
-            .then(openClientPortal)
-            .catch((e) => Alert.alert('Kod zaproszenia', e instanceof Error ? e.message : 'Nie udało się otworzyć panelu.'));
-          return;
-        }
+      if (/\/app\/kod\/[^/?#\s]+/i.test(url)) {
+        // Link z QR / wiadomości od agenta: serwer sam wybiera klucz (?k=) albo 6 cyfr.
+        void redeemClientInviteLink(url)
+          .then(openClientPortal)
+          .catch((e) => Alert.alert('Panel klienta', e instanceof Error ? e.message : 'Nie udało się otworzyć panelu.'));
+        return;
       }
 
       const estateAction = parseEstateDeeplinkAction(url);
@@ -1936,9 +1939,11 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (!INVITE_ONLY_ENTRY) return;
+    // Zalogowany: nic nie zasłaniamy. Bez konta: ostatni panel klienta otwiera się sam;
+    // pełnoekranowy wybór agent/klient tylko w trybie „na zaproszenie” (INVITE_ONLY_ENTRY).
     if (authUser) {
       setEntryGate('hidden');
+      setWelcomeEligible(false);
       return;
     }
     let alive = true;
@@ -1958,10 +1963,16 @@ export default function App() {
         if (!clientAutoOpenRef.current) {
           clientAutoOpenRef.current = true;
           autoOpenPortalTokenRef.current = portalToken;
+          setAutoOpenTick((n) => n + 1);
         }
         return;
       }
-      setEntryGate('show');
+      if (INVITE_ONLY_ENTRY) {
+        setEntryGate('show');
+      } else {
+        setEntryGate('hidden');
+        setWelcomeEligible(true);
+      }
     })();
     return () => {
       alive = false;
@@ -1974,7 +1985,7 @@ export default function App() {
     autoOpenPortalTokenRef.current = null;
     const target: PushNavigationTarget = { screen: 'ClientPortal', params: { portalToken } };
     if (!navigateFromPushTarget(target)) pendingPushTargetRef.current = target;
-  }, [isSplashVisible, entryGate, navigateFromPushTarget]);
+  }, [isSplashVisible, entryGate, autoOpenTick, navigateFromPushTarget]);
 
   const handleNotificationResponse = useCallback(
     (response: Notifications.NotificationResponse | null) => {
@@ -2225,6 +2236,9 @@ export default function App() {
         {!isSplashVisible ? <AppRatingPromptHost /> : null}
         {!isSplashVisible ? <InvestorProUpsellHost /> : null}
         {!isSplashVisible ? <AgencyPendingGate /> : null}
+        {!isSplashVisible ? (
+          <ClientCodeHost onClientToken={openClientPortal} showWelcome={welcomeEligible && entryGate === 'hidden'} />
+        ) : null}
         {!isSplashVisible && entryGate === 'show' ? (
           <EntryGateScreen
             onAgent={() => {

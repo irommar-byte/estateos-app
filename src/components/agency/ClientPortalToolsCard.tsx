@@ -48,7 +48,7 @@ type Tools = {
   documentTemplates?: DocTemplate[];
   permissions: Record<string, boolean>;
   portalUrl: string | null;
-  appInvite: { code: string; link: string; qrSvg?: string } | null;
+  appInvite: { code: string; link: string; qrSvg?: string; expiresAt?: string | null; portalLink?: string | null } | null;
   companions: Array<{ id: number; name: string; lastSeenAt: string | null }>;
   ratings: Array<{
     matchId: number;
@@ -181,8 +181,12 @@ export default function ClientPortalToolsCard({
   const shareInvite = () => {
     if (!tools?.appInvite) return;
     const { code, link } = tools.appInvite;
+    // Działa na każdym telefonie i komputerze; aplikacja na iPhone'a to opcja, nie wymóg.
     void Share.share({
-      message: `Twój dostęp do aplikacji EstateOS: kod ${code}. Otwórz aplikację, wybierz „Jestem klientem” i wpisz kod — albo kliknij: ${link}`,
+      message:
+        `Twój panel klienta: ${link}\n` +
+        `Otwiera się na każdym telefonie i komputerze — możesz dodać go na ekran główny jak aplikację.\n` +
+        `Masz iPhone'a z aplikacją EstateOS? Wybierz „Mam kod od agenta” i wpisz ${code.slice(0, 3)} ${code.slice(3)}.`,
     });
   };
 
@@ -237,7 +241,11 @@ export default function ClientPortalToolsCard({
                     {tools.appInvite.code.slice(0, 3)} {tools.appInvite.code.slice(3)}
                   </Text>
                   <Text style={[styles.small, { color: colors.secondary }]}>
-                    Klient wybiera „Jestem klientem” i skanuje QR albo wpisuje kod.
+                    QR i link działają na każdym telefonie (bez aplikacji). Kod 6 cyfr — w aplikacji EstateOS na iPhonie
+                    {tools.appInvite.expiresAt
+                      ? `, ważny do ${new Date(tools.appInvite.expiresAt).toLocaleString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+                      : ''}
+                    .
                   </Text>
                   <View style={styles.btnRow}>
                     <Pressable onPress={shareInvite} style={[styles.btn, { backgroundColor: colors.text }]}>
@@ -246,7 +254,7 @@ export default function ClientPortalToolsCard({
                     </Pressable>
                     <Pressable
                       onPress={() =>
-                        Alert.alert('Nowy kod', 'Stary kod przestanie działać. Kontynuować?', [
+                        Alert.alert('Nowy dostęp', 'Stary kod i stary link z QR przestaną działać. Kontynuować?', [
                           { text: 'Anuluj', style: 'cancel' },
                           { text: 'Nowy kod', onPress: () => void act('invite', { action: 'regenerate_invite' }) },
                         ])

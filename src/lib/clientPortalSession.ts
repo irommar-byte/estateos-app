@@ -56,6 +56,15 @@ export async function getActivePortalToken(): Promise<string | null> {
   }
 }
 
+/** „Wyjdź z panelu na tym telefonie” — zapomina panel; aplikacja startuje dalej normalnie. */
+export async function forgetPortalSession(token: string): Promise<void> {
+  const normalized = normalizeToken(token);
+  if (!normalized) return;
+  const existing = await readSessions();
+  await writeSessions(existing.filter((row) => row.token !== normalized));
+  if ((await getActivePortalToken()) === normalized) await AsyncStorage.removeItem(ACTIVE_KEY);
+}
+
 export async function listPortalSessions(): Promise<StoredPortalSession[]> {
   return readSessions();
 }
