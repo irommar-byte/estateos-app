@@ -62,11 +62,13 @@ async function main() {
     const pin = await geocodeWarsawPlace({ street, neighborhood, district });
     await sleep(120);
     if (!pin) {
-      skipped.push(`#${row.id} ${row.city} · adres KEI: ${address} · nie znaleziono miejsca w Warszawie`);
+      skipped.push(`#${row.id} ${row.city} · adres KEI: ${address} · brak dzielnicy Warszawy w adresie`);
       continue;
     }
 
-    const place = titleCasePlace(neighborhood || district || '');
+    // Osiedle z KEI tylko wtedy, gdy mapa je potwierdziła albo ma litery spoza Latin-1 (uszkodzone migawki je gubiły).
+    const neighborhoodTrusted = Boolean(neighborhood) && (pin.neighborhoodVerified || /[ąćęłńśźż]/i.test(neighborhood));
+    const place = titleCasePlace((neighborhoodTrusted ? neighborhood : '') || district || '');
     const fixText = (text: string) => replacePlaceAfterWarsaw(replaceWrongCityInText(text, row.city), row.district, place);
     const title = fixText(String(row.title || ''));
     const description = row.description == null ? null : fixText(row.description);
@@ -75,7 +77,7 @@ async function main() {
 
     console.info(
       `#${row.id} ${row.city} → Warszawa / ${district || '(bez dzielnicy)'} · KEI: ${address}\n` +
-        `      pinezka: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)} (${pin.exact ? 'ulica' : 'okolica'})\n` +
+        `      pinezka: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)} (${pin.source === 'street' ? 'ulica' : pin.source === 'neighborhood' ? 'osiedle' : 'środek dzielnicy'})\n` +
         `      tytuł: ${title === row.title ? '(bez zmian) ' : ''}${title.slice(0, 90)}` +
         (descriptionChanged ? '\n      opis: poprawiony' : ''),
     );
@@ -88,7 +90,7 @@ async function main() {
           lat: pin.lat,
           lng: pin.lng,
           isExactLocation: pin.exact,
-          street: street ? titleCasePlace(street) : null,
+          street: street && pin.exact ? titleCasePlace(street) : null,
           ...(title && title !== row.title ? { title } : {}),
           ...(descriptionChanged ? { description } : {}),
           updatedAt: new Date(),
@@ -103,7 +105,7 @@ async function main() {
     for (const line of skipped) console.info(`  ${line}`);
   }
   console.info(
-    `\n[repair-kei-import-city] ${apply ? 'poprawiono' : 'do poprawy'}: ${fixed} ofert (pinezka na ulicy: ${exactPins}, w okolicy: ${fixed - exactPins})` +
+    `\n[repair-kei-import-city] ${apply ? 'poprawiono' : 'do poprawy'}: ${fixed} ofert (pinezka na ulicy: ${exactPins}, przybliżona: ${fixed - exactPins})` +
       (apply ? '.' : ' — uruchom z --apply, żeby zapisać.'),
   );
 }

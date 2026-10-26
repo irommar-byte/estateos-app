@@ -49,3 +49,8 @@ test('zepsute polskie litery w adresie KEI', () => {
   assert.equal(titleCasePlace('śródmieście północne'), 'Śródmieście Północne');
   assert.equal(titleCasePlace('praga-południe'), 'Praga-Południe');
 });
+
+test('stare adresy KEI bez polskich liter i z encjami HTML', () => {
+  assert.equal(repairKeiAddress('warszawa, śródmieście, ródmiecie pónocne, niecaa').split(', ')[1], 'śródmieście');
+  assert.equal(repairKeiAddress('warszawa, bielany, piaski, zgrupowania ak &quot;żmija&quot;'), 'warszawa, bielany, piaski, zgrupowania ak "żmija"');
+});
