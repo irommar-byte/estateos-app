@@ -1,1 +1,0 @@
-ALTER TABLE `Offer` ADD COLUMN IF NOT EXISTS `floorPlanExtraUrls` TEXT NULL;

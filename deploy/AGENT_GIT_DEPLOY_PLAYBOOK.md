@@ -1,5 +1,9 @@
 # Playbook agenta — Git, commit, push, deploy (OBOWIĄZKOWY)
 
+> **2026-10-26 — porządki:** kopie backendu `deploy/estateos-www-full/` i `deploy/estateos-www/` zostały usunięte z gałęzi aplikacji.
+> Zmiany serwera robimy wyłącznie w `/Users/marian/estateos-recovery-deploy` (gałąź `recovery-local-snapshot`).
+> Sekcje poniżej o mapowaniu `deploy/estateos-www-full/…` są historyczne. Stan sprzed porządków: gałąź `archive/mobile-przed-porzadkami-2026-10-26`.
+
 **Ten plik jest drogowskazem dla każdego agenta Cursor pracującego w tym repo.**  
 Przeczytaj go **przed** pierwszym `git commit`, `git push` lub deployem na VPS.  
 Nie informuj użytkownika, że „coś się rozjeżdża” — **pilnujesz tego sam**, według checklisty poniżej.

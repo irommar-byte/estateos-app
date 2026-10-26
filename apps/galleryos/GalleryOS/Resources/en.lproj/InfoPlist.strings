@@ -1,5 +1,0 @@
-"CFBundleDisplayName" = "GalleryOS™";
-"NSFaceIDUsageDescription" = "GalleryOS asks you to confirm before it shows the Hidden album.";
-"NSLocalNetworkUsageDescription" = "GalleryOS looks for your QNAP and other servers on your home network to sync your library.";
-"NSLocationWhenInUseUsageDescription" = "GalleryOS shows where you are on the map and gives directions to the places where your photos were taken.";
-"NSPhotoLibraryUsageDescription" = "GalleryOS shows your library of photos and videos and prepares it for syncing with the place you choose.";

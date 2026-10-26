@@ -1,6 +1,0 @@
-ALTER TABLE `User`
-  ADD COLUMN `companyAddress` VARCHAR(255) NULL,
-  ADD COLUMN `companyWebsite` VARCHAR(255) NULL,
-  ADD COLUMN `companyLogoUrl` VARCHAR(512) NULL,
-  ADD COLUMN `officePhone` VARCHAR(64) NULL,
-  ADD COLUMN `officeEmail` VARCHAR(191) NULL;
