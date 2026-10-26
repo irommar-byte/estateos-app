@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { replaceWrongCityInText } from '@/lib/importCityTextFix';
+import { replacePlaceAfterWarsaw, replaceWrongCityInText } from '@/lib/importCityTextFix';
+import { repairKeiAddress, titleCasePlace } from '@/lib/keiWarsawGeocode';
 import { pinKeiDraftToWarsaw, resolveWarsawDistrict } from '@/lib/keiAmerDistrict';
 
 test('tytuł: miejscownik, dopełniacz i mianownik zamienione na Warszawę', () => {
@@ -33,4 +34,18 @@ test('adres KEI w Warszawie wygrywa nawet z pinezką w Białymstoku', () => {
   const draft = pinKeiDraftToWarsaw({ city: 'Białystok', district: 'Centrum', lat: 53.132706, lng: 23.157434 }, { address: 'warszawa, wawer, międzylesie', district: '13' });
   assert.equal(draft.city, 'Warszawa');
   assert.equal(draft.district, 'Wawer');
+});
+
+test('osiedle wymyślone pod złe miasto zamienione na osiedle z KEI', () => {
+  assert.equal(replacePlaceAfterWarsaw('Na sprzedaż mieszkanie w Warszawie, Kamień - 38 m²', 'Kamień', 'Mirów'), 'Na sprzedaż mieszkanie w Warszawie, Mirów - 38 m²');
+  assert.equal(replacePlaceAfterWarsaw('Apartament w Warszawie, Kamieniu', 'Kamień', 'Mirów'), 'Apartament w Warszawie, Mirów');
+  assert.equal(replacePlaceAfterWarsaw('Kawalerka w Warszawie, Centrum', 'Centrum', 'Śródmieście Północne'), 'Kawalerka w Warszawie, Śródmieście Północne');
+  // „w centrum Warszawy” (bez przecinka) zostaje
+  assert.equal(replacePlaceAfterWarsaw('Mieszkanie w centrum Warszawy', 'Centrum', 'Solec'), 'Mieszkanie w centrum Warszawy');
+});
+
+test('zepsute polskie litery w adresie KEI', () => {
+  assert.equal(repairKeiAddress('warszawa, praga-po?udnie, grochów, garwoli?ska'), 'warszawa, praga-południe, grochów, garwoliska');
+  assert.equal(titleCasePlace('śródmieście północne'), 'Śródmieście Północne');
+  assert.equal(titleCasePlace('praga-południe'), 'Praga-Południe');
 });

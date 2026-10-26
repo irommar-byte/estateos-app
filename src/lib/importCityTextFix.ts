@@ -51,3 +51,19 @@ export function replaceWrongCityInText(text: string, wrongCity: string, target: 
   out = out.replace(new RegExp(`(?<!${L})${word(forms.nom)}(?!${L})`, 'gu'), target.nom);
   return out;
 }
+
+/**
+ * Po złym mieście AI dopisywało osiedle z tamtego miasta: „w Warszawie, Kamień”, „w Warszawie – Centrum”.
+ * Zamieniamy tylko nazwę stojącą zaraz po „Warszawa/Warszawie/Warszawy” (po przecinku lub myślniku),
+ * także w innej formie („Kamieniu”) — na prawdziwe osiedle z KEI.
+ */
+export function replacePlaceAfterWarsaw(text: string, oldPlace: string | null | undefined, newPlace: string): string {
+  const old = String(oldPlace || '').trim();
+  if (!text || !old || !newPlace || old.toLowerCase() === newPlace.toLowerCase()) return text;
+  const stem = old.length > 5 ? old.slice(0, old.length - 2) : old;
+  const escaped = stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  return text.replace(
+    new RegExp(`(Warszaw(?:a|ie|y))(\\s*[,–—-]\\s*)${escaped}\\p{L}*`, 'gu'),
+    (_m, city: string, sep: string) => `${city}${sep}${newPlace}`,
+  );
+}

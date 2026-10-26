@@ -14,6 +14,10 @@ function warsawDistricts(): string[] {
   return sortedWarsawDistricts;
 }
 
+export function warsawDistrictNames(): string[] {
+  return warsawDistricts();
+}
+
 /**
  * Dzielnica Warszawy z adresu KEI („warszawa, białołęka, żerań”).
  * Dopasowanie po całych słowach — „Ochota” w zdaniu „ochota na kawę” nie liczy się, bo czytamy tylko adres.

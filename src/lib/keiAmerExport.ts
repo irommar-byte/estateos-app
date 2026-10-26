@@ -25,7 +25,7 @@ import {
 import { importUrlLookupCandidates } from '@/lib/importDuplicateGuard';
 import { buildKeiImportContext, keiContextFromSelection, type KeiImportContext } from '@/lib/keiAmerListingExtras';
 import { isInsideWarsaw, pinKeiDraftToWarsaw } from '@/lib/keiAmerDistrict';
-import { geocodeWarsawPlace, keiNeighborhoodFromAddress } from '@/lib/keiWarsawGeocode';
+import { geocodeWarsawPlace, keiNeighborhoodFromAddress, keiStreetFromAddress, repairKeiAddress } from '@/lib/keiWarsawGeocode';
 
 const DEFAULT_EXPORT_USER_ID = 55;
 const DEFAULT_COMMISSION_PERCENT = 2;
@@ -133,11 +133,12 @@ function alignDraftWithKeiExportFilters(
  * Bez trafienia w Warszawie zostawiamy ofertę bez pinezki — tworzenie zgłosi błąd i spróbuje później.
  */
 async function anchorKeiDraftInWarsaw(draft: OtodomImportDraft, kei: KeiImportContext | null | undefined): Promise<OtodomImportDraft> {
-  const pinned = pinKeiDraftToWarsaw(draft, kei);
+  const address = repairKeiAddress(kei?.address);
+  const pinned = pinKeiDraftToWarsaw(draft, kei ? { ...kei, address } : kei);
   if (pinned.city !== 'Warszawa' || isInsideWarsaw(pinned.lat, pinned.lng)) return pinned;
   const hit = await geocodeWarsawPlace({
-    street: kei?.street || null,
-    neighborhood: keiNeighborhoodFromAddress(kei?.address),
+    street: kei?.street || keiStreetFromAddress(address) || null,
+    neighborhood: keiNeighborhoodFromAddress(address),
     district: pinned.district,
   });
   return hit

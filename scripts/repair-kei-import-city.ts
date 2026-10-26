@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import { prisma } from '@/lib/prisma';
 import { extractWarsawDistrictFromKeiAddress, isWarsawAddress, resolveWarsawDistrict } from '@/lib/keiAmerDistrict';
-import { geocodeWarsawPlace, keiNeighborhoodFromAddress } from '@/lib/keiWarsawGeocode';
-import { replaceWrongCityInText } from '@/lib/importCityTextFix';
+import { geocodeWarsawPlace, keiNeighborhoodFromAddress, keiStreetFromAddress, repairKeiAddress, titleCasePlace } from '@/lib/keiWarsawGeocode';
+import { replacePlaceAfterWarsaw, replaceWrongCityInText } from '@/lib/importCityTextFix';
 
 /**
  * Naprawa ofert z KEI zapisanych z błędnym miastem (np. „Białystok” zamiast „Warszawa”).
@@ -49,7 +49,7 @@ async function main() {
     } catch {
       /* brak migawki */
     }
-    const address = String(kei.address || '');
+    const address = repairKeiAddress(kei.address);
     if (!address || !isWarsawAddress(address)) {
       skipped.push(`#${row.id} ${row.city} · adres KEI: ${address || '(brak)'} · ${String(row.title || '').slice(0, 50)}`);
       continue;
@@ -57,19 +57,19 @@ async function main() {
 
     const district =
       resolveWarsawDistrict(extractWarsawDistrictFromKeiAddress(address), kei.district, row.district) || null;
-    const pin = await geocodeWarsawPlace({
-      street: kei.street || null,
-      neighborhood: keiNeighborhoodFromAddress(address),
-      district,
-    });
+    const neighborhood = keiNeighborhoodFromAddress(address);
+    const street = kei.street || keiStreetFromAddress(address) || null;
+    const pin = await geocodeWarsawPlace({ street, neighborhood, district });
     await sleep(120);
     if (!pin) {
       skipped.push(`#${row.id} ${row.city} · adres KEI: ${address} · nie znaleziono miejsca w Warszawie`);
       continue;
     }
 
-    const title = replaceWrongCityInText(String(row.title || ''), row.city);
-    const description = row.description == null ? null : replaceWrongCityInText(row.description, row.city);
+    const place = titleCasePlace(neighborhood || district || '');
+    const fixText = (text: string) => replacePlaceAfterWarsaw(replaceWrongCityInText(text, row.city), row.district, place);
+    const title = fixText(String(row.title || ''));
+    const description = row.description == null ? null : fixText(row.description);
     const descriptionChanged = description !== row.description;
     if (pin.exact) exactPins += 1;
 
@@ -88,7 +88,7 @@ async function main() {
           lat: pin.lat,
           lng: pin.lng,
           isExactLocation: pin.exact,
-          street: kei.street || null,
+          street: street ? titleCasePlace(street) : null,
           ...(title && title !== row.title ? { title } : {}),
           ...(descriptionChanged ? { description } : {}),
           updatedAt: new Date(),
