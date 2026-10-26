@@ -54,3 +54,7 @@ test('stare adresy KEI bez polskich liter i z encjami HTML', () => {
   assert.equal(repairKeiAddress('warszawa, śródmieście, ródmiecie pónocne, niecaa').split(', ')[1], 'śródmieście');
   assert.equal(repairKeiAddress('warszawa, bielany, piaski, zgrupowania ak &quot;żmija&quot;'), 'warszawa, bielany, piaski, zgrupowania ak "żmija"');
 });
+
+test('„w sercu Rybnik” po zamianie ma poprawną odmianę', () => {
+  assert.equal(replaceWrongCityInText('Mieszkanie w sercu Rybnik, Śródmieście', 'Rybnik'), 'Mieszkanie w sercu Warszawy, Śródmieście');
+});

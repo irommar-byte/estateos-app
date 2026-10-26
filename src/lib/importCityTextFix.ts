@@ -49,6 +49,8 @@ export function replaceWrongCityInText(text: string, wrongCity: string, target: 
     out = out.replace(new RegExp(`(?<!${L})${word(forms.gen)}(?!${L})`, 'gu'), target.gen);
   }
   out = out.replace(new RegExp(`(?<!${L})${word(forms.nom)}(?!${L})`, 'gu'), target.nom);
+  // „w sercu Rybnik” (błąd AI) → po zamianie „w sercu Warszawy”.
+  out = out.replace(new RegExp(`(?<!${L})(sercu|centrum|Centrum)\\s+${word(target.nom)}(?!${L})`, 'gu'), `$1 ${target.gen}`);
   return out;
 }
 

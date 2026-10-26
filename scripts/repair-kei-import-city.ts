@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { extractWarsawDistrictFromKeiAddress, isWarsawAddress, resolveWarsawDistrict } from '@/lib/keiAmerDistrict';
 import { geocodeWarsawPlace, keiNeighborhoodFromAddress, keiStreetFromAddress, repairKeiAddress, titleCasePlace } from '@/lib/keiWarsawGeocode';
 import { replacePlaceAfterWarsaw, replaceWrongCityInText } from '@/lib/importCityTextFix';
+import { getDistrictsForCity } from '@/lib/location/locationCatalog';
 
 /**
  * Naprawa ofert z KEI zapisanych z błędnym miastem (np. „Białystok” zamiast „Warszawa”).
@@ -67,9 +68,14 @@ async function main() {
     }
 
     // Osiedle z KEI tylko wtedy, gdy mapa je potwierdziła albo ma litery spoza Latin-1 (uszkodzone migawki je gubiły).
-    const neighborhoodTrusted = Boolean(neighborhood) && (pin.neighborhoodVerified || /[ąćęłńśźż]/i.test(neighborhood));
+    // Migawka jest cała, gdy gdziekolwiek w adresie zostały litery spoza Latin-1 (ą, ł, ś…).
+    const snapshotIntact = /[ąćęłńśźż]/i.test(String(kei.address || ''));
+    const neighborhoodTrusted = Boolean(neighborhood) && (pin.neighborhoodVerified || snapshotIntact || /[ąćęłńśźż]/i.test(neighborhood));
     const place = titleCasePlace((neighborhoodTrusted ? neighborhood : '') || district || '');
-    const fixText = (text: string) => replacePlaceAfterWarsaw(replaceWrongCityInText(text, row.city), row.district, place);
+    // Osiedle ze złego miasta: zapisane w ofercie albo dowolna dzielnica tamtego miasta (np. „Kamień” w Rybniku).
+    const wrongPlaces = [row.district, ...getDistrictsForCity(row.city)].filter((name): name is string => Boolean(name));
+    const fixText = (text: string) =>
+      wrongPlaces.reduce((acc, wrong) => replacePlaceAfterWarsaw(acc, wrong, place), replaceWrongCityInText(text, row.city));
     const title = fixText(String(row.title || ''));
     const description = row.description == null ? null : fixText(row.description);
     const descriptionChanged = description !== row.description;
