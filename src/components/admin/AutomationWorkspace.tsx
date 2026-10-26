@@ -455,6 +455,16 @@ export default function AutomationWorkspace() {
 
         {activeTab === "panel" ? (
           <div className="space-y-8">
+            <a
+              href="/centrala/import"
+              className="kei-lux k-card flex items-center justify-between gap-4 px-5 py-4 transition-opacity hover:opacity-90"
+            >
+              <span>
+                <span className="k-kicker block">Import KEI</span>
+                <span className="k-serif mt-1 block text-[18px] text-[color:var(--k-ink)]">Maszyna importu — wykresy i statystyki od początku</span>
+              </span>
+              <span className="k-btn">Otwórz</span>
+            </a>
             <KeiAutoImportPanel onSaved={setKeiAuto} />
 
             {activeJobs.length > 0 ? (

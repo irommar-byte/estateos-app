@@ -167,6 +167,8 @@ function statusTone(config: KeiAutoImportConfig): { color: string; label: string
 
 export default function KeiAutoImportPanel(props: {
   compact?: boolean;
+  /** Ukrywa listę ostatnich cykli (np. gdy strona pokazuje własną historię). */
+  hideHistory?: boolean;
   initialConfig?: KeiAutoImportConfig | null;
   onSaved?: (config: KeiAutoImportConfig) => void;
 }) {
@@ -690,7 +692,7 @@ export default function KeiAutoImportPanel(props: {
         ) : null}
       </AnimatePresence>
 
-      {history.length ? (
+      {history.length && !props.hideHistory ? (
         <div className="border-t border-[color:var(--k-line)] px-6 py-5">
           <p className="text-[13px] font-semibold text-[color:var(--k-ink)]">Ostatnie cykle</p>
           <ul className="mt-3 divide-y divide-[color:var(--k-line)]">

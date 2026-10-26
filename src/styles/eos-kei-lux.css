@@ -351,3 +351,31 @@ html.dark .kei-lux {
   .k-step--active .k-dot::after,
   .k-item { animation: none; }
 }
+
+/* Kolory serii wykresów — sprawdzone walidatorem palety (jasny i ciemny motyw, daltonizm). */
+.kei-lux {
+  --k-series-published: #23855a;
+  --k-series-review: #c58a1e;
+  --k-series-neutral: #cdc6ba;
+  --k-series-error: #b93a26;
+  --k-series-single: #b8955a;
+}
+html.dark .kei-lux {
+  --k-series-published: #1f7a4c;
+  --k-series-review: #b08a38;
+  --k-series-neutral: #4a453e;
+  --k-series-error: #e0664c;
+  --k-series-single: #c9a96e;
+}
+
+@keyframes k-bar-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.k-bar-grow {
+  transform-origin: left center;
+  animation: k-bar-grow 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .k-bar-grow { animation: none; }
+}
