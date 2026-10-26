@@ -87,6 +87,8 @@ export type KeiSearchFacetsResponse = {
   datePresets: KeiFacetOption[];
 };
 
+export type KeiSkipKind = 'duplicate' | 'blocked' | 'inactive' | 'quality' | 'error' | 'cancelled';
+
 export type KeiImportJobSnapshot = {
   id: string;
   adminUserId: number;
@@ -111,6 +113,17 @@ export type KeiImportJobSnapshot = {
     publicUrl?: string;
     editUrl?: string;
     reason?: string;
+    thumbUrl?: string | null;
+    title?: string | null;
+    price?: number | null;
+    area?: number | null;
+    district?: string | null;
+    skipKind?: KeiSkipKind;
+    publishState?: 'published' | 'review';
+    aiRewritten?: boolean;
+    imageCount?: number;
+    startedAt?: string;
+    finishedAt?: string;
   }>;
   exported: KeiExportResultItem[];
   skipped: KeiExportSkippedItem[];
@@ -262,9 +275,9 @@ export const KEI_IMPORT_STEPS: KeiImportStepId[] = [
 ];
 
 export const KEI_STEP_LABELS: Record<KeiImportStepId, string> = {
-  check_duplicate: 'Duplikat',
+  check_duplicate: 'Sprawdzenie',
   fetch_portal: 'Portal',
-  create_offer: 'Oferta',
+  create_offer: 'Opis AI',
   images: 'Zdjęcia',
   activate: 'Publikacja',
 };
@@ -364,7 +377,38 @@ export type KeiAutoImportConfig = {
   sessionSkippedCount?: number;
   sessionCycles?: number;
   nextRunAt?: string | null;
+  lastStartedAt?: string | null;
+  lastErrorAt?: string | null;
+  consecutiveErrors?: number;
+  dayImportedCount?: number;
+  workerHeartbeatAt?: string | null;
+  workerAlive?: boolean;
+  waitingReason?: string | null;
+  targetUser?: { id: number; name: string | null; email: string; role: string } | null;
+  settings?: KeiAutoImportSettings;
 };
+
+/** Filtry i reguły jakości harmonogramu — ten sam kształt co na serwerze. */
+export type KeiAutoImportSettings = {
+  districts: string[];
+  minPrice: number | null;
+  maxPrice: number | null;
+  minArea: number | null;
+  maxArea: number | null;
+  minRooms: number | null;
+  maxRooms: number | null;
+  maxAgeHours: number | null;
+  directOwnerOnly: boolean;
+  requirePhone: boolean;
+  minImages: number;
+  publishMode: 'publish' | 'review';
+  activeFromHour: number;
+  activeToHour: number;
+  dailyLimit: number;
+  portals: Array<'otodom' | 'olx' | 'nieruchomosci-online'>;
+};
+
+export type KeiTargetUserOption = { id: number; name: string; email: string; role: string; companyName?: string | null };
 
 export function keiAutoIntervalLabel(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;

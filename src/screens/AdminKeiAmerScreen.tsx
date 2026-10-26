@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Easing,
   Keyboard,
   Linking,
   Platform,
@@ -14,8 +12,7 @@ import {
   Switch,
   Text,
   TextInput,
-  View,
-} from 'react-native';
+  View } from 'react-native';
 import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,8 +23,6 @@ import { BlurView } from 'expo-blur';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
 import {
-  KEI_AUTO_INTERVALS_MIN,
-  KEI_AUTO_MAX_COUNT,
   KEI_FALLBACK_APARTMENT_AREA_RANGES,
   KEI_FALLBACK_DISTRICTS,
   KEI_FALLBACK_HOUSE_AREA_RANGES,
@@ -35,29 +30,26 @@ import {
   KEI_FALLBACK_SALE_PRICE_RANGES,
   KEI_MAX_SELECT,
   KEI_PAGE_SIZE,
-  keiAutoIntervalLabel,
   keiFallbackDatePresets,
-  type KeiAutoImportConfig,
   type KeiFloorPlanSelection,
   type KeiPreviewListing,
   type KeiPropertyKind,
   type KeiSearchFacetsResponse,
-  type KeiTransactionKind,
-} from '../contracts/keiAmerContract';
+  type KeiTransactionKind } from '../contracts/keiAmerContract';
 import {
   keiAmerFetchAutoImport,
   keiAmerFetchFacets,
   keiAmerFetchPreview,
   keiAmerPeekImageUrl,
   keiAmerPeekListing,
-  keiAmerRefreshSession,
-  keiAmerSaveAutoImport,
-} from '../services/keiAmerService';
+  keiAmerRefreshSession } from '../services/keiAmerService';
 import { useKeiAmerExportStore } from '../store/useKeiAmerExportStore';
 import NumericKeyboardAccessory, {
   ESTATEOS_NUMERIC_KEYBOARD_ACCESSORY_ID,
 } from '../components/NumericKeyboardAccessory';
 import KeiSearchFilters from '../components/admin/KeiSearchFilters';
+import KeiAutoImportSettingsCard, { AgentPicker } from '../components/admin/KeiAutoImportSettingsCard';
+import { useKeiPalette } from '../components/admin/keiPalette';
 
 type LastImagePeek = {
   loading: boolean;
@@ -126,98 +118,6 @@ function SegmentedControl<T extends string>({
   );
 }
 
-function ScheduleBubbleSwitch({
-  value,
-  onValueChange,
-  accent,
-  trackOff,
-}: {
-  value: boolean;
-  onValueChange: (v: boolean) => void;
-  accent: string;
-  trackOff: string;
-}) {
-  const bubbles = useRef([0, 1, 2, 3].map(() => new Animated.Value(0))).current;
-
-  useEffect(() => {
-    if (!value) {
-      bubbles.forEach((b) => b.setValue(0));
-      return;
-    }
-    const loops = bubbles.map((bubble, index) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(index * 280),
-          Animated.timing(bubble, {
-            toValue: 1,
-            duration: 1400,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: true,
-          }),
-          Animated.timing(bubble, { toValue: 0, duration: 0, useNativeDriver: true }),
-        ]),
-      ),
-    );
-    loops.forEach((loop) => loop.start());
-    return () => loops.forEach((loop) => loop.stop());
-  }, [value, bubbles]);
-
-  return (
-    <Pressable
-      onPress={() => onValueChange(!value)}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: value }}
-      style={{
-        width: 56,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: value ? accent : trackOff,
-        justifyContent: 'center',
-        overflow: 'hidden',
-        paddingHorizontal: 3,
-      }}
-    >
-      {value
-        ? bubbles.map((bubble, index) => (
-            <Animated.View
-              key={index}
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: 'rgba(255,255,255,0.78)',
-                top: 6 + (index % 3) * 6,
-                opacity: bubble.interpolate({ inputRange: [0, 0.2, 0.8, 1], outputRange: [0, 0.9, 0.55, 0] }),
-                transform: [
-                  {
-                    translateX: bubble.interpolate({ inputRange: [0, 1], outputRange: [4, 42] }),
-                  },
-                  {
-                    scale: bubble.interpolate({ inputRange: [0, 0.35, 1], outputRange: [0.6, 1.15, 0.7] }),
-                  },
-                ],
-              }}
-            />
-          ))
-        : null}
-      <View
-        style={{
-          width: 26,
-          height: 26,
-          borderRadius: 13,
-          backgroundColor: '#fff',
-          alignSelf: value ? 'flex-end' : 'flex-start',
-          shadowColor: '#000',
-          shadowOpacity: 0.18,
-          shadowRadius: 2,
-          shadowOffset: { width: 0, height: 1 },
-        }}
-      />
-    </Pressable>
-  );
-}
 
 export default function AdminKeiAmerScreen() {
   const navigation = useNavigation();
@@ -239,21 +139,12 @@ export default function AdminKeiAmerScreen() {
   const [facets, setFacets] = useState<KeiSearchFacetsResponse | null>(null);
   const [facetsLoading, setFacetsLoading] = useState(false);
   const [facetsError, setFacetsError] = useState('');
-  const [targetUserId, setTargetUserId] = useState('55');
+  const [targetUserId, setTargetUserId] = useState('');
+  const [targetUserName, setTargetUserName] = useState<string | null>(null);
+  const [agentPickerOpen, setAgentPickerOpen] = useState(false);
+  const keiPalette = useKeiPalette();
   const [commission, setCommission] = useState('2');
   const [autoCount, setAutoCount] = useState('1');
-  const [scheduleEnabled, setScheduleEnabled] = useState(false);
-  const [scheduleInterval, setScheduleInterval] = useState(60);
-  const [scheduleCount, setScheduleCount] = useState('3');
-  const [scheduleUserId, setScheduleUserId] = useState('55');
-  const [scheduleCommission, setScheduleCommission] = useState('2');
-  const [scheduleProperty, setScheduleProperty] = useState<KeiPropertyKind>('apartment');
-  const [scheduleTransaction, setScheduleTransaction] = useState<KeiTransactionKind>('sale');
-  const [scheduleSaving, setScheduleSaving] = useState(false);
-  const [scheduleMessage, setScheduleMessage] = useState('');
-  const [scheduleLastRun, setScheduleLastRun] = useState<string | null>(null);
-  const [scheduleLastError, setScheduleLastError] = useState<string | null>(null);
-  const [scheduleExpanded, setScheduleExpanded] = useState(false);
 
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState('');
@@ -370,74 +261,6 @@ export default function AdminKeiAmerScreen() {
       setSessionLoading(false);
     }
   }, [token]);
-
-  const applyScheduleConfig = useCallback((config: KeiAutoImportConfig) => {
-    setScheduleEnabled(config.enabled);
-    setScheduleInterval(config.intervalMinutes);
-    setScheduleCount(String(config.count));
-    setScheduleUserId(String(config.targetUserId));
-    setScheduleCommission(String(config.agentCommissionPercent));
-    setScheduleProperty(config.propertyKind);
-    setScheduleTransaction(config.transactionKind);
-    setScheduleLastRun(config.lastRunAt);
-    setScheduleLastError(
-      config.lastError && /after['’]? was called outside a request scope/i.test(config.lastError)
-        ? null
-        : config.lastError,
-    );
-  }, []);
-
-  const loadSchedule = useCallback(async () => {
-    if (!token) return;
-    try {
-      const res = await keiAmerFetchAutoImport(token);
-      if (res.config) applyScheduleConfig(res.config);
-    } catch {
-      /* ignore */
-    }
-  }, [token, applyScheduleConfig]);
-
-  const saveSchedule = useCallback(
-    async (patch?: { enabled?: boolean }) => {
-      if (!token) return;
-      setScheduleSaving(true);
-      setScheduleMessage('');
-      try {
-        const res = await keiAmerSaveAutoImport(token, {
-          enabled: patch?.enabled ?? scheduleEnabled,
-          intervalMinutes: scheduleInterval,
-          count: Number(scheduleCount),
-          targetUserId: Number(scheduleUserId),
-          agentCommissionPercent: Number(scheduleCommission),
-          propertyKind: scheduleProperty,
-          transactionKind: scheduleTransaction,
-        });
-        applyScheduleConfig(res.config);
-        if (token) void hydrateExport(token);
-        setScheduleMessage(
-          res.config.enabled
-            ? 'Załączony — serwer odświeża listę, wybiera najnowsze i importuje. Telefon może być wyłączony.'
-            : 'Harmonogram wyłączony.',
-        );
-      } catch (e) {
-        setScheduleMessage(e instanceof Error ? e.message : 'Nie udało się zapisać harmonogramu.');
-      } finally {
-        setScheduleSaving(false);
-      }
-    },
-    [
-      token,
-      scheduleEnabled,
-      scheduleInterval,
-      scheduleCount,
-      scheduleUserId,
-      scheduleCommission,
-      scheduleProperty,
-      scheduleTransaction,
-      applyScheduleConfig,
-      hydrateExport,
-    ],
-  );
 
   const loadPreview = useCallback(
     async (nextPage = 1) => {
@@ -596,7 +419,7 @@ export default function AdminKeiAmerScreen() {
     const userId = Number(targetUserId);
     const comm = Number(commission);
     if (!Number.isFinite(userId) || userId <= 0) {
-      Alert.alert('Konfiguracja', 'Podaj poprawne ID użytkownika docelowego.');
+      Alert.alert('Wybierz agenta', 'Wskaż agenta, do którego trafią importowane oferty.');
       return;
     }
 
@@ -667,8 +490,20 @@ export default function AdminKeiAmerScreen() {
 
   useEffect(() => {
     void loadSession();
-    void loadSchedule();
-  }, [loadSession, loadSchedule]);
+  }, [loadSession]);
+
+  // Domyślny agent ręcznego importu = agent z harmonogramu.
+  useEffect(() => {
+    if (!token) return;
+    void keiAmerFetchAutoImport(token)
+      .then((res) => {
+        const cfg = res.config;
+        if (!cfg) return;
+        setTargetUserId((current) => current || String(cfg.targetUserId || ''));
+        if (cfg.targetUser) setTargetUserName((current) => current ?? (cfg.targetUser?.name || cfg.targetUser?.email || null));
+      })
+      .catch(() => undefined);
+  }, [token]);
 
   useEffect(() => {
     if (sessionOk) void loadFacets();
@@ -837,14 +672,31 @@ export default function AdminKeiAmerScreen() {
           <Text style={[styles.sectionLabel, { color: colors.secondary }]}>KONFIGURACJA EKSPORTU</Text>
           <View style={[styles.configCard, { backgroundColor: colors.card }]}>
             <View style={styles.configRow}>
-              <Text style={[styles.configLabel, { color: colors.secondary }]}>ID użytkownika</Text>
-              <TextInput
-                value={targetUserId}
-                onChangeText={setTargetUserId}
-                keyboardType="number-pad"
-                {...numericInputProps}
-                style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
-              />
+              <Text style={[styles.configLabel, { color: colors.secondary }]}>Agent</Text>
+              <Pressable
+                onPress={() => setAgentPickerOpen(true)}
+                style={[styles.configInput, { backgroundColor: colors.cardSecondary, flexDirection: 'row', alignItems: 'center', gap: 6 }]}
+                accessibilityRole="button"
+                accessibilityLabel="Wybierz agenta"
+              >
+                <Text numberOfLines={1} style={{ flex: 1, color: targetUserName ? colors.text : colors.tertiary, fontSize: 15 }}>
+                  {targetUserName || (targetUserId ? `Konto #${targetUserId}` : 'Wybierz')}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.tertiary} />
+              </Pressable>
+              {token ? (
+                <AgentPicker
+                  token={token}
+                  visible={agentPickerOpen}
+                  palette={keiPalette}
+                  onClose={() => setAgentPickerOpen(false)}
+                  onPick={(user) => {
+                    setTargetUserId(String(user.id));
+                    setTargetUserName(user.name || user.email);
+                    setAgentPickerOpen(false);
+                  }}
+                />
+              ) : null}
             </View>
             <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
             <View style={styles.configRow}>
@@ -861,167 +713,7 @@ export default function AdminKeiAmerScreen() {
         </View>
 
         <View style={styles.sectionPad}>
-          <View style={[styles.autoImportShell, { borderColor: scheduleEnabled ? 'rgba(52,199,89,0.55)' : colors.separator, backgroundColor: colors.isDark ? 'rgba(52,199,89,0.08)' : 'rgba(52,199,89,0.06)' }]}>
-            <View style={styles.autoImportHead}>
-              <Pressable
-                onPress={() => {
-                  void Haptics.selectionAsync();
-                  setScheduleExpanded((v) => !v);
-                }}
-                style={{ flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center' }}
-              >
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.sectionLabel, { color: colors.secondary, marginBottom: 4 }]}>
-                    AUTOMATYCZNY IMPORT
-                  </Text>
-                  <Text style={[styles.autoImportLead, { color: colors.text }]} numberOfLines={3}>
-                    {scheduleEnabled
-                      ? 'Załączony — serwer sam odświeża listę, wybiera najnowsze i importuje. Telefon może być wyłączony.'
-                      : 'Wyłączony — tylko ręczny Importuj z listy poniżej.'}
-                  </Text>
-                </View>
-                <Ionicons
-                  name={scheduleExpanded ? 'chevron-up' : 'chevron-down'}
-                  size={18}
-                  color={colors.secondary}
-                  style={{ marginRight: 8 }}
-                />
-              </Pressable>
-              <ScheduleBubbleSwitch
-                value={scheduleEnabled}
-                onValueChange={(enabled) => {
-                  void Haptics.selectionAsync();
-                  setScheduleEnabled(enabled);
-                  void saveSchedule({ enabled });
-                }}
-                accent={colors.accent}
-                trackOff={colors.segmentBg}
-              />
-            </View>
-
-            {scheduleExpanded ? (
-              <View style={[styles.configCard, { backgroundColor: colors.card, marginTop: 10 }]}>
-                <Text style={[styles.hint, { color: colors.tertiary, paddingHorizontal: 14, marginTop: 10, marginBottom: 8 }]}>
-                  Ten sam cykl co „Wybierz najnowsze” + „Importuj”, tylko w tle na serwerze. Po każdym cyklu czeka ustawiony interwał i znów bierze najnowsze.
-                </Text>
-                <View style={{ paddingHorizontal: 14, paddingBottom: 12, gap: 8 }}>
-                  <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto' }]}>Interwał</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {KEI_AUTO_INTERVALS_MIN.map((min) => {
-                      const active = scheduleInterval === min;
-                      return (
-                        <Pressable
-                          key={min}
-                          onPress={() => {
-                            void Haptics.selectionAsync();
-                            setScheduleInterval(min);
-                          }}
-                          style={{
-                            paddingHorizontal: 12,
-                            paddingVertical: 8,
-                            borderRadius: 10,
-                            backgroundColor: active ? colors.accent : colors.cardSecondary,
-                          }}
-                        >
-                          <Text style={{ color: active ? '#000' : colors.text, fontWeight: '700', fontSize: 13 }}>
-                            {keiAutoIntervalLabel(min)}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-                <View style={styles.configRow}>
-                  <Text style={[styles.configLabel, { color: colors.secondary }]}>Ilość</Text>
-                  <TextInput
-                    value={scheduleCount}
-                    onChangeText={setScheduleCount}
-                    keyboardType="number-pad"
-                    {...numericInputProps}
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
-                  />
-                </View>
-                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-                <View style={styles.configRow}>
-                  <Text style={[styles.configLabel, { color: colors.secondary }]}>ID użytkownika</Text>
-                  <TextInput
-                    value={scheduleUserId}
-                    onChangeText={setScheduleUserId}
-                    keyboardType="number-pad"
-                    {...numericInputProps}
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
-                  />
-                </View>
-                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-                <View style={styles.configRow}>
-                  <Text style={[styles.configLabel, { color: colors.secondary }]}>Prowizja %</Text>
-                  <TextInput
-                    value={scheduleCommission}
-                    onChangeText={setScheduleCommission}
-                    keyboardType="decimal-pad"
-                    {...numericInputProps}
-                    style={[styles.configInput, { color: colors.text, backgroundColor: colors.cardSecondary }]}
-                  />
-                </View>
-                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-                <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-                  <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto', marginBottom: 8 }]}>
-                    Nieruchomość
-                  </Text>
-                  <SegmentedControl
-                    value={scheduleProperty}
-                    onChange={setScheduleProperty}
-                    options={[
-                      { id: 'apartment', label: 'Mieszkanie' },
-                      { id: 'house', label: 'Dom' },
-                    ]}
-                    colors={colors}
-                  />
-                </View>
-                <View style={[styles.configDivider, { backgroundColor: colors.separator }]} />
-                <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
-                  <Text style={[styles.configLabel, { color: colors.secondary, width: 'auto', marginBottom: 8 }]}>
-                    Transakcja
-                  </Text>
-                  <SegmentedControl
-                    value={scheduleTransaction}
-                    onChange={setScheduleTransaction}
-                    options={[
-                      { id: 'sale', label: 'Sprzedaż' },
-                      { id: 'rent', label: 'Najem' },
-                    ]}
-                    colors={colors}
-                  />
-                </View>
-                <View style={{ padding: 14, paddingTop: 4 }}>
-                  <Pressable
-                    onPress={() => void saveSchedule()}
-                    disabled={scheduleSaving}
-                    style={[styles.autoBtn, { backgroundColor: colors.accent }]}
-                  >
-                    {scheduleSaving ? (
-                      <ActivityIndicator color="#000" />
-                    ) : (
-                      <Text style={[styles.autoBtnText, { color: '#000' }]}>Zapisz harmonogram</Text>
-                    )}
-                  </Pressable>
-                  {scheduleLastRun ? (
-                    <Text style={[styles.hint, { color: colors.tertiary }]}>
-                      Ostatni start: {new Date(scheduleLastRun).toLocaleString('pl-PL')}
-                    </Text>
-                  ) : null}
-                  {scheduleLastError ? (
-                    <Text style={[styles.hint, { color: colors.accentAmber }]}>{scheduleLastError}</Text>
-                  ) : null}
-                  {scheduleMessage ? (
-                    <Text style={[styles.hint, { color: colors.accent }]}>{scheduleMessage}</Text>
-                  ) : null}
-                  <Text style={[styles.hint, { color: colors.tertiary }]}>Max {KEI_AUTO_MAX_COUNT} ogłoszeń na cykl.</Text>
-                </View>
-              </View>
-            ) : null}
-          </View>
+          <KeiAutoImportSettingsCard token={token} onChanged={() => token && void hydrateExport(token)} />
         </View>
 
         <View style={styles.sectionPad}>

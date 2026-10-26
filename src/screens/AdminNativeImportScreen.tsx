@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import NumericKeyboardAccessory from '../components/NumericKeyboardAccessory';
-import { ActivityIndicator, Alert, Animated, Easing, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import MapView, { Marker } from 'react-native-maps';
@@ -20,6 +20,7 @@ import { readUserFirstFreePublicationUsed } from '../utils/userPublicationFlags'
 import { linkAgencyClientOffer } from '../services/agencyClientService';
 import PublicationChoiceModal, { type PublicationChoiceConfirm } from '../components/publication/PublicationChoiceModal';
 import type { CreatePublicationRedemption } from '../contracts/offerPublicationContract';
+import { postWithProgress, type XhrProgress } from '../services/progressXhr';
 
 type ImportSource = 'OTODOM' | 'OLX' | 'NIERUCHOMOSCI_ONLINE';
 
@@ -65,6 +66,7 @@ function collectImportGaps(d: ImportDraft): string[] {
   return gaps;
 }
 
+/** Spokojne potwierdzenie: pierścień i znacznik rysują się raz, bez konfetti. */
 function ImportSuccessCinematic({
   visible,
   onDone,
@@ -72,114 +74,60 @@ function ImportSuccessCinematic({
   visible: boolean;
   onDone: () => void;
 }) {
+  const isDark = useThemeStore((st) => st.getResolvedTheme() === 'dark');
   const opacity = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(0.92)).current;
-  const confetti = useRef(Array.from({ length: 26 }, () => new Animated.Value(0))).current;
-  const fireworks = useRef(Array.from({ length: 4 }, () => new Animated.Value(0))).current;
-
+  const scale = useRef(new Animated.Value(0.94)).current;
+  const ring = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!visible) return;
     opacity.setValue(0);
-    scale.setValue(0.92);
-    confetti.forEach((v) => v.setValue(0));
-    fireworks.forEach((v) => v.setValue(0));
-
+    scale.setValue(0.94);
+    ring.setValue(0);
     Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 320,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scale, {
-        toValue: 1,
-        damping: 12,
-        stiffness: 180,
-        mass: 0.7,
-        useNativeDriver: true,
-      }),
-      Animated.stagger(
-        40,
-        confetti.map((v) =>
-          Animated.timing(v, {
-            toValue: 1,
-            duration: 1300,
-            easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
-          })
-        )
-      ),
-      Animated.stagger(
-        180,
-        fireworks.map((v) =>
-          Animated.sequence([
-            Animated.delay(180),
-            Animated.timing(v, {
-              toValue: 1,
-              duration: 620,
-              easing: Easing.out(Easing.cubic),
-              useNativeDriver: true,
-            }),
-          ])
-        )
-      ),
+      Animated.timing(opacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+      Animated.timing(scale, { toValue: 1, duration: 420, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }),
+      Animated.sequence([
+        Animated.delay(140),
+        Animated.timing(ring, { toValue: 1, duration: 620, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]),
     ]).start();
-    const timer = setTimeout(onDone, 2600);
+    const timer = setTimeout(onDone, 3200);
     return () => clearTimeout(timer);
-  }, [visible, confetti, fireworks, opacity, scale, onDone]);
-
+  }, [visible, opacity, scale, ring, onDone]);
   if (!visible) return null;
-
+  const ink = isDark ? '#F3EEE6' : '#16171A';
+  const sub = isDark ? '#C8C0B3' : '#5D584F';
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onDone}>
-      <Animated.View style={[styles.fxBackdrop, { opacity }]}>
-        {fireworks.map((v, i) => {
-          const scaleFx = v.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1.6] });
-          const alpha = v.interpolate({ inputRange: [0, 1], outputRange: [0.9, 0] });
-          return (
+      <Animated.View style={[styles.fxBackdrop, { opacity, backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(22,20,17,0.38)' }]}>
+        <Animated.View
+          style={[
+            styles.fxCard,
+            { transform: [{ scale }], backgroundColor: isDark ? '#171513' : '#FFFFFF', borderColor: isDark ? 'rgba(216,195,160,0.18)' : '#E7E0D4' },
+          ]}
+        >
+          <View style={styles.fxSeal}>
             <Animated.View
-              key={`fx-${i}`}
               style={[
                 styles.fxRing,
                 {
-                  left: `${18 + i * 20}%`,
-                  top: i % 2 === 0 ? '18%' : '28%',
-                  opacity: alpha,
-                  transform: [{ scale: scaleFx }],
+                  borderColor: '#D8C3A0',
+                  opacity: ring.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }),
+                  transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
                 },
               ]}
             />
-          );
-        })}
-        {confetti.map((v, i) => {
-          const x = (i % 2 === 0 ? -1 : 1) * (16 + (i % 7) * 12);
-          const translateY = v.interpolate({ inputRange: [0, 1], outputRange: [-30, 560 + (i % 5) * 55] });
-          const rotate = v.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${220 + i * 17}deg`] });
-          const alpha = v.interpolate({ inputRange: [0, 1], outputRange: [1, 0.15] });
-          return (
-            <Animated.View
-              key={`confetti-${i}`}
-              style={[
-                styles.fxConfetti,
-                {
-                  left: `${8 + (i % 10) * 9}%`,
-                  backgroundColor: ['#10B981', '#0A84FF', '#FFCC00', '#AF52DE', '#FF3B30'][i % 5],
-                  opacity: alpha,
-                  transform: [{ translateX: x }, { translateY }, { rotate }],
-                },
-              ]}
-            />
-          );
-        })}
-        <Animated.View style={[styles.fxCard, { transform: [{ scale }] }]}>
-          <Ionicons name="sparkles" size={34} color="#FFD60A" />
-          <Text style={styles.fxTitle}>Oferta utworzona</Text>
-          <Text style={styles.fxSubtitle}>Cinematic success</Text>
-          <Pressable style={styles.fxButton} onPress={onDone}>
-            <Text style={styles.fxButtonText}>Super</Text>
+            <Animated.View style={{ opacity: ring, transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1] }) }] }}>
+              <Ionicons name="checkmark" size={30} color={isDark ? '#D8C3A0' : '#7A5F33'} />
+            </Animated.View>
+          </View>
+          <Text style={[styles.fxTitle, { color: ink }]}>Oferta utworzona</Text>
+          <Text style={[styles.fxSubtitle, { color: sub }]}>Po weryfikacji trafi na rynek — zobaczysz ją w „Moich ofertach”.</Text>
+          <Pressable style={[styles.fxButton, { backgroundColor: isDark ? '#D8C3A0' : '#16171A' }]} onPress={onDone}>
+            <Text style={[styles.fxButtonText, { color: isDark ? '#0D0C0B' : '#F3E7CF' }]}>Gotowe</Text>
           </Pressable>
         </Animated.View>
       </Animated.View>
-    <NumericKeyboardAccessory />
     </Modal>
   );
 }
@@ -207,6 +155,7 @@ export default function AdminNativeImportScreen() {
   const [url, setUrl] = useState(initialUrl);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [createProgress, setCreateProgress] = useState<XhrProgress | null>(null);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [draft, setDraft] = useState<ImportDraft | null>(null);
@@ -449,21 +398,17 @@ export default function AdminNativeImportScreen() {
           setError('');
           setMessage('');
           try {
-            const res = await fetch(`${API_URL}/api/mobile/v1/pro/otodom-import/create`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({
-                draft,
-                rightsConfirmed: true,
-                redemption,
-              }),
-            });
-            const data = await res.json().catch(() => ({}));
+            setCreateProgress({ stage: 'prepare', label: 'Przygotowuję ofertę', percent: 3 });
+            const streamed = await postWithProgress(
+              `${API_URL}/api/mobile/v1/pro/otodom-import/create`,
+              { Authorization: `Bearer ${token}` },
+              { draft, rightsConfirmed: true, redemption },
+              (progress) => setCreateProgress(progress),
+            );
+            const data: any = streamed.body;
+            const res = { ok: streamed.status >= 200 && streamed.status < 300, status: streamed.status };
             if (!res.ok || !data?.success) {
-              if (data?.code === 'ALREADY_IMPORTED' && data?.existingOfferId) {
+              if (data?.code === 'ALREADY_IMPORTED' && data?.existingOfferId && data?.ownedByYou) {
                 await applyCreatedOffer(
                   {
                     success: true,
@@ -524,6 +469,7 @@ export default function AdminNativeImportScreen() {
             Alert.alert('Błąd połączenia', 'Nie udało się utworzyć oferty. Sprawdź internet i spróbuj ponownie.');
           } finally {
             setCreating(false);
+            setCreateProgress(null);
           }
         },
       },
@@ -897,6 +843,21 @@ export default function AdminNativeImportScreen() {
             <Text style={styles.primaryBtnText}>{creating ? 'Tworzenie…' : 'Utwórz ofertę'}</Text>
           </Pressable>
 
+          {creating ? (
+            <View style={[styles.createProgress, { backgroundColor: isDark ? '#221F1B' : '#F2EDE4' }]} accessibilityLiveRegion="polite">
+              <View style={styles.createProgressHead}>
+                <Text style={[styles.createProgressLabel, { color: theme.text }]}>{createProgress?.label || 'Przygotowuję ofertę'}</Text>
+                <Text style={{ color: theme.sub, fontSize: 12, fontVariant: ['tabular-nums'] }}>{Math.round(createProgress?.percent ?? 3)}%</Text>
+              </View>
+              <View style={[styles.createProgressTrack, { backgroundColor: isDark ? 'rgba(216,195,160,0.14)' : '#E7E0D4' }]}>
+                <View style={[styles.createProgressFill, { width: `${Math.max(3, createProgress?.percent ?? 3)}%` }]} />
+              </View>
+              <Text style={{ color: theme.sub, fontSize: 12, marginTop: 8 }}>
+                {createProgress?.detail || 'Opis przygotowuje AI, potem kopiujemy zdjęcia — zwykle kilkadziesiąt sekund.'}
+              </Text>
+            </View>
+          ) : null}
+
           {message ? <Text style={styles.successText}>{message}</Text> : null}
 
           {createdOfferId ? (
@@ -1080,47 +1041,25 @@ const styles = StyleSheet.create({
   lightboxClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
   lightboxSlide: { height: '100%', alignItems: 'center', justifyContent: 'center' },
   lightboxImage: { width: '100%', height: '84%' },
-  fxBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(5,8,20,0.94)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fxRing: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: 'rgba(255,216,10,0.9)',
-  },
-  fxConfetti: {
-    position: 'absolute',
-    width: 8,
-    height: 16,
-    borderRadius: 2,
-    top: 70,
-  },
+  createProgress: { marginTop: 12, borderRadius: 14, padding: 14 },
+  createProgressHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 },
+  createProgressLabel: { fontSize: 13.5, fontWeight: '600', flex: 1 },
+  createProgressTrack: { height: 4, borderRadius: 99, overflow: 'hidden', marginTop: 10 },
+  createProgressFill: { height: '100%', borderRadius: 99, backgroundColor: '#B8955A' },
+  fxBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
+  fxSeal: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
+  fxRing: { position: 'absolute', width: 76, height: 76, borderRadius: 38, borderWidth: 1.5 },
   fxCard: {
-    width: '82%',
+    width: '100%',
+    maxWidth: 360,
     borderRadius: 24,
-    paddingVertical: 26,
-    paddingHorizontal: 20,
+    paddingVertical: 28,
+    paddingHorizontal: 24,
     alignItems: 'center',
-    backgroundColor: 'rgba(20,24,44,0.9)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
   },
-  fxTitle: { marginTop: 8, color: '#FFFFFF', fontSize: 30, fontWeight: '900', letterSpacing: -0.7 },
-  fxSubtitle: { marginTop: 8, color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: '600' },
-  fxButton: {
-    marginTop: 18,
-    minHeight: 44,
-    minWidth: 140,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#10B981',
-  },
-  fxButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  fxTitle: { marginTop: 10, fontSize: 26, fontFamily: Platform.select({ ios: 'Georgia', android: 'serif' }), letterSpacing: -0.3 },
+  fxSubtitle: { marginTop: 8, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  fxButton: { marginTop: 22, minHeight: 46, minWidth: 160, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  fxButtonText: { fontSize: 15, fontWeight: '700' },
 });

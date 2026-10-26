@@ -8,13 +8,13 @@ import {
   type KeiExportResultItem,
   type KeiImportJobSnapshot,
   type KeiImportStepId,
+  type KeiSkipKind,
 } from '../contracts/keiAmerContract';
 import {
   keiAmerCancelExportJob,
   keiAmerFetchActiveExportJobs,
   keiAmerFetchAutoImport,
   keiAmerFetchExportJob,
-  keiAmerSaveAutoImport,
   keiAmerStartExportJob,
 } from '../services/keiAmerService';
 
@@ -34,6 +34,17 @@ export type KeiExportItemProgress = {
   editUrl?: string;
   reason?: string;
   aiRewrite?: KeiAiRewriteProgress;
+  thumbUrl?: string | null;
+  title?: string | null;
+  price?: number | null;
+  area?: number | null;
+  district?: string | null;
+  skipKind?: KeiSkipKind;
+  publishState?: 'published' | 'review';
+  aiRewritten?: boolean;
+  imageCount?: number;
+  startedAt?: string;
+  finishedAt?: string;
 };
 
 function mapJobItems(job: KeiImportJobSnapshot): KeiExportItemProgress[] {
@@ -52,11 +63,27 @@ function mapJobItems(job: KeiImportJobSnapshot): KeiExportItemProgress[] {
     publicUrl: item.publicUrl,
     editUrl: item.editUrl,
     reason: item.reason,
+    thumbUrl: item.thumbUrl,
+    title: item.title,
+    price: item.price,
+    area: item.area,
+    district: item.district,
+    skipKind: item.skipKind,
+    publishState: item.publishState,
+    aiRewritten: item.aiRewritten,
+    imageCount: item.imageCount,
+    startedAt: item.startedAt,
+    finishedAt: item.finishedAt,
   }));
 }
 
 type KeiAmerExportState = {
   running: boolean;
+  /** Poproszono o zatrzymanie — serwer kończy bieżącą ofertę. */
+  stopping: boolean;
+  jobStatus: KeiImportJobSnapshot['status'] | null;
+  autoWaitingReason: string | null;
+  workerAlive: boolean;
   modalVisible: boolean;
   pillCollapsed: boolean;
   message: string;
@@ -96,6 +123,8 @@ function applyAutoConfig(config: KeiAutoImportConfig): Partial<KeiAmerExportStat
       config.lastError && /after['’]? was called outside a request scope/i.test(config.lastError)
         ? null
         : config.lastError,
+    autoWaitingReason: config.waitingReason ?? null,
+    workerAlive: config.workerAlive !== false,
   };
 }
 
@@ -125,6 +154,8 @@ function applyJobSnapshot(
   const patch: Partial<KeiAmerExportState> = {
     jobId: running ? job.id : job.source === 'auto' ? null : job.id,
     running,
+    stopping: running && Boolean(job.cancelRequested),
+    jobStatus: job.status,
     source: job.source === 'auto' ? 'auto' : 'manual',
     targetCount: Number(job.targetCount || 0),
     message: job.message || (running ? 'Import w toku na serwerze…' : 'Import zakończony.'),
@@ -249,8 +280,12 @@ export function reconcileKeiExportAfterForeground(): void {
 
 export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   running: false,
+  stopping: false,
+  jobStatus: null,
+  autoWaitingReason: null,
+  workerAlive: true,
   modalVisible: false,
-  pillCollapsed: true,
+  pillCollapsed: false,
   message: '',
   source: 'manual',
   targetCount: 0,
@@ -270,39 +305,14 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   setPillCollapsed: (collapsed) => set({ pillCollapsed: collapsed }),
 
   cancelExport: () => {
-    const { running, jobId, authToken, autoEnabled } = get();
-    if (running) {
-      exportCancelledByUser = true;
-      stopPolling();
-      if (jobId && authToken) {
-        void keiAmerCancelExportJob(authToken, jobId).catch(() => undefined);
-      }
-      set((state) => ({
-        running: false,
-        modalVisible: false,
-        message: 'Import zatrzymany. Ukończone oferty zostają.',
-        onComplete: undefined,
-        items: state.items.map((item) =>
-          item.status === 'pending' || item.status === 'active'
-            ? {
-                ...item,
-                status: 'skipped' as const,
-                currentStep: null,
-                stepLabel: 'Anulowano',
-                reason: 'Przerwano ręcznie przez administratora',
-              }
-            : item,
-        ),
-      }));
-      exportCancelledByUser = false;
-      if (autoEnabled) startPolling();
-    } else if (autoEnabled && authToken) {
-      void keiAmerSaveAutoImport(authToken, { enabled: false }).catch(() => undefined);
-      set({ autoEnabled: false, modalVisible: false, message: 'Automatyczny import wyłączony.' });
-    } else {
-      return;
-    }
+    const { running, jobId, authToken } = get();
+    // Przycisk Stop zatrzymuje wyłącznie trwający import — harmonogram wyłącza się przełącznikiem w ustawieniach.
+    if (!running || !jobId || !authToken) return;
+    set({ stopping: true, message: 'Zatrzymuję import — kończę bieżącą ofertę…' });
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    void keiAmerCancelExportJob(authToken, jobId)
+      .catch(() => undefined)
+      .finally(() => startPolling());
   },
 
   clearSession: () => {

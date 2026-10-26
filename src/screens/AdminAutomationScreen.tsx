@@ -6,11 +6,8 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
-  View,
-} from 'react-native';
+  View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,8 +17,7 @@ import { useThemeStore } from '../store/useThemeStore';
 import type { AutomationOverview, ImportRegistryRow, ScheduledJobView } from '../contracts/automationContract';
 import type { KeiImportJobSnapshot } from '../contracts/keiAmerContract';
 import { fetchAutomationOverview, fetchImportRegistry } from '../services/automationService';
-import { keiAmerFetchAutoImport, keiAmerSaveAutoImport } from '../services/keiAmerService';
-import { KEI_AUTO_INTERVALS_MIN, KEI_AUTO_MAX_COUNT, keiAutoIntervalLabel } from '../contracts/keiAmerContract';
+import KeiAutoImportSettingsCard from '../components/admin/KeiAutoImportSettingsCard';
 
 type TabId = 'panel' | 'harmonogram' | 'rejestr';
 
@@ -192,17 +188,6 @@ export default function AdminAutomationScreen() {
   const [registry, setRegistry] = useState<ImportRegistryRow[]>([]);
   const [registryTotal, setRegistryTotal] = useState(0);
   const [sourceFilter, setSourceFilter] = useState('');
-  const [keiSaving, setKeiSaving] = useState(false);
-  const [keiDraft, setKeiDraft] = useState({
-    enabled: false,
-    intervalMinutes: 60,
-    count: '3',
-    targetUserId: '55',
-    agentCommissionPercent: '2',
-    propertyKind: 'apartment' as 'apartment' | 'house',
-    transactionKind: 'sale' as 'sale' | 'rent',
-  });
-
   const load = useCallback(async () => {
     const token = getAdminToken();
     if (!token) {
@@ -211,25 +196,13 @@ export default function AdminAutomationScreen() {
       return;
     }
     try {
-      const [ov, reg, auto] = await Promise.all([
+      const [ov, reg] = await Promise.all([
         fetchAutomationOverview(token),
         fetchImportRegistry(token, { limit: 50, offset: 0, source: sourceFilter || undefined }),
-        keiAmerFetchAutoImport(token).catch(() => null),
       ]);
       setOverview(ov);
       setRegistry(reg.rows);
       setRegistryTotal(reg.total);
-      if (auto?.config) {
-        setKeiDraft({
-          enabled: auto.config.enabled,
-          intervalMinutes: auto.config.intervalMinutes,
-          count: String(auto.config.count),
-          targetUserId: String(auto.config.targetUserId),
-          agentCommissionPercent: String(auto.config.agentCommissionPercent),
-          propertyKind: auto.config.propertyKind,
-          transactionKind: auto.config.transactionKind,
-        });
-      }
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Błąd ładowania');
@@ -246,31 +219,6 @@ export default function AdminAutomationScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     void load();
-  };
-
-  const saveKei = async (patch?: Partial<typeof keiDraft & { enabled: boolean }>) => {
-    const token = getAdminToken();
-    if (!token) return;
-    setKeiSaving(true);
-    try {
-      const body = {
-        enabled: patch?.enabled ?? keiDraft.enabled,
-        intervalMinutes: patch?.intervalMinutes ?? keiDraft.intervalMinutes,
-        count: Number(patch?.count ?? keiDraft.count),
-        targetUserId: Number(patch?.targetUserId ?? keiDraft.targetUserId),
-        agentCommissionPercent: Number(patch?.agentCommissionPercent ?? keiDraft.agentCommissionPercent),
-        propertyKind: patch?.propertyKind ?? keiDraft.propertyKind,
-        transactionKind: patch?.transactionKind ?? keiDraft.transactionKind,
-      };
-      await keiAmerSaveAutoImport(token, body);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await load();
-    } catch (e) {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(e instanceof Error ? e.message : 'Nie udało się zapisać KEI');
-    } finally {
-      setKeiSaving(false);
-    }
   };
 
   const openOffer = (offerId: number) => {
@@ -363,67 +311,10 @@ export default function AdminAutomationScreen() {
 
         {tab === 'panel' ? (
           <View style={{ marginTop: 14, gap: 12 }}>
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.separator }]}>
-              <View style={styles.keiHeader}>
-                <View>
-                  <Text style={[styles.cardTitle, { color: colors.text }]}>KEI auto-import</Text>
-                  <Text style={[styles.cardSub, { color: colors.secondary }]}>Sterowanie cyklem na serwerze</Text>
-                </View>
-                <Switch
-                  value={keiDraft.enabled}
-                  onValueChange={(enabled) => {
-                    setKeiDraft((p) => ({ ...p, enabled }));
-                    void saveKei({ enabled });
-                  }}
-                  disabled={keiSaving}
-                />
-              </View>
-              <View style={styles.formGrid}>
-                <Text style={[styles.fieldLabel, { color: colors.secondary }]}>Interwał</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
-                  {KEI_AUTO_INTERVALS_MIN.map((min) => (
-                    <Pressable
-                      key={min}
-                      onPress={() => setKeiDraft((p) => ({ ...p, intervalMinutes: min }))}
-                      style={[
-                        styles.chip,
-                        keiDraft.intervalMinutes === min && { backgroundColor: `${colors.accent}33`, borderColor: colors.accent },
-                      ]}
-                    >
-                      <Text style={{ color: colors.text, fontSize: 11, fontWeight: '700' }}>{keiAutoIntervalLabel(min)}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-                <Text style={[styles.fieldLabel, { color: colors.secondary }]}>Ilość / cykl (max {KEI_AUTO_MAX_COUNT})</Text>
-                <TextInput
-                  value={keiDraft.count}
-                  onChangeText={(count) => setKeiDraft((p) => ({ ...p, count }))}
-                  keyboardType="number-pad"
-                  style={[styles.input, { color: colors.text, borderColor: colors.separator, backgroundColor: colors.bg }]}
-                />
-                <Text style={[styles.fieldLabel, { color: colors.secondary }]}>User ID docelowy</Text>
-                <TextInput
-                  value={keiDraft.targetUserId}
-                  onChangeText={(targetUserId) => setKeiDraft((p) => ({ ...p, targetUserId }))}
-                  keyboardType="number-pad"
-                  style={[styles.input, { color: colors.text, borderColor: colors.separator, backgroundColor: colors.bg }]}
-                />
-              </View>
-              <Pressable
-                onPress={() => void saveKei()}
-                disabled={keiSaving}
-                style={[styles.primaryBtn, { backgroundColor: colors.accent, opacity: keiSaving ? 0.6 : 1 }]}
-              >
-                {keiSaving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.primaryBtnText}>Zapisz harmonogram</Text>
-                )}
-              </Pressable>
-              <Pressable onPress={() => navigation.navigate('AdminKeiAmer')} style={{ marginTop: 10 }}>
-                <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 13 }}>Ręczny import KEI →</Text>
-              </Pressable>
-            </View>
+            <KeiAutoImportSettingsCard token={getAdminToken()} />
+            <Pressable onPress={() => navigation.navigate('AdminKeiAmer')} style={{ paddingHorizontal: 4 }}>
+              <Text style={{ color: colors.accentBlue, fontWeight: '700', fontSize: 13 }}>Ręczny import KEI →</Text>
+            </Pressable>
 
             {(overview?.activeJobs || []).map((job) => (
               <View key={job.id} style={[styles.card, { backgroundColor: colors.card, borderColor: '#FF9F0A55' }]}>

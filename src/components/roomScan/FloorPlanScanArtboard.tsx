@@ -36,8 +36,9 @@ type Props = {
   hideDimensions?: boolean;
 };
 
+// Snell Roundhand nie ma pełnych polskich znaków („Ł”, „ą”) — iOS podmieniał litery innym krojem.
 const SCRIPT_FONT = Platform.select({
-  ios: 'Snell Roundhand',
+  ios: 'Georgia-Italic',
   android: 'cursive',
   default: 'Georgia',
 });
