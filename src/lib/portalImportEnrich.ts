@@ -3,7 +3,9 @@ import { normalizeImportDraftHeating } from '@/lib/otodomImport';
 import {
   canonicalizeCity,
   canonicalizeDistrict,
+  containsPlaceWord,
   getStrictCities,
+  isDistinctiveDistrictForCity,
   inferCityFromMapboxFeature,
   inferDistrictFromStreet,
   isNonCityLabel,
@@ -19,55 +21,82 @@ import {
 } from '@/lib/mapboxGeocodeClient';
 import { fetchMapboxReverseFeature } from '@/lib/location/resolveOfferLocationFromCoordinates';
 
-/** Gdy OtoDom poda tylko dzielnicę (np. Służew), dopasuj miasto strict z katalogu. */
+/**
+ * Formy nazw miast, które oznaczają położenie („w Warszawie”, „Warszawa, Mokotów”).
+ * Celowo bez dopełniacza („do Warszawy”, „pod Krakowem”) — to zwykle opis dojazdu z innej miejscowości.
+ */
+const CITY_LOCATION_FORMS: Record<string, string[]> = {
+  Warszawa: ['Warszawa', 'Warszawie'],
+  Kraków: ['Kraków', 'Krakowie'],
+  Wrocław: ['Wrocław', 'Wrocławiu'],
+  Poznań: ['Poznań', 'Poznaniu'],
+  Łódź: ['Łódź', 'Łodzi'],
+  Lublin: ['Lublin', 'Lublinie'],
+  Gdańsk: ['Gdańsk', 'Gdańsku'],
+  Gdynia: ['Gdynia', 'Gdyni'],
+  Sopot: ['Sopot', 'Sopocie'],
+  Katowice: ['Katowice', 'Katowicach'],
+  Rybnik: ['Rybnik', 'Rybniku'],
+  Białystok: ['Białystok', 'Białymstoku'],
+  Zamość: ['Zamość', 'Zamościu'],
+};
+
+function placeText(value: string | null | undefined): string {
+  return normalizeText(String(value || '')).replace(/-/g, ' ');
+}
+
+/** Miasto nazwane wprost w tekście (całe słowo). Gdy padają dwa różne miasta — brak rozstrzygnięcia. */
+export function explicitCityInText(text: string | null | undefined): string {
+  const hay = placeText(text);
+  if (!hay) return '';
+  const hits = new Set<string>();
+  for (const city of getStrictCities()) {
+    const forms = (CITY_LOCATION_FORMS[city] || [city]).map(placeText);
+    if (forms.some((form) => containsPlaceWord(hay, form))) hits.add(city);
+  }
+  return hits.size === 1 ? [...hits][0] : '';
+}
+
+/**
+ * Miasto z podpowiedzi tekstowych (kolejność = ważność). Najpierw nazwa miasta wprost,
+ * a dopiero potem dzielnica — wyłącznie jednoznaczna (nie „Centrum”, „Piaski”, „dla młodych”)
+ * i pasująca do dokładnie jednego miasta.
+ */
 export function inferCityFromLocationHints(...hints: (string | null | undefined)[]): string {
-  const blob = hints.filter(Boolean).join(' ');
+  for (const hint of hints) {
+    const city = explicitCityInText(hint);
+    if (city) return city;
+  }
+  const blob = hints.filter(Boolean).join(' · ');
   if (!blob.trim()) return '';
-  const blobNorm = normalizeText(blob);
-
-  for (const strictCity of getStrictCities()) {
-    const norm = normalizeText(strictCity);
-    if (norm.length >= 4 && blobNorm.includes(norm)) {
-      return strictCity;
-    }
+  const matches = new Set<string>();
+  for (const city of getStrictCities()) {
+    const district = pickDistrictFromPlaceName(city, blob);
+    if (district && isDistinctiveDistrictForCity(city, district)) matches.add(city);
   }
-
-  for (const strictCity of getStrictCities()) {
-    if (pickDistrictFromPlaceName(strictCity, blob)) {
-      return strictCity;
-    }
-  }
-
-  return '';
+  return matches.size === 1 ? [...matches][0] : '';
 }
 
 export function inferCityFromImportSlug(url: string, title: string): string {
   const slug = String(url || '').match(/\/oferta\/([^/?#]+)/i)?.[1] ?? '';
-  const blob = `${slug} ${title}`.toLowerCase();
-
-  for (const city of getStrictCities()) {
-    const norm = normalizeText(city);
-    const slugToken = norm.replace(/\s+/g, '-');
-    if (blob.includes(slugToken) || blob.includes(norm)) {
-      return city;
-    }
-  }
+  const fromSlug = explicitCityInText(slug.replace(/-/g, ' ')) || explicitCityInText(title);
+  if (fromSlug) return fromSlug;
 
   for (const segment of slug.split('-').filter(Boolean)) {
-    if (segment.length < 3) continue;
+    if (segment.length < 4) continue;
     if (isNonCityLabel(segment)) continue;
     const fromSegment = canonicalizeCity(segment.replace(/-/g, ' '));
-    if (fromSegment && (isStrictCity(fromSegment) || fromSegment.length >= 4)) {
-      return fromSegment;
-    }
+    if (fromSegment && isStrictCity(fromSegment)) return fromSegment;
   }
 
   return '';
 }
 
 /**
- * Listing text (Warszawa in title) beats a leftover form city (Białystok).
- * On pin vs city conflict, the pin is the listing's actual place unless the title names another city.
+ * Kolejność: miasto wskazane przez treść ogłoszenia (nazwa wprost lub jednoznaczna dzielnica),
+ * potem pinezka przy konflikcie z etykietą portalu, na końcu etykieta portalu.
+ * Podpowiedź z treści powstaje wyłącznie z pewnych sygnałów (patrz inferCityFromLocationHints) —
+ * ogólne słowa w opisie („centrum”, „dla młodych”) nie mogą już zmienić Warszawy w Białystok.
  */
 export function pickImportedListingCity(params: {
   draftCity?: string | null;
@@ -90,11 +119,14 @@ export function pickImportedListingCity(params: {
 }
 
 export function listingCityFromDraftText(
-  draft: Pick<OtodomImportDraft, 'title' | 'street' | 'descriptionText' | 'externalUrl'>,
+  draft: Pick<OtodomImportDraft, 'title' | 'street' | 'externalUrl'> &
+    Partial<Pick<OtodomImportDraft, 'district' | 'neighborhood' | 'descriptionText'>>,
 ): string {
   return (
-    inferCityFromLocationHints(draft.title, draft.street, draft.descriptionText, draft.externalUrl) ||
-    inferCityFromImportSlug(draft.externalUrl || '', draft.title)
+    inferCityFromLocationHints(draft.title, draft.neighborhood, draft.district, draft.street) ||
+    inferCityFromImportSlug(draft.externalUrl || '', draft.title) ||
+    // Opis tylko jako ostatnia deska ratunku i tylko z nazwą miasta wprost („w Warszawie”).
+    explicitCityInText(draft.descriptionText)
   );
 }
 
@@ -134,9 +166,11 @@ export function inferDistrictForCity(city: string, draft: Pick<OtodomImportDraft
   const canonicalCity = canonicalizeCity(city);
   if (!canonicalCity) return '';
 
-  const blob = [draft.district, draft.neighborhood, draft.street, draft.title, draft.descriptionText, draft.externalUrl].filter(Boolean).join(' ');
+  const blob = [draft.district, draft.neighborhood, draft.street, draft.title, draft.externalUrl].filter(Boolean).join(' · ');
   const fromCatalog = pickDistrictFromPlaceName(canonicalCity, blob);
   if (fromCatalog) return fromCatalog;
+  const fromDescription = pickDistrictFromPlaceName(canonicalCity, draft.descriptionText || '');
+  if (fromDescription && isDistinctiveDistrictForCity(canonicalCity, fromDescription)) return fromDescription;
 
   const fromStreet = inferDistrictFromStreet(canonicalCity, draft.street);
   if (fromStreet) return fromStreet;

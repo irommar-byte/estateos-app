@@ -453,18 +453,50 @@ export function pickDistrictFromPlaceName(city: string, text: string, allowedDis
       : getDistrictsForCity(canonicalCity);
   if (!candidates.length) return "";
 
-  const source = normalizeText(text);
+  const source = normalizeText(text).replace(/-/g, " ");
   if (!source) return "";
 
-  for (const district of candidates) {
-    const nd = normalizeText(district);
+  // Całe słowa, najdłuższe nazwy najpierw: „Praga-Południe” przed „Praga”, a „wola” nie wpada w „wolny”.
+  const sorted = [...candidates].sort((a, b) => b.length - a.length);
+  for (const district of sorted) {
+    const nd = normalizeText(district).replace(/-/g, " ");
     if (!nd) continue;
-    if (source.includes(nd)) {
+    if (containsPlaceWord(source, nd)) {
       return district;
     }
   }
 
   return "";
+}
+
+/** Granice słów z polskimi literami (ł, ż) — `[^a-z0-9]` traktował „ł” jak separator. */
+export function containsPlaceWord(haystackNormalized: string, needleNormalized: string): boolean {
+  if (!haystackNormalized || !needleNormalized) return false;
+  const escaped = needleNormalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, "u").test(haystackNormalized);
+}
+
+/**
+ * Nazwy dzielnic, które same nie wskazują miasta: występują w kilku miastach albo są zwykłymi słowami
+ * („centrum”, „dla młodych”, ulica „Sienkiewicza”). Przez nie warszawskie ogłoszenia trafiały do Białegostoku.
+ */
+const GENERIC_PLACE_WORDS = new Set(
+  [
+    "Centrum", "Śródmieście", "Stare Miasto", "Nowe Miasto", "Piaski", "Młodych", "Sienkiewicza", "Zawady",
+    "Skorupy", "Planty", "Promyk", "Kamień", "Dąbrowa", "Smolna", "Chełm", "Jasień", "Bojary", "Dojlidy",
+    "Antoniuk", "Wygoda", "Podgórze", "Powiatowa",
+  ].map((word) => normalizeText(word).replace(/-/g, " ")),
+);
+
+export function isDistinctiveDistrictForCity(city: string, district: string): boolean {
+  const nd = normalizeText(district).replace(/-/g, " ");
+  if (!nd || nd.length < 4 || GENERIC_PLACE_WORDS.has(nd)) return false;
+  const canonicalCity = canonicalizeCity(city);
+  for (const other of getStrictCities()) {
+    if (other === canonicalCity) continue;
+    if (getDistrictsForCity(other).some((entry) => normalizeText(entry).replace(/-/g, " ") === nd)) return false;
+  }
+  return true;
 }
 
 export function canonicalizeDistrict(city: string, district?: string | null): string {
