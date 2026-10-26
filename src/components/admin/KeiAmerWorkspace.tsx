@@ -801,6 +801,24 @@ export default function KeiAmerWorkspace() {
     void autoSelectByCount(n);
   };
 
+  const updateListingState = useCallback(
+    async (item: PreviewListing, action: "revoke_outreach" | "ignore" | "unignore") => {
+      try {
+        const res = await fetch("/api/admin/kei-amer/listing-state", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action, portalUrl: item.portalUrl, keiId: item.keiId }),
+        });
+        if (!res.ok) return;
+        void loadPreview(previewPage);
+      } catch {
+        /* ignore */
+      }
+    },
+    [loadPreview, previewPage],
+  );
+
   const refreshAfterAction = useCallback(() => {
     setSelected({});
     setFloorPlanSelections({});
@@ -1334,7 +1352,13 @@ export default function KeiAmerWorkspace() {
                   tone="cyan"
                 >
                   {listingGroups.outreach.map((item) => (
-                    <BlockedRow key={item.keiId} item={item} badge="OUTREACH" />
+                    <BlockedRow
+                      key={item.keiId}
+                      item={item}
+                      badge="OUTREACH"
+                      detail={item.outreachSentAt ? `Przygotowano ${new Date(item.outreachSentAt).toLocaleDateString("pl-PL")} · wygasa po 21 dniach` : undefined}
+                      action={{ label: "Nie wysłano — cofnij", onClick: () => void updateListingState(item, "revoke_outreach") }}
+                    />
                   ))}
                 </StackSection>
               ) : null}
@@ -1488,7 +1512,13 @@ function StackSection(props: {
   );
 }
 
-function BlockedRow(props: { item: PreviewListing; badge: string; seal?: "dead"; detail?: string }) {
+function BlockedRow(props: {
+  item: PreviewListing;
+  badge: string;
+  seal?: "dead";
+  detail?: string;
+  action?: { label: string; onClick: () => void };
+}) {
   return (
     <div className="px-3 py-2 flex items-center gap-2 opacity-80">
       {props.seal === "dead" ? <span className="eos-source-seal eos-source-seal--dead" title="Źródło nieaktywne" /> : null}
@@ -1497,6 +1527,15 @@ function BlockedRow(props: { item: PreviewListing; badge: string; seal?: "dead";
         <span className="block text-[11px] text-white/70 truncate">{props.item.address || "—"}</span>
         {props.detail ? <span className="block text-[10px] text-rose-200/80 truncate">{props.detail}</span> : null}
       </span>
+      {props.action ? (
+        <button
+          type="button"
+          onClick={props.action.onClick}
+          className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-bold text-white/60 hover:bg-white/10 hover:text-white"
+        >
+          {props.action.label}
+        </button>
+      ) : null}
       {props.item.portalUrl ? (
         <a href={props.item.portalUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 text-white/40 hover:text-white">
           <ExternalLink size={12} />
