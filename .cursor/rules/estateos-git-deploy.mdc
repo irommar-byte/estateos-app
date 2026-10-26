@@ -12,7 +12,7 @@ Przed **jakimkolwiek** `git commit`, `git push` lub deployem na VPS przeczytaj i
 
 ## Nie negocjuj z użytkownikiem
 
-- Nie tłumacz się, że gałęzie się „rozjechały” — zsynchronizuj według playbooka (mapowanie `deploy/estateos-www-full/` → worktree `estateos-recovery-deploy`).
+- Jedyne źródło kodu serwera to worktree `estateos-recovery-deploy` (gałąź `recovery-local-snapshot`). Stare kopie `deploy/estateos-www-full/` i `deploy/estateos-www/` usunięto 2026-10-26 — nie odtwarzaj ich (archiwum: gałąź `archive/mobile-przed-porzadkami-2026-10-26`).
 - Nie kończ zadania z samym push na `mobile-canonical-20260514`, jeśli zmieniłeś API/backend — wymagany push na `recovery-local-snapshot` + deploy VPS.
 - Sam wykonujesz commit, push, build recovery, `ssh estateos` deploy, smoke/curl — chyba że brak dostępu SSH.
 

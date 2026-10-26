@@ -208,5 +208,17 @@ module.exports = {
       cron_restart: "15 4 * * *",
       time: true,
     },
+    {
+      // Nocna kopia bazy (mysqldump + gzip) do ~/backups/estateos, 14 dni wstecz.
+      name: "db-backup",
+      cwd: root,
+      script: "scripts/db-backup.cjs",
+      env_file: path.join(root, ".env"),
+      env: { ...sharedEnv },
+      env_production: { ...sharedEnv },
+      autorestart: false,
+      cron_restart: "40 3 * * *",
+      time: true,
+    },
   ],
 };

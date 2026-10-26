@@ -49,3 +49,6 @@ debug_*.js
 audyt*.txt
 
 .DS_Store
+
+# pliki tymczasowe serwera (zdjęcia w trakcie importu)
+/.tmp-uploads/

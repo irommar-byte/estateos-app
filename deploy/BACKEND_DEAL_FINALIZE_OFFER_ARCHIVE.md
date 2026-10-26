@@ -26,7 +26,7 @@ Przy udanej **finalnej akceptacji właściciela** w jednej transakcji DB:
 ## Migracja danych
 
 ```bash
-node scripts/migrate-finalized-deals-archive-offers.cjs
+node scripts/archive/migrate-finalized-deals-archive-offers.cjs
 ```
 
 Ustawia `Offer.status = SOLD` dla ofert powiązanych z dealami `FINALIZED` lub `AGREED` + `acceptedBidId`, gdy oferta nadal `ACTIVE`.

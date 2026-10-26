@@ -389,7 +389,7 @@ test('handoff detects Polish viewing intent (spotkanie, umówmy, zobaczyć)', ()
     disliked: '',
   });
   assert.ok(handoff);
-  assert.match(handoff!, /agentowi/i);
+  assert.match(handoff!, /umówić|skontaktuj/i);
 });
 
 test('handoff detects the viewing button and a concrete question for the agent', () => {
@@ -426,7 +426,7 @@ test('buildCheckbackChoicePrompt lists all options', () => {
   const prompt = buildCheckbackChoicePrompt(yesNo);
   assert.match(prompt, /Tak, zgadza się/);
   assert.match(prompt, /Nie — poprawię/);
-  assert.match(prompt, /wybierz proszę/i);
+  assert.match(prompt, /wybrać jedną z opcji/i);
 });
 
 // ─── Handoff i lekcje ───────────────────────────────────────────────────────

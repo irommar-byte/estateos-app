@@ -62,8 +62,8 @@ describe('listing description model split helpers', () => {
       delete process.env.OPENAI_LISTING_REWRITE_MODEL;
       delete process.env.OPENAI_LISTING_MODEL;
       delete process.env.OPENAI_LISTING_CHEAP_MODEL;
-      assert.equal(resolveListingDescriptionModel(true), 'gpt-4o-mini');
-      assert.equal(resolveListingDescriptionModel(false), 'gpt-4o-mini');
+      assert.equal(resolveListingDescriptionModel(true), 'gpt-6-luna');
+      assert.equal(resolveListingDescriptionModel(false), 'gpt-6-luna');
       process.env.OPENAI_LISTING_CHEAP_MODEL = 'gpt-4o-mini';
       process.env.OPENAI_LISTING_REWRITE_MODEL = 'gpt-5-mini';
       assert.equal(resolveListingDescriptionModel(true), 'gpt-5-mini');
