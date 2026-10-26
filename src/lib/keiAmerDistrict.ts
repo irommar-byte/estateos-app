@@ -60,3 +60,41 @@ export function districtMatches(filter: string, address: string | null | undefin
   const escaped = wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(normalizeKeiPlaceName(String(address || '')));
 }
+
+/** Zasięg Warszawy (z małym zapasem) — do sprawdzenia pinezki ogłoszenia. */
+const WARSAW_BOUNDS = { minLat: 52.085, maxLat: 52.38, minLng: 20.83, maxLng: 21.29 };
+
+export function isInsideWarsaw(lat: number | null | undefined, lng: number | null | undefined): boolean {
+  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return lat >= WARSAW_BOUNDS.minLat && lat <= WARSAW_BOUNDS.maxLat && lng >= WARSAW_BOUNDS.minLng && lng <= WARSAW_BOUNDS.maxLng;
+}
+
+/** Pierwsza z podanych nazw, która jest prawdziwą dzielnicą Warszawy (bez numerów KEI i nazw z innych miast). */
+export function resolveWarsawDistrict(...candidates: Array<string | null | undefined>): string {
+  const list = warsawDistricts();
+  for (const raw of candidates) {
+    const value = String(raw || '').trim();
+    if (!value || /^\d+$/.test(value)) continue;
+    const wanted = normalizeKeiPlaceName(value);
+    const hit = list.find((district) => normalizeKeiPlaceName(district) === wanted);
+    if (hit) return hit;
+  }
+  return '';
+}
+
+/**
+ * Oferta z KEI, której pinezka leży w Warszawie, to zawsze Warszawa — niezależnie od tego,
+ * co tekst ogłoszenia sugeruje. Dzielnica: z adresu KEI, potem z portalu, potem z pola KEI.
+ */
+export function pinKeiDraftToWarsaw<T extends { city: string; district?: string | null; lat: number | null; lng: number | null }>(
+  draft: T,
+  kei: { address?: string | null; district?: string | null } | null | undefined,
+): T {
+  if (!isInsideWarsaw(draft.lat, draft.lng)) return draft;
+  const district = resolveWarsawDistrict(
+    extractWarsawDistrictFromKeiAddress(String(kei?.address || '')),
+    draft.district,
+    kei?.district,
+  );
+  return { ...draft, city: 'Warszawa', district: district || (resolveWarsawDistrict(draft.district) ? draft.district : null) };
+}

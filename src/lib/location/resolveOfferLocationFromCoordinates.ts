@@ -154,8 +154,10 @@ export async function resolveOfferLocationFromCoordinates(params: {
   if (
     preferred &&
     pinCity &&
-    !isStrictCity(preferred) &&
-    !locationNamesEquivalent(preferred, pinCity)
+    !locationNamesEquivalent(preferred, pinCity) &&
+    // Dwa różne duże miasta (np. tekst „Białystok”, pinezka w Warszawie) — wygrywa pinezka.
+    // Duże miasto z tekstu zostaje tylko wtedy, gdy pinezka wpada w podmiejską miejscowość.
+    (!isStrictCity(preferred) || isStrictCity(pinCity))
   ) {
     city = pinCity;
   }

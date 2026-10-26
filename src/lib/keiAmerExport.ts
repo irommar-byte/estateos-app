@@ -24,6 +24,7 @@ import {
 } from '@/lib/keiAmerListingState';
 import { importUrlLookupCandidates } from '@/lib/importDuplicateGuard';
 import { buildKeiImportContext, keiContextFromSelection, type KeiImportContext } from '@/lib/keiAmerListingExtras';
+import { pinKeiDraftToWarsaw } from '@/lib/keiAmerDistrict';
 
 const DEFAULT_EXPORT_USER_ID = 55;
 const DEFAULT_COMMISSION_PERCENT = 2;
@@ -440,14 +441,19 @@ export async function exportKeiListingsToEstateOS(options?: {
       const itemStartedAt = Date.now();
       const remainingBudget = () => Math.max(15_000, ITEM_TIME_BUDGET_MS - (Date.now() - itemStartedAt));
 
-      const draft = alignDraftWithKeiExportFilters(
-        await withTimeBudget(
-          enrichOtodomImportDraft(await importOfferFromUrl(portalUrl)),
-          remainingBudget(),
-          'Pobieranie z portalu',
+      // KEI to wyłącznie Warszawa: gdy pinezka jest w Warszawie, miasto i dzielnica idą z KEI, nie z tekstu ogłoszenia
+      // (tekst potrafi wskazać np. Białystok — a AI pisałoby wtedy opis o złym mieście).
+      const draft = pinKeiDraftToWarsaw(
+        alignDraftWithKeiExportFilters(
+          await withTimeBudget(
+            enrichOtodomImportDraft(await importOfferFromUrl(portalUrl)),
+            remainingBudget(),
+            'Pobieranie z portalu',
+          ),
+          propertyKind,
+          transactionKind,
         ),
-        propertyKind,
-        transactionKind,
+        target.kei,
       );
 
       emit?.({

@@ -648,7 +648,9 @@ export async function createOfferFromOtodomDraft(
     district:
       draft.district && draft.district !== 'OTHER'
         ? draft.district
-        : kei?.district || draft.district,
+        : kei?.district && !/^\d+$/.test(kei.district)
+          ? kei.district
+          : draft.district,
     street: draft.street || kei?.street || null,
   };
 

@@ -1,6 +1,6 @@
 import type { KeiListingRow } from '@/lib/keiAmerClient';
 import { parseKeiNumeric } from '@/lib/keiAmerClient';
-import { extractWarsawDistrictFromKeiAddress } from '@/lib/keiAmerDistrict';
+import { extractWarsawDistrictFromKeiAddress, resolveWarsawDistrict } from '@/lib/keiAmerDistrict';
 import { stripReplacementChars } from '@/lib/http/decodeResponseText';
 
 export type KeiImportContext = {
@@ -52,7 +52,9 @@ export function buildKeiImportContext(row: Partial<KeiListingRow> | null | undef
   const keiId = String(row.id || '').trim();
   const phone = parseKeiPhone(row.telefon);
   const address = cleanText(row.adres);
-  let district = cleanText(row.dzielnica || row.dzielnica_) || extractWarsawDistrictFromKeiAddress(String(row.adres || '')) || null;
+  // KEI w polu „dzielnica” trzyma czasem numer (np. „13”) — bierzemy tylko prawdziwe nazwy dzielnic Warszawy.
+  let district =
+    resolveWarsawDistrict(extractWarsawDistrictFromKeiAddress(String(row.adres || '')), row.dzielnica_, row.dzielnica) || null;
   const street = cleanText(row.ulica);
   const rooms = parseKeiRooms(row.typ) ?? parseKeiRooms(row.typ_, true);
   const pricePerSqm = parseKeiNumeric(row.cena_m);
@@ -63,7 +65,7 @@ export function buildKeiImportContext(row: Partial<KeiListingRow> | null | undef
     const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
     if (parts.length >= 2) {
       // "warszawa, białołęka, żerań" → dzielnica = białołęka
-      district = parts[1] || null;
+      district = parts[1] && !/^\d+$/.test(parts[1]) ? parts[1] : null;
     }
   }
   if (!keiId && !phone && !address && !district && !rooms && !listingText) return null;
