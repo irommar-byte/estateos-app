@@ -137,9 +137,23 @@ export async function POST(req: Request) {
           ...(emit ? importCreateProgressHandlers(emit) : {}),
         });
         if (!result.ok) {
+          // Aplikacja traktuje istniejącą ofertę jak swoją tylko wtedy, gdy naprawdę należy do tego użytkownika
+          // (np. ponowienie po zerwanym połączeniu) — cudzej oferty nie pokazujemy jako „utworzonej”.
+          const existing = result.existingOfferId
+            ? await prisma.offer.findUnique({ where: { id: result.existingOfferId }, select: { userId: true } })
+            : null;
+          const ownedByYou = Boolean(existing && existing.userId === gate.userId);
           return {
             status: 409,
-            body: { success: false, code: result.code, message: result.message, existingOfferId: result.existingOfferId },
+            body: {
+              success: false,
+              code: result.code,
+              message: ownedByYou
+                ? result.message
+                : 'To ogłoszenie jest już na EstateOS. Jeśli to Twoja nieruchomość, napisz do nas — przeniesiemy ją na Twoje konto.',
+              existingOfferId: ownedByYou ? result.existingOfferId : undefined,
+              ownedByYou,
+            },
           };
         }
         emit?.({ stage: 'publish', label: 'Oferta gotowa', percent: 100 });
