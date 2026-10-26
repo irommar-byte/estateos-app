@@ -11,12 +11,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   UIManager,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '../store/useAuthStore';
@@ -25,10 +27,12 @@ import {
   decideIntelligenceApproval,
   fetchAgentToday,
   reportOwnerCall,
+  saveOwnerPhone,
   type AgentToday,
   type TodayApproval,
   type TodayOffer,
   type TodayOwnerCall,
+  type TodayOwnerContact,
   type TodayReply,
   type TodayScheduleItem,
   type TodayStaleClient,
@@ -229,21 +233,183 @@ function ClientChip({ name, onPress, palette }: { name: string; onPress: () => v
 
 /* ───────────────────────────── cards ───────────────────────────── */
 
+const PHONE_SOURCE_LABEL: Record<NonNullable<TodayOwnerContact['phoneSource']>, string> = {
+  agent: 'dopisany przez Ciebie',
+  kei: 'z KEI',
+  portal: 'z ogłoszenia',
+  description: 'z treści ogłoszenia',
+  note: 'z notatki',
+};
+
+function formatListedAt(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const date = new Date(String(raw).replace(' ', 'T'));
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
+ * Wszystko, czego agent potrzebuje do telefonu w jednym miejscu:
+ * numer (albo agent prowadzący), kto ogłaszał, skąd numer, archiwalne ogłoszenie i notatka.
+ * Gdy numeru nie ma — od razu pole, żeby go dopisać.
+ */
+function OwnerContactPanel({
+  owner,
+  palette,
+  onCalled,
+  onSavePhone,
+}: {
+  owner: TodayOwnerContact | null;
+  palette: Palette;
+  onCalled: () => void;
+  onSavePhone: (phone: string) => Promise<string | null>;
+}) {
+  const [phone, setPhone] = useState<string | null>(owner?.phone || null);
+  const [savedByAgent, setSavedByAgent] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const agent = owner?.listingAgent || null;
+  const listedAt = formatListedAt(owner?.listedAt);
+  const sourceChip = savedByAgent ? PHONE_SOURCE_LABEL.agent : owner?.phoneSource ? PHONE_SOURCE_LABEL[owner.phoneSource] : null;
+
+  const call = (number: string | null, mode: 'tel' | 'sms' = 'tel') => {
+    if (!number) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (mode === 'tel') onCalled();
+    openPhone(number, mode);
+  };
+  const copy = async (number: string) => {
+    await Clipboard.setStringAsync(number.replace(/\s/g, ''));
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+  const save = async () => {
+    const digits = draft.replace(/\D/g, '');
+    if (digits.length < 9) {
+      Alert.alert('Numer właściciela', 'Wpisz 9-cyfrowy numer telefonu.');
+      return;
+    }
+    setSaving(true);
+    const saved = await onSavePhone(draft);
+    setSaving(false);
+    if (saved) {
+      setPhone(saved);
+      setSavedByAgent(true);
+      setDraft('');
+    }
+  };
+
+  return (
+    <View style={[styles.ownerPanel, { backgroundColor: palette.raised }]}>
+      <View style={styles.ownerPanelHead}>
+        <Ionicons name={agent ? 'briefcase' : 'person'} size={13} color={palette.secondary} />
+        <Text style={[styles.ownerPanelLabel, { color: palette.secondary }]}>
+          {agent ? 'Agent prowadzący' : 'Kontakt do właściciela'}
+        </Text>
+        {sourceChip && phone && !agent ? (
+          <View style={[styles.ownerChip, { backgroundColor: palette.card }]}>
+            <Text style={[styles.ownerChipText, { color: palette.secondary }]}>{sourceChip}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      {agent ? (
+        <>
+          <Text style={[styles.ownerName, { color: palette.text }]}>{agent.name}</Text>
+          <Text style={[styles.ownerNote, { color: palette.secondary }]}>
+            To oferta innego agenta z bazy — dostępność i termin oglądania ustalasz z nim.
+          </Text>
+          {agent.phone ? (
+            <View style={styles.actionsRow}>
+              <ActionButton label={agent.phone} icon="call" tone="blue" palette={palette} flex={1.6} onPress={() => call(agent.phone)} />
+              <ActionButton label="SMS" icon="chatbubble" palette={palette} onPress={() => call(agent.phone, 'sms')} />
+            </View>
+          ) : (
+            <Text style={[styles.ownerNote, { color: palette.secondary }]}>Agent nie podał numeru w profilu.</Text>
+          )}
+        </>
+      ) : phone ? (
+        <>
+          <Pressable onPress={() => call(phone)} onLongPress={() => void copy(phone)} accessibilityRole="button" accessibilityLabel={`Zadzwoń ${phone}`}>
+            <Text style={[styles.ownerPhone, { color: palette.text }]} selectable>
+              {phone}
+            </Text>
+          </Pressable>
+          {owner?.advertiser ? (
+            <Text style={[styles.ownerNote, { color: palette.secondary }]}>{owner.advertiser}</Text>
+          ) : null}
+          <View style={styles.actionsRow}>
+            <ActionButton label="Zadzwoń" icon="call" tone="blue" palette={palette} flex={1.6} onPress={() => call(phone)} />
+            <ActionButton label="SMS" icon="chatbubble" palette={palette} onPress={() => call(phone, 'sms')} />
+            <ActionButton label="Kopiuj" icon="copy-outline" palette={palette} onPress={() => void copy(phone)} />
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={[styles.ownerName, { color: palette.text }]}>
+            {owner?.phoneMasked ? `Portal pokazał tylko: ${owner.phoneMasked}` : 'Ogłoszenie nie miało numeru'}
+          </Text>
+          <Text style={[styles.ownerNote, { color: palette.secondary }]}>
+            {owner?.advertiser ? `${owner.advertiser}. ` : ''}Sprawdziliśmy import, treść ogłoszenia i KEI. Jeśli masz numer — dopisz go raz, zostanie przy ofercie.
+          </Text>
+          {owner?.canAddPhone !== false ? (
+            <View style={styles.actionsRow}>
+              <TextInput
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="Numer właściciela"
+                placeholderTextColor={palette.secondary}
+                keyboardType="phone-pad"
+                textContentType="telephoneNumber"
+                returnKeyType="done"
+                onSubmitEditing={() => void save()}
+                style={[styles.ownerInput, { backgroundColor: palette.card, color: palette.text, borderColor: palette.hairline }]}
+              />
+              <ActionButton label="Zapisz" icon="checkmark" tone="blue" palette={palette} busy={saving} flex={0.7} onPress={() => void save()} />
+            </View>
+          ) : null}
+        </>
+      )}
+
+      {!agent && (owner?.sourceUrl || listedAt) ? (
+        <Pressable
+          disabled={!owner?.sourceUrl}
+          onPress={() => owner?.sourceUrl && void Linking.openURL(owner.sourceUrl)}
+          style={({ pressed }) => [styles.ownerSource, { opacity: pressed ? 0.6 : 1 }]}
+          accessibilityRole="link"
+        >
+          <Ionicons name="document-text-outline" size={13} color={palette.blue} />
+          <Text style={[styles.ownerSourceText, { color: palette.blue }]} numberOfLines={1}>
+            {[owner?.sourceUrl ? `Archiwalne ogłoszenie${owner?.sourceLabel ? ` · ${owner.sourceLabel}` : ''}` : null, listedAt ? `dodane ${listedAt}` : null]
+              .filter(Boolean)
+              .join(' · ')}
+          </Text>
+        </Pressable>
+      ) : null}
+      {owner?.note ? (
+        <Text style={[styles.ownerNote, { color: palette.secondary }]} numberOfLines={3}>
+          Notatka: {owner.note}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 function OwnerCallCard({
   item,
   palette,
   busy,
   onOutcome,
   onOpenClient,
+  onSavePhone,
 }: {
   item: TodayOwnerCall;
   palette: Palette;
   busy: boolean;
   onOutcome: (outcome: 'available' | 'sold' | 'no_answer') => void;
   onOpenClient: () => void;
+  onSavePhone: (phone: string) => Promise<string | null>;
 }) {
   const [called, setCalled] = useState(false);
-  const phone = item.owner?.phone || null;
   return (
     <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.hairline }]}>
       <OfferHeader
@@ -258,28 +424,7 @@ function OwnerCallCard({
         }
       />
       <ClientChip name={item.clientName} onPress={onOpenClient} palette={palette} />
-      {item.owner?.note ? (
-        <Text style={[styles.ownerNote, { color: palette.secondary }]} numberOfLines={3}>
-          {item.owner.note}
-        </Text>
-      ) : null}
-      {phone ? (
-        <ActionButton
-          label={`Zadzwoń do właściciela · ${phone}`}
-          icon="call"
-          tone="blue"
-          palette={palette}
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            setCalled(true);
-            openPhone(phone);
-          }}
-        />
-      ) : (
-        <Text style={[styles.ownerNote, { color: palette.secondary }]}>
-          Brak numeru w notatce oferty — sprawdź kontakt na karcie oferty.
-        </Text>
-      )}
+      <OwnerContactPanel owner={item.owner} palette={palette} onCalled={() => setCalled(true)} onSavePhone={onSavePhone} />
       <Text style={[styles.outcomeLabel, { color: palette.secondary }]}>
         {called ? 'Jak poszło?' : 'Wynik rozmowy'}
       </Text>
@@ -582,6 +727,19 @@ export default function AgencyTodayScreen() {
     showToast(decision === 'approve' ? `Wysłano — ${firstName} dostał propozycję` : 'Pominięto — ta oferta nie wróci');
   };
 
+  const saveOwnerNumber = async (item: TodayOwnerCall, phone: string): Promise<string | null> => {
+    if (!token) return null;
+    const res = await saveOwnerPhone(token, item.approvalId, phone);
+    if (!res.ok) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Numer właściciela', res.message);
+      return null;
+    }
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    showToast('Numer zapisany przy ofercie');
+    return res.phone;
+  };
+
   const ownerOutcome = (item: TodayOwnerCall, outcome: 'available' | 'sold' | 'no_answer') => {
     const run = async () => {
       if (!token) return;
@@ -706,6 +864,7 @@ export default function AgencyTodayScreen() {
                     busy={busyIds.has(item.approvalId)}
                     onOutcome={(outcome) => ownerOutcome(item, outcome)}
                     onOpenClient={() => openClient(item.clientId)}
+                    onSavePhone={(phone) => saveOwnerNumber(item, phone)}
                   />
                 ))}
               </View>
@@ -828,6 +987,16 @@ const styles = StyleSheet.create({
   clientChip: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start' },
   clientChipText: { fontSize: 14, fontWeight: '600', maxWidth: 260 },
   ownerNote: { fontSize: 13, lineHeight: 18 },
+  ownerPanel: { borderRadius: 14, padding: 12, gap: 8 },
+  ownerPanelHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ownerPanelLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', flex: 1 },
+  ownerChip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  ownerChipText: { fontSize: 11, fontWeight: '700' },
+  ownerName: { fontSize: 15, fontWeight: '700' },
+  ownerPhone: { fontSize: 24, fontWeight: '800', letterSpacing: 0.5, fontVariant: ['tabular-nums'] },
+  ownerInput: { flex: 1.6, minHeight: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, fontSize: 16 },
+  ownerSource: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ownerSourceText: { fontSize: 13, fontWeight: '600', flexShrink: 1 },
   outcomeLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: -4 },
   quote: { borderLeftWidth: 3, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12 },
   quoteLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 0.8, marginBottom: 4 },

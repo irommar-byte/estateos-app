@@ -25,8 +25,22 @@ export type TodayApproval = {
   createdAt: string;
 };
 
+export type TodayOwnerContact = {
+  phone: string | null;
+  phoneMasked?: string | null;
+  phoneSource?: 'agent' | 'kei' | 'portal' | 'description' | 'note' | null;
+  directOwner: boolean;
+  advertiser?: string | null;
+  note: string | null;
+  sourceUrl: string | null;
+  sourceLabel?: string | null;
+  listedAt?: string | null;
+  listingAgent?: { name: string; phone: string | null } | null;
+  canAddPhone?: boolean;
+};
+
 export type TodayOwnerCall = TodayApproval & {
-  owner: { phone: string | null; directOwner: boolean; note: string | null; sourceUrl: string | null } | null;
+  owner: TodayOwnerContact | null;
   lastOutcome: 'no_answer' | null;
   attempts: number;
 };
@@ -125,6 +139,26 @@ export async function reportOwnerCall(
     const json = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, message: String(json?.error || 'Nie udało się zapisać wyniku rozmowy.') };
     return { ok: true, snoozedUntil: json.snoozedUntil, skippedOthers: json.skippedOthers };
+  } catch {
+    return { ok: false, message: 'Brak połączenia z serwerem.' };
+  }
+}
+
+/** Agent dopisuje numer właściciela — od teraz jest na karcie oferty. */
+export async function saveOwnerPhone(
+  token: string,
+  approvalId: number,
+  phone: string,
+): Promise<{ ok: true; phone: string } | { ok: false; message: string }> {
+  try {
+    const res = await fetch(`${API_URL}/api/crm/today`, {
+      method: 'POST',
+      headers: headers(token),
+      body: JSON.stringify({ action: 'owner_phone', approvalId, phone }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json?.phone) return { ok: false, message: String(json?.error || 'Nie udało się zapisać numeru.') };
+    return { ok: true, phone: String(json.phone) };
   } catch {
     return { ok: false, message: 'Brak połączenia z serwerem.' };
   }
