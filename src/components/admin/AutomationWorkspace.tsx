@@ -19,7 +19,9 @@ import {
 } from "lucide-react";
 import { ESTATEOS_TIMEZONE, formatWarsawDateTime } from "@/lib/warsawDateTime";
 import OfferPrivateCommentModal from "@/components/crm/OfferPrivateCommentModal";
-import AutomationKeiPanel from "@/components/admin/AutomationKeiPanel";
+import KeiAutoImportPanel from "@/components/admin/kei/KeiAutoImportPanel";
+import { useKeiAmerExportStore } from "@/store/useKeiAmerExportStore";
+import { summarizeKeiJob } from "@/lib/keiImportProgressModel";
 import type { KeiAutoImportConfig } from "@/lib/keiAutoImportShared";
 import type { ImportRegistryRow } from "@/lib/adminImportRegistry";
 import type { ScheduledJobView } from "@/lib/adminAutomationOverview";
@@ -203,6 +205,14 @@ function KeiJobResults({
   );
 }
 
+const JOB_STATUS_PL: Record<string, string> = {
+  queued: "W kolejce",
+  running: "W toku",
+  done: "Zakończony",
+  error: "Błąd",
+  cancelled: "Zatrzymany",
+};
+
 function ActiveKeiJobCard({
   job,
   onOpenImport,
@@ -210,23 +220,41 @@ function ActiveKeiJobCard({
   job: KeiImportJobSnapshot;
   onOpenImport: (offer: ImportModalOffer) => void;
 }) {
-  const activeItems = job.items.filter((item) => item.status === "active" || item.status === "done");
+  const openJob = useKeiAmerExportStore((s) => s.openJob);
+  const live = job.status === "queued" || job.status === "running";
+  const summary = summarizeKeiJob({ items: job.items, running: live, source: job.source, targetCount: job.targetCount });
+  const doneItems = job.items.filter((item: KeiImportJobItem) => item.status === "done");
   return (
-    <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-xs">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-[11px] text-[var(--eos-subtle)]">{job.id.slice(0, 8)}…</span>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${statusTone(job.status)}`}>
-          {job.status}
-        </span>
+    <div className="kei-lux k-card px-5 py-4 text-[13px]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-[color:var(--k-ink)]">
+            {job.source === "auto" ? "Automatyczny import" : "Import ręczny"}
+            <span className="font-normal text-[color:var(--k-ink-3)]"> · {formatTs(job.createdAt)}</span>
+          </p>
+          <p className="mt-0.5 text-[12.5px] text-[color:var(--k-ink-3)]">{summary.headline || job.message || "—"}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`k-chip ${job.status === "error" ? "k-chip--danger" : live ? "k-chip--gold" : job.status === "done" ? "k-chip--good" : "k-chip--neutral"}`}>
+            {JOB_STATUS_PL[job.status] || job.status}
+          </span>
+          <button type="button" className="k-btn h-8 px-3 text-[12px]" onClick={() => openJob(job.id)}>
+            Szczegóły
+          </button>
+        </div>
       </div>
-      <p className="mt-1 text-[var(--eos-muted)]">{job.message || "—"}</p>
-      <p className="mt-1 text-[10px] text-[var(--eos-subtle)]">
-        Start: {formatTs(job.createdAt)} · aktualizacja: {formatTs(job.updatedAt)}
-      </p>
-      {activeItems.length > 0 ? (
-        <div className="mt-2 space-y-1">
-          {activeItems.map((item: KeiImportJobItem) => (
-            <p key={item.index} className="text-[10px] text-[var(--eos-muted)]">
+      {live ? (
+        <div className="mt-3 flex items-center gap-3">
+          <div className="k-bar flex-1">
+            <div className="k-bar__fill" style={{ width: `${Math.max(2, summary.percent)}%` }} />
+          </div>
+          <span className="w-10 text-right text-[12px] tabular-nums text-[color:var(--k-ink-2)]">{summary.percent}%</span>
+        </div>
+      ) : null}
+      {doneItems.length > 0 ? (
+        <div className="mt-3 space-y-1">
+          {doneItems.map((item: KeiImportJobItem) => (
+            <p key={item.index} className="text-[12px] text-[color:var(--k-ink-2)]">
               {item.offerId ? (
                 <>
                   <OfferLink offerId={item.offerId} href={item.publicUrl || item.editUrl} />
@@ -234,11 +262,9 @@ function ActiveKeiJobCard({
                   <ImportSnapshotLink offerId={item.offerId} onOpen={onOpenImport} />
                   <span className="mx-1">·</span>
                 </>
-              ) : (
-                `Pozycja ${item.index + 1} · `
-              )}
-              {item.stepLabel}
-              {item.stepDetail ? ` — ${item.stepDetail}` : ""}
+              ) : null}
+              {item.title || item.address || item.stepLabel}
+              {item.publishState === "review" ? " — szkic do przejrzenia" : ""}
             </p>
           ))}
         </div>
@@ -429,7 +455,7 @@ export default function AutomationWorkspace() {
 
         {activeTab === "panel" ? (
           <div className="space-y-8">
-            <AutomationKeiPanel initialConfig={keiAuto} onSaved={setKeiAuto} />
+            <KeiAutoImportPanel onSaved={setKeiAuto} />
 
             {activeJobs.length > 0 ? (
               <section className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 sm:p-5">

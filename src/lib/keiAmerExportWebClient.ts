@@ -19,6 +19,8 @@ export type KeiExportRequestBody = {
   }>;
   floorPlanOverrides?: Record<string, boolean>;
   floorPlanSelections?: Record<string, { enabled: boolean; imageIndex: number }>;
+  smartAddEnabled?: boolean;
+  smartAddDecisionsByUrl?: Record<string, Record<string, boolean>>;
 };
 
 function normalizeSseBuffer(raw: string): string {
@@ -92,9 +94,9 @@ export const KEI_IMPORT_STEPS = [
 export type KeiImportStepId = (typeof KEI_IMPORT_STEPS)[number];
 
 export const KEI_STEP_LABELS: Record<KeiImportStepId, string> = {
-  check_duplicate: 'Duplikat',
+  check_duplicate: 'Sprawdzenie',
   fetch_portal: 'Portal',
-  create_offer: 'Oferta',
+  create_offer: 'Opis AI',
   images: 'Zdjęcia',
   activate: 'Publikacja',
 };
@@ -125,6 +127,17 @@ export type KeiExportItemProgress = {
   editUrl?: string;
   reason?: string;
   aiRewrite?: KeiAiRewriteProgress;
+  thumbUrl?: string | null;
+  title?: string | null;
+  price?: number | null;
+  area?: number | null;
+  district?: string | null;
+  skipKind?: 'duplicate' | 'blocked' | 'inactive' | 'quality' | 'error' | 'cancelled';
+  publishState?: 'published' | 'review';
+  aiRewritten?: boolean;
+  imageCount?: number;
+  startedAt?: string;
+  finishedAt?: string;
 };
 
 function mergeCompletedSteps(existing: KeiImportStepId[], step: KeiImportStepId): KeiImportStepId[] {

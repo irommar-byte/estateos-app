@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Check,
@@ -13,21 +12,16 @@ import {
   Eye,
   ImageIcon,
   Loader2,
-  Minimize2,
   RefreshCw,
   Send,
   Sparkles,
   UploadCloud,
   X,
 } from "lucide-react";
-import {
-  computeKeiItemPercent,
-  computeKeiOverallPercent,
-  KEI_IMPORT_STEPS,
-  KEI_STEP_LABELS,
-  type KeiExportItemProgress,
-  type KeiImportStepId,
-} from "@/lib/keiAmerExportWebClient";
+import type { KeiExportItemProgress, KeiImportStepId } from "@/lib/keiAmerExportWebClient";
+import { summarizeKeiJob } from "@/lib/keiImportProgressModel";
+import KeiAutoImportPanel from "@/components/admin/kei/KeiAutoImportPanel";
+import KeiTargetUserPicker from "@/components/admin/kei/KeiTargetUserPicker";
 import { useKeiAmerExportStore } from "@/store/useKeiAmerExportStore";
 import {
   DEFAULT_KEI_OUTREACH_TEMPLATE,
@@ -37,12 +31,6 @@ import {
   saveKeiOutreachTemplate,
   type KeiOutreachSenderProfile,
 } from "@/lib/keiAmerOutreachMessage";
-import {
-  KEI_AUTO_INTERVALS_MIN,
-  KEI_AUTO_MAX_COUNT,
-  keiAutoIntervalLabel,
-  type KeiAutoImportConfig,
-} from "@/lib/keiAutoImportShared";
 
 type ActionMode = "import" | "outreach";
 type PropertyKind = "apartment" | "house";
@@ -181,47 +169,6 @@ function SegmentedControl<T extends string>(props: {
   );
 }
 
-function ProgressBar({ percent }: { percent: number }) {
-  return (
-    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-      <motion.div
-        className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400"
-        animate={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
-      />
-    </div>
-  );
-}
-
-function StepPill(props: {
-  label: string;
-  done: boolean;
-  active: boolean;
-  pulsate?: boolean;
-  accent?: "blue" | "orange";
-}) {
-  const accentClass =
-    props.accent === "orange"
-      ? "border-amber-400/50 bg-amber-500/20 text-amber-100"
-      : "border-cyan-400/50 bg-cyan-500/20 text-cyan-100";
-
-  return (
-    <motion.span
-      animate={props.pulsate && props.active && !props.done ? { opacity: [1, 0.35, 1] } : { opacity: 1 }}
-      transition={props.pulsate && props.active && !props.done ? { duration: 0.9, repeat: Infinity } : undefined}
-      className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wide border ${
-        props.done
-          ? "bg-emerald-500/15 border-emerald-400/30 text-emerald-300"
-          : props.active
-            ? accentClass
-            : "bg-white/[0.03] border-white/8 text-white/25"
-      }`}
-    >
-      {props.label}
-    </motion.span>
-  );
-}
-
 function PagePager(props: {
   page: number;
   hasNextPage: boolean;
@@ -249,158 +196,6 @@ function PagePager(props: {
       ))}
     </div>
   );
-}
-
-function ImportProgressModal(props: {
-  open: boolean;
-  running: boolean;
-  message: string;
-  items: KeiExportItemProgress[];
-  resultsCount: number;
-  skippedCount: number;
-  onMinimize: () => void;
-  onClose: () => void;
-  onStop?: () => void;
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const overallPct = computeKeiOverallPercent(props.items);
-
-  useEffect(() => {
-    if (props.open) {
-      requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }));
-    }
-  }, [props.open, props.items, props.message]);
-
-  if (!props.open) return null;
-
-  const modal = (
-    <div
-      className="fixed inset-0 eos-z-modal flex items-start sm:items-center justify-center p-3 sm:p-6"
-      style={{ paddingTop: "calc(var(--eos-nav-height, 5rem) + 0.75rem)" }}
-    >
-      <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={props.onMinimize} aria-label="Zminimalizuj" />
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="relative z-10 flex w-full sm:max-w-2xl max-h-[calc(100dvh-var(--eos-nav-height,5rem)-1.5rem)] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-gradient-to-b from-[#111] to-black shadow-[0_40px_120px_rgba(0,0,0,0.8)]"
-      >
-        <div className="flex shrink-0 items-center justify-between gap-3 px-5 py-4 border-b border-white/10">
-          <div>
-            <p className="text-lg font-black text-white">Import KEI</p>
-            <p className="text-xs text-white/45 mt-0.5">{props.message || "Postęp z serwera"}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {props.running && props.onStop ? (
-              <button
-                type="button"
-                onClick={props.onStop}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-[11px] font-bold text-red-300"
-              >
-                Stop
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={props.onMinimize}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/8 hover:bg-white/12 text-[11px] font-bold text-white/80"
-            >
-              <Minimize2 size={14} /> {props.running ? "Zminimalizuj" : "Zamknij"}
-            </button>
-            {!props.running ? (
-              <button type="button" onClick={props.onClose} className="p-2 rounded-xl hover:bg-white/10 text-white/60">
-                <X size={18} />
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
-          <div>
-            <div className="flex items-end justify-between mb-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/40">Ogółem</span>
-              <span className="text-2xl font-black tabular-nums text-white">{overallPct}%</span>
-            </div>
-            <ProgressBar percent={overallPct} />
-          </div>
-
-          {props.items.map((item) => {
-            const pct = computeKeiItemPercent(item);
-            const isActive = item.status === "active";
-            const isDone = item.status === "done";
-            const isSkipped = item.status === "skipped";
-            return (
-              <div
-                key={`${item.index}-${item.portalUrl}`}
-                className={`rounded-[22px] border p-4 ${
-                  isActive
-                    ? "border-cyan-400/35 bg-cyan-500/[0.08]"
-                    : isDone
-                      ? "border-emerald-400/25 bg-emerald-500/[0.06]"
-                      : isSkipped
-                        ? "border-amber-400/20 bg-amber-500/[0.04]"
-                        : "border-white/8 bg-black/30 opacity-70"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3 mb-2">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{item.address || item.portalUrl}</p>
-                    <p className="text-xs text-white/50 mt-0.5">{item.stepLabel}</p>
-                    {item.stepDetail ? <p className="text-[11px] text-white/40 mt-0.5">{item.stepDetail}</p> : null}
-                  </div>
-                  <span className="text-lg font-black tabular-nums text-white/80">{pct}%</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {KEI_IMPORT_STEPS.map((step) => {
-                    const done = item.completedSteps.includes(step) || isDone;
-                    const active = isActive && item.currentStep === step;
-                    const isFloorPlan = step === "images" && item.imageProgress?.asFloorPlan;
-                    return (
-                      <StepPill
-                        key={step}
-                        label={isFloorPlan && (active || done) ? "Rzut" : KEI_STEP_LABELS[step]}
-                        done={done}
-                        active={active}
-                        pulsate={props.running}
-                        accent={isFloorPlan ? "orange" : "blue"}
-                      />
-                    );
-                  })}
-                </div>
-                {item.aiRewrite && !item.aiRewrite.working ? (
-                  <p className="text-[11px] text-cyan-200/80">
-                    {item.aiRewrite.rewrittenByAi ? "Opis przepisany przez AI" : "Opis uzupełniony regułami"}
-                  </p>
-                ) : null}
-                {isDone && item.publicUrl ? (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <a href={item.publicUrl} target="_blank" rel="noopener noreferrer" className="text-xs font-bold text-blue-300 hover:text-blue-200">
-                      Podgląd oferty
-                    </a>
-                    {item.editUrl ? (
-                      <a href={item.editUrl} className="text-xs font-bold text-white/70 hover:text-white">
-                        Edycja
-                      </a>
-                    ) : null}
-                  </div>
-                ) : null}
-                {item.reason ? <p className="text-xs text-amber-300/90 mt-2">{item.reason}</p> : null}
-              </div>
-            );
-          })}
-
-          {!props.running && props.resultsCount > 0 ? (
-            <div className="rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-              Zaimportowano: {props.resultsCount}
-              {props.skippedCount > 0 ? ` · Pominięto: ${props.skippedCount}` : ""}
-            </div>
-          ) : null}
-        </div>
-      </motion.div>
-    </div>
-  );
-
-  if (typeof document === "undefined") return modal;
-  return createPortal(modal, document.body);
 }
 
 function FloorPlanPicker(props: {
@@ -585,7 +380,8 @@ export default function KeiAmerWorkspace() {
   const [facets, setFacets] = useState<SearchFacets | null>(null);
   const [facetsLoading, setFacetsLoading] = useState(false);
   const [facetsError, setFacetsError] = useState("");
-  const [targetUserId, setTargetUserId] = useState("55");
+  const [targetUserId, setTargetUserId] = useState("");
+  const [targetUserLabel, setTargetUserLabel] = useState<{ id: number; name: string | null; email: string; role?: string } | null>(null);
   const [commissionPercent, setCommissionPercent] = useState("2");
   const [exportCount, setExportCount] = useState("1");
   const [previewPage, setPreviewPage] = useState(1);
@@ -608,19 +404,6 @@ export default function KeiAmerWorkspace() {
   });
   const [outreachSenderMissing, setOutreachSenderMissing] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [autoImport, setAutoImport] = useState<KeiAutoImportConfig | null>(null);
-  const [autoSaving, setAutoSaving] = useState(false);
-  const [autoMessage, setAutoMessage] = useState("");
-  const [autoExpanded, setAutoExpanded] = useState(false);
-  const [autoDraft, setAutoDraft] = useState({
-    enabled: false,
-    intervalMinutes: 60,
-    count: "3",
-    targetUserId: "55",
-    agentCommissionPercent: "2",
-    propertyKind: "apartment" as PropertyKind,
-    transactionKind: "sale" as TransactionKind,
-  });
   const [preview, setPreview] = useState<PreviewState>({
     loading: false,
     error: "",
@@ -631,94 +414,44 @@ export default function KeiAmerWorkspace() {
   });
 
   const exportRunning = useKeiAmerExportStore((s) => s.running);
-  const exportVisible = useKeiAmerExportStore((s) => s.modalVisible);
-  const exportMessage = useKeiAmerExportStore((s) => s.message);
   const exportItems = useKeiAmerExportStore((s) => s.items);
-  const exportResults = useKeiAmerExportStore((s) => s.results);
-  const exportSkipped = useKeiAmerExportStore((s) => s.skipped);
+  const exportSource = useKeiAmerExportStore((s) => s.source);
+  const exportTarget = useKeiAmerExportStore((s) => s.targetCount);
   const setExportVisible = useKeiAmerExportStore((s) => s.setModalVisible);
   const startKeiExport = useKeiAmerExportStore((s) => s.startExport);
-  const cancelKeiExport = useKeiAmerExportStore((s) => s.cancelExport);
   const hydrateExport = useKeiAmerExportStore((s) => s.hydrateFromServer);
-  const clearExportSession = useKeiAmerExportStore((s) => s.clearSession);
 
   const peekInflight = useRef(new Set<string>());
   const selectedList = useMemo(() => Object.values(selected), [selected]);
   const selectedCount = selectedList.length;
-  const overallPercent = computeKeiOverallPercent(exportItems);
+  const overallPercent = summarizeKeiJob({ items: exportItems, running: exportRunning, source: exportSource, targetCount: exportTarget }).percent;
 
   useEffect(() => {
     void hydrateExport();
   }, [hydrateExport]);
+
+  // Domyślny agent ręcznego importu = ten sam co w harmonogramie (bez wpisywania ID).
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/admin/kei-amer/auto-import", { credentials: "include", cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        const cfg = data?.config;
+        if (!alive || !cfg) return;
+        setTargetUserId((current) => current || String(cfg.targetUserId || ""));
+        if (cfg.targetUser) setTargetUserLabel((current) => current ?? cfg.targetUser);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     setOutreachTemplate(loadKeiOutreachTemplate());
     const saved = loadKeiOutreachSender();
     setOutreachSender(saved);
   }, []);
-
-  const applyAutoConfig = useCallback((config: KeiAutoImportConfig) => {
-    setAutoImport(config);
-    setAutoDraft({
-      enabled: config.enabled,
-      intervalMinutes: config.intervalMinutes,
-      count: String(config.count),
-      targetUserId: String(config.targetUserId),
-      agentCommissionPercent: String(config.agentCommissionPercent),
-      propertyKind: config.propertyKind,
-      transactionKind: config.transactionKind,
-    });
-  }, []);
-
-  const loadAutoImport = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/kei-amer/auto-import", { credentials: "include", cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data?.config) applyAutoConfig(data.config as KeiAutoImportConfig);
-    } catch {
-      /* ignore */
-    }
-  }, [applyAutoConfig]);
-
-  useEffect(() => {
-    void loadAutoImport();
-  }, [loadAutoImport]);
-
-  const saveAutoImport = useCallback(
-    async (patch?: Partial<KeiAutoImportConfig>) => {
-      setAutoSaving(true);
-      setAutoMessage("");
-      try {
-        const res = await fetch("/api/admin/kei-amer/auto-import", {
-          method: "PUT",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            enabled: patch?.enabled ?? autoDraft.enabled,
-            intervalMinutes: patch?.intervalMinutes ?? autoDraft.intervalMinutes,
-            count: patch?.count ?? Number(autoDraft.count),
-            targetUserId: patch?.targetUserId ?? Number(autoDraft.targetUserId),
-            agentCommissionPercent:
-              patch?.agentCommissionPercent ?? Number(autoDraft.agentCommissionPercent),
-            propertyKind: patch?.propertyKind ?? autoDraft.propertyKind,
-            transactionKind: patch?.transactionKind ?? autoDraft.transactionKind,
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data?.config) {
-          setAutoMessage(String(data?.error || "Nie udało się zapisać harmonogramu."));
-          return;
-        }
-        applyAutoConfig(data.config as KeiAutoImportConfig);
-        setAutoMessage(data.config.enabled ? "Harmonogram zapisany — import działa na serwerze." : "Harmonogram wyłączony.");
-      } catch {
-        setAutoMessage("Błąd sieci przy zapisie harmonogramu.");
-      } finally {
-        setAutoSaving(false);
-      }
-    },
-    [applyAutoConfig, autoDraft],
-  );
 
   const loadOutreachProfile = useCallback(async () => {
     try {
@@ -1084,7 +817,7 @@ export default function KeiAmerWorkspace() {
     const userId = Number(targetUserId);
     const comm = Number(commissionPercent);
     if (!Number.isFinite(userId) || userId <= 0) {
-      alert("Podaj poprawne ID użytkownika docelowego.");
+      alert("Wybierz agenta, do którego trafią oferty.");
       return;
     }
     const blocked = selectedList.filter((row) => row.blockedReason);
@@ -1290,140 +1023,7 @@ export default function KeiAmerWorkspace() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.06] p-4 md:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <button type="button" className="text-left min-w-0" onClick={() => setAutoExpanded((v) => !v)}>
-              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Automatyczny import</p>
-              <p className="mt-1 text-sm text-white/70 leading-relaxed">
-                {autoDraft.enabled
-                  ? "Załączony — serwer sam odświeża listę, wybiera najnowsze i importuje (jak Wybierz najnowsze + Importuj). Telefon może być wyłączony."
-                  : "Wyłączony — tylko ręczny import z listy."}{" "}
-                {autoExpanded ? "Zwiń ustawienia." : "Rozwiń, żeby zmienić interwał i ilość."}
-              </p>
-            </button>
-            <label className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/80">
-              <input
-                type="checkbox"
-                checked={autoDraft.enabled}
-                onChange={(e) => {
-                  const enabled = e.target.checked;
-                  setAutoDraft((prev) => ({ ...prev, enabled }));
-                  void saveAutoImport({ enabled });
-                }}
-                className="h-4 w-4 accent-emerald-500"
-              />
-              {autoDraft.enabled ? "Włączony" : "Wyłączony"}
-            </label>
-          </div>
-          <p className="mt-3 text-[11px] leading-snug text-white/55">
-            Inteligentne dodawanie (przełącznik w tęczowym asystencie Intelligence): mózg uzupełni balkon / komórkę / ogród
-            z opisu. W KEI stosuje to od razu i zostawia ślad na ofercie — można cofnąć w edycji.
-          </p>
-          {autoExpanded ? (
-          <div>
-          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            <label className="flex flex-col gap-1.5 col-span-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Interwał</span>
-              <select
-                value={autoDraft.intervalMinutes}
-                onChange={(e) => setAutoDraft((prev) => ({ ...prev, intervalMinutes: Number(e.target.value) }))}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              >
-                {KEI_AUTO_INTERVALS_MIN.map((min) => (
-                  <option key={min} value={min}>
-                    {keiAutoIntervalLabel(min)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Ilość (max {KEI_AUTO_MAX_COUNT})</span>
-              <input
-                type="number"
-                min={1}
-                max={KEI_AUTO_MAX_COUNT}
-                value={autoDraft.count}
-                onChange={(e) => setAutoDraft((prev) => ({ ...prev, count: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">ID użytkownika</span>
-              <input
-                type="number"
-                min={1}
-                value={autoDraft.targetUserId}
-                onChange={(e) => setAutoDraft((prev) => ({ ...prev, targetUserId: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Prowizja %</span>
-              <input
-                type="number"
-                min={0}
-                step={0.1}
-                value={autoDraft.agentCommissionPercent}
-                onChange={(e) => setAutoDraft((prev) => ({ ...prev, agentCommissionPercent: e.target.value }))}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Nieruchomość</span>
-              <select
-                value={autoDraft.propertyKind}
-                onChange={(e) => setAutoDraft((prev) => ({ ...prev, propertyKind: e.target.value as PropertyKind }))}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              >
-                <option value="apartment">Mieszkanie</option>
-                <option value="house">Dom</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Transakcja</span>
-              <select
-                value={autoDraft.transactionKind}
-                onChange={(e) => setAutoDraft((prev) => ({ ...prev, transactionKind: e.target.value as TransactionKind }))}
-                className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
-              >
-                <option value="sale">Sprzedaż</option>
-                <option value="rent">Najem</option>
-              </select>
-            </label>
-          </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              disabled={autoSaving}
-              onClick={() => void saveAutoImport()}
-              className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-black disabled:opacity-60"
-            >
-              {autoSaving ? <Loader2 size={14} className="animate-spin" /> : null}
-              Zapisz harmonogram
-            </button>
-            {autoImport?.sessionImportedCount != null ? (
-              <p className="text-[11px] text-white/45">
-                Od załączenia: {autoImport.sessionImportedCount} zaimportowanych
-                {autoImport.sessionSkippedCount ? ` · ${autoImport.sessionSkippedCount} pominiętych` : ''}
-                {autoImport.sessionCycles ? ` · ${autoImport.sessionCycles} cykli` : ''}
-              </p>
-            ) : null}
-            {autoImport?.lastRunAt ? (
-              <p className="text-[11px] text-white/45">
-                Ostatni start: {new Date(autoImport.lastRunAt).toLocaleString("pl-PL")}
-                {autoImport.lastJobId ? ` · job ${autoImport.lastJobId.slice(0, 8)}` : ""}
-              </p>
-            ) : (
-              <p className="text-[11px] text-white/40">Jeszcze nie uruchomiono.</p>
-            )}
-            {autoImport?.lastError && !/after['’]? was called outside a request scope/i.test(autoImport.lastError) ? (
-              <p className="text-[11px] text-amber-300">{autoImport.lastError}</p>
-            ) : null}
-            {autoMessage ? <p className="text-[11px] text-emerald-300">{autoMessage}</p> : null}
-          </div>
-          </div>
-          ) : null}
-        </div>
+        <KeiAutoImportPanel compact />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -1495,16 +1095,17 @@ export default function KeiAmerWorkspace() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 rounded-2xl bg-white/[0.03] border border-white/10">
           {actionMode === "import" ? (
             <>
-              <label className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-black uppercase tracking-wider text-white/50">ID użytkownika</span>
-                <input
-                  type="number"
-                  min={1}
-                  value={targetUserId}
-                  onChange={(e) => setTargetUserId(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-black/40 border border-white/10 text-sm text-white"
+              <div className="kei-lux flex flex-col gap-1.5 sm:col-span-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Agent prowadzący</span>
+                <KeiTargetUserPicker
+                  value={Number(targetUserId) || null}
+                  selected={targetUserLabel}
+                  onChange={(user) => {
+                    setTargetUserId(String(user.id));
+                    setTargetUserLabel({ id: user.id, name: user.name, email: user.email, role: user.role });
+                  }}
                 />
-              </label>
+              </div>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[10px] font-black uppercase tracking-wider text-white/50">Prowizja (%)</span>
                 <input
@@ -1855,20 +1456,7 @@ export default function KeiAmerWorkspace() {
         )}
       </AnimatePresence>
 
-      <ImportProgressModal
-        open={exportVisible}
-        running={exportRunning}
-        message={exportMessage}
-        items={exportItems}
-        resultsCount={exportResults.length}
-        skippedCount={exportSkipped}
-        onMinimize={() => setExportVisible(false)}
-        onStop={() => cancelKeiExport()}
-        onClose={() => {
-          setExportVisible(false);
-          clearExportSession();
-        }}
-      />
+      {/* Postęp importu: wspólne okno i pigułka z układu Centrali (KeiImportProgressHost). */}
 
       <OutreachToast
         open={outreachToastOpen}

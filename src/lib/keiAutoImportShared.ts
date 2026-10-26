@@ -141,8 +141,15 @@ export function keiAutoNextRunAt(
 export function describeKeiAutoSettings(settings: KeiAutoImportSettings): string[] {
   const parts: string[] = [];
   if (settings.districts.length) parts.push(settings.districts.join(', '));
+  const fmt = (n: number) => new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 1 }).format(n);
   const range = (min: number | null, max: number | null, unit: string) =>
-    min != null && max != null ? `${min}–${max} ${unit}` : min != null ? `od ${min} ${unit}` : max != null ? `do ${max} ${unit}` : null;
+    min != null && max != null
+      ? `${fmt(min)}–${fmt(max)} ${unit}`
+      : min != null
+        ? `od ${fmt(min)} ${unit}`
+        : max != null
+          ? `do ${fmt(max)} ${unit}`
+          : null;
   const price = range(settings.minPrice, settings.maxPrice, 'zł');
   if (price) parts.push(price);
   const area = range(settings.minArea, settings.maxArea, 'm²');
@@ -153,4 +160,18 @@ export function describeKeiAutoSettings(settings: KeiAutoImportSettings): string
   if (settings.directOwnerOnly) parts.push('tylko bez pośredników');
   if (settings.requirePhone) parts.push('z telefonem');
   return parts;
+}
+
+/** „dziś 14:20”, „jutro 07:00”, „28.10, 09:15” — czas warszawski, bez sekund. */
+export function formatKeiWhen(isoValue: string | null | undefined, now = new Date()): string {
+  if (!isoValue) return '—';
+  const date = new Date(isoValue);
+  if (Number.isNaN(date.getTime())) return '—';
+  const time = new Intl.DateTimeFormat('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' }).format(date);
+  const day = warsawDayKey(date);
+  if (day === warsawDayKey(now)) return `dziś ${time}`;
+  if (day === warsawDayKey(new Date(now.getTime() + 86_400_000))) return `jutro ${time}`;
+  if (day === warsawDayKey(new Date(now.getTime() - 86_400_000))) return `wczoraj ${time}`;
+  const dm = new Intl.DateTimeFormat('pl-PL', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Warsaw' }).format(date);
+  return `${dm}, ${time}`;
 }

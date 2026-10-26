@@ -2,16 +2,17 @@
 
 import { create } from 'zustand';
 import type { KeiExportProgressEvent } from '@/lib/keiAmerExportProgress';
-import {
-  applyKeiExportEvent,
-  type KeiExportItemProgress,
-  type KeiExportRequestBody,
-} from '@/lib/keiAmerExportWebClient';
+import type { KeiExportItemProgress, KeiExportRequestBody } from '@/lib/keiAmerExportWebClient';
 
-type KeiImportJobSnapshot = {
+export type KeiWebJobSnapshot = {
   id: string;
   status: 'queued' | 'running' | 'done' | 'error' | 'cancelled';
   message: string;
+  source?: 'manual' | 'auto';
+  targetCount?: number;
+  cancelRequested?: boolean;
+  createdAt?: string;
+  finishedAt?: string | null;
   items: KeiExportItemProgress[];
   exported: Array<{
     offerId: number;
@@ -25,96 +26,116 @@ type KeiImportJobSnapshot = {
 
 type KeiAmerExportState = {
   running: boolean;
+  /** Użytkownik poprosił o zatrzymanie — serwer kończy bieżącą pozycję. */
+  stopping: boolean;
   modalVisible: boolean;
   message: string;
+  jobStatus: KeiWebJobSnapshot['status'] | null;
+  source: 'manual' | 'auto';
+  targetCount: number;
   items: KeiExportItemProgress[];
-  results: Array<{
-    offerId: number;
-    portalUrl: string;
-    publicUrl: string;
-    editUrl: string;
-    keiListingId?: string;
-  }>;
+  results: KeiWebJobSnapshot['exported'];
   skipped: number;
   jobId: string | null;
+  error: string | null;
   onComplete?: () => void;
   setModalVisible: (visible: boolean) => void;
   startExport: (body: KeiExportRequestBody, initialItems: KeiExportItemProgress[], onComplete?: () => void) => void;
   cancelExport: () => void;
+  /** Podgląd dowolnego zadania (np. z historii w Automatyzacji). */
+  openJob: (jobId: string) => void;
   hydrateFromServer: () => Promise<void>;
   clearSession: () => void;
 };
 
-let pollTimer: ReturnType<typeof setInterval> | null = null;
-let exportCancelledByUser = false;
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let pollFailures = 0;
 
 function stopPolling() {
   if (pollTimer) {
-    clearInterval(pollTimer);
+    clearTimeout(pollTimer);
     pollTimer = null;
   }
 }
 
-function mapJob(job: KeiImportJobSnapshot): Partial<KeiAmerExportState> {
-  const running = job.status === 'queued' || job.status === 'running';
+function isLive(status: string | null | undefined) {
+  return status === 'queued' || status === 'running';
+}
+
+function mapJob(job: KeiWebJobSnapshot): Partial<KeiAmerExportState> {
+  const running = isLive(job.status);
   return {
     jobId: job.id,
     running,
+    stopping: running && Boolean(job.cancelRequested),
+    jobStatus: job.status,
+    source: job.source === 'auto' ? 'auto' : 'manual',
+    targetCount: Number(job.targetCount) || 0,
     message: job.message || (running ? 'Import w toku na serwerze…' : 'Import zakończony.'),
     items: job.items || [],
     results: job.exported || [],
     skipped: job.skipped?.length || 0,
+    error: job.status === 'error' ? job.message || 'Import zakończył się błędem.' : null,
   };
 }
 
-async function pollOnce() {
+async function pollOnce(): Promise<boolean> {
   const state = useKeiAmerExportStore.getState();
-  if (!state.jobId || exportCancelledByUser) return;
+  if (!state.jobId) return false;
   try {
-    const res = await fetch(`/api/admin/kei-amer/export-jobs/${state.jobId}`, { cache: 'no-store' });
+    const res = await fetch(`/api/admin/kei-amer/export-jobs/${state.jobId}`, { cache: 'no-store', credentials: 'include' });
     const data = await res.json().catch(() => ({}));
-    if (exportCancelledByUser) return;
-    if (!res.ok || !data?.job) return;
-    if (data.job.cancelRequested || data.job.status === 'cancelled') {
-      stopPolling();
-      useKeiAmerExportStore.setState({
-        ...mapJob({ ...data.job, status: 'cancelled' } as KeiImportJobSnapshot),
-        running: false,
-      });
-      return;
+    if (!res.ok || !data?.job) {
+      pollFailures += 1;
+      return pollFailures < 20;
     }
+    pollFailures = 0;
+    const job = data.job as KeiWebJobSnapshot;
     const onComplete = state.onComplete;
     useKeiAmerExportStore.setState({
-      ...mapJob(data.job as KeiImportJobSnapshot),
-      ...(data.job.status === 'queued' || data.job.status === 'running'
-        ? {}
-        : { onComplete: undefined }),
+      ...mapJob(job),
+      ...(isLive(job.status) ? {} : { onComplete: undefined }),
     });
-    if (data.job.status !== 'queued' && data.job.status !== 'running') {
-      stopPolling();
+    if (!isLive(job.status)) {
       if (onComplete) queueMicrotask(() => onComplete());
+      return false;
     }
+    return true;
   } catch {
-    /* keep last snapshot */
+    pollFailures += 1;
+    return pollFailures < 20;
   }
 }
 
+/** Odpytywanie z rytmem: szybko, gdy karta jest widoczna; rzadziej w tle. */
 function startPolling() {
   stopPolling();
-  void pollOnce();
-  pollTimer = setInterval(() => {
-    void pollOnce();
-  }, 1500);
+  pollFailures = 0;
+  const loop = async () => {
+    const keepGoing = await pollOnce();
+    if (!keepGoing) {
+      pollTimer = null;
+      return;
+    }
+    const visible = typeof document === 'undefined' || document.visibilityState === 'visible';
+    pollTimer = setTimeout(loop, visible ? 1200 : 5000);
+  };
+  void loop();
 }
 
 export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
   running: false,
+  stopping: false,
   modalVisible: false,
   message: '',
+  jobStatus: null,
+  source: 'manual',
+  targetCount: 0,
   items: [],
   results: [],
   skipped: 0,
   jobId: null,
+  error: null,
   onComplete: undefined,
 
   setModalVisible: (visible) => set({ modalVisible: visible }),
@@ -128,68 +149,59 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
       results: [],
       skipped: 0,
       jobId: null,
+      jobStatus: null,
+      error: null,
+      stopping: false,
       onComplete: undefined,
     });
   },
 
   cancelExport: () => {
     const { running, jobId } = get();
-    if (!running) return;
-    exportCancelledByUser = true;
+    if (!running || !jobId) return;
+    // Uczciwy stan: serwer kończy bieżącą ofertę, a okno pokazuje to, co naprawdę się stało.
+    set({ stopping: true, message: 'Zatrzymuję import — kończę bieżącą ofertę…' });
+    void fetch(`/api/admin/kei-amer/export-jobs/${jobId}/cancel`, { method: 'POST', credentials: 'include' })
+      .catch(() => undefined)
+      .finally(() => startPolling());
+  },
+
+  openJob: (jobId) => {
     stopPolling();
-    if (jobId) {
-      void fetch(`/api/admin/kei-amer/export-jobs/${jobId}/cancel`, { method: 'POST' }).catch(() => undefined);
-    }
-    set((state) => ({
-      running: false,
-      modalVisible: false,
-      message: 'Import zatrzymany.',
-      onComplete: undefined,
-      items: state.items.map((item) =>
-        item.status === 'pending' || item.status === 'active'
-          ? {
-              ...item,
-              status: 'skipped' as const,
-              currentStep: null,
-              stepLabel: 'Anulowano',
-              reason: 'Przerwano ręcznie przez administratora',
-            }
-          : item,
-      ),
-    }));
+    set({ jobId, modalVisible: true, items: [], message: 'Wczytuję postęp…', error: null });
+    startPolling();
   },
 
   hydrateFromServer: async () => {
-    if (exportCancelledByUser) return;
     try {
-      const res = await fetch('/api/admin/kei-amer/export-jobs/active', { cache: 'no-store' });
+      const res = await fetch('/api/admin/kei-amer/export-jobs/active', { cache: 'no-store', credentials: 'include' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return;
-      if (exportCancelledByUser) return;
-      const active = (data.active?.[0] || null) as KeiImportJobSnapshot | null;
-      if (!active) return;
-      if (active.status === 'cancelled') return;
-      set({
-        ...mapJob(active),
-        modalVisible: false,
-      });
-      if (active.status === 'queued' || active.status === 'running') startPolling();
+      const list = (data.active || data.jobs || []) as KeiWebJobSnapshot[];
+      const live = list.find((job) => isLive(job.status)) || null;
+      if (!live) return;
+      set({ ...mapJob(live) });
+      startPolling();
     } catch {
-      /* ignore */
+      /* offline / brak uprawnień */
     }
   },
 
   startExport: (body, initialItems, onComplete) => {
     if (get().running) return;
-    exportCancelledByUser = false;
     set({
       running: true,
-      modalVisible: false,
+      stopping: false,
+      modalVisible: true,
       message: 'Uruchamiam import na serwerze…',
+      jobStatus: 'queued',
+      source: 'manual',
+      targetCount: initialItems.length,
       items: initialItems,
       results: [],
       skipped: 0,
       jobId: null,
+      error: null,
       onComplete,
     });
 
@@ -197,6 +209,7 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
       try {
         const res = await fetch('/api/admin/kei-amer/export-jobs', {
           method: 'POST',
+          credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         });
@@ -204,28 +217,19 @@ export const useKeiAmerExportStore = create<KeiAmerExportState>((set, get) => ({
         if (!res.ok || !data?.job) {
           throw new Error(data?.error || `HTTP ${res.status}`);
         }
-        if (exportCancelledByUser) return;
-        set({
-          ...mapJob(data.job as KeiImportJobSnapshot),
-          onComplete,
-          modalVisible: false,
-        });
-        if (data.job.status === 'queued' || data.job.status === 'running') {
-          startPolling();
-        } else {
-          stopPolling();
-          queueMicrotask(() => onComplete?.());
-        }
+        set({ ...mapJob(data.job as KeiWebJobSnapshot), onComplete, modalVisible: true });
+        if (isLive(data.job.status)) startPolling();
+        else queueMicrotask(() => onComplete?.());
       } catch (error) {
-        if (exportCancelledByUser) return;
         set({
           running: false,
-          message: error instanceof Error ? error.message : 'Eksport nie powiódł się',
+          jobStatus: 'error',
+          error: error instanceof Error ? error.message : 'Import nie wystartował.',
+          message: error instanceof Error ? error.message : 'Import nie wystartował.',
         });
       }
     })();
   },
 }));
 
-// Keep event helper type referenced for compatibility with older SSE UI paths.
 export type { KeiExportProgressEvent };

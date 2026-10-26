@@ -3,6 +3,7 @@
 @import "../styles/eos-reset.css";
 @import "../styles/eos-components.css";
 @import "../styles/eos-pages.css";
+@import "../styles/eos-kei-lux.css";
 
 html, body {
   padding-top: 0 !important;
