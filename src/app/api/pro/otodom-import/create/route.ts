@@ -98,8 +98,6 @@ export async function POST(req: Request) {
           code: result.code,
           message: result.message,
           existingOfferId: result.existingOfferId,
-          editUrl: `/edytuj-oferte/${result.existingOfferId}`,
-          publicUrl: `/oferta/${result.existingOfferId}`,
         },
         { status: 409 },
       );

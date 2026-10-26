@@ -195,5 +195,18 @@ module.exports = {
       cron_restart: "40 */3 * * *",
       time: true,
     },
+    {
+      // Oferty z KEI, które zniknęły z portalu (2 potwierdzenia w odstępie ≥ 20 h) → archiwum.
+      name: "import-source-lifecycle",
+      cwd: root,
+      script: "npx",
+      args: "tsx scripts/import-source-lifecycle.ts",
+      env_file: path.join(root, ".env"),
+      env: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
+      env_production: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
+      autorestart: false,
+      cron_restart: "15 4 * * *",
+      time: true,
+    },
   ],
 };

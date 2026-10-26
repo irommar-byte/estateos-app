@@ -22,6 +22,7 @@ import PortalImportImagePicker, {
   type PortalImportFloorPlanSelection,
 } from "@/components/otodom/PortalImportImagePicker";
 import EosModal from "@/components/ui/EosModal";
+import { fetchWithProgress, type ClientProgress } from "@/lib/http/progressStreamClient";
 
 const OtodomImportLocationPreview = dynamic(
   () => import("@/components/admin/OtodomImportLocationPreview"),
@@ -95,6 +96,7 @@ export default function OtodomImportProCard() {
     imageIndex: 0,
   });
   const [creating, setCreating] = useState(false);
+  const [createProgress, setCreateProgress] = useState<ClientProgress | null>(null);
   const [createMessage, setCreateMessage] = useState("");
   const [createError, setCreateError] = useState("");
   const [createdLinks, setCreatedLinks] = useState<{
@@ -242,34 +244,37 @@ export default function OtodomImportProCard() {
     setCreateMessage("");
     setCreatedLinks(null);
     try {
-      const res = await fetch("/api/otodom-import/create", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          draft: mergedDraft,
-          patch: {
-            city: importPatch.city.trim() || undefined,
-            district: importPatch.district.trim() || undefined,
-            price: importPatch.price.trim() ? Number(importPatch.price) : undefined,
-            area: importPatch.area.trim() ? Number(importPatch.area) : undefined,
-          },
-          selectedImageIndices,
-          floorPlanImageIndex,
-          rightsConfirmed: true,
-          publication: pendingRedemption,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data?.code === "ALREADY_IMPORTED" && data?.existingOfferId) {
-          setCreatedLinks({
-            offerId: Number(data.existingOfferId),
-            editUrl: String(data.editUrl || `/edytuj-oferte/${data.existingOfferId}`),
-            publicUrl: String(data.publicUrl || `/oferta/${data.existingOfferId}`),
-          });
+      setCreateProgress({ stage: "prepare", percent: 3, label: "Przygotowuję ofertę" });
+      const { status, body: data } = await fetchWithProgress(
+        "/api/otodom-import/create",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            draft: mergedDraft,
+            patch: {
+              city: importPatch.city.trim() || undefined,
+              district: importPatch.district.trim() || undefined,
+              price: importPatch.price.trim() ? Number(importPatch.price) : undefined,
+              area: importPatch.area.trim() ? Number(importPatch.area) : undefined,
+            },
+            selectedImageIndices,
+            floorPlanImageIndex,
+            rightsConfirmed: true,
+            publication: pendingRedemption,
+          }),
+        },
+        (progress) => setCreateProgress(progress),
+      );
+      if (status < 200 || status >= 300 || data?.ok === false) {
+        if (data?.code === "ALREADY_IMPORTED") {
+          setCreateError(
+            "To ogłoszenie jest już na EstateOS. Jeśli to Twoja nieruchomość, napisz do nas — przeniesiemy ją na Twoje konto bez ponownej opłaty.",
+          );
+          return;
         }
-        setCreateError(data?.error || `Nie udało się utworzyć oferty (${res.status}).`);
+        setCreateError(String(data?.error || `Nie udało się utworzyć oferty (${status}).`));
         return;
       }
       setCreateMessage(
@@ -287,6 +292,7 @@ export default function OtodomImportProCard() {
       setCreateError("Błąd połączenia podczas tworzenia oferty.");
     } finally {
       setCreating(false);
+      setCreateProgress(null);
       setConfirmOpen(false);
     }
   };
@@ -548,6 +554,7 @@ export default function OtodomImportProCard() {
         title={presentation?.title ?? mergedDraft?.title ?? draft?.title ?? copy.importSourceOfferFallback}
         imageCount={selectedImageCount}
         confirming={creating}
+        progress={createProgress}
         variant="pro"
         onCancel={() => setConfirmOpen(false)}
         onConfirm={() => void handleCreate()}

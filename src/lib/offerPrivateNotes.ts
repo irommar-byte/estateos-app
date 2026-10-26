@@ -393,7 +393,10 @@ export async function refreshOfferSourceStatusIfStale(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SOURCE_CHECK_TIMEOUT_MS);
   let status: number | null = null;
-  let isActive = 0;
+  // Brak odpowiedzi lub blokada antybotowa (403/429/5xx) nie oznacza, że ogłoszenie zniknęło —
+  // zostawiamy poprzedni stan zamiast fałszywie oznaczać źródło jako nieaktywne.
+  const previousActive = row.sourceIsActive == null ? null : row.sourceIsActive ? 1 : 0;
+  let isActive: number | null = previousActive;
   let errorText: string | null = null;
   let refreshedSnapshotJson: string | null = null;
   try {
@@ -409,7 +412,7 @@ export async function refreshOfferSourceStatusIfStale(
     });
     status = res.status;
     if (!res.ok) {
-      isActive = res.status === 404 || res.status === 410 ? 0 : 0;
+      isActive = res.status === 404 || res.status === 410 ? 0 : previousActive;
     } else {
       const html = await decodeResponseText(res);
       isActive = isPortalListingInactiveHtml(html) ? 0 : 1;
@@ -462,7 +465,7 @@ export async function refreshOfferSourceStatusIfStale(
     }
   } catch (error) {
     status = null;
-    isActive = 0;
+    isActive = previousActive;
     errorText = error instanceof Error ? error.message.slice(0, 500) : 'UNKNOWN_ERROR';
   } finally {
     clearTimeout(timer);

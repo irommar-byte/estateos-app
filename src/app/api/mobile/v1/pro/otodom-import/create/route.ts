@@ -5,6 +5,12 @@ import { computeIsProActive } from '@/lib/mobileUserShape';
 import type { OtodomImportDraft } from '@/lib/otodomImport';
 import { importOfferFromUrl, isSupportedImportOfferUrl } from '@/lib/otodomImport';
 import { createOfferFromOtodomDraft } from '@/lib/otodomImportCreate';
+import {
+  importCreateProgressHandlers,
+  progressStreamResponse,
+  wantsProgressStream,
+  type ProgressEmit,
+} from '@/lib/http/progressStream';
 import { enrichOtodomImportDraft } from '@/lib/portalImportEnrich';
 import type { OtodomPublicationInput } from '@/lib/otodomImportPublication';
 import { resolveSmartAddCreateOptions } from '@/lib/importSmartAddHttp';
@@ -122,39 +128,51 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await createOfferFromOtodomDraft(draft, gate.userId, publication, {
-      skipAutoFloorPlanProbe: true,
-      ...(await resolveSmartAddCreateOptions(gate.userId, body as Record<string, unknown>)),
-    });
-    if (!result.ok) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: result.code,
-          message: result.message,
-          existingOfferId: result.existingOfferId,
-          editUrl: `/edytuj-oferte/${result.existingOfferId}`,
-          publicUrl: `/oferta/${result.existingOfferId}`,
-        },
-        { status: 409 }
-      );
-    }
+    const smartAdd = await resolveSmartAddCreateOptions(gate.userId, body as Record<string, unknown>);
+    const run = async (emit?: ProgressEmit): Promise<{ status: number; body: Record<string, unknown> }> => {
+      try {
+        const result = await createOfferFromOtodomDraft(draft, gate.userId, publication, {
+          skipAutoFloorPlanProbe: true,
+          ...smartAdd,
+          ...(emit ? importCreateProgressHandlers(emit) : {}),
+        });
+        if (!result.ok) {
+          return {
+            status: 409,
+            body: { success: false, code: result.code, message: result.message, existingOfferId: result.existingOfferId },
+          };
+        }
+        emit?.({ stage: 'publish', label: 'Oferta gotowa', percent: 100 });
+        return {
+          status: 200,
+          body: {
+            success: true,
+            offerId: result.offerId,
+            offer: result.offer,
+            images: result.images,
+            presentation: result.presentation,
+            editUrl: result.editUrl,
+            publicUrl: result.publicUrl,
+            publicationReserved: true,
+            redemption: body.redemption ?? null,
+            message:
+              result.images.uploaded > 0
+                ? `Utworzono ofertę z ${result.images.uploaded} zdjęciami.`
+                : 'Utworzono ofertę. Uzupełnij zdjęcia w edycji.',
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Nie udało się utworzyć oferty z importu.';
+        if (message === 'NO_PLUS_CREDIT_AVAILABLE') {
+          return { status: 409, body: { success: false, code: 'NO_PLUS_CREDIT', message: 'Brak dostępnego kredytu Pakietu Plus.' } };
+        }
+        return { status: 422, body: { success: false, message } };
+      }
+    };
 
-    return NextResponse.json({
-      success: true,
-      offerId: result.offerId,
-      offer: result.offer,
-      images: result.images,
-      presentation: result.presentation,
-      editUrl: result.editUrl,
-      publicUrl: result.publicUrl,
-      publicationReserved: true,
-      redemption: body.redemption ?? null,
-      message:
-        result.images.uploaded > 0
-          ? `Utworzono ofertę #${result.offerId} z ${result.images.uploaded} zdjęciami.`
-          : `Utworzono ofertę #${result.offerId}. Uzupełnij zdjęcia w edycji.`,
-    });
+    if (wantsProgressStream(req)) return progressStreamResponse((emit) => run(emit));
+    const outcome = await run();
+    return NextResponse.json(outcome.body, { status: outcome.status });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Nie udało się utworzyć oferty z importu.';
     if (message === 'NO_PLUS_CREDIT_AVAILABLE') {

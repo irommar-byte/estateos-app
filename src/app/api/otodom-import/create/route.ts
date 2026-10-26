@@ -4,6 +4,12 @@ import { importOfferFromUrl, isSupportedImportOfferUrl } from "@/lib/otodomImpor
 import { createOfferFromOtodomDraft } from "@/lib/otodomImportCreate";
 import { requireOtodomImporter } from "@/lib/otodomImportAuth";
 import { resolveSmartAddCreateOptions } from "@/lib/importSmartAddHttp";
+import {
+  importCreateProgressHandlers,
+  progressStreamResponse,
+  wantsProgressStream,
+  type ProgressEmit,
+} from "@/lib/http/progressStream";
 import type { OtodomPublicationInput } from "@/lib/otodomImportPublication";
 import {
   applyImportDraftPatch,
@@ -117,41 +123,61 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await createOfferFromOtodomDraft(draft, user.id, publication, {
-      floorPlanImageIndex: filtered.floorPlanImageIndex,
-      lastImageFloorPlan: filtered.floorPlanImageIndex == null ? false : undefined,
-      skipAutoFloorPlanProbe: true,
-      ...(await resolveSmartAddCreateOptions(user.id, body as Record<string, unknown>)),
-    });
+    const smartAdd = await resolveSmartAddCreateOptions(user.id, body as Record<string, unknown>);
+    const run = async (emit?: ProgressEmit): Promise<{ status: number; body: Record<string, unknown> }> => {
+      try {
+        const result = await createOfferFromOtodomDraft(draft, user.id, publication, {
+          floorPlanImageIndex: filtered.floorPlanImageIndex,
+          lastImageFloorPlan: filtered.floorPlanImageIndex == null ? false : undefined,
+          skipAutoFloorPlanProbe: true,
+          ...smartAdd,
+          ...(emit ? importCreateProgressHandlers(emit) : {}),
+        });
 
-    if (!result.ok) {
-      return NextResponse.json(
-        {
-          ok: false,
-          code: result.code,
-          error: result.message,
-          existingOfferId: result.existingOfferId,
-          editUrl: `/edytuj-oferte/${result.existingOfferId}`,
-          publicUrl: `/oferta/${result.existingOfferId}`,
-        },
-        { status: 409 },
-      );
+        if (!result.ok) {
+          return {
+            status: 409,
+            body: {
+              ok: false,
+              code: result.code,
+              error: result.message,
+              existingOfferId: result.existingOfferId,
+            },
+          };
+        }
+
+        emit?.({ stage: 'publish', label: 'Oferta gotowa', percent: 100 });
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            offerId: result.offerId,
+            offer: result.offer,
+            images: result.images,
+            presentation: result.presentation,
+            editUrl: result.editUrl,
+            publicUrl: result.publicUrl,
+            publicationReserved: true,
+            message:
+              result.images.uploaded > 0
+                ? `Utworzono ofertę z ${result.images.uploaded} zdjęciami — po weryfikacji trafi na rynek.`
+                : "Utworzono ofertę — dodaj zdjęcia w edycji, a po weryfikacji trafi na rynek.",
+          },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Nie udało się utworzyć oferty z importu.";
+        if (message === "NO_PLUS_CREDIT_AVAILABLE") {
+          return { status: 409, body: { error: "Brak dostępnego kredytu Pakietu Plus.", code: "NO_PLUS_CREDIT" } };
+        }
+        return { status: 422, body: { error: message } };
+      }
+    };
+
+    if (wantsProgressStream(req)) {
+      return progressStreamResponse((emit) => run(emit));
     }
-
-    return NextResponse.json({
-      ok: true,
-      offerId: result.offerId,
-      offer: result.offer,
-      images: result.images,
-      presentation: result.presentation,
-      editUrl: result.editUrl,
-      publicUrl: result.publicUrl,
-      publicationReserved: true,
-      message:
-        result.images.uploaded > 0
-          ? `Utworzono ofertę #${result.offerId} (opłacona, oczekuje weryfikacji) z ${result.images.uploaded} zdjęciami.`
-          : `Utworzono ofertę #${result.offerId} (opłacona, oczekuje weryfikacji). Uzupełnij zdjęcia w edycji.`,
-    });
+    const outcome = await run();
+    return NextResponse.json(outcome.body, { status: outcome.status });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Nie udało się utworzyć oferty z importu.";
     if (message === "NO_PLUS_CREDIT_AVAILABLE") {

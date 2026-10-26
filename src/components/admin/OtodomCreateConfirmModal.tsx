@@ -13,6 +13,8 @@ type Props = {
   onConfirm: () => void;
   confirming?: boolean;
   variant?: "admin" | "pro";
+  /** Postęp z serwera podczas tworzenia (opis AI, kopiowanie zdjęć). */
+  progress?: { percent: number; label: string; detail?: string } | null;
 };
 
 export default function OtodomCreateConfirmModal({
@@ -23,6 +25,7 @@ export default function OtodomCreateConfirmModal({
   onConfirm,
   confirming = false,
   variant = "admin",
+  progress = null,
 }: Props) {
   const [rightsConfirmed, setRightsConfirmed] = useState(false);
 
@@ -97,12 +100,27 @@ export default function OtodomCreateConfirmModal({
           </div>
         </div>
 
-        <EosCheckbox
-          checked={rightsConfirmed}
-          onCheckedChange={setRightsConfirmed}
-          label="Oświadczam, że posiadam prawa niezbędne do publikacji tych danych i materiałów na platformie EstateOS."
-          className="text-left"
-        />
+        {confirming ? (
+          <div className="kei-lux k-well px-4 py-4 text-left" aria-live="polite">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-[13px] font-semibold text-[color:var(--k-ink)]">{progress?.label || "Przygotowuję ofertę"}</p>
+              <span className="text-[12px] tabular-nums text-[color:var(--k-ink-2)]">{Math.round(progress?.percent ?? 3)}%</span>
+            </div>
+            <div className="k-bar mt-3">
+              <div className="k-bar__fill" style={{ width: `${Math.max(3, progress?.percent ?? 3)}%` }} />
+            </div>
+            <p className="mt-2.5 text-[12px] text-[color:var(--k-ink-3)]">
+              {progress?.detail || "Opis przygotowuje AI, potem kopiujemy zdjęcia — zwykle kilkadziesiąt sekund."}
+            </p>
+          </div>
+        ) : (
+          <EosCheckbox
+            checked={rightsConfirmed}
+            onCheckedChange={setRightsConfirmed}
+            label="Oświadczam, że posiadam prawa niezbędne do publikacji tych danych i materiałów na platformie EstateOS."
+            className="text-left"
+          />
+        )}
       </div>
     </EosModal>
   );
