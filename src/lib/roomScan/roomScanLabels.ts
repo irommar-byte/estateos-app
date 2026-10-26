@@ -1,4 +1,4 @@
-import { getAppLocale, t } from '../../i18n';
+import { getAppLocale, t } from '../../i18n/translate';
 import type { RoomScanObjectCategory } from '../../types/roomScan';
 
 const ROOM_TYPE_KEYS = new Set([
@@ -96,7 +96,6 @@ export function getRoomScanObjectIcon(category: RoomScanObjectCategory): string 
   }
 }
 
-import { inferRoomTypeFromObjects } from './roomScanClassify';
 export { inferRoomTypeFromObjects } from './roomScanClassify';
 
 export function formatRoomScanRoomCount(count: number): string {

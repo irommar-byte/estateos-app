@@ -1,6 +1,9 @@
 import Expo
 import React
 import ReactAppDependencyProvider
+#if DEBUG
+import EXDevLauncher
+#endif
 
 @UIApplicationMain
 public class AppDelegate: ExpoAppDelegate {
@@ -8,11 +11,14 @@ public class AppDelegate: ExpoAppDelegate {
 
   var reactNativeDelegate: ExpoReactNativeFactoryDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
+  var launchOptions: [UIApplication.LaunchOptionsKey: Any]?
 
   public override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
+    self.launchOptions = launchOptions
+
     let delegate = ReactNativeDelegate()
     let factory = ExpoReactNativeFactory(delegate: delegate)
     delegate.dependencyProvider = RCTAppDependencyProvider()
@@ -21,14 +27,7 @@ public class AppDelegate: ExpoAppDelegate {
     reactNativeFactory = factory
     bindReactNativeFactory(factory)
 
-#if os(iOS) || os(tvOS)
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: launchOptions)
-#endif
-
+    // Window + startReactNative move to SceneDelegate (UIScene lifecycle required by iOS 27 SDK / TN3187).
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -49,6 +48,63 @@ public class AppDelegate: ExpoAppDelegate {
   ) -> Bool {
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
+  }
+}
+
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard let windowScene = scene as? UIWindowScene,
+          let appDelegate = UIApplication.shared.delegate as? AppDelegate,
+          let factory = appDelegate.reactNativeFactory
+    else { return }
+
+    let window = UIWindow(windowScene: windowScene)
+    factory.startReactNative(
+      withModuleName: "main",
+      in: window,
+      launchOptions: appDelegate.launchOptions)
+
+    // Expo modules / RN internals resolve the window via the app delegate.
+    appDelegate.window = window
+    self.window = window
+
+#if DEBUG
+    // expo-dev-launcher used to require keyWindow during didFinishLaunching; under UIScene
+    // that window does not exist yet, so finish setup here once RN created the root view.
+    let launcher = EXDevLauncherController.sharedInstance()
+    if !launcher.isStarted {
+      launcher.autoSetupStart(window)
+    }
+#endif
+
+    for context in connectionOptions.urlContexts {
+      _ = RCTLinkingManager.application(UIApplication.shared, open: context.url, options: [:])
+    }
+    for activity in connectionOptions.userActivities {
+      _ = RCTLinkingManager.application(
+        UIApplication.shared,
+        continue: activity,
+        restorationHandler: { _ in })
+    }
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    for context in URLContexts {
+      _ = RCTLinkingManager.application(UIApplication.shared, open: context.url, options: [:])
+    }
+  }
+
+  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    _ = RCTLinkingManager.application(
+      UIApplication.shared,
+      continue: userActivity,
+      restorationHandler: { _ in })
   }
 }
 

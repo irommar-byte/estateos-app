@@ -9,8 +9,8 @@ import Animated, {
 import {
   buildOfferPriceRcnScale,
   formatRcnDeltaLabel,
-} from '../lib/offerPriceRcnScale';
-import { formatPln } from '../services/marketService';
+} from '../../lib/offerPriceRcnScale';
+import { formatPln } from '../../services/marketService';
 
 type Props = {
   listingPrice: number;

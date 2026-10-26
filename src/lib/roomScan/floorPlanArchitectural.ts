@@ -84,6 +84,241 @@ function snapSegmentToAxis(wall: RoomScanWallSegment, toleranceDeg = 14): RoomSc
   };
 }
 
+function clusterSnap(values: number[], tolerance: number): (value: number) => number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const centers: number[] = [];
+  for (const value of sorted) {
+    const last = centers[centers.length - 1];
+    if (last == null || Math.abs(value - last) > tolerance) centers.push(value);
+    else centers[centers.length - 1] = (last + value) / 2;
+  }
+  return (value: number) => {
+    let best = value;
+    let bestDist = tolerance;
+    for (const center of centers) {
+      const dist = Math.abs(value - center);
+      if (dist <= bestDist) {
+        best = center;
+        bestDist = dist;
+      }
+    }
+    return best;
+  };
+}
+
+/**
+ * Domknij narożniki i trójniki wielopokojowego rzutu.
+ * RoomPlan urywa ścianę kilka–kilkanaście cm przed stykiem; jeden pokój
+ * i tak zamieniamy na prostokąt, całość zostawała z dziurami.
+ */
+export function sealPlanJunctions(walls: RoomScanWallSegment[]): RoomScanWallSegment[] {
+  const aligned = walls
+    .map((wall) => snapSegmentToAxis(wall, 12))
+    .filter((wall) => wallLengthMeters(wall) >= 0.28);
+  if (aligned.length < 4) return aligned;
+
+  const horizontal = aligned.filter((wall) => Math.abs(wall.z2 - wall.z1) <= Math.abs(wall.x2 - wall.x1));
+  const vertical = aligned.filter((wall) => Math.abs(wall.x2 - wall.x1) < Math.abs(wall.z2 - wall.z1));
+  const snapZ = clusterSnap(horizontal.map((wall) => (wall.z1 + wall.z2) / 2), 0.1);
+  const snapX = clusterSnap(vertical.map((wall) => (wall.x1 + wall.x2) / 2), 0.1);
+  const extend = 0.48;
+
+  let horizontals = horizontal.map((wall) => {
+    const z = snapZ((wall.z1 + wall.z2) / 2);
+    return {
+      ...wall,
+      x1: Math.min(wall.x1, wall.x2),
+      x2: Math.max(wall.x1, wall.x2),
+      z1: z,
+      z2: z,
+    };
+  });
+  let verticals = vertical.map((wall) => {
+    const x = snapX((wall.x1 + wall.x2) / 2);
+    return {
+      ...wall,
+      z1: Math.min(wall.z1, wall.z2),
+      z2: Math.max(wall.z1, wall.z2),
+      x1: x,
+      x2: x,
+    };
+  });
+
+  const pullEnd = (value: number, targets: number[]) => {
+    let next = value;
+    let best = extend;
+    for (const target of targets) {
+      const dist = Math.abs(target - value);
+      if (dist <= best) {
+        best = dist;
+        next = target;
+      }
+    }
+    return next;
+  };
+
+  for (let pass = 0; pass < 2; pass += 1) {
+    horizontals = horizontals.map((wall) => {
+      const targets = verticals
+        .filter((other) => wall.z1 >= other.z1 - extend && wall.z1 <= other.z2 + extend)
+        .map((other) => other.x1);
+      const x1 = pullEnd(wall.x1, targets);
+      const x2 = pullEnd(wall.x2, targets);
+      return { ...wall, x1: Math.min(x1, x2), x2: Math.max(x1, x2), lengthM: Math.abs(x2 - x1) };
+    });
+    verticals = verticals.map((wall) => {
+      const targets = horizontals
+        .filter((other) => wall.x1 >= other.x1 - extend && wall.x1 <= other.x2 + extend)
+        .map((other) => other.z1);
+      const z1 = pullEnd(wall.z1, targets);
+      const z2 = pullEnd(wall.z2, targets);
+      return { ...wall, z1: Math.min(z1, z2), z2: Math.max(z1, z2), lengthM: Math.abs(z2 - z1) };
+    });
+  }
+
+  const splitHits = (
+    wall: RoomScanWallSegment,
+    axis: 'h' | 'v',
+  ) => {
+    const cuts = [0, 1];
+    const length = Math.max(wallLengthMeters(wall), 0.001);
+    const addCut = (distance: number) => {
+      const t = distance / length;
+      if (t > 0.04 && t < 0.96) cuts.push(t);
+    };
+    if (axis === 'h') {
+      for (const other of verticals) {
+        if (other.x1 <= wall.x1 + 0.05 || other.x1 >= wall.x2 - 0.05) continue;
+        if (wall.z1 < other.z1 - 0.08 || wall.z1 > other.z2 + 0.08) continue;
+        addCut(other.x1 - wall.x1);
+      }
+    } else {
+      for (const other of horizontals) {
+        if (other.z1 <= wall.z1 + 0.05 || other.z1 >= wall.z2 - 0.05) continue;
+        if (wall.x1 < other.x1 - 0.08 || wall.x1 > other.x2 + 0.08) continue;
+        addCut(other.z1 - wall.z1);
+      }
+    }
+    const unique = [...new Set(cuts.map((t) => Math.round(t * 1000) / 1000))].sort((a, b) => a - b);
+    const pieces: RoomScanWallSegment[] = [];
+    for (let i = 0; i < unique.length - 1; i += 1) {
+      const t0 = unique[i];
+      const t1 = unique[i + 1];
+      if (axis === 'h') {
+        const x1 = wall.x1 + (wall.x2 - wall.x1) * t0;
+        const x2 = wall.x1 + (wall.x2 - wall.x1) * t1;
+        pieces.push({ ...wall, x1, x2, lengthM: Math.abs(x2 - x1) });
+      } else {
+        const z1 = wall.z1 + (wall.z2 - wall.z1) * t0;
+        const z2 = wall.z1 + (wall.z2 - wall.z1) * t1;
+        pieces.push({ ...wall, z1, z2, lengthM: Math.abs(z2 - z1) });
+      }
+    }
+    return pieces.filter((piece) => wallLengthMeters(piece) >= 0.22);
+  };
+
+  return cleanWallsForPlan([
+    ...horizontals.flatMap((wall) => splitHits(wall, 'h')),
+    ...verticals.flatMap((wall) => splitHits(wall, 'v')),
+  ]);
+}
+
+function sectionsLookClustered(
+  sections: FloorPlanScanMeta['sections'],
+  bounds: FloorPlanScanMeta['bounds'],
+): boolean {
+  if (sections.length < 2) return false;
+  const span = Math.max(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
+  if (span < 4) return false;
+  let maxDist = 0;
+  for (let i = 0; i < sections.length; i += 1) {
+    for (let j = i + 1; j < sections.length; j += 1) {
+      maxDist = Math.max(
+        maxDist,
+        Math.hypot(sections[i].centerX - sections[j].centerX, sections[i].centerZ - sections[j].centerZ),
+      );
+    }
+  }
+  return maxDist < span * 0.48;
+}
+
+/** Gdy podpisy pokoi siedzą w kupie, rozłóż je na środki rzeczywistych pomieszczeń. */
+export function anchorSectionsToRooms(
+  sections: FloorPlanScanMeta['sections'],
+  walls: RoomScanWallSegment[],
+  bounds: FloorPlanScanMeta['bounds'],
+): FloorPlanScanMeta['sections'] {
+  if (!sectionsLookClustered(sections, bounds)) return sections;
+  const cell = 0.14;
+  const cols = Math.max(2, Math.ceil((bounds.maxX - bounds.minX) / cell));
+  const rows = Math.max(2, Math.ceil((bounds.maxZ - bounds.minZ) / cell));
+  const blocked = new Uint8Array(cols * rows);
+  const mark = (x: number, z: number) => {
+    const c = Math.round((x - bounds.minX) / cell);
+    const r = Math.round((z - bounds.minZ) / cell);
+    for (let dr = -1; dr <= 1; dr += 1) {
+      for (let dc = -1; dc <= 1; dc += 1) {
+        const cc = c + dc;
+        const rr = r + dr;
+        if (cc >= 0 && rr >= 0 && cc < cols && rr < rows) blocked[rr * cols + cc] = 1;
+      }
+    }
+  };
+  for (const wall of walls) {
+    const steps = Math.max(1, Math.ceil(wallLengthMeters(wall) / cell));
+    for (let step = 0; step <= steps; step += 1) {
+      const t = step / steps;
+      mark(wall.x1 + (wall.x2 - wall.x1) * t, wall.z1 + (wall.z2 - wall.z1) * t);
+    }
+  }
+  const seen = new Uint8Array(cols * rows);
+  const regions: Array<{ cx: number; cz: number; area: number }> = [];
+  for (let index = 0; index < blocked.length; index += 1) {
+    if (blocked[index] || seen[index]) continue;
+    const queue = [index];
+    seen[index] = 1;
+    let count = 0;
+    let sumC = 0;
+    let sumR = 0;
+    while (queue.length) {
+      const current = queue.pop() as number;
+      count += 1;
+      const r = Math.floor(current / cols);
+      const c = current - r * cols;
+      sumC += c;
+      sumR += r;
+      const neighbors = [current - 1, current + 1, current - cols, current + cols];
+      for (const next of neighbors) {
+        if (next < 0 || next >= blocked.length || blocked[next] || seen[next]) continue;
+        const nr = Math.floor(next / cols);
+        const nc = next - nr * cols;
+        if (Math.abs(nc - c) + Math.abs(nr - r) !== 1) continue;
+        seen[next] = 1;
+        queue.push(next);
+      }
+    }
+    const area = count * cell * cell;
+    if (area < 1.1) continue;
+    regions.push({
+      cx: bounds.minX + ((sumC / count) + 0.5) * cell,
+      cz: bounds.minZ + ((sumR / count) + 0.5) * cell,
+      area,
+    });
+  }
+  if (regions.length < 2) return sections;
+  const byArea = [...regions].sort((a, b) => b.area - a.area);
+  const ranked = sections
+    .map((section, index) => ({ section, index, area: section.areaSqM || 0 }))
+    .sort((a, b) => b.area - a.area);
+  const placed = sections.map((section) => ({ ...section }));
+  ranked.forEach((item, rank) => {
+    const region = byArea[rank];
+    if (!region) return;
+    placed[item.index] = { ...placed[item.index], centerX: region.cx, centerZ: region.cz };
+  });
+  return placed;
+}
+
 function isAxisAligned(wall: RoomScanWallSegment, toleranceDeg = 14): boolean {
   const angle = Math.atan2(wall.z2 - wall.z1, wall.x2 - wall.x1);
   const tolerance = Math.sin((toleranceDeg * Math.PI) / 180);
@@ -259,6 +494,15 @@ export function orthogonalizeScanPlan(
       widthM: Math.min(widthM, heightM),
       lengthM: Math.max(widthM, heightM),
     }));
+  } else if (nextSections.length > 1) {
+    nextWalls = sealPlanJunctions(cleanedRotated);
+    bounds = boundsFromPoints(
+      nextWalls.flatMap((wall) => [
+        { x: wall.x1, z: wall.z1 },
+        { x: wall.x2, z: wall.z2 },
+      ]),
+    );
+    nextSections = anchorSectionsToRooms(nextSections, nextWalls, bounds);
   }
 
   const northRotationDegrees =
@@ -341,7 +585,7 @@ export function buildArchitecturalWallBands(
     return { x: a1.x + adx * t, y: a1.y + ady * t };
   };
 
-  const joinTolerance = Math.max(2, viewport.scale * 0.04);
+  const joinTolerance = Math.max(3.5, viewport.scale * 0.12);
   const joinedPoint = (
     bandIndex: number,
     edge: 'inner' | 'outer',

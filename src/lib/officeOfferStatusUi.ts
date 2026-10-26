@@ -3,6 +3,7 @@ export type LinkedOfferSnapshot = {
   status?: string | null;
   officeReviewStatus?: string | null;
   title?: string | null;
+  imageUrl?: string | null;
   landRegistryNumber?: string | null;
   apartmentNumber?: string | null;
   isLegalSafeVerified?: boolean | null;

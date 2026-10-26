@@ -56,6 +56,52 @@ ensure_hermes_xcframework() {
   fi
   echo "[ios-prepare] Hermes ios-arm64 OK"
 }
+
+# Maven hermes-framework dSYM is ~280MB. Archive-time download often times out,
+# which is why App Store Connect reports a missing hermes.framework dSYM.
+# Prefetch iphoneos slice next to the xcframework so Xcode embeds it.
+ensure_hermes_dsym() {
+  local version
+  version="$(node -p "require('$ROOT/node_modules/react-native/package.json').version")"
+  local art="$ROOT/ios/Pods/hermes-engine-artifacts"
+  local tarfile="$art/react-native-artifacts-${version}-hermes-framework-dSYM-release.tar.gz"
+  local slice_dir="$ROOT/ios/Pods/hermes-engine/destroot/Library/Frameworks/universal/hermes.xcframework/ios-arm64/dSYMs"
+  local slice_dsym="$slice_dir/hermes.framework.dSYM"
+  local cache_dsym="$ROOT/ios/.rn-dsyms-cache/${version}/release/hermes-framework/iphoneos/hermes.framework.dSYM"
+  local dwarf="$slice_dsym/Contents/Resources/DWARF/hermes"
+
+  if [[ -f "$dwarf" ]]; then
+    echo "[ios-prepare] Hermes iphoneos dSYM już w xcframework"
+    return
+  fi
+  if [[ -f "$cache_dsym/Contents/Resources/DWARF/hermes" ]]; then
+    echo "[ios-prepare] instaluję Hermes dSYM z cache…"
+    mkdir -p "$slice_dir"
+    rm -rf "$slice_dsym"
+    cp -R "$cache_dsym" "$slice_dsym"
+    return
+  fi
+
+  mkdir -p "$art"
+  if [[ ! -s "$tarfile" ]]; then
+    echo "[ios-prepare] pobieram Hermes dSYM ${version} (raz, ~280 MB)…"
+    curl -fL --retry 3 --retry-delay 2 --connect-timeout 20 --max-time 300 -o "$tarfile" \
+      "https://repo1.maven.org/maven2/com/facebook/react/react-native-artifacts/${version}/react-native-artifacts-${version}-hermes-framework-dSYM-release.tar.gz"
+  fi
+
+  local tmp
+  tmp="$(mktemp -d)"
+  echo "[ios-prepare] rozpakowuję iphoneos Hermes dSYM…"
+  tar -xzf "$tarfile" -C "$tmp" ./iphoneos
+  mkdir -p "$(dirname "$cache_dsym")" "$slice_dir"
+  rm -rf "$cache_dsym" "$slice_dsym"
+  cp -R "$tmp/iphoneos/hermes.framework.dSYM" "$cache_dsym"
+  cp -R "$cache_dsym" "$slice_dsym"
+  rm -rf "$tmp"
+  echo "[ios-prepare] Hermes iphoneos dSYM OK"
+}
+
 ensure_hermes_xcframework
+ensure_hermes_dsym
 
 echo "[ios-prepare] gotowe — możesz budować w Xcode (EstateOS.xcworkspace) lub: npx expo run:ios"

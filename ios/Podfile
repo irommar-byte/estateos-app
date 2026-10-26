@@ -79,6 +79,28 @@ target 'EstateOS' do
       end
     end
 
+    # Xcode 26 only accepts IPHONEOS_DEPLOYMENT_TARGET 15.0+. Resource
+    # bundles from maps / AsyncStorage / RNSVG / SDWebImage still ship 9–13.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_config|
+        current = build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+        next if current.nil? || current.to_s.strip.empty?
+        if current.to_f < 15.0
+          build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+        end
+      end
+    end
+
+    # Xcode 26 explicit modules fail on Expo Swift pods: they cannot rebuild
+    # ExpoModulesCore (C++ umbrellas / missing libc++ headers) with the same
+    # search paths used when the module was first compiled.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_config|
+        build_config.build_settings['CLANG_ENABLE_EXPLICIT_MODULES'] = 'NO'
+        build_config.build_settings['SWIFT_ENABLE_EXPLICIT_MODULES'] = 'NO'
+      end
+    end
+
     # Incomplete pod installs (Xcode 26 / CocoaPods) may skip Headers/Public symlinks.
     fix_headers = File.expand_path('../scripts/fix-ios-pod-headers.sh', __dir__)
     system('bash', fix_headers) if File.exist?(fix_headers)

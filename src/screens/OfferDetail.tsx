@@ -13,11 +13,14 @@ import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Alert, Modal, Pla
 import { useThemeStore } from '../store/useThemeStore';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
+import { ScrollView as GHScrollView, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   useAnimatedScrollHandler,
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedRef,
+  scrollTo,
+  runOnUI,
   interpolate,
   Extrapolation,
   withSpring,
@@ -32,7 +35,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import OfferGlassGallery from '../components/offer/OfferGlassGallery';
 import LiveHeroPhoto from '../components/offer/LiveHeroPhoto';
-import CinemaRotateHint from '../components/offer/CinemaRotateHint';
 import { getScreenOrientationApi } from '../utils/screenOrientationSafe';
 import FeaturedPromoteSheet from '../components/offer/FeaturedPromoteSheet';
 import OfferDetailMetaBadgesSection from '../components/offer/OfferDetailMetaBadgesSection';
@@ -1150,11 +1152,12 @@ export default function OfferDetail({ route, navigation }: any) {
   const windowHeightSV = useSharedValue(winH);
   const scrollY = useSharedValue(0);
   const sheetNudge = useSharedValue(0);
-  /** 0 = normalny widok, 1 = pełnoekranowy show hero. */
+  /** 0 = normalny widok, 1 = pełnoekranowy show hero (włączany obrotem telefonu). */
   const cinemaProgress = useSharedValue(0);
   const [isCinemaMode, setIsCinemaMode] = useState(false);
-  const [showRotateHint, setShowRotateHint] = useState(false);
-  const scrollViewRef = useRef<GHScrollView>(null);
+  const cinemaEnabledRef = useRef(false);
+  const scrollViewRef = useAnimatedRef<Animated.ScrollView>();
+  const pricePanStartY = useSharedValue(0);
   const touchTapRef = useRef({ x: 0, y: 0, at: 0 });
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: (e) => {
@@ -1166,19 +1169,20 @@ export default function OfferDetail({ route, navigation }: any) {
     windowHeightSV.value = winH;
   }, [winH, windowHeightSV]);
 
-  useEffect(() => {
-    if (!isCinemaMode || isLandscape) {
-      setShowRotateHint(false);
-      return;
-    }
-    setShowRotateHint(true);
-    const timer = setTimeout(() => setShowRotateHint(false), 4800);
-    return () => clearTimeout(timer);
-  }, [isCinemaMode, isLandscape]);
-
   const lockPortrait = useCallback(() => {
     getScreenOrientationApi().lockPortrait();
   }, []);
+
+  const unlockOrientation = useCallback(() => {
+    getScreenOrientationApi().unlockAll();
+  }, []);
+
+  const scrollMainTo = useCallback((y: number, animated: boolean) => {
+    runOnUI(() => {
+      'worklet';
+      scrollTo(scrollViewRef, 0, Math.max(0, y), animated);
+    })();
+  }, [scrollViewRef]);
 
   const isTapNotScroll = (start: { x: number; y: number; at: number }, end: GestureResponderEvent) => {
     const dx = Math.abs(end.nativeEvent.pageX - start.x);
@@ -1196,39 +1200,60 @@ export default function OfferDetail({ route, navigation }: any) {
 
   const nudgeSheetOpen = () => {
     if (isCinemaMode) return;
-    scrollViewRef.current?.scrollTo({ y: 96, animated: true });
+    scrollMainTo(96, true);
   };
 
   const handleSheetHintTapEnd = (e: GestureResponderEvent) => {
     if (isTapNotScroll(touchTapRef.current, e)) nudgeSheetOpen();
   };
 
-  const toggleCinemaMode = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const next = !isCinemaMode;
-    setIsCinemaMode(next);
-    if (next) {
-      scrollViewRef.current?.scrollTo({ y: 0, animated: false });
-      getScreenOrientationApi().unlockAll();
-    } else {
-      lockPortrait();
-    }
-    cinemaProgress.value = withTiming(next ? 1 : 0, {
-      duration: 580,
-      easing: next
-        ? Easing.bezier(0.22, 1.0, 0.36, 1)
-        : Easing.bezier(0.22, 1.0, 0.36, 1),
-    });
-  }, [cinemaProgress, isCinemaMode, lockPortrait]);
+  const applyCinemaMode = useCallback(
+    (enabled: boolean) => {
+      if (cinemaEnabledRef.current === enabled) return;
+      cinemaEnabledRef.current = enabled;
+      setIsCinemaMode(enabled);
+      if (enabled) {
+        scrollMainTo(0, false);
+      }
+      cinemaProgress.value = withTiming(enabled ? 1 : 0, {
+        duration: 580,
+        easing: Easing.bezier(0.22, 1.0, 0.36, 1),
+      });
+    },
+    [cinemaProgress, scrollMainTo],
+  );
+
+  // Cinema wyłącznie z fizycznego obrotu — bez tapu i bez hintu „Obróć telefon”.
+  useEffect(() => {
+    applyCinemaMode(isLandscape);
+  }, [applyCinemaMode, isLandscape]);
 
   useFocusEffect(
     useCallback(() => {
+      unlockOrientation();
       return () => {
         lockPortrait();
+        cinemaEnabledRef.current = false;
         setIsCinemaMode(false);
         cinemaProgress.value = 0;
       };
-    }, [cinemaProgress, lockPortrait]),
+    }, [cinemaProgress, lockPortrait, unlockOrientation]),
+  );
+
+  const priceBarScrollPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([-10, 10])
+        .failOffsetX([-20, 20])
+        .onBegin(() => {
+          pricePanStartY.value = scrollY.value;
+        })
+        .onUpdate((e) => {
+          'worklet';
+          const next = Math.max(0, pricePanStartY.value - e.translationY);
+          scrollTo(scrollViewRef, 0, next, false);
+        }),
+    [pricePanStartY, scrollViewRef, scrollY],
   );
 
   useEffect(() => {
@@ -1914,12 +1939,10 @@ export default function OfferDetail({ route, navigation }: any) {
         pointerEvents="box-none"
       >
         <Pressable
-          onPress={toggleCinemaMode}
+          onPress={() => openGallery(0)}
           style={styles.heroImagePressable}
           accessibilityRole="button"
-          accessibilityLabel={
-            isCinemaMode ? t('offer.detail.hero.closeCinema', { defaultValue: 'Zamknij podgląd' }) : t('offer.detail.hero.openCinema', { defaultValue: 'Pełny ekran zdjęcia' })
-          }
+          accessibilityLabel={t('offer.detail.hero.openGallery')}
         >
           {imagesToShow[0] ? (
             <LiveHeroPhoto
@@ -1937,7 +1960,6 @@ export default function OfferDetail({ route, navigation }: any) {
               style={StyleSheet.absoluteFill}
             />
           </Animated.View>
-          <CinemaRotateHint visible={showRotateHint} />
         </Pressable>
       </Animated.View>
 
@@ -2022,14 +2044,10 @@ export default function OfferDetail({ route, navigation }: any) {
         */}
         <View style={{ height: firstScreenHeight }}>
           <Pressable
-            onPress={toggleCinemaMode}
+            onPress={() => openGallery(0)}
             style={styles.heroTapStripFlex}
             accessibilityRole="button"
-            accessibilityLabel={
-              isCinemaMode
-                ? t('offer.detail.hero.closeCinema', { defaultValue: 'Zamknij podgląd' })
-                : t('offer.detail.hero.openCinema', { defaultValue: 'Pełny ekran zdjęcia' })
-            }
+            accessibilityLabel={t('offer.detail.hero.openGallery')}
           />
           <View
             style={[
@@ -2816,6 +2834,12 @@ export default function OfferDetail({ route, navigation }: any) {
       >
         <BlurView intensity={95} tint={isDark ? "dark" : "light"} style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 16) + 12 }, Platform.OS === 'android' && { backgroundColor: isDark ? '#0a0a0a' : '#ffffff' }, isDark && { backgroundColor: Platform.OS === 'android' ? '#0a0a0a' : 'rgba(10,10,10,0.65)', borderTopColor: 'rgba(255,255,255,0.1)' }]}>
           {/*
+            Strefa info (cena / ROI): pan pionowy przewija ofertę.
+            CTA poniżej zostają osobno klikalne.
+          */}
+          <GestureDetector gesture={priceBarScrollPan}>
+            <Animated.View>
+          {/*
             Cena + ROI w jednym wierszu (właściciel i kupujący).
             Kupujący dodatkowo: wizytówka / prowizja pod spodem.
           */}
@@ -3174,6 +3198,9 @@ export default function OfferDetail({ route, navigation }: any) {
               </View>
             </>
           )}
+
+            </Animated.View>
+          </GestureDetector>
 
           {/* BOTTOM ROW: Akcje */}
           <View style={styles.bottomActionsRow}>

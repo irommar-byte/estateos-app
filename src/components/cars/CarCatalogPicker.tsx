@@ -35,14 +35,80 @@ type CarCatalogPickerProps = {
   onChange: (patch: Partial<CarCatalogFormState>) => void;
 };
 
+const MAKE_ALIASES: Record<string, string[]> = {
+  chevrolet: ['chevy', 'gm', 'general motors'],
+  volkswagen: ['vw', 'volks'],
+  'mercedes-benz': ['mercedes', 'mercedes benz', 'mb', 'mercedesbenz'],
+  'alfa-romeo': ['alfa', 'alfa romeo'],
+  'land-rover': ['landrover', 'land rover', 'range rover'],
+  'rolls-royce': ['rolls royce', 'rollsroyce'],
+  citroen: ['citroën', 'citroen'],
+  skoda: ['škoda', 'skoda'],
+  peugeot: ['peugeot'],
+  bmw: ['b.m.w', 'b m w'],
+  audi: ['audi'],
+  toyota: ['toyota'],
+  ford: ['ford'],
+  opel: ['opel', 'vauxhall'],
+  hyundai: ['hyundai'],
+  kia: ['kia'],
+  mazda: ['mazda'],
+  nissan: ['nissan'],
+  honda: ['honda'],
+  volvo: ['volvo'],
+  seat: ['seat'],
+  cupra: ['cupra'],
+  dacia: ['dacia'],
+  renault: ['renault'],
+  fiat: ['fiat'],
+  jeep: ['jeep'],
+  suzuki: ['suzuki'],
+  mitsubishi: ['mitsubishi'],
+  subaru: ['subaru'],
+  lexus: ['lexus'],
+  porsche: ['porsche'],
+  mini: ['mini', 'bmw mini'],
+  tesla: ['tesla'],
+};
+
+function normalizeCatalogToken(raw: string) {
+  return raw
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function findByLabel(options: CatalogOption[], label: string) {
-  const normalized = label.trim().toLowerCase();
+  const normalized = normalizeCatalogToken(label);
   if (!normalized) return null;
+  const compact = normalized.replace(/\s+/g, '');
+  const direct =
+    options.find((o) => normalizeCatalogToken(o.label) === normalized) ||
+    options.find((o) => normalizeCatalogToken(o.value) === normalized) ||
+    options.find((o) => normalizeCatalogToken(o.label).replace(/\s+/g, '') === compact) ||
+    options.find((o) => normalizeCatalogToken(o.value).replace(/\s+/g, '') === compact) ||
+    null;
+  if (direct) return direct;
+
+  for (const [slug, aliases] of Object.entries(MAKE_ALIASES)) {
+    const hit =
+      normalized === slug.replace(/-/g, ' ') ||
+      compact === slug.replace(/-/g, '') ||
+      aliases.some((alias) => normalizeCatalogToken(alias) === normalized || normalizeCatalogToken(alias).replace(/\s+/g, '') === compact);
+    if (!hit) continue;
+    const match =
+      options.find((o) => normalizeCatalogToken(o.value) === slug) ||
+      options.find((o) => normalizeCatalogToken(o.value).replace(/-/g, ' ') === slug.replace(/-/g, ' ')) ||
+      options.find((o) => normalizeCatalogToken(o.label).includes(slug.replace(/-/g, ' ')));
+    if (match) return match;
+  }
+
   return (
-    options.find((o) => o.label.toLowerCase() === normalized) ||
-    options.find((o) => o.value.toLowerCase() === normalized) ||
-    options.find((o) => o.label.toLowerCase().includes(normalized)) ||
-    options.find((o) => normalized.includes(o.label.toLowerCase())) ||
+    options.find((o) => normalizeCatalogToken(o.label).includes(normalized)) ||
+    options.find((o) => normalized.includes(normalizeCatalogToken(o.label))) ||
     null
   );
 }
@@ -443,19 +509,29 @@ export default function CarCatalogPicker({ value, onChange }: CarCatalogPickerPr
           resetFrom('capacity');
         }}
       />
-      <SelectField
-        label="Liczba drzwi"
-        value={value.doorCountSlug}
-        display={value.doorCount}
-        options={doors.options}
-        loading={doors.loading}
-        disabled={!value.engineCapacitySlug}
-        colors={colors}
-        onSelect={(option) => {
-          onChange({ doorCountSlug: option.value, doorCount: option.label });
-          resetFrom('doors');
-        }}
-      />
+      {value.engineCapacitySlug ? (
+        <SelectField
+          label="Liczba drzwi"
+          value={value.doorCountSlug}
+          display={value.doorCount}
+          options={doors.options}
+          loading={doors.loading}
+          colors={colors}
+          onSelect={(option) => {
+            onChange({ doorCountSlug: option.value, doorCount: option.label });
+            resetFrom('doors');
+          }}
+        />
+      ) : (
+        <FreeTextField
+          label="Liczba drzwi"
+          value={value.doorCount}
+          placeholder="np. 5"
+          colors={colors}
+          styles={styles}
+          onChangeText={(doorCount) => onChange({ doorCount, doorCountSlug: '' })}
+        />
+      )}
       <SelectField
         label="Skrzynia biegów"
         value={value.gearboxSlug}
@@ -469,16 +545,26 @@ export default function CarCatalogPicker({ value, onChange }: CarCatalogPickerPr
           resetFrom('gearbox');
         }}
       />
-      <SelectField
-        label="Wersja"
-        value={value.trimVersionSlug}
-        display={value.trimVersion}
-        options={versions.options}
-        loading={versions.loading}
-        disabled={!value.gearboxSlug}
-        colors={colors}
-        onSelect={(option) => onChange({ trimVersionSlug: option.value, trimVersion: option.label })}
-      />
+      {value.gearboxSlug ? (
+        <SelectField
+          label="Wersja"
+          value={value.trimVersionSlug}
+          display={value.trimVersion}
+          options={versions.options}
+          loading={versions.loading}
+          colors={colors}
+          onSelect={(option) => onChange({ trimVersionSlug: option.value, trimVersion: option.label })}
+        />
+      ) : (
+        <FreeTextField
+          label="Wersja wyposażenia"
+          value={value.trimVersion}
+          placeholder="np. LTZ, Comfortline…"
+          colors={colors}
+          styles={styles}
+          onChangeText={(trimVersion) => onChange({ trimVersion, trimVersionSlug: '' })}
+        />
+      )}
 
       <SelectField
         label="Nadwozie"
@@ -501,6 +587,36 @@ export default function CarCatalogPicker({ value, onChange }: CarCatalogPickerPr
   );
 }
 
+function FreeTextField({
+  label,
+  value,
+  placeholder,
+  onChangeText,
+  colors,
+  styles,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  onChangeText: (v: string) => void;
+  colors: CarScreenColors;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.freeField}>
+      <Text style={styles.freeLabel}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.placeholder}
+        style={styles.freeInput}
+      />
+      <Text style={styles.freeHint}>Katalog jeszcze niedostępny — wpisz ręcznie albo uzupełnij z CEPIK.</Text>
+    </View>
+  );
+}
+
 function createStyles(colors: CarScreenColors) {
   return StyleSheet.create({
     root: {
@@ -513,6 +629,19 @@ function createStyles(colors: CarScreenColors) {
     },
     heading: { color: colors.accent, fontSize: 14, fontWeight: '700' },
     lead: { color: colors.muted, fontSize: 12, lineHeight: 18, marginBottom: 4 },
+    freeField: { gap: 6 },
+    freeLabel: { color: colors.placeholder, fontSize: 11, fontWeight: '600' },
+    freeInput: {
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.inputBorder,
+      backgroundColor: colors.inputBg,
+      color: colors.text,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontSize: 15,
+    },
+    freeHint: { color: colors.muted, fontSize: 11, lineHeight: 15 },
   });
 }
 

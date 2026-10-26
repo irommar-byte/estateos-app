@@ -1,5 +1,5 @@
 import React, { useMemo, forwardRef } from 'react';
-import { Platform, View, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import Svg, { G, Line, Path, Rect, Text as SvgText, Circle, Polygon } from 'react-native-svg';
 import type { FloorPlanScanMeta, RoomScanWallSegment } from '../../types/roomScan';
 import type { DimensionSegment } from '../../lib/roomScan/floorPlanGeometry';
@@ -36,12 +36,6 @@ type Props = {
   hideDimensions?: boolean;
 };
 
-// Snell Roundhand nie ma pełnych polskich znaków („Ł”, „ą”) — iOS podmieniał litery innym krojem.
-const SCRIPT_FONT = Platform.select({
-  ios: 'Georgia-Italic',
-  android: 'cursive',
-  default: 'Georgia',
-});
 
 function DimensionTick({ x, y, angleDeg }: { x: number; y: number; angleDeg: number }) {
   const rad = (angleDeg * Math.PI) / 180;
@@ -379,9 +373,13 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
   const planTop = viewport.offsetY;
   const planBottom = viewport.offsetY + (plan.meta.bounds.maxZ - plan.meta.bounds.minZ) * viewport.scale;
   const dimensionFontSize = Math.max(denseArchitectural ? 7.5 : 9, Math.min(15, viewport.scale * 0.145));
-  const roomNameFontSize = Math.max(denseArchitectural ? 10 : 16, Math.min(29, viewport.scale * 0.26));
+  const roomNameFontSize = mappedSections.length > 1
+    ? Math.max(11, Math.min(14, viewport.scale * 0.16))
+    : Math.max(denseArchitectural ? 10 : 16, Math.min(29, viewport.scale * 0.26));
   const roomNameLineHeight = roomNameFontSize * 1.02;
-  const areaFontSize = Math.max(denseArchitectural ? 8 : 11, Math.min(17, viewport.scale * 0.16));
+  const areaFontSize = mappedSections.length > 1
+    ? Math.max(10, Math.min(12, viewport.scale * 0.13))
+    : Math.max(denseArchitectural ? 8 : 11, Math.min(17, viewport.scale * 0.16));
   const areaLineHeight = areaFontSize * 1.15;
 
   const sectionLabels = useMemo(() => {
@@ -623,9 +621,9 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                       key={`${label.id}-name-${index}`}
                       x={label.x}
                       y={label.nameStartY + index * roomNameLineHeight}
-                      fill="#dc2626"
+                      fill="#292524"
                       fontSize={roomNameFontSize}
-                      fontFamily={SCRIPT_FONT}
+                      fontWeight="600"
                       textAnchor="middle"
                     >
                       {line}
@@ -635,9 +633,9 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
                     <SvgText
                       x={label.x}
                       y={label.nameLines.length ? label.areaY : label.areaY}
-                      fill="#111827"
+                      fill="#57534e"
                       fontSize={areaFontSize}
-                      fontWeight="400"
+                      fontWeight="500"
                       textAnchor="middle"
                     >
                       {label.areaText}

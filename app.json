@@ -35,6 +35,7 @@
         "NSRemindersUsageDescription": "Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.",
         "NSRemindersFullAccessUsageDescription": "Opcjonalnie możemy powiązać termin prezentacji z przypomnieniami systemowymi.",
         "NSCameraUsageDescription": "EstateOS używa aparatu i skanera LiDAR, aby robić zdjęcia nieruchomości, skanować pomieszczenia na plan mieszkania oraz kod QR przy logowaniu.",
+        "NSContactsUsageDescription": "EstateOS pozwala wybrać osobę z Kontaktów, żeby szybko dodać klienta do CRM. Dane nie są wysyłane bez Twojego zapisu.",
         "NSPhotoLibraryUsageDescription": "EstateOS używa zdjęć z Twojej biblioteki, aby dodać je do publikowanej oferty nieruchomości.",
         "NSPhotoLibraryAddUsageDescription": "EstateOS zapisuje wybrane materiały (np. plan PDF mieszkania) do Twojej biblioteki na życzenie.",
         "NSFaceIDUsageDescription": "EstateOS używa Face ID lub Touch ID, aby zalogować Cię bez podawania hasła (Passkey).",
@@ -58,7 +59,7 @@
       "versionCode": 44,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": false,
       "predictiveBackGestureEnabled": false,

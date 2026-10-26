@@ -24,6 +24,7 @@ import {
   listingRoomCountFromRooms,
   livableAreaFromRooms,
   ROOM_PRESET_DEFS,
+  roomsFromScanMeta,
   roomTypeKeyFromName,
 } from '../../lib/roomScan/refineScanSections';
 
@@ -306,17 +307,61 @@ export default function PropertyRoomScanWorkspace({
     if (!withoutPrevious.includes(next)) onChangePlanImages([...withoutPrevious, next]);
   };
 
+  /** Po skanie całej nieruchomości odtwarzamy karty pomieszczeń z sekcji RoomPlan. */
+  const materializeRoomsFromWholeScan = (meta: FloorPlanScanMeta): PropertyRoomScan[] => {
+    const stamp = Date.now();
+    return roomsFromScanMeta(meta).map((room, index) => ({
+      ...room,
+      id: `room-${stamp}-${index}-${Math.round(Math.random() * 1000)}`,
+      scannedAt: meta.scannedAt || room.scannedAt,
+    }));
+  };
+
+  // Jeśli plan całości ma sekcje, a lista kart jest pusta (regresja / stary draft) — uzupełnij raz.
+  useEffect(() => {
+    if (disabled) return;
+    if (!wholeScan?.scanMeta?.sections?.length) return;
+    if (rooms.length > 0) return;
+    const detected = materializeRoomsFromWholeScan(wholeScan.scanMeta);
+    if (!detected.length) return;
+    onChangeRooms(detected);
+    if (!Array.isArray(wholeScan.scanMeta.roomScans) || wholeScan.scanMeta.roomScans.length === 0) {
+      onChangeWholeScan?.({
+        ...wholeScan,
+        scanMeta: {
+          ...wholeScan.scanMeta,
+          roomScans: detected,
+          roomCount: listingRoomCountFromRooms(detected) || wholeScan.scanMeta.roomCount,
+          roomAreaTotalSqM: livableAreaFromRooms(detected) || wholeScan.scanMeta.roomAreaTotalSqM,
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot hydrate when rooms empty
+  }, [disabled, wholeScan?.scanMeta?.sections?.length, rooms.length]);
+
   const applyScan = (assets: RoomScanDraftAssets) => {
     if (!activeScan) return;
     if (activeScan.mode === 'property') {
+      const detected = materializeRoomsFromWholeScan(assets.scanMeta);
+      const nextMeta: FloorPlanScanMeta = {
+        ...assets.scanMeta,
+        roomScans: detected.length ? detected : assets.scanMeta.roomScans,
+        roomCount: listingRoomCountFromRooms(detected) || assets.scanMeta.roomCount,
+        roomAreaTotalSqM: livableAreaFromRooms(detected) || assets.scanMeta.roomAreaTotalSqM,
+      };
       replacePlanImage(wholeScan?.floorPlanPngUri, assets.floorPlanPngUri);
       onChangeWholeScan?.({
         ...assets,
+        scanMeta: nextMeta,
         scannedAt: assets.scanMeta.scannedAt,
       });
+      if (detected.length) {
+        onChangeRooms(detected);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       setActiveScan(null);
       queuePlanPngRelabel(
-        assets.scanMeta,
+        nextMeta,
         (uri) => {
           const latest = wholeScanRef.current;
           if (!latest || !onChangeWholeScan) return;

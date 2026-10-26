@@ -38,6 +38,8 @@ type CarVehicleDocsSectionProps = {
     prefill: CarRegistrationPrefill & { insuranceValidUntil?: string; vehicleType?: string },
     missingFields: CarListingMissingFieldKey[],
   ) => void;
+  onRescanPress?: () => void;
+  fillFromDocsBusy?: boolean;
 };
 
 function isValidVinQuick(vin: string) {
@@ -49,6 +51,8 @@ export default function CarVehicleDocsSection({
   value,
   onChange,
   onPrefillFromDocs,
+  onRescanPress,
+  fillFromDocsBusy = false,
 }: CarVehicleDocsSectionProps) {
   const { colors, elevation } = useCarScreenTheme();
   const token = useAuthStore((s) => s.token);
@@ -207,13 +211,20 @@ export default function CarVehicleDocsSection({
         colors={colors}
       />
 
+      {onRescanPress ? (
+        <Pressable onPress={onRescanPress} style={styles.actionBtn}>
+          <FileSearch color={colors.buttonText} size={18} />
+          <Text style={styles.actionLabel}>Skanuj dowód ponownie</Text>
+        </Pressable>
+      ) : null}
+
       {onPrefillFromDocs ? (
         <Pressable
           onPress={() => void handleFillFromDocs()}
-          disabled={fillFromDocsLoading || !canCheckHistory}
+          disabled={fillFromDocsLoading || fillFromDocsBusy || !canCheckHistory}
           style={styles.actionBtnSecondary}
         >
-          {fillFromDocsLoading ? (
+          {fillFromDocsLoading || fillFromDocsBusy ? (
             <ActivityIndicator color={colors.successButtonText} />
           ) : (
             <>

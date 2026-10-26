@@ -1,22 +1,32 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { SellerPipelineStage, SellerPipelineStageId } from '../../lib/sellerClientPipeline';
+import type { SellerPipelineStage, SellerPipelineStageId, BuyerPipelineStage, BuyerPipelineStageId } from '../../lib/sellerClientPipeline';
 
-const STAGE_ICONS: Record<SellerPipelineStageId, keyof typeof Ionicons.glyphMap> = {
+const STAGE_ICONS: Record<SellerPipelineStageId | BuyerPipelineStageId, keyof typeof Ionicons.glyphMap> = {
   meeting: 'call',
   acquisition: 'document-text',
   sale: 'home',
   transaction: 'briefcase',
   finalization: 'key',
+  criteria: 'options',
+  radar: 'radio',
+  sending: 'paper-plane',
+  presentation: 'eye',
+  deal: 'key',
 };
 
-const SHORT_LABELS: Record<SellerPipelineStageId, string> = {
+const SHORT_LABELS: Record<SellerPipelineStageId | BuyerPipelineStageId, string> = {
   meeting: 'Spotkanie',
   acquisition: 'Umowa',
   sale: 'Ogłoszenie',
   transaction: 'Prezentacje',
   finalization: 'Transakcja',
+  criteria: 'Kryteria',
+  radar: 'Radar',
+  sending: 'Wysyłka',
+  presentation: 'Prezentacja',
+  deal: 'Transakcja',
 };
 
 const DOT = 22;
@@ -62,13 +72,21 @@ function AnimatedPhoneIcon({ active }: { active: boolean }) {
 }
 
 type Props = {
-  stages: SellerPipelineStage[];
+  stages: (SellerPipelineStage | BuyerPipelineStage)[];
   isDark?: boolean;
   compact?: boolean;
 };
 
+const BUYER_IDS = new Set(['criteria', 'radar', 'sending', 'presentation', 'deal']);
+
 export default function SellerClientPipelineBar({ stages, isDark, compact }: Props) {
   const [trackW, setTrackW] = useState(0);
+  const isBuyer = stages.length > 0 && BUYER_IDS.has(stages[0].id);
+  const accentColor = isBuyer ? '#FF9500' : '#34C759';
+  const accentBg = isBuyer
+    ? isDark ? 'rgba(255,149,0,0.1)' : 'rgba(255,149,0,0.07)'
+    : isDark ? 'rgba(52,199,89,0.1)' : 'rgba(52,199,89,0.07)';
+  const accentShadow = isBuyer ? (isDark ? '#000' : '#7c4a00') : (isDark ? '#000' : '#14532d');
   const doneCount = stages.filter((s) => s.done).length;
   const n = Math.max(stages.length, 1);
   const segments = Math.max(1, n - 1);
@@ -86,8 +104,8 @@ export default function SellerClientPipelineBar({ stages, isDark, compact }: Pro
         styles.wrap,
         compact && styles.wrapCompact,
         {
-          backgroundColor: isDark ? 'rgba(52,199,89,0.1)' : 'rgba(52,199,89,0.07)',
-          shadowColor: isDark ? '#000' : '#14532d',
+          backgroundColor: accentBg,
+          shadowColor: accentShadow,
         },
       ]}
     >
@@ -108,7 +126,7 @@ export default function SellerClientPipelineBar({ stages, isDark, compact }: Pro
             ]}
           >
             <View style={[styles.rail, { backgroundColor: rail }]} />
-            <View style={[styles.railFill, { width: fillWidth }]} />
+            <View style={[styles.railFill, { width: fillWidth, backgroundColor: accentColor, shadowColor: accentColor }]} />
           </View>
         ) : null}
         {stages.map((stage) => {
@@ -120,9 +138,9 @@ export default function SellerClientPipelineBar({ stages, isDark, compact }: Pro
                 style={[
                   styles.dot,
                   stage.done
-                    ? styles.dotDone
+                    ? { backgroundColor: accentColor, borderColor: accentColor }
                     : stage.current
-                      ? styles.dotCurrent
+                      ? (isBuyer ? { backgroundColor: '#c27200', borderColor: '#FFD699' } : styles.dotCurrent)
                       : [
                           styles.dotIdle,
                           {
@@ -149,7 +167,7 @@ export default function SellerClientPipelineBar({ stages, isDark, compact }: Pro
                   styles.stepLabel,
                   {
                     color: stage.done
-                      ? '#34C759'
+                      ? accentColor
                       : stage.current
                         ? isDark
                           ? '#fff'

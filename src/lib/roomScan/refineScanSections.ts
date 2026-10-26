@@ -262,11 +262,21 @@ export function refineScanSections(
     };
   });
 
-  next = maybeAddHallway(next, walls, objects, ceilingHeightM);
+  // Przy powierzchniach podłóg RoomPlan zwraca już rzeczywiste sekcje.
+  // Nie dokładamy wtedy sztucznego korytarza z osieroconych fragmentów ścian.
+  if (!next.some((section) => section.areaSource === 'floor')) {
+    next = maybeAddHallway(next, walls, objects, ceilingHeightM);
+  }
 
   next = next.map((section) => {
     const localWalls = assignWallsToSection(section, next, walls);
     const dims = deriveRoomDimensionsFromWalls(localWalls.length >= 2 ? localWalls : walls);
+    const floorArea =
+      section.areaSource === 'floor' &&
+      typeof section.areaSqM === 'number' &&
+      section.areaSqM > 0
+        ? section.areaSqM
+        : null;
     let area = localWalls.length >= 2 ? estimateFloorAreaFromWalls(localWalls) : 0;
     if (
       next.length > 1 &&
@@ -293,7 +303,7 @@ export function refineScanSections(
           ...section,
           widthM: w,
           lengthM: l,
-          areaSqM: Number((w * l).toFixed(1)),
+          areaSqM: floorArea ?? Number((w * l).toFixed(1)),
           ceilingHeightM: section.ceilingHeightM ?? ceilingHeightM ?? undefined,
         };
       }
@@ -302,13 +312,14 @@ export function refineScanSections(
       ...section,
       widthM: dims?.widthM ?? section.widthM,
       lengthM: dims?.lengthM ?? section.lengthM,
-      areaSqM: area > 0 ? Number(area.toFixed(1)) : section.areaSqM,
+      areaSqM: floorArea ?? (area > 0 ? Number(area.toFixed(1)) : section.areaSqM),
       ceilingHeightM: section.ceilingHeightM ?? ceilingHeightM ?? undefined,
     };
   });
 
   const sum = next.reduce((acc, s) => acc + (s.areaSqM || 0), 0);
-  if (next.length > 1 && globalFootprint > 1 && sum > globalFootprint * 1.08) {
+  const hasMeasuredFloorArea = next.some((section) => section.areaSource === 'floor');
+  if (!hasMeasuredFloorArea && next.length > 1 && globalFootprint > 1 && sum > globalFootprint * 1.08) {
     const scale = globalFootprint / sum;
     next = next.map((section) => ({
       ...section,
@@ -368,6 +379,17 @@ export function listingRoomCountFromSections(sections: RoomScanSection[]): numbe
 }
 
 export function totalUniqueAreaSqM(sections: RoomScanSection[], walls: RoomScanWallSegment[]): number {
+  const measuredFloors = sections.filter(
+    (section) =>
+      section.areaSource === 'floor' &&
+      typeof section.areaSqM === 'number' &&
+      section.areaSqM > 0,
+  );
+  if (measuredFloors.length === sections.length && measuredFloors.length > 0) {
+    return Number(
+      measuredFloors.reduce((sum, section) => sum + (section.areaSqM || 0), 0).toFixed(1),
+    );
+  }
   const footprint = estimateFloorAreaFromWalls(walls);
   const sum = sections.reduce((acc, s) => acc + (typeof s.areaSqM === 'number' ? s.areaSqM : 0), 0);
   if (footprint > 0 && sections.length > 1) {
@@ -392,6 +414,116 @@ export function resolveRoomSectionIndex(
   return byKey >= 0 ? byKey : null;
 }
 
+function wallsFromPolygon(
+  polygon: { x: number; z: number }[],
+  sourceWalls: RoomScanWallSegment[],
+): RoomScanWallSegment[] {
+  const points = polygon.filter(
+    (point, index) =>
+      index === 0 ||
+      Math.hypot(point.x - polygon[index - 1].x, point.z - polygon[index - 1].z) > 0.04,
+  );
+  if (
+    points.length > 2 &&
+    Math.hypot(
+      points[0].x - points[points.length - 1].x,
+      points[0].z - points[points.length - 1].z,
+    ) < 0.04
+  ) {
+    points.pop();
+  }
+  const heights = sourceWalls
+    .map((wall) => wall.heightM)
+    .filter((height): height is number => typeof height === 'number' && height > 1);
+  const heightM = heights.length
+    ? heights.reduce((sum, height) => sum + height, 0) / heights.length
+    : undefined;
+  return points
+    .map((point, index) => {
+      const next = points[(index + 1) % points.length];
+      const lengthM = Math.hypot(next.x - point.x, next.z - point.z);
+      return {
+        x1: point.x,
+        z1: point.z,
+        x2: next.x,
+        z2: next.z,
+        lengthM,
+        heightM,
+      };
+    })
+    .filter((wall) => (wall.lengthM || 0) > 0.12);
+}
+
+function rectangularRoomPerimeter(
+  section: RoomScanSection,
+  sourceWalls: RoomScanWallSegment[],
+): { walls: RoomScanWallSegment[]; polygon: { x: number; z: number }[] } | null {
+  const width = Number(section.widthM || 0);
+  const length = Number(section.lengthM || 0);
+  const structural = sourceWalls
+    .filter((wall) => Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1) > 0.45)
+    .sort(
+      (a, b) =>
+        Math.hypot(b.x2 - b.x1, b.z2 - b.z1) -
+        Math.hypot(a.x2 - a.x1, a.z2 - a.z1),
+    );
+  if (!(width > 0.4) || !(length > 0.4) || width > 30 || length > 30 || structural.length < 2) {
+    return null;
+  }
+
+  const dominant = structural[0];
+  const dominantLength = Math.hypot(dominant.x2 - dominant.x1, dominant.z2 - dominant.z1);
+  const ux = (dominant.x2 - dominant.x1) / dominantLength;
+  const uz = (dominant.z2 - dominant.z1) / dominantLength;
+  const vx = -uz;
+  const vz = ux;
+  const hasDiagonal = structural.some((wall) => {
+    const dx = wall.x2 - wall.x1;
+    const dz = wall.z2 - wall.z1;
+    const magnitude = Math.hypot(dx, dz) || 1;
+    const along = Math.abs((dx * ux + dz * uz) / magnitude);
+    const across = Math.abs((dx * vx + dz * vz) / magnitude);
+    return Math.max(along, across) < 0.94;
+  });
+  if (hasDiagonal) return null;
+
+  const alongM = Math.abs(length - dominantLength) <= Math.abs(width - dominantLength) ? length : width;
+  const acrossM = alongM === length ? width : length;
+  const hu = alongM / 2;
+  const hv = acrossM / 2;
+  const polygon = [
+    { x: section.centerX - ux * hu - vx * hv, z: section.centerZ - uz * hu - vz * hv },
+    { x: section.centerX + ux * hu - vx * hv, z: section.centerZ + uz * hu - vz * hv },
+    { x: section.centerX + ux * hu + vx * hv, z: section.centerZ + uz * hu + vz * hv },
+    { x: section.centerX - ux * hu + vx * hv, z: section.centerZ - uz * hu + vz * hv },
+  ];
+  return { walls: wallsFromPolygon(polygon, sourceWalls), polygon };
+}
+
+function distanceToWall(x: number, z: number, wall: RoomScanWallSegment): number {
+  const dx = wall.x2 - wall.x1;
+  const dz = wall.z2 - wall.z1;
+  const lengthSq = dx * dx + dz * dz;
+  if (lengthSq <= 0.0001) return Math.hypot(x - wall.x1, z - wall.z1);
+  const t = Math.max(0, Math.min(1, ((x - wall.x1) * dx + (z - wall.z1) * dz) / lengthSq));
+  return Math.hypot(x - (wall.x1 + dx * t), z - (wall.z1 + dz * t));
+}
+
+function pointInPolygon(x: number, z: number, polygon: { x: number; z: number }[]): boolean {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const a = polygon[index];
+    const b = polygon[previous];
+    if (
+      (a.z > z) !== (b.z > z) &&
+      x < ((b.x - a.x) * (z - a.z)) / (b.z - a.z || 0.00001) + a.x
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
 export function cropScanMetaToRoom(
   meta: FloorPlanScanMeta | null | undefined,
   room: PropertyRoomScan,
@@ -401,8 +533,23 @@ export function cropScanMetaToRoom(
   const index = resolveRoomSectionIndex(meta, room);
   if (index == null) return null;
   const section = meta.sections[index];
-  const walls = assignWallsToSection(section, meta.sections, meta.walls);
-  const objects = objectsNear(meta.objects || [], section.centerX, section.centerZ, 2.4);
+  const assignedWalls = assignWallsToSection(section, meta.sections, meta.walls);
+  const floorPolygon = section.floorPolygon?.length && section.floorPolygon.length >= 3
+    ? section.floorPolygon
+    : null;
+  const exactPerimeter = floorPolygon
+    ? { walls: wallsFromPolygon(floorPolygon, assignedWalls), polygon: floorPolygon }
+    : null;
+  const perimeter = exactPerimeter || rectangularRoomPerimeter(section, assignedWalls);
+  const walls = perimeter?.walls?.length ? perimeter.walls : assignedWalls;
+  const polygon = perimeter?.polygon;
+  const objects = polygon
+    ? (meta.objects || []).filter(
+        (object) =>
+          pointInPolygon(object.centerX, object.centerZ, polygon) ||
+          walls.some((wall) => distanceToWall(object.centerX, object.centerZ, wall) <= 0.28),
+      )
+    : objectsNear(meta.objects || [], section.centerX, section.centerZ, 2.4);
   const box = wallsBoundingBox(walls);
   const pad = 0.4;
   const bounds = box
@@ -416,7 +563,9 @@ export function cropScanMetaToRoom(
   const openings = (meta.openings || []).filter((opening) => {
     const mx = (opening.x1 + opening.x2) / 2;
     const mz = (opening.z1 + opening.z2) / 2;
-    return mx >= bounds.minX && mx <= bounds.maxX && mz >= bounds.minZ && mz <= bounds.maxZ;
+    const insideBounds =
+      mx >= bounds.minX && mx <= bounds.maxX && mz >= bounds.minZ && mz <= bounds.maxZ;
+    return insideBounds && (!polygon || walls.some((wall) => distanceToWall(mx, mz, wall) <= 0.45));
   });
   return {
     ...meta,

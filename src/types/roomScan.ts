@@ -58,6 +58,10 @@ export type RoomScanSection = {
   centerX: number;
   centerZ: number;
   areaSqM?: number;
+  /** Pole powierzchni odczytane bezpośrednio z powierzchni podłogi RoomPlan. */
+  areaSource?: 'floor';
+  /** Dokładny obrys podłogi w globalnych współrzędnych planu RoomPlan. */
+  floorPolygon?: { x: number; z: number }[];
   /** Główne wymiary obrysu pomieszczenia, liczone w osi ścian. */
   widthM?: number;
   lengthM?: number;

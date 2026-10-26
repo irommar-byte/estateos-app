@@ -108,6 +108,8 @@ export default function TodayShowingsRail({
                     clientId: item.clientId,
                     offerId: item.offerId || undefined,
                     clientName: item.clientName,
+                    offerTitle: item.location || undefined,
+                    viewingStartsAt: item.startsAt,
                   })
                 }
                 style={[styles.btn, { backgroundColor: colors.accent }]}

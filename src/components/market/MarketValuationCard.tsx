@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import {
   fetchMarketReportPreview,
   fetchMarketReportQuota,
@@ -13,7 +14,10 @@ import {
   type StoredOfferReport,
   type ValuationResult,
 } from '../../services/marketService';
+import { buildOfferPriceRcnScale } from '../../lib/offerPriceRcnScale';
+import OfferPriceRcnScale from '../offer/OfferPriceRcnScale';
 import { getSafeWebView } from '../messaging/safeWebView';
+import { useThemeStore } from '../../store/useThemeStore';
 
 type Props = {
   token: string | null;
@@ -71,6 +75,38 @@ export default function MarketValuationCard({
   const [savedReports, setSavedReports] = useState<StoredOfferReport[]>([]);
   const [sentClassic, setSentClassic] = useState(false);
   const [sentPro, setSentPro] = useState(false);
+  const [reportExpanded, setReportExpanded] = useState(!compact);
+  const isDark = useThemeStore((s) => s.getResolvedTheme() === 'dark');
+  const expandProgress = useSharedValue(compact ? 0 : 1);
+
+  useEffect(() => {
+    expandProgress.value = withTiming(reportExpanded ? 1 : 0, { duration: 220 });
+  }, [expandProgress, reportExpanded]);
+
+  const reportBodyStyle = useAnimatedStyle(() => ({
+    opacity: expandProgress.value,
+    maxHeight: expandProgress.value * 1200,
+    overflow: 'hidden' as const,
+  }));
+
+  const gapModel = useMemo(() => {
+    if (!result || listingPrice == null) return null;
+    return buildOfferPriceRcnScale({
+      listingPrice: Number(listingPrice),
+      recommendedAsk: result.estimated.recommendedAsk,
+    });
+  }, [result, listingPrice]);
+
+  const gapCopy = useMemo(() => {
+    if (!gapModel || !gapModel.ok) return null;
+    if (gapModel.tone === 'above') {
+      return `Do zejścia: ${Math.abs(gapModel.deltaPln).toLocaleString('pl-PL')} zł (${Math.abs(gapModel.deltaPct).toFixed(0)}%)`;
+    }
+    if (gapModel.tone === 'below') {
+      return `Poniżej rekomendacji o ${Math.abs(gapModel.deltaPln).toLocaleString('pl-PL')} zł`;
+    }
+    return 'Cena zgodna z rekomendacją RCN';
+  }, [gapModel]);
 
   useEffect(() => {
     setEmail(reportEmail || '');
@@ -286,8 +322,73 @@ export default function MarketValuationCard({
         ) : null}
         {compact || result || offerId ? (
           <>
+            {compact ? (
+              <>
+                {result ? (
+                  <>
+                    <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 }}>
+                      CENA REKOMENDOWANA RCN
+                    </Text>
+                    <Text style={{ color: colors.text, fontSize: 24, fontWeight: '900' }}>
+                      {formatPln(result.estimated.recommendedAsk)}
+                    </Text>
+                    {gapCopy ? (
+                      <Text
+                        style={{
+                          color:
+                            gapModel && gapModel.ok && gapModel.tone === 'above'
+                              ? '#F59E0B'
+                              : gapModel && gapModel.ok && gapModel.tone === 'below'
+                                ? '#3B82F6'
+                                : colors.accent,
+                          fontWeight: '800',
+                          fontSize: 13,
+                        }}
+                      >
+                        {gapCopy}
+                      </Text>
+                    ) : null}
+                    {listingPrice != null && Number(listingPrice) > 0 ? (
+                      <OfferPriceRcnScale
+                        listingPrice={Number(listingPrice)}
+                        recommendedAsk={result.estimated.recommendedAsk}
+                        isDark={isDark}
+                        compact
+                      />
+                    ) : null}
+                  </>
+                ) : !loading ? (
+                  <Pressable onPress={startReport} disabled={busy}>
+                    <Text style={{ color: '#007AFF', fontWeight: '800', fontSize: 13 }}>
+                      {busy ? 'Generuję…' : 'Wygeneruj wycenę RCN'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+
+                <Pressable
+                  onPress={() => setReportExpanded((v) => !v)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: 4,
+                  }}
+                >
+                  <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 13 }}>
+                    {reportExpanded ? 'Zwiń raport' : 'Rozwiń raport'}
+                  </Text>
+                  <Text style={{ color: colors.secondary, fontSize: 16 }}>{reportExpanded ? '▴' : '▾'}</Text>
+                </Pressable>
+              </>
+            ) : null}
+
+            <Animated.View style={compact ? reportBodyStyle : undefined}>
+              {(!compact || reportExpanded) ? (
+                <>
             {compact && result ? (
-              <Text style={{ color: colors.text, fontSize: 22, fontWeight: '900' }}>{formatPln(result.estimated.mid)}</Text>
+              <Text style={{ color: colors.secondary, fontSize: 12 }}>
+                Środek rynku · {formatPln(result.estimated.mid)}
+              </Text>
             ) : null}
             {quota ? (
               <Text style={{ color: colors.accent, fontWeight: '800', fontSize: 12 }}>
@@ -429,6 +530,9 @@ export default function MarketValuationCard({
             {result && !compact ? (
               <Text style={{ color: colors.secondary, fontSize: 10, lineHeight: 14 }}>{result.coverage.disclaimer}</Text>
             ) : null}
+                </>
+              ) : null}
+            </Animated.View>
           </>
         ) : null}
       </View>
@@ -477,7 +581,7 @@ function ReportPreviewModal({
         </View>
         {WebView && html ? (
           <WebView
-            source={{ html } as { uri: string }}
+            source={{ html } as any}
             style={{ flex: 1, backgroundColor: '#fff' }}
             originWhitelist={['*']}
           />

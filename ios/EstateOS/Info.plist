@@ -25,7 +25,7 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.2</string>
+	<string>2.4</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -65,6 +65,8 @@
 	<string>EstateOS zapisuje w kalendarzu termin prezentacji, adres i przypomnienia o wyjeździe.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>EstateOS używa aparatu, aby robić zdjęcia nieruchomości publikowanych w ofercie oraz aby zeskanować kod QR przy logowaniu.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>EstateOS pozwala wybrać osobę z Kontaktów, żeby szybko dodać klienta do CRM. Dane nie są wysyłane bez Twojego zapisu.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>EstateOS używa Face ID lub Touch ID, aby zalogować Cię bez podawania hasła (Passkey).</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
@@ -89,6 +91,23 @@
 	<true/>
 	<key>RCTNewArchEnabled</key>
 	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UILaunchStoryboardName</key>
 	<string>SplashScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

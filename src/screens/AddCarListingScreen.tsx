@@ -34,7 +34,8 @@ import CarAuthGateModal from '../components/cars/CarAuthGateModal';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
 import AiDescriptionOptions from '../components/offer/AiDescriptionOptions';
 import { generateCarListingDescriptionWithGpt } from '../services/carDescriptionAiService';
-import { formatDateForForm } from '../utils/polishDateInput';
+import { fillCarFormFromDocs } from '../services/carsDocsPrefill';
+import { formatDateForForm, isCompletePolishDate } from '../utils/polishDateInput';
 import {
   listMissingListingFields,
   missingFieldsMessage,
@@ -243,6 +244,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
   const [scanInitialMode, setScanInitialMode] = useState<'live' | 'upload' | 'capture'>('live');
   const [highlightKeys, setHighlightKeys] = useState<CarListingMissingFieldKey[]>([]);
   const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const [cepikAutoBusy, setCepikAutoBusy] = useState(false);
   const [publishAuthOpen, setPublishAuthOpen] = useState(false);
   const [aiDetailsNotes, setAiDetailsNotes] = useState('');
   const [aiTargetLength, setAiTargetLength] = useState(1500);
@@ -254,6 +256,9 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
   const formRef = useRef(form);
   formRef.current = form;
   const autoPublishTried = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const cityYRef = useRef(0);
+  const cepikAutoTriedForVin = useRef<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     void getEurPlnRate().then((snap) => {
@@ -340,7 +345,11 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
   };
 
   const applyRegistrationPrefill = useCallback(
-    (prefill: CarRegistrationPrefill & { insuranceValidUntil?: string; vehicleType?: string }, missingFields: string[]) => {
+    (
+      prefill: CarRegistrationPrefill & { insuranceValidUntil?: string; vehicleType?: string },
+      missingFields: string[],
+      opts?: { source?: 'scan' | 'cepik' },
+    ) => {
       setScanPromptOpen(false);
       setEntryDone(true);
       setForm((prev) => {
@@ -362,19 +371,105 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
           firstRegistrationDate: prefill.firstRegistrationDate || prev.firstRegistrationDate,
           insuranceValidUntil:
             (prefill as { insuranceValidUntil?: string }).insuranceValidUntil || prev.insuranceValidUntil,
+          // Force catalog re-match after QR / CEPIK text values.
+          makeSlug: prefill.make && prefill.make !== prev.make ? '' : prev.makeSlug,
+          modelSlug: prefill.model && prefill.model !== prev.model ? '' : prev.modelSlug,
+          fuelSlug: prefill.fuelType && prefill.fuelType !== prev.fuelType ? '' : prev.fuelSlug,
+          generationSlug: prefill.generation && prefill.generation !== prev.generation ? '' : prev.generationSlug,
+          enginePowerSlug: prefill.enginePower && prefill.enginePower !== prev.enginePower ? '' : prev.enginePowerSlug,
+          engineCapacitySlug:
+            prefill.engineCapacity && prefill.engineCapacity !== prev.engineCapacity ? '' : prev.engineCapacitySlug,
+          trimVersionSlug:
+            prefill.trimVersion && prefill.trimVersion !== prev.trimVersion ? '' : prev.trimVersionSlug,
         };
         const keys = (
           missingFields.length ? missingFields : listMissingListingFields(next, next.images.length > 0)
         ) as CarListingMissingFieldKey[];
         setHighlightKeys(keys);
+        const sourceLabel = opts?.source === 'cepik' ? 'CEPIK' : 'dowodu';
         setScanNotice(
-          `Dane z dowodu wczytane. ${missingFieldsMessage(keys) || 'Sprawdź katalog i uzupełnij ogłoszenie.'}`,
+          `Dane z ${sourceLabel} wczytane. ${missingFieldsMessage(keys) || 'Sprawdź katalog i uzupełnij ogłoszenie.'}`,
         );
         return next;
       });
     },
     [],
   );
+
+  const runCepikPrefill = useCallback(
+    async (input?: { vin: string; registrationNumber: string; firstRegistrationDate: string }) => {
+      const vin = (input?.vin || formRef.current.vin || '').trim().toUpperCase();
+      const registrationNumber = (input?.registrationNumber || formRef.current.registrationNumber || '').trim().toUpperCase();
+      const firstRegistrationDate =
+        input?.firstRegistrationDate || formRef.current.firstRegistrationDate || '';
+      if (!token) return false;
+      if (vin.length !== 17 || !registrationNumber || !isCompletePolishDate(firstRegistrationDate)) return false;
+      setCepikAutoBusy(true);
+      try {
+        const result = await fillCarFormFromDocs(token, { vin, registrationNumber, firstRegistrationDate });
+        applyRegistrationPrefill(result.prefill, result.missingFields, { source: 'cepik' });
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setCepikAutoBusy(false);
+      }
+    },
+    [token, applyRegistrationPrefill],
+  );
+
+  const handleScanPrefill = useCallback(
+    (
+      prefill: CarRegistrationPrefill & { insuranceValidUntil?: string; vehicleType?: string },
+      missingFields: string[],
+    ) => {
+      applyRegistrationPrefill(prefill, missingFields, { source: 'scan' });
+      const vin = String(prefill.vin || formRef.current.vin || '').trim().toUpperCase();
+      const registrationNumber = String(
+        prefill.registrationNumber || formRef.current.registrationNumber || '',
+      )
+        .trim()
+        .toUpperCase();
+      const firstRegistrationDate =
+        prefill.firstRegistrationDate || formRef.current.firstRegistrationDate || '';
+      const needsMakeModel =
+        !String(prefill.make || formRef.current.make || '').trim() ||
+        !String(prefill.model || formRef.current.model || '').trim();
+      if (
+        token &&
+        vin.length === 17 &&
+        registrationNumber &&
+        isCompletePolishDate(firstRegistrationDate) &&
+        cepikAutoTriedForVin.current !== vin
+      ) {
+        // Always try CEPIK once after QR when VIN docs are complete — fills catalog gaps.
+        cepikAutoTriedForVin.current = vin;
+        void runCepikPrefill({ vin, registrationNumber, firstRegistrationDate }).then((ok) => {
+          if (!ok && needsMakeModel) {
+            setScanNotice((prev) =>
+              prev
+                ? `${prev} CEPIK niedostępny — wybierz markę ręcznie.`
+                : 'CEPIK niedostępny — wybierz markę ręcznie.',
+            );
+          }
+        });
+      }
+    },
+    [applyRegistrationPrefill, runCepikPrefill, token],
+  );
+
+  const requestRescan = () => {
+    Alert.alert('Skanuj dowód ponownie', 'Nadpisać dane z nowego skanu?', [
+      { text: 'Anuluj', style: 'cancel' },
+      {
+        text: 'Skanuj',
+        onPress: () => {
+          setScanInitialMode('live');
+          setScanPromptOpen(true);
+        },
+      },
+    ]);
+  };
 
   const applyOtomotoPrefill = (
     prefill: OtomotoCarImportPrefill,
@@ -466,12 +561,18 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
       Alert.alert('Generowanie opisu', 'Zaloguj się, aby wygenerować opis AI.');
       return;
     }
-    const hasBasics =
-      String(form.make || '').trim() &&
-      String(form.model || '').trim() &&
-      String(form.city || '').trim();
-    if (!hasBasics) {
-      Alert.alert('Generowanie opisu', 'Uzupełnij markę, model i miejscowość przed generowaniem opisu.');
+    const make = String(form.make || '').trim();
+    const model = String(form.model || '').trim();
+    const city = String(form.city || '').trim();
+    if (!make || !model) {
+      Alert.alert('Generowanie opisu', 'Uzupełnij markę i model przed generowaniem opisu.');
+      return;
+    }
+    if (!city) {
+      setHighlightKeys((prev) => (prev.includes('city') ? prev : [...prev, 'city']));
+      setScanNotice('Uzupełnij miejscowość — AI potrzebuje jej do opisu.');
+      scrollRef.current?.scrollTo({ y: Math.max(0, cityYRef.current - 24), animated: true });
+      Alert.alert('Generowanie opisu', 'Uzupełnij miejscowość — przewinęliśmy do tego pola.');
       return;
     }
 
@@ -612,7 +713,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
           setScanPromptOpen(false);
           setEntryDone(true);
         }}
-        onPrefill={applyRegistrationPrefill}
+        onPrefill={handleScanPrefill}
       />
 
       <CarAuthGateModal
@@ -647,6 +748,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
         </ScrollView>
       ) : (
         <ScrollView
+          ref={scrollRef}
           scrollEnabled={!isDraggingPhotos}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -657,7 +759,32 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
               Wypełniasz jako gość. Konto założysz dopiero przy publikacji — szkic zapisujemy lokalnie.
             </Text>
           ) : null}
-          {scanNotice ? <Text style={styles.scanNotice}>{scanNotice}</Text> : null}
+          {scanNotice ? (
+            <View style={styles.scanBanner}>
+              <Text style={styles.scanNotice}>{scanNotice}</Text>
+              {cepikAutoBusy ? (
+                <View style={styles.scanBannerBusy}>
+                  <ActivityIndicator color={colors.accentSoft} size="small" />
+                  <Text style={styles.scanBannerBusyText}>Uzupełniam z CEPIK…</Text>
+                </View>
+              ) : highlightKeys.includes('city') || !form.makeSlug ? (
+                <Pressable
+                  onPress={() => {
+                    if (!form.makeSlug && form.vin) {
+                      void runCepikPrefill();
+                    } else {
+                      scrollRef.current?.scrollTo({ y: Math.max(0, cityYRef.current - 24), animated: true });
+                    }
+                  }}
+                  style={styles.scanBannerCta}
+                >
+                  <Text style={styles.scanBannerCtaText}>
+                    {!form.makeSlug && form.vin ? 'Uzupełnij z CEPIK' : 'Przejdź do miejscowości'}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
 
           <Text style={styles.fieldLabel}>Typ pojazdu</Text>
           <View style={styles.vehicleTypeRow}>
@@ -763,7 +890,11 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
               restrictVehicleDocs: form.restrictVehicleDocs,
             }}
             onChange={(patch) => patchForm(patch)}
-            onPrefillFromDocs={(prefill, missingFields) => applyRegistrationPrefill(prefill, missingFields)}
+            onPrefillFromDocs={(prefill, missingFields) =>
+              applyRegistrationPrefill(prefill, missingFields, { source: 'cepik' })
+            }
+            onRescanPress={requestRescan}
+            fillFromDocsBusy={cepikAutoBusy}
           />
 
           <View style={styles.row}>
@@ -779,7 +910,7 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
               />
             </View>
             <View style={styles.half}>
-              <Text style={[styles.fieldLabel, { color: colors.textMuted, marginBottom: 6 }]}>Waluta ceny</Text>
+              <Text style={[styles.fieldLabel, { color: colors.muted, marginBottom: 6 }]}>Waluta ceny</Text>
               <CurrencySegmentControl
                 value={normalizeListingCurrency(form.priceCurrency)}
                 isDark={isDark}
@@ -810,14 +941,19 @@ export default function AddCarListingScreen({ navigation, route }: AddCarListing
                 styles={styles}
               />
               {Number(form.pricePln) > 0 && formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate, fxDate) ? (
-                <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>
+                <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
                   {formatApproxLine(Number(form.pricePln), form.priceCurrency, fxRate, fxDate)}
                 </Text>
               ) : null}
             </View>
           </View>
 
-          <View style={isHighlighted('city') ? styles.highlightWrap : undefined}>
+          <View
+            style={isHighlighted('city') ? styles.highlightWrap : undefined}
+            onLayout={(e) => {
+              cityYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
             <CarCityMapPicker
               value={form.city}
               country={form.localityCountry}
@@ -922,16 +1058,31 @@ function createStyles(colors: CarScreenColors) {
       backgroundColor: 'rgba(14,165,233,0.08)',
       padding: 12,
     },
-    scanNotice: {
-      color: colors.warningText,
-      fontSize: 13,
-      lineHeight: 18,
+    scanBanner: {
       borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.warningBorder,
       backgroundColor: colors.warningBg,
       padding: 12,
+      gap: 10,
     },
+    scanNotice: {
+      color: colors.warningText,
+      fontSize: 13,
+      lineHeight: 18,
+    },
+    scanBannerBusy: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    scanBannerBusyText: { color: colors.warningText, fontSize: 12, fontWeight: '700' },
+    scanBannerCta: {
+      alignSelf: 'flex-start',
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.warningBorder,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+    },
+    scanBannerCtaText: { color: colors.accentSoft, fontSize: 12, fontWeight: '800' },
     vehicleTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     vehicleTypeChip: {
       borderRadius: 999,

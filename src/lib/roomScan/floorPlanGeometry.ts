@@ -302,30 +302,90 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
+const ARCHITECTURAL_OBJECT_SIZE_M: Record<string, { width: number; depth: number }> = {
+  storage: { width: 0.8, depth: 0.42 },
+  refrigerator: { width: 0.65, depth: 0.65 },
+  stove: { width: 0.6, depth: 0.6 },
+  oven: { width: 0.6, depth: 0.6 },
+  dishwasher: { width: 0.6, depth: 0.6 },
+  sink: { width: 0.6, depth: 0.55 },
+  washerDryer: { width: 0.6, depth: 0.6 },
+  toilet: { width: 0.45, depth: 0.7 },
+  bathtub: { width: 1.7, depth: 0.75 },
+  bed: { width: 1.8, depth: 2 },
+  sofa: { width: 2, depth: 0.9 },
+  table: { width: 1.2, depth: 0.75 },
+  chair: { width: 0.55, depth: 0.55 },
+  television: { width: 1.4, depth: 0.35 },
+  fireplace: { width: 1, depth: 0.4 },
+  stairs: { width: 1.8, depth: 0.9 },
+  unknown: { width: 0.55, depth: 0.4 },
+};
+
 export function mapObjectsForRender(
   objects: FloorPlanScanMeta['objects'],
   bounds: FloorPlanScanMeta['bounds'],
   viewport: FloorPlanViewport,
+  opts?: { architectural?: boolean },
 ): MappedObject[] {
-  const maxSidePx = Math.min(52, Math.max(28, viewport.scale * 1.15));
-  return dedupeDetectedObjects(objects || [])
+  const architectural = opts?.architectural === true;
+  const compactMaxSidePx = Math.min(52, Math.max(28, viewport.scale * 1.15));
+  const minSidePx = architectural ? Math.max(9, viewport.scale * 0.18) : 16;
+
+  const snapOrthogonalRotation = (deg: number) => {
+    const normalized = ((deg % 360) + 360) % 360;
+    return (Math.round(normalized / 90) * 90) % 360;
+  };
+
+  const planLeft = viewport.offsetX;
+  const planRight = viewport.offsetX + (bounds.maxX - bounds.minX) * viewport.scale;
+  const planTop = viewport.offsetY;
+  const planBottom = viewport.offsetY + (bounds.maxZ - bounds.minZ) * viewport.scale;
+  const wallInset = architectural ? Math.max(4, Math.min(11, viewport.scale * 0.095)) : 0;
+  const interiorWidthPx = Math.max(12, planRight - planLeft - wallInset * 2);
+  const interiorDepthPx = Math.max(12, planBottom - planTop - wallInset * 2);
+
+  return dedupeDetectedObjects(objects || [], { maxStorage: 4 })
+    .filter((obj) => !architectural || obj.category !== 'unknown')
     .map((obj, index) => {
       const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, bounds, viewport);
       const palette = OBJECT_FILL[obj.category] || OBJECT_FILL.unknown;
-      const widthM = clamp(obj.widthM && obj.widthM > 0.2 ? obj.widthM : 0.55, 0.32, 2.1);
-      const depthM = clamp(obj.depthM && obj.depthM > 0.2 ? obj.depthM : 0.4, 0.28, 1.05);
-      if (widthM * depthM > 3.8 && obj.category !== 'bed' && obj.category !== 'sofa') return null;
+      const fallback = ARCHITECTURAL_OBJECT_SIZE_M[obj.category] || ARCHITECTURAL_OBJECT_SIZE_M.unknown;
+      const widthM = clamp(obj.widthM && obj.widthM > 0.12 ? obj.widthM : fallback.width, 0.18, 3.2);
+      const depthM = clamp(obj.depthM && obj.depthM > 0.12 ? obj.depthM : fallback.depth, 0.18, 2.4);
+      if (widthM * depthM > 5.5 && obj.category !== 'bed' && obj.category !== 'sofa') return null;
+      const rotationDeg = architectural ? snapOrthogonalRotation(obj.rotationDeg || 0) : obj.rotationDeg || 0;
+      const quarterTurn = Math.abs(rotationDeg % 180) > 45;
+      const rawWidthPx = architectural
+        ? Math.max(minSidePx, widthM * viewport.scale)
+        : clamp(widthM * viewport.scale, minSidePx, compactMaxSidePx);
+      const rawDepthPx = architectural
+        ? Math.max(minSidePx, depthM * viewport.scale)
+        : clamp(depthM * viewport.scale, 12, compactMaxSidePx * 0.72);
+      const widthPx = architectural
+        ? Math.min(rawWidthPx, quarterTurn ? interiorDepthPx : interiorWidthPx)
+        : rawWidthPx;
+      const depthPx = architectural
+        ? Math.min(rawDepthPx, quarterTurn ? interiorWidthPx : interiorDepthPx)
+        : rawDepthPx;
+      const renderedWidth = quarterTurn ? depthPx : widthPx;
+      const renderedDepth = quarterTurn ? widthPx : depthPx;
       return {
         id: obj.id || `obj-${index}`,
         category: obj.category,
         label: obj.label,
         glyph: OBJECT_GLYPH[obj.category] || OBJECT_GLYPH.unknown,
-        widthPx: clamp(widthM * viewport.scale, 16, maxSidePx),
-        depthPx: clamp(depthM * viewport.scale, 12, maxSidePx * 0.72),
-        rotationDeg: obj.rotationDeg || 0,
+        widthPx,
+        depthPx,
+        rotationDeg,
         fill: palette.fill,
         stroke: palette.stroke,
-        ...p,
+        x: architectural
+          ? clamp(p.x, planLeft + wallInset + 6, planRight - wallInset - 6)
+          : p.x,
+        y: architectural
+          ? clamp(p.y, planTop + wallInset + 6, planBottom - wallInset - 6)
+          : p.y,
       };
     })
     .filter((row): row is MappedObject => Boolean(row));
@@ -358,20 +418,37 @@ export function dedupeDetectedObjects(
 ): RoomScanDetectedObject[] {
   const maxStorage = opts?.maxStorage ?? 4;
   const sorted = [...(objects || [])].sort((a, b) => {
+    if (a.category === 'unknown' && b.category !== 'unknown') return 1;
+    if (b.category === 'unknown' && a.category !== 'unknown') return -1;
     const areaA = (a.widthM || 0.5) * (a.depthM || 0.4);
     const areaB = (b.widthM || 0.5) * (b.depthM || 0.4);
     return areaB - areaA;
   });
   const kept: RoomScanDetectedObject[] = [];
   for (const obj of sorted) {
-    const mergeM = obj.category === 'storage' || obj.category === 'unknown' ? 0.58 : 0.32;
-    const duplicate = kept.some(
-      (existing) =>
-        (existing.category === obj.category ||
-          (existing.category === 'storage' && obj.category === 'unknown') ||
-          (existing.category === 'unknown' && obj.category === 'storage')) &&
-        Math.hypot(existing.centerX - obj.centerX, existing.centerZ - obj.centerZ) < mergeM,
-    );
+    const duplicate = kept.some((existing) => {
+      const sameKind =
+        existing.category === obj.category ||
+        (existing.category === 'storage' && obj.category === 'unknown') ||
+        (existing.category === 'unknown' && obj.category === 'storage');
+      if (!sameKind) return false;
+
+      const existingWidth = existing.widthM || ARCHITECTURAL_OBJECT_SIZE_M[existing.category]?.width || 0.55;
+      const existingDepth = existing.depthM || ARCHITECTURAL_OBJECT_SIZE_M[existing.category]?.depth || 0.4;
+      const objectWidth = obj.widthM || ARCHITECTURAL_OBJECT_SIZE_M[obj.category]?.width || 0.55;
+      const objectDepth = obj.depthM || ARCHITECTURAL_OBJECT_SIZE_M[obj.category]?.depth || 0.4;
+      const overlapX = Math.abs(existing.centerX - obj.centerX) < Math.min(existingWidth, objectWidth) * 0.55;
+      const overlapZ = Math.abs(existing.centerZ - obj.centerZ) < Math.min(existingDepth, objectDepth) * 0.55;
+      const duplicateRadius = Math.max(
+        0.2,
+        Math.min(
+          Math.hypot(existingWidth, existingDepth),
+          Math.hypot(objectWidth, objectDepth),
+        ) * 0.35,
+      );
+      return overlapX && overlapZ &&
+        Math.hypot(existing.centerX - obj.centerX, existing.centerZ - obj.centerZ) < duplicateRadius;
+    });
     if (duplicate) continue;
     kept.push({
       ...obj,
@@ -392,6 +469,9 @@ export type DimensionSegment = {
   lx: number;
   ly: number;
   kind: 'wall' | 'opening';
+  /** Punkt na obryse ściany — do linii pomocniczych wymiaru. */
+  wallA?: { x: number; y: number };
+  wallB?: { x: number; y: number };
 };
 
 export type DimensionChain = {
@@ -444,7 +524,11 @@ export function buildWallDimensionChains(
   openings: RoomScanOpening[],
   bounds: FloorPlanScanMeta['bounds'],
   viewport: FloorPlanViewport,
+  formatDimension: (meters: number) => string = formatWallDimension,
+  offsets?: { inner: number; outer: number },
 ): DimensionChain[] {
+  const innerOffBase = offsets?.inner ?? 18;
+  const outerOffBase = offsets?.outer ?? 34;
   const significant = dedupeWallSegments(walls).filter((wall) => wallLengthMeters(wall) >= 1.15);
   const used = new Set<string>();
   const chains: DimensionChain[] = [];
@@ -453,7 +537,6 @@ export function buildWallDimensionChains(
 
   significant
     .sort((a, b) => wallLengthMeters(b) - wallLengthMeters(a))
-    .slice(0, 6)
     .forEach((wall, wallIndex) => {
       const key = [wall.x1.toFixed(2), wall.z1.toFixed(2), wall.x2.toFixed(2), wall.z2.toFixed(2)].join(':');
       if (used.has(key)) return;
@@ -486,12 +569,27 @@ export function buildWallDimensionChains(
         .filter((row): row is { from: number; to: number; kind: string } => Boolean(row))
         .sort((a, b) => a.from - b.from);
 
-      const cuts: Array<{ from: number; to: number; kind: 'wall' | 'opening' }> = [];
+      const mergedHits = hits.reduce<{ from: number; to: number; kind: string }[]>(
+        (result, hit) => {
+          const previous = result[result.length - 1];
+          if (!previous || hit.from > previous.to + 0.015) {
+            result.push({ ...hit });
+            return result;
+          }
+          previous.to = Math.max(previous.to, hit.to);
+          if (previous.kind !== hit.kind) previous.kind = 'opening';
+          return result;
+        },
+        [],
+      );
+
+      const cuts: { from: number; to: number; kind: 'wall' | 'opening' }[] = [];
       let cursor = 0;
-      for (const hit of hits) {
-        if (hit.from - cursor > 0.035) cuts.push({ from: cursor, to: hit.from, kind: 'wall' });
-        cuts.push({ from: hit.from, to: hit.to, kind: 'opening' });
-        cursor = hit.to;
+      for (const hit of mergedHits) {
+        const from = Math.max(cursor, hit.from);
+        if (from - cursor > 0.035) cuts.push({ from: cursor, to: from, kind: 'wall' });
+        if (hit.to - from > 0.035) cuts.push({ from, to: hit.to, kind: 'opening' });
+        cursor = Math.max(cursor, hit.to);
       }
       if (1 - cursor > 0.035) cuts.push({ from: cursor, to: 1, kind: 'wall' });
       if (!cuts.length) cuts.push({ from: 0, to: 1, kind: 'wall' });
@@ -506,8 +604,8 @@ export function buildWallDimensionChains(
       const outward = nx * (viewport.offsetX + (cx - bounds.minX) * viewport.scale - (a0.x + b0.x) / 2) +
         ny * (viewport.offsetY + (cz - bounds.minZ) * viewport.scale - (a0.y + b0.y) / 2);
       const sign = outward > 0 ? -1 : 1;
-      const innerOff = 18 * sign;
-      const outerOff = 34 * sign;
+      const innerOff = innerOffBase;
+      const outerOff = outerOffBase;
 
       const worldPoint = (t: number) =>
         mapFloorPlanPoint(lerp(wall.x1, wall.x2, t), lerp(wall.z1, wall.z2, t), bounds, viewport);
@@ -523,7 +621,9 @@ export function buildWallDimensionChains(
           id: `dim-${wallIndex}-${i}`,
           a: oa,
           b: ob,
-          label: formatWallDimension(meters),
+          wallA: a,
+          wallB: b,
+          label: formatDimension(meters),
           lx: mid.lx,
           ly: mid.ly,
           kind: cut.kind,
@@ -533,18 +633,21 @@ export function buildWallDimensionChains(
       const oa = offsetPoint(a0.x, a0.y, nx * sign, ny * sign, outerOff);
       const ob = offsetPoint(b0.x, b0.y, nx * sign, ny * sign, outerOff);
       const omid = dimLabel(oa, ob, nx * sign, ny * sign, 11);
+      const hasOpeningCuts = mergedHits.length > 0;
       chains.push({
         id: `chain-${wallIndex}`,
         overall: {
           id: `dim-${wallIndex}-all`,
           a: oa,
           b: ob,
-          label: formatWallDimension(wallLen),
+          wallA: a0,
+          wallB: b0,
+          label: formatDimension(wallLen),
           lx: omid.lx,
           ly: omid.ly,
           kind: 'wall',
         },
-        segments,
+        segments: hasOpeningCuts ? segments : [],
       });
       void nxM;
       void nzM;
@@ -557,7 +660,7 @@ export function snapWallEndpoints(
   walls: RoomScanWallSegment[],
   snapM = 0.24,
 ): RoomScanWallSegment[] {
-  const cluster: Array<{ x: number; z: number }> = [];
+  const cluster: { x: number; z: number }[] = [];
   const snap = (x: number, z: number) => {
     const hit = cluster.find((p) => Math.hypot(p.x - x, p.z - z) <= snapM);
     if (hit) return hit;
@@ -703,7 +806,7 @@ function placePlanLabels(
   labels: PlanDimLabel[],
   bounds: FloorPlanScanMeta['bounds'],
   viewport: FloorPlanViewport,
-  avoid: Array<{ x: number; y: number }>,
+  avoid: { x: number; y: number }[],
 ): PlanDimLabel[] {
   const ranked = [...labels].sort((a, b) => (a.kind === 'wall' ? 0 : 1) - (b.kind === 'wall' ? 0 : 1));
   const { w, h } = canvasSizeFromViewport(bounds, viewport);
@@ -740,7 +843,7 @@ export function buildCleanPlanDimensions(
   openings: RoomScanOpening[],
   bounds: FloorPlanScanMeta['bounds'],
   viewport: FloorPlanViewport,
-  avoid: Array<{ x: number; y: number }> = [],
+  avoid: { x: number; y: number }[] = [],
 ): PlanDimLabel[] {
   const unique = cleanWallsForPlan(walls).filter((wall) => wallLengthMeters(wall) >= 0.9);
   const picked: RoomScanWallSegment[] = [];

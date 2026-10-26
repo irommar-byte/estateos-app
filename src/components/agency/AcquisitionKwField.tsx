@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   applyLandRegistryPrefix,
@@ -69,11 +69,9 @@ export default function AcquisitionKwField({
           ]}
         />
         <Pressable
-          onPress={() => {
-            if (raw) setEkwOpen(true);
-            else Linking.openURL('https://przegladarka-ekw.ms.gov.pl/eukw_prz/KsiegiWieczyste/wyszukiwanieKW');
-          }}
+          onPress={() => setEkwOpen(true)}
           style={[styles.iconBtn, { backgroundColor: '#007AFF' }]}
+          accessibilityLabel="Otwórz księgę wieczystą w okienku"
         >
           <Ionicons name="open-outline" size={18} color="#fff" />
         </Pressable>

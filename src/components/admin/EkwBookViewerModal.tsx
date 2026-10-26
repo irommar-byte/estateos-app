@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  Linking,
   Modal,
   Platform,
   Pressable,
@@ -14,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   buildEkwAutofillScript,
+  buildEkwGateWatchScript,
   buildEkwOpenBookScript,
   buildEkwSearchUrl,
   buildEkwSubmitSearchScript,
@@ -22,6 +21,8 @@ import {
   isEkwResultsPageUrl,
   isEkwSearchPageUrl,
   parseLandRegistryForEkw,
+  resolveEkwStatusAfterMessage,
+  shouldLoadEkwUrlInWebView,
 } from '../../utils/ekwBrowser';
 
 type Theme = {
@@ -51,13 +52,14 @@ type LoadError = {
   domain?: string;
 };
 
+/** iPad Safari UA — Imperva mniej agresywnie niż „goły” WebView / desktop mismatch. */
 const EKW_USER_AGENT =
   Platform.OS === 'ios'
-    ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
-    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+    ? 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1'
+    : 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
 
-const MAX_AUTOFILL = 8;
-const MAX_LOAD_RETRIES = 2;
+const MAX_AUTOFILL = 10;
+const MAX_LOAD_RETRIES = 3;
 
 function useEkwWebView() {
   return useMemo(() => {
@@ -74,12 +76,9 @@ function useEkwWebView() {
 function friendlyNetworkMessage(err?: LoadError | null): string {
   const code = Number(err?.code);
   if (code === -1005 || code === -1009 || code === -1001) {
-    return 'Połączenie z portalem EKW zostało przerwane. To częste przy serwisie Ministerstwa — spróbuj ponownie albo otwórz w Safari.';
+    return 'Portal EKW urwał połączenie (ochrona Imperva). Zostajemy w okienku — ponawiamy ładowanie.';
   }
-  if (code === -1200 || code === -1202) {
-    return 'Problem z bezpiecznym połączeniem do EKW. Otwórz księgę w Safari.';
-  }
-  return 'Nie udało się wczytać portalu EKW. Sprawdź sieć albo otwórz księgę w Safari.';
+  return 'Nie udało się wczytać EKW w okienku. Ponów — bez wychodzenia do Safari.';
 }
 
 export default function EkwBookViewerModal({
@@ -97,16 +96,17 @@ export default function EkwBookViewerModal({
   const openBookAttempts = useRef(0);
   const kodVerified = useRef(false);
   const submitted = useRef(false);
+  const formReady = useRef(false);
   const loadRetries = useRef(0);
   const autoRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [statusHint, setStatusHint] = useState('Ładowanie EKW…');
+  const [statusHint, setStatusHint] = useState('Ładowanie EKW w okienku…');
   const [needsCaptcha, setNeedsCaptcha] = useState(false);
+  const [needsBotCheck, setNeedsBotCheck] = useState(false);
   const [kodMissing, setKodMissing] = useState(false);
   const [loadError, setLoadError] = useState<LoadError | null>(null);
-  /** Po błędzie sieci ładujemy czysty formularz (bez query) — stabilniejsze na iOS. */
-  const [usePlainSearch, setUsePlainSearch] = useState(false);
+  const [bookOpened, setBookOpened] = useState(false);
   const [webKey, setWebKey] = useState(0);
 
   const parts = useMemo(
@@ -114,11 +114,7 @@ export default function EkwBookViewerModal({
     [landRegistryNumber],
   );
 
-  const searchUri = useMemo(() => {
-    if (!parts) return EKW_SEARCH_URL;
-    if (usePlainSearch) return EKW_SEARCH_URL;
-    return buildEkwSearchUrl(parts);
-  }, [parts, usePlainSearch]);
+  const searchUri = useMemo(() => (parts ? buildEkwSearchUrl(parts) : EKW_SEARCH_URL), [parts]);
 
   const clearAutoRetry = useCallback(() => {
     if (autoRetryTimer.current) {
@@ -133,46 +129,45 @@ export default function EkwBookViewerModal({
     openBookAttempts.current = 0;
     kodVerified.current = false;
     submitted.current = false;
+    formReady.current = false;
     loadRetries.current = 0;
     setLoading(true);
     setNeedsCaptcha(false);
+    setNeedsBotCheck(false);
     setKodMissing(false);
     setLoadError(null);
-    setUsePlainSearch(false);
-    setStatusHint('Ładowanie EKW…');
+    setBookOpened(false);
+    setStatusHint('Ładowanie EKW w okienku…');
     setWebKey((k) => k + 1);
   }, [clearAutoRetry]);
 
   useEffect(() => () => clearAutoRetry(), [clearAutoRetry]);
+
+  useEffect(() => {
+    if (visible) resetState();
+  }, [visible, landRegistryNumber, resetState]);
 
   const handleClose = useCallback(() => {
     resetState();
     onClose();
   }, [onClose, resetState]);
 
-  const openInBrowser = useCallback(() => {
-    if (!parts) return;
-    const url = buildEkwSearchUrl(parts);
-    void Linking.openURL(url).catch(() => Alert.alert('Błąd', 'Nie udało się otworzyć EKW.'));
-  }, [parts]);
-
-  const retryLoad = useCallback(
-    (opts?: { plain?: boolean }) => {
-      clearAutoRetry();
-      autofillAttempts.current = 0;
-      openBookAttempts.current = 0;
-      kodVerified.current = false;
-      submitted.current = false;
-      setLoadError(null);
-      setNeedsCaptcha(false);
-      setKodMissing(false);
-      setLoading(true);
-      setStatusHint('Ponawiam połączenie z EKW…');
-      if (opts?.plain) setUsePlainSearch(true);
-      setWebKey((k) => k + 1);
-    },
-    [clearAutoRetry],
-  );
+  const retryLoad = useCallback(() => {
+    clearAutoRetry();
+    autofillAttempts.current = 0;
+    openBookAttempts.current = 0;
+    kodVerified.current = false;
+    submitted.current = false;
+    formReady.current = false;
+    setLoadError(null);
+    setNeedsCaptcha(false);
+    setNeedsBotCheck(false);
+    setKodMissing(false);
+    setBookOpened(false);
+    setLoading(true);
+    setStatusHint('Ponawiam EKW w okienku…');
+    setWebKey((k) => k + 1);
+  }, [clearAutoRetry]);
 
   const handleLoadFailure = useCallback(
     (err?: LoadError | null) => {
@@ -182,11 +177,9 @@ export default function EkwBookViewerModal({
 
       if (networkish && loadRetries.current < MAX_LOAD_RETRIES) {
         loadRetries.current += 1;
-        setStatusHint(`Utrata połączenia — ponawiam (${loadRetries.current}/${MAX_LOAD_RETRIES})…`);
+        setStatusHint(`Utrata połączenia — ponawiam w okienku (${loadRetries.current}/${MAX_LOAD_RETRIES})…`);
         clearAutoRetry();
-        autoRetryTimer.current = setTimeout(() => {
-          retryLoad({ plain: loadRetries.current >= 1 });
-        }, 700);
+        autoRetryTimer.current = setTimeout(() => retryLoad(), 900);
         return;
       }
 
@@ -196,15 +189,20 @@ export default function EkwBookViewerModal({
     [clearAutoRetry, retryLoad],
   );
 
+  const injectGateWatch = useCallback(() => {
+    webViewRef.current?.injectJavaScript(buildEkwGateWatchScript());
+  }, []);
+
   const runAutofill = useCallback(
     (submit = false) => {
       if (!parts || !webViewRef.current || loadError) return;
+      if (!formReady.current) return;
       if (autofillAttempts.current >= MAX_AUTOFILL) return;
       autofillAttempts.current += 1;
       setStatusHint(
         submit
           ? 'Szukam księgi…'
-          : `Uzupełniam kod wydziału ${parts.kodWydzialu}…`,
+          : `Uzupełniam ${parts.kodWydzialu}/${parts.nrKw}/${parts.cyfraK}…`,
       );
       webViewRef.current.injectJavaScript(
         buildEkwAutofillScript(parts, { submit: submit && kodVerified.current }),
@@ -215,16 +213,17 @@ export default function EkwBookViewerModal({
 
   const runSubmit = useCallback(() => {
     if (!parts || !webViewRef.current || submitted.current || loadError) return;
-    if (!kodVerified.current) return;
+    if (!kodVerified.current || !formReady.current) return;
     submitted.current = true;
-    setStatusHint('Szukam księgi…');
+    setStatusHint('Szukam księgi wieczystej…');
     webViewRef.current.injectJavaScript(buildEkwSubmitSearchScript(parts));
   }, [parts, loadError]);
 
   const runOpenBook = useCallback(() => {
     if (!webViewRef.current || loadError) return;
-    if (openBookAttempts.current >= 3) return;
+    if (openBookAttempts.current >= 5) return;
     openBookAttempts.current += 1;
+    setStatusHint('Otwieram treść księgi wieczystej…');
     webViewRef.current.injectJavaScript(buildEkwOpenBookScript());
   }, [loadError]);
 
@@ -235,63 +234,83 @@ export default function EkwBookViewerModal({
       if (!url) return;
 
       if (isEkwBookContentUrl(url)) {
-        setStatusHint('Księga wieczysta — przewiń, aby zobaczyć działy I–IV.');
+        setBookOpened(true);
+        setNeedsBotCheck(false);
         setNeedsCaptcha(false);
         setKodMissing(false);
+        setStatusHint('Księga wieczysta — przewiń działy I–IV.');
         setLoading(Boolean(navState.loading));
         return;
       }
 
       if (isEkwResultsPageUrl(url)) {
-        setStatusHint('Otwieranie treści księgi…');
-        setNeedsCaptcha(false);
-        setKodMissing(false);
-        setTimeout(() => runOpenBook(), 400);
+        setNeedsBotCheck(false);
+        setStatusHint('Wynik wyszukiwania — otwieram treść KW…');
+        setTimeout(() => runOpenBook(), 350);
+        setTimeout(() => runOpenBook(), 900);
+        setTimeout(() => runOpenBook(), 1600);
         setLoading(Boolean(navState.loading));
         return;
       }
 
-      if (isEkwSearchPageUrl(url)) {
-        if (!navState.loading) {
-          setTimeout(() => runAutofill(false), 450);
-          setTimeout(() => runAutofill(false), 1000);
-          setTimeout(() => runAutofill(false), 1800);
-        }
+      if (isEkwSearchPageUrl(url) && !navState.loading) {
+        injectGateWatch();
       }
 
       setLoading(Boolean(navState.loading));
     },
-    [loadError, runAutofill, runOpenBook],
+    [injectGateWatch, loadError, runOpenBook],
   );
 
   const handleMessage = useCallback(
     (event: { nativeEvent: { data: string } }) => {
       const data = String(event.nativeEvent.data || '');
-      if (data === 'captcha') {
-        setNeedsCaptcha(true);
-        setStatusHint('Wpisz kod z obrazka i naciśnij Szukaj — numer KW jest już uzupełniony.');
+      const resolved = resolveEkwStatusAfterMessage(data, parts);
+      if (resolved.kind === 'ignore') return;
+
+      if (resolved.kind === 'challenge') {
+        formReady.current = false;
+        setNeedsBotCheck(true);
+        setStatusHint(resolved.hint);
+        setLoading(false);
         return;
       }
-      if (data === 'ekw:ok') {
+
+      if (resolved.kind === 'ready') {
+        formReady.current = true;
+        setNeedsBotCheck(false);
+        setStatusHint(resolved.hint);
+        setTimeout(() => runAutofill(false), 200);
+        setTimeout(() => runAutofill(false), 700);
+        setTimeout(() => runAutofill(false), 1400);
+        return;
+      }
+
+      if (resolved.kind === 'captcha') {
+        setNeedsCaptcha(true);
+        setStatusHint(resolved.hint);
+        return;
+      }
+
+      if (resolved.kind === 'ok') {
         kodVerified.current = true;
         setKodMissing(false);
-        setStatusHint(`Kod ${parts?.kodWydzialu || ''} uzupełniony.`);
+        setStatusHint(resolved.hint);
         if (!needsCaptcha) {
-          setTimeout(() => runSubmit(), 320);
+          setTimeout(() => runSubmit(), 300);
         }
         return;
       }
-      if (data === 'ekw:kod_missing') {
+
+      if (resolved.kind === 'kod_missing') {
         setKodMissing(true);
-        setStatusHint(
-          `Nie udało się ustawić kodu wydziału (${parts?.kodWydzialu || '—'}). Wybierz go z listy albo wpisz ręcznie, potem Szukaj.`,
-        );
+        setStatusHint(resolved.hint);
         if (autofillAttempts.current < MAX_AUTOFILL) {
           setTimeout(() => runAutofill(false), 500);
         }
       }
     },
-    [needsCaptcha, parts?.kodWydzialu, runAutofill, runSubmit],
+    [needsCaptcha, parts, runAutofill, runSubmit],
   );
 
   const wrap = (inner: React.ReactNode, sheet: 'pageSheet' | 'fullScreen') => {
@@ -334,16 +353,10 @@ export default function EkwBookViewerModal({
         <View style={[styles.root, { backgroundColor: theme.background, paddingTop: insets.top + 12, paddingHorizontal: 20 }]}>
           <Text style={[styles.title, { color: theme.text }]}>Podgląd EKW niedostępny</Text>
           <Text style={[styles.hint, { color: theme.subtitle }]}>
-            Brak modułu WebView w tej wersji aplikacji.
+            Brak modułu WebView w tej wersji aplikacji — zaktualizuj build.
           </Text>
-          <Pressable
-            onPress={() => {
-              openInBrowser();
-              handleClose();
-            }}
-            style={styles.primaryBtn}
-          >
-            <Text style={styles.primaryBtnText}>Otwórz w Safari</Text>
+          <Pressable onPress={handleClose} style={styles.primaryBtn}>
+            <Text style={styles.primaryBtnText}>Zamknij</Text>
           </Pressable>
         </View>
       ),
@@ -369,7 +382,7 @@ export default function EkwBookViewerModal({
             <Text style={[styles.title, { color: theme.text }]} selectable>
               {landRegistryNumber}
             </Text>
-            <Text style={[styles.hint, { color: theme.subtitle }]} numberOfLines={3}>
+            <Text style={[styles.hint, { color: bookOpened ? '#34C759' : theme.subtitle }]} numberOfLines={3}>
               {statusHint}
             </Text>
           </View>
@@ -378,16 +391,25 @@ export default function EkwBookViewerModal({
           </Pressable>
         </View>
 
-        {needsCaptcha ? (
-          <View style={[styles.captchaBanner, { backgroundColor: isDark ? 'rgba(255,159,10,0.15)' : 'rgba(255,159,10,0.12)' }]}>
-            <Ionicons name="shield-checkmark-outline" size={16} color="#FF9500" />
-            <Text style={styles.captchaText}>
-              Portal EKW wymaga kodu z obrazka — wpisz go poniżej i naciśnij „Szukaj”.
+        {needsBotCheck ? (
+          <View style={[styles.captchaBanner, { backgroundColor: isDark ? 'rgba(0,122,255,0.18)' : 'rgba(0,122,255,0.1)' }]}>
+            <Ionicons name="shield-checkmark-outline" size={16} color="#007AFF" />
+            <Text style={[styles.captchaText, { color: '#007AFF' }]}>
+              Kliknij „I am human” / „Nie jestem robotem” w okienku poniżej — zaraz uzupełnimy KW i otworzymy księgę.
             </Text>
           </View>
         ) : null}
 
-        {kodMissing && !needsCaptcha && !loadError ? (
+        {needsCaptcha ? (
+          <View style={[styles.captchaBanner, { backgroundColor: isDark ? 'rgba(255,159,10,0.15)' : 'rgba(255,159,10,0.12)' }]}>
+            <Ionicons name="keypad-outline" size={16} color="#FF9500" />
+            <Text style={styles.captchaText}>
+              Wpisz kod z obrazka w formularzu i naciśnij „Szukaj”.
+            </Text>
+          </View>
+        ) : null}
+
+        {kodMissing && !needsCaptcha && !needsBotCheck && !loadError ? (
           <View style={[styles.captchaBanner, { backgroundColor: isDark ? 'rgba(255,59,48,0.15)' : 'rgba(255,59,48,0.1)' }]}>
             <Ionicons name="alert-circle-outline" size={16} color="#FF3B30" />
             <Text style={[styles.captchaText, { color: '#FF3B30' }]}>
@@ -400,8 +422,8 @@ export default function EkwBookViewerModal({
         ) : null}
 
         <View style={styles.webWrap}>
-          {loading && !loadError ? (
-            <View style={styles.loadingOverlay}>
+          {loading && !loadError && !needsBotCheck ? (
+            <View style={styles.loadingOverlay} pointerEvents="none">
               <ActivityIndicator size="large" color="#007AFF" />
             </View>
           ) : null}
@@ -409,22 +431,14 @@ export default function EkwBookViewerModal({
           {loadError ? (
             <View style={[styles.errorPanel, { backgroundColor: isDark ? '#111' : '#F8FAFC' }]}>
               <View style={styles.errorIconWrap}>
-                <Ionicons name="cloud-offline-outline" size={36} color="#007AFF" />
+                <Ionicons name="refresh-circle-outline" size={40} color="#007AFF" />
               </View>
-              <Text style={[styles.errorTitle, { color: theme.text }]}>Nie udało się wczytać EKW</Text>
+              <Text style={[styles.errorTitle, { color: theme.text }]}>Połączenie z EKW przerwane</Text>
               <Text style={[styles.errorBody, { color: theme.subtitle }]}>
                 {friendlyNetworkMessage(loadError)}
               </Text>
-              <Pressable onPress={() => retryLoad({ plain: true })} style={styles.primaryBtn}>
-                <Text style={styles.primaryBtnText}>Spróbuj ponownie</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  openInBrowser();
-                }}
-                style={[styles.secondaryBtn, { borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)' }]}
-              >
-                <Text style={[styles.secondaryBtnText, { color: theme.text }]}>Otwórz w Safari</Text>
+              <Pressable onPress={retryLoad} style={styles.primaryBtn}>
+                <Text style={styles.primaryBtnText}>Załaduj ponownie w okienku</Text>
               </Pressable>
             </View>
           ) : (
@@ -439,49 +453,58 @@ export default function EkwBookViewerModal({
               domStorageEnabled
               sharedCookiesEnabled
               thirdPartyCookiesEnabled
-              cacheEnabled={false}
+              cacheEnabled
               setSupportMultipleWindows={false}
               allowsBackForwardNavigationGestures
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
               userAgent={EKW_USER_AGENT}
+              applicationNameForUserAgent="Safari"
+              onShouldStartLoadWithRequest={(request: { url?: string }) =>
+                shouldLoadEkwUrlInWebView(String(request?.url || ''))
+              }
+              onOpenWindow={(syntheticEvent: { nativeEvent?: { targetUrl?: string } }) => {
+                const target = String(syntheticEvent?.nativeEvent?.targetUrl || '');
+                if (target && shouldLoadEkwUrlInWebView(target) && webViewRef.current) {
+                  // target=_blank → zostań w tym samym WebView, nigdy Safari
+                  webViewRef.current.injectJavaScript(
+                    `window.location.href=${JSON.stringify(target)}; true;`,
+                  );
+                }
+              }}
               onLoadStart={() => {
                 setLoading(true);
                 setLoadError(null);
               }}
               onLoadEnd={() => {
                 setLoading(false);
-                runAutofill(false);
+                injectGateWatch();
               }}
               onNavigationStateChange={handleNavigation}
               onMessage={handleMessage}
+              onContentProcessDidTerminate={() => {
+                handleLoadFailure({ code: -1005, description: 'WebContent process terminated' });
+              }}
               onError={(event: { nativeEvent?: LoadError }) => {
                 handleLoadFailure(event?.nativeEvent || null);
               }}
               onHttpError={(event: { nativeEvent?: { statusCode?: number } }) => {
                 const status = Number(event?.nativeEvent?.statusCode || 0);
                 if (status >= 500 || status === 408 || status === 429) {
-                  handleLoadFailure({
-                    code: status,
-                    description: `HTTP ${status}`,
-                  });
+                  handleLoadFailure({ code: status, description: `HTTP ${status}` });
                 }
               }}
               renderError={(_domain: string, code: number, description: string) => (
                 <View style={[styles.errorPanel, { backgroundColor: '#F8FAFC', flex: 1 }]}>
                   <View style={styles.errorIconWrap}>
-                    <Ionicons name="cloud-offline-outline" size={36} color="#007AFF" />
+                    <Ionicons name="refresh-circle-outline" size={40} color="#007AFF" />
                   </View>
-                  <Text style={[styles.errorTitle, { color: '#111' }]}>Połączenie z EKW przerwane</Text>
+                  <Text style={styles.errorTitle}>Połączenie z EKW przerwane</Text>
                   <Text style={[styles.errorBody, { color: '#6B7280' }]}>
                     {friendlyNetworkMessage({ code, description, domain: _domain })}
                   </Text>
-                  <Pressable onPress={() => retryLoad({ plain: true })} style={styles.primaryBtn}>
-                    <Text style={styles.primaryBtnText}>Spróbuj ponownie</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={openInBrowser}
-                    style={[styles.secondaryBtn, { borderColor: 'rgba(0,0,0,0.12)' }]}
-                  >
-                    <Text style={[styles.secondaryBtnText, { color: '#111' }]}>Otwórz w Safari</Text>
+                  <Pressable onPress={retryLoad} style={styles.primaryBtn}>
+                    <Text style={styles.primaryBtnText}>Załaduj ponownie w okienku</Text>
                   </Pressable>
                 </View>
               )}
@@ -530,7 +553,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.65)',
+    backgroundColor: 'rgba(255,255,255,0.55)',
     zIndex: 2,
   },
   errorPanel: {
@@ -553,6 +576,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     textAlign: 'center',
     letterSpacing: -0.3,
+    color: '#111',
   },
   errorBody: {
     marginTop: 10,
@@ -569,19 +593,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingVertical: 13,
     borderRadius: 14,
-    minWidth: 200,
+    minWidth: 220,
     alignItems: 'center',
   },
   primaryBtnText: { color: '#FFFFFF', fontWeight: '800', fontSize: 16 },
-  secondaryBtn: {
-    marginTop: 12,
-    alignSelf: 'center',
-    borderWidth: 1,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 14,
-    minWidth: 200,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { fontWeight: '800', fontSize: 15 },
 });

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Image, Dimensions, Platform, Pressable, ActivityIndicator, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Image, Dimensions, Platform, Pressable, ActivityIndicator } from 'react-native';
+import { KeyboardAwareScrollView, KeyboardStickyView } from 'react-native-keyboard-controller';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import type { Camera } from 'react-native-maps';
 import { useNavigation, CommonActions, useFocusEffect } from '@react-navigation/native';
@@ -8,6 +9,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { isAgencyAgentPendingApproval } from '../../utils/agencyMembershipAccess';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import ImageViewing from 'react-native-image-viewing';
 import * as Haptics from 'expo-haptics';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
@@ -75,6 +77,12 @@ import { offerPhotoUploadParts } from '../../utils/offerPhotoUpload';
 import { parseRentAdditionalFeeForApi } from '../../lib/rentAdditionalFees';
 import { formatOfferConditionLabel } from '../../utils/offerFieldLabels';
 import OfferDescriptionRichText from '../../components/OfferDescriptionRichText';
+import FloorPlanScanArtboard from '../../components/roomScan/FloorPlanScanArtboard';
+import RoomPlanPreviewModal, {
+  type RoomPlanPreviewData,
+} from '../../components/roomScan/RoomPlanPreviewModal';
+import { cropScanMetaToRoom } from '../../lib/roomScan/refineScanSections';
+import type { PropertyRoomScan, WholePropertyScan } from '../../types/roomScan';
 
 const { width } = Dimensions.get('window');
 const DARK_COLORS = { primary: '#10b981', background: '#000000', card: '#1C1C1E', text: '#FFFFFF', subtitle: '#8E8E93', danger: '#ef4444' };
@@ -273,6 +281,8 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   >([]);
   const [publicationChoicePlusSlots, setPublicationChoicePlusSlots] = useState(0);
   const [publicationChoiceHasPlus, setPublicationChoiceHasPlus] = useState(false);
+  const [photoPreviewIndex, setPhotoPreviewIndex] = useState<number | null>(null);
+  const [planPreview, setPlanPreview] = useState<RoomPlanPreviewData | null>(null);
   const [prefetchedPublicationCoupons, setPrefetchedPublicationCoupons] = useState<
     Awaited<ReturnType<typeof gatherPublicationBonusCoupons>>['coupons']
   >([]);
@@ -1197,6 +1207,51 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const summaryAccentBorder = summaryIsZeroCommission ? 'rgba(16,185,129,0.55)' : 'rgba(255,159,10,0.45)';
   const summaryAccentBadgeBg = summaryIsZeroCommission ? 'rgba(16,185,129,0.18)' : 'rgba(255,159,10,0.14)';
   const activeAmenities = AMENITY_META.filter((key) => draft[key]);
+  const summaryRoomScans = useMemo(
+    () => (Array.isArray(draft.propertyRoomScans) ? draft.propertyRoomScans : []) as PropertyRoomScan[],
+    [draft.propertyRoomScans],
+  );
+  const summaryWholeScan =
+    draft.wholePropertyScan && typeof draft.wholePropertyScan === 'object'
+      ? draft.wholePropertyScan as WholePropertyScan
+      : null;
+  const scannedRoomPreviews = useMemo(
+    () =>
+      summaryRoomScans
+        .map((room) => {
+          const cropped = cropScanMetaToRoom(summaryWholeScan?.scanMeta, room);
+          const meta = cropped || (room.scanMeta?.walls?.length ? room.scanMeta : null);
+          if (!meta?.walls?.length && !room.floorPlanPngUri) return null;
+          return {
+            room,
+            preview: {
+              title: room.name,
+              subtitle: t('addOffer.step6.mediaPreview.scannedRoom'),
+              meta,
+              imageUri: room.floorPlanPngUri,
+              widthM: room.widthM,
+              lengthM: room.lengthM,
+              heightM: room.heightM,
+              areaM2: room.areaM2,
+            } satisfies RoomPlanPreviewData,
+          };
+        })
+        .filter((item): item is { room: PropertyRoomScan; preview: RoomPlanPreviewData } => Boolean(item)),
+    [summaryRoomScans, summaryWholeScan, t],
+  );
+  const wholePlanPreview = useMemo<RoomPlanPreviewData | null>(() => {
+    if (!draft.floorPlan && !summaryWholeScan?.scanMeta?.walls?.length) return null;
+    return {
+      title: t('addOffer.step6.mediaPreview.wholePlan'),
+      subtitle: summaryWholeScan
+        ? t('addOffer.step6.mediaPreview.roomCount', { count: summaryWholeScan.scanMeta.roomCount })
+        : t('addOffer.step6.mediaPreview.uploadedPlan'),
+      meta: summaryWholeScan?.scanMeta || null,
+      imageUri: draft.floorPlan,
+      areaM2: summaryWholeScan?.scanMeta.totalAreaSqM ?? draft.area,
+      heightM: summaryWholeScan?.scanMeta.ceilingHeightM,
+    };
+  }, [draft.area, draft.floorPlan, summaryWholeScan, t]);
   const propertyTypeLabel =
     draft.propertyType === 'FLAT' || draft.propertyType === 'APARTMENT'
       ? t('addOffer.step6.propertyType.flat')
@@ -1231,17 +1286,14 @@ export default function Step6_Summary({ theme }: { theme: any }) {
   const mapLng = draft.lng != null && !Number.isNaN(Number(draft.lng)) ? Number(draft.lng) : 21.0122;
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
     <View style={{ flex: 1 }}>
-      <ScrollView
+      <KeyboardAwareScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 190 }}
-        keyboardDismissMode="none"
+        keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets
+        bottomOffset={150}
       >
         <View style={styles.headerTop}>
           <Pressable onPress={handleGoBack} style={styles.backButton}>
@@ -1256,10 +1308,19 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           {draft.images && draft.images.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={width * 0.85 + 15} decelerationRate="fast" contentContainerStyle={{ paddingHorizontal: 20 }}>
               {draft.images.map((uri: string, idx: number) => (
-                <View key={idx} style={styles.imageWrapper}>
+                <Pressable
+                  key={`${uri}-${idx}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('addOffer.step6.mediaPreview.openPhoto', { index: idx + 1 })}
+                  onPress={() => setPhotoPreviewIndex(idx)}
+                  style={({ pressed }) => [styles.imageWrapper, { opacity: pressed ? 0.82 : 1 }]}
+                >
                   <Image source={{ uri }} style={styles.carouselImage} resizeMode="cover" />
                   <View style={styles.imageVignette} />
-                </View>
+                  <View style={styles.carouselExpandBadge}>
+                    <Ionicons name="expand-outline" size={17} color="#0f172a" />
+                  </View>
+                </Pressable>
               ))}
             </ScrollView>
           ) : (
@@ -1431,6 +1492,143 @@ export default function Step6_Summary({ theme }: { theme: any }) {
                 video: draft.videoUrl?.trim() ? t('addOffer.step6.mediaYes') : t('addOffer.step6.mediaNo'),
               })}
             </Text>
+
+            {draft.images?.length ? (
+              <View style={styles.mediaPreviewGroup}>
+                <View style={styles.mediaPreviewHeader}>
+                  <View style={[styles.mediaPreviewIcon, { backgroundColor: isDark ? 'rgba(16,185,129,0.13)' : 'rgba(16,185,129,0.14)' }]}>
+                    <Ionicons name="images-outline" size={17} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.mediaPreviewTitle, { color: colors.text }]}>
+                    {t('addOffer.step6.mediaPreview.photos')}
+                  </Text>
+                  <Text style={[styles.mediaPreviewCount, { color: colors.subtitle }]}>
+                    {draft.images.length}
+                  </Text>
+                </View>
+                <View style={styles.photoPreviewRow}>
+                  {draft.images.slice(0, 3).map((uri: string, index: number) => (
+                    <Pressable
+                      key={`${uri}-summary`}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('addOffer.step6.mediaPreview.openPhoto', { index: index + 1 })}
+                      onPress={() => setPhotoPreviewIndex(index)}
+                      style={({ pressed }) => [styles.photoPreviewButton, { opacity: pressed ? 0.78 : 1 }]}
+                    >
+                      <Image source={{ uri }} style={styles.photoPreviewImage} resizeMode="cover" />
+                      {index === 0 ? (
+                        <View style={styles.coverBadge}>
+                          <Text style={styles.coverBadgeText}>{t('addOffer.step5.coverBadge')}</Text>
+                        </View>
+                      ) : null}
+                      {index === 2 && draft.images.length > 3 ? (
+                        <View style={styles.photoMoreOverlay}>
+                          <Text style={styles.photoMoreText}>+{draft.images.length - 3}</Text>
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {wholePlanPreview || scannedRoomPreviews.length > 0 ? (
+              <View style={styles.mediaPreviewGroup}>
+                <View style={styles.mediaPreviewHeader}>
+                  <View style={[styles.mediaPreviewIcon, { backgroundColor: isDark ? 'rgba(14,165,233,0.14)' : 'rgba(14,165,233,0.13)' }]}>
+                    <Ionicons name="scan-outline" size={17} color="#0ea5e9" />
+                  </View>
+                  <Text style={[styles.mediaPreviewTitle, { color: colors.text }]}>
+                    {t('addOffer.step6.mediaPreview.scans')}
+                  </Text>
+                  <Text style={[styles.mediaPreviewCount, { color: colors.subtitle }]}>
+                    {scannedRoomPreviews.length + (wholePlanPreview ? 1 : 0)}
+                  </Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  nestedScrollEnabled
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.planPreviewRow}
+                >
+                  {wholePlanPreview ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t('addOffer.step6.mediaPreview.openWholePlan')}
+                      onPress={() => setPlanPreview(wholePlanPreview)}
+                      style={({ pressed }) => [
+                        styles.planPreviewCard,
+                        {
+                          backgroundColor: isDark ? '#242426' : '#ffffff',
+                          borderColor: isDark ? '#343438' : '#e2e8f0',
+                          opacity: pressed ? 0.76 : 1,
+                        },
+                      ]}
+                    >
+                      <View style={styles.planPreviewImageWrap}>
+                        {draft.floorPlan ? (
+                          <Image source={{ uri: draft.floorPlan }} style={styles.planPreviewImage} resizeMode="contain" />
+                        ) : summaryWholeScan?.scanMeta ? (
+                          <FloorPlanScanArtboard
+                            walls={summaryWholeScan.scanMeta.walls}
+                            meta={summaryWholeScan.scanMeta}
+                            width={144}
+                            height={96}
+                            compact
+                          />
+                        ) : null}
+                        <View style={styles.planTypeBadge}>
+                          <Text style={styles.planTypeBadgeText}>{t('addOffer.step6.mediaPreview.wholeBadge')}</Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.planPreviewName, { color: colors.text }]} numberOfLines={1}>
+                        {t('addOffer.step6.mediaPreview.wholePlan')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+
+                  {scannedRoomPreviews.map(({ room, preview }, index) => (
+                    <Pressable
+                      key={room.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('addOffer.step6.mediaPreview.openRoom', { room: room.name })}
+                      onPress={() => setPlanPreview(preview)}
+                      style={({ pressed }) => [
+                        styles.planPreviewCard,
+                        {
+                          backgroundColor: isDark ? '#242426' : '#ffffff',
+                          borderColor: isDark ? '#343438' : '#e2e8f0',
+                          opacity: pressed ? 0.76 : 1,
+                        },
+                      ]}
+                    >
+                      <View style={styles.planPreviewImageWrap}>
+                        {room.floorPlanPngUri ? (
+                          <Image source={{ uri: room.floorPlanPngUri }} style={styles.planPreviewImage} resizeMode="contain" />
+                        ) : preview.meta ? (
+                          <FloorPlanScanArtboard
+                            walls={preview.meta.walls}
+                            meta={preview.meta}
+                            width={144}
+                            height={96}
+                            compact
+                          />
+                        ) : null}
+                        <View style={styles.planTypeBadge}>
+                          <Text style={styles.planTypeBadgeText}>{index + 1}</Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.planPreviewName, { color: colors.text }]} numberOfLines={1}>
+                        {room.name}
+                      </Text>
+                      <Text style={[styles.planPreviewMeta, { color: colors.subtitle }]} numberOfLines={1}>
+                        {room.areaM2 ? `${room.areaM2} m²` : t('addOffer.step6.mediaPreview.scanReady')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
           </View>
 
           {activeAmenities.length > 0 ? (
@@ -1453,9 +1651,9 @@ export default function Step6_Summary({ theme }: { theme: any }) {
             </View>
           ) : null}
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
-      <View style={styles.absoluteBottom}>
+      <KeyboardStickyView style={styles.absoluteBottom} offset={{ closed: 0, opened: Platform.OS === 'ios' ? 28 : 0 }}>
         <BlurView intensity={90} tint={isDark ? 'dark' : 'light'} style={[styles.blurWrapper, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(17,24,39,0.1)' }]}>
           {!isFinalDraftValid && invalidSteps.length > 0 ? (
             <Text style={[styles.validationHint, { color: colors.subtitle }]}>
@@ -1495,7 +1693,7 @@ export default function Step6_Summary({ theme }: { theme: any }) {
             <Text style={[styles.editButtonText, { color: colors.subtitle }]}>{t('addOffer.step6.publish.editData')}</Text>
           </Pressable>
         </BlurView>
-      </View>
+      </KeyboardStickyView>
     </View>
       <PublicationChoiceModal
         visible={publicationChoiceVisible}
@@ -1522,7 +1720,19 @@ export default function Step6_Summary({ theme }: { theme: any }) {
         onConfirm={handlePublicationChoice}
         onClose={() => setPublicationChoiceVisible(false)}
       />
-    </KeyboardAvoidingView>
+      <ImageViewing
+        images={(draft.images || []).map((uri: string) => ({ uri }))}
+        imageIndex={photoPreviewIndex ?? 0}
+        visible={photoPreviewIndex !== null}
+        onRequestClose={() => setPhotoPreviewIndex(null)}
+        backgroundColor={isDark ? '#000000' : '#0f172a'}
+      />
+      <RoomPlanPreviewModal
+        preview={planPreview}
+        isDark={isDark}
+        onClose={() => setPlanPreview(null)}
+      />
+    </View>
   );
 }
 
@@ -1533,6 +1743,17 @@ const styles = StyleSheet.create({
   imageWrapper: { shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 15, marginRight: 15 },
   carouselImage: { width: width * 0.85, height: 260, borderRadius: 24 },
   imageVignette: { ...StyleSheet.absoluteFillObject, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', backgroundColor: 'rgba(0,0,0,0.1)' },
+  carouselExpandBadge: {
+    position: 'absolute',
+    right: 12,
+    bottom: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.9)',
+  },
   contentContainer: { paddingHorizontal: 20, gap: 15 },
   premiumCard: { backgroundColor: Colors.card, borderRadius: 28, padding: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 5 },
   offerTitle: { fontSize: 20, fontWeight: '800', color: Colors.text, letterSpacing: -0.4, marginBottom: 18, lineHeight: 26 },
@@ -1566,6 +1787,67 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 11, fontWeight: '800', color: Colors.subtitle, letterSpacing: 1.5, marginBottom: 15 },
   gridBox: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   mediaSummaryText: { fontSize: 14, fontWeight: '600', color: '#D1D1D6', lineHeight: 20 },
+  mediaPreviewGroup: { marginTop: 16, gap: 10 },
+  mediaPreviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  mediaPreviewIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  mediaPreviewTitle: { flex: 1, fontSize: 13, fontWeight: '900' },
+  mediaPreviewCount: { fontSize: 12, fontWeight: '800' },
+  photoPreviewRow: { flexDirection: 'row', gap: 8 },
+  photoPreviewButton: {
+    width: '31.5%',
+    aspectRatio: 1.12,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#e2e8f0',
+  },
+  photoPreviewImage: { width: '100%', height: '100%' },
+  coverBadge: {
+    position: 'absolute',
+    left: 6,
+    top: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 7,
+    backgroundColor: 'rgba(2,6,23,0.76)',
+  },
+  coverBadgeText: { color: '#ffffff', fontSize: 7, fontWeight: '900', letterSpacing: 0.65 },
+  photoMoreOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(2,6,23,0.55)',
+  },
+  photoMoreText: { color: '#ffffff', fontSize: 22, fontWeight: '900' },
+  planPreviewRow: { gap: 10, paddingRight: 4 },
+  planPreviewCard: {
+    width: 160,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 7,
+  },
+  planPreviewImageWrap: {
+    width: 144,
+    height: 96,
+    borderRadius: 11,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+  },
+  planPreviewImage: { width: '100%', height: '100%', backgroundColor: '#ffffff' },
+  planTypeBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 7,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(16,185,129,0.92)',
+  },
+  planTypeBadgeText: { color: '#ffffff', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
+  planPreviewName: { fontSize: 11, fontWeight: '900', marginTop: 7, paddingHorizontal: 2 },
+  planPreviewMeta: { fontSize: 9, fontWeight: '700', marginTop: 2, paddingHorizontal: 2 },
   amenitiesWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   amenityPill: { backgroundColor: '#2C2C2E', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
   amenityPillText: { fontSize: 13, fontWeight: '700', color: Colors.text },

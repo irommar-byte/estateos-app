@@ -32,6 +32,8 @@ type SurfaceLike = {
   dimensions?: number[];
   transform?: number[];
   category?: Record<string, unknown>;
+  identifier?: unknown;
+  polygonCorners?: unknown;
 };
 
 type ObjectLike = {
@@ -56,6 +58,161 @@ type RoomLike = {
   objects?: ObjectLike[];
   sections?: SectionLike[];
 };
+
+type Point3 = { x: number; y: number; z: number };
+
+function point3FromRaw(raw: unknown): Point3 | null {
+  if (Array.isArray(raw) && raw.length >= 3) {
+    const x = Number(raw[0]);
+    const y = Number(raw[1]);
+    const z = Number(raw[2]);
+    return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) ? { x, y, z } : null;
+  }
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const x = Number(value.x ?? value['0']);
+  const y = Number(value.y ?? value['1']);
+  const z = Number(value.z ?? value['2']);
+  return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) ? { x, y, z } : null;
+}
+
+function polygonPointsFromSurface(surface: SurfaceLike): Point3[] {
+  const raw = surface.polygonCorners;
+  if (!Array.isArray(raw) || raw.length < 3) return [];
+  if (typeof raw[0] === 'number') {
+    const points: Point3[] = [];
+    for (let index = 0; index + 2 < raw.length; index += 3) {
+      const point = point3FromRaw([raw[index], raw[index + 1], raw[index + 2]]);
+      if (point) points.push(point);
+    }
+    return points;
+  }
+  return raw.map(point3FromRaw).filter((point): point is Point3 => Boolean(point));
+}
+
+function polygonArea(points: { a: number; b: number }[]): number {
+  if (points.length < 3) return 0;
+  let twiceArea = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    twiceArea += current.a * next.b - next.a * current.b;
+  }
+  return Math.abs(twiceArea) / 2;
+}
+
+function floorSurfacePolygon(surface: SurfaceLike): { x: number; z: number }[] {
+  const local = polygonPointsFromSurface(surface);
+  if (local.length < 3) return [];
+  const transform = surface.transform;
+  const world =
+    Array.isArray(transform) && transform.length >= 16
+      ? local.map((point) => ({
+          x: transform[0] * point.x + transform[4] * point.y + transform[8] * point.z + transform[12],
+          y: transform[1] * point.x + transform[5] * point.y + transform[9] * point.z + transform[13],
+          z: transform[2] * point.x + transform[6] * point.y + transform[10] * point.z + transform[14],
+        }))
+      : local;
+  const worldXZ = world.map((point) => ({ x: point.x, z: point.z }));
+  if (polygonArea(worldXZ.map((point) => ({ a: point.x, b: point.z }))) > 0.05) {
+    return worldXZ;
+  }
+
+  const localPlanes = [
+    local.map((point) => ({ x: point.x, z: point.y })),
+    local.map((point) => ({ x: point.x, z: point.z })),
+    local.map((point) => ({ x: point.y, z: point.z })),
+  ];
+  return localPlanes.reduce<{ x: number; z: number }[]>(
+    (best, points) =>
+      polygonArea(points.map((point) => ({ a: point.x, b: point.z }))) >
+      polygonArea(best.map((point) => ({ a: point.x, b: point.z })))
+        ? points
+        : best,
+    [],
+  );
+}
+
+function floorSurfaceAreaSqM(surface: SurfaceLike): number {
+  const polygon = floorSurfacePolygon(surface);
+  const polygonSqM = polygonArea(polygon.map((point) => ({ a: point.x, b: point.z })));
+  if (polygonSqM > 0.05) return polygonSqM;
+  const dimensions = (surface.dimensions || [])
+    .map(Number)
+    .filter((value) => Number.isFinite(value) && value > 0.05)
+    .sort((a, b) => b - a);
+  return dimensions.length >= 2 ? dimensions[0] * dimensions[1] : 0;
+}
+
+function largestFloorPolygon(surfaces: SurfaceLike[] | undefined): { x: number; z: number }[] | undefined {
+  if (!Array.isArray(surfaces)) return undefined;
+  const polygons = surfaces
+    .map(floorSurfacePolygon)
+    .filter((polygon) => polygon.length >= 3)
+    .sort(
+      (a, b) =>
+        polygonArea(b.map((point) => ({ a: point.x, b: point.z }))) -
+        polygonArea(a.map((point) => ({ a: point.x, b: point.z }))),
+    );
+  return polygons[0];
+}
+
+function floorSurfacesAreaSqM(surfaces: SurfaceLike[] | undefined): number {
+  if (!Array.isArray(surfaces) || !surfaces.length) return 0;
+  const seen = new Set<string>();
+  return surfaces.reduce((sum, surface) => {
+    const id = String(surface.identifier ?? '').trim();
+    if (id && seen.has(id)) return sum;
+    if (id) seen.add(id);
+    const area = floorSurfaceAreaSqM(surface);
+    return sum + (area > 0.2 && area < 2500 ? area : 0);
+  }, 0);
+}
+
+function normalizeSectionAreasToFloor(
+  sections: RoomScanSection[],
+  floorAreaSqM: number,
+): RoomScanSection[] {
+  if (!sections.length || !(floorAreaSqM > 0)) return sections;
+  const target = Number(floorAreaSqM.toFixed(1));
+  const trusted = sections.filter(
+    (section) => section.areaSource === 'floor' && typeof section.areaSqM === 'number' && section.areaSqM > 0,
+  );
+  const untrusted = sections.filter((section) => !trusted.includes(section));
+  const trustedSum = trusted.reduce((sum, section) => sum + (section.areaSqM || 0), 0);
+  const currentSum = sections.reduce((sum, section) => sum + (section.areaSqM || 0), 0);
+  if (Math.abs(currentSum - target) <= 0.15) return sections;
+
+  const distribute = (rows: RoomScanSection[], availableArea: number) => {
+    const weights = rows.map((section) => {
+      const direct = typeof section.areaSqM === 'number' && section.areaSqM > 0 ? section.areaSqM : 0;
+      const dimensions =
+        section.widthM && section.lengthM ? section.widthM * section.lengthM : 0;
+      return direct || dimensions || 1;
+    });
+    const weightSum = weights.reduce((sum, value) => sum + value, 0) || rows.length;
+    return rows.map((section, index) => ({
+      ...section,
+      areaSqM: Number(((availableArea * weights[index]) / weightSum).toFixed(1)),
+    }));
+  };
+
+  if (trusted.length > 0 && untrusted.length > 0 && trustedSum < target) {
+    const distributed = distribute(untrusted, target - trustedSum);
+    let cursor = 0;
+    return sections.map((section) =>
+      section.areaSource === 'floor' ? section : distributed[cursor++],
+    );
+  }
+
+  if (trusted.length > 0 && untrusted.length > 0 && trustedSum >= target - 0.15) {
+    return sections.map((section) =>
+      section.areaSource === 'floor' ? section : { ...section, areaSqM: undefined },
+    );
+  }
+
+  return distribute(sections, target);
+}
 
 function categoryKey(raw: unknown): string {
   if (typeof raw === 'string' && raw.trim()) return raw.trim();
@@ -192,9 +349,11 @@ function collectSurfaces(payload: unknown): {
   objects: RoomScanDetectedObject[];
   openings: RoomScanOpening[];
   sections: RoomScanSection[];
+  floorAreaSqM: number;
 } {
   const root = payload as {
     walls?: SurfaceLike[];
+    floors?: SurfaceLike[];
     doors?: SurfaceLike[];
     windows?: SurfaceLike[];
     openings?: SurfaceLike[];
@@ -237,7 +396,14 @@ function collectSurfaces(payload: unknown): {
   pushOpenings(root.openings, 'opening');
   pushObjects(root.objects);
 
-  const parsedRooms: Array<{ walls: RoomScanWallSegment[]; sections: RoomScanSection[] }> = [];
+  const parsedRooms: {
+    walls: RoomScanWallSegment[];
+    sections: RoomScanSection[];
+    floorAreaSqM: number;
+    floorPolygon?: { x: number; z: number }[];
+  }[] = [];
+  const topLevelFloorAreaSqM = floorSurfacesAreaSqM(root.floors);
+  let roomFloorAreaSqM = 0;
 
   if (Array.isArray(root.rooms) && root.rooms.length > 0) {
     for (const room of root.rooms) {
@@ -255,13 +421,20 @@ function collectSurfaces(payload: unknown): {
       const roomSections = Array.isArray(room.sections)
         ? room.sections.map(sectionFromRaw).filter((s): s is RoomScanSection => Boolean(s))
         : [];
-      parsedRooms.push({ walls: roomWalls, sections: roomSections });
+      parsedRooms.push({
+        walls: roomWalls,
+        sections: roomSections,
+        floorAreaSqM: floorSurfacesAreaSqM(room.floors),
+        floorPolygon: largestFloorPolygon(room.floors),
+      });
     }
 
     const uniqueRooms = uniqueRoomsByFootprint(parsedRooms);
     for (const room of uniqueRooms) {
       const roomWalls = room.walls;
       const roomFootprint = roomWalls.length ? estimateFloorAreaFromWalls(roomWalls) : 0;
+      const measuredFloorArea = room.floorAreaSqM > 0 ? Number(room.floorAreaSqM.toFixed(1)) : 0;
+      roomFloorAreaSqM += measuredFloorArea;
       const roomDimensions = deriveRoomDimensionsFromWalls(roomWalls);
       const roomCeiling = averageCeilingHeight(roomWalls);
       const roomSections = room.sections;
@@ -269,9 +442,15 @@ function collectSurfaces(payload: unknown): {
 
       if (roomSections.length) {
         for (const section of roomSections) {
+          const sectionFloorArea =
+            roomSections.length === 1 && measuredFloorArea > 0 ? measuredFloorArea : undefined;
           sections.push({
             ...section,
-            areaSqM: manySections ? undefined : section.areaSqM ?? (roomFootprint || undefined),
+            areaSqM:
+              sectionFloorArea ??
+              (manySections ? undefined : section.areaSqM ?? (roomFootprint || undefined)),
+            areaSource: sectionFloorArea ? 'floor' : section.areaSource,
+            floorPolygon: roomSections.length === 1 ? room.floorPolygon : section.floorPolygon,
             widthM: manySections ? undefined : section.widthM ?? roomDimensions?.widthM,
             lengthM: manySections ? undefined : section.lengthM ?? roomDimensions?.lengthM,
             ceilingHeightM: roomCeiling ?? undefined,
@@ -288,7 +467,9 @@ function collectSurfaces(payload: unknown): {
           label: getRoomScanSectionLabel('unspecified'),
           centerX: (Math.min(...xs) + Math.max(...xs)) / 2,
           centerZ: (Math.min(...zs) + Math.max(...zs)) / 2,
-          areaSqM: Number(roomFootprint.toFixed(1)),
+          areaSqM: measuredFloorArea || Number(roomFootprint.toFixed(1)),
+          areaSource: measuredFloorArea ? 'floor' : undefined,
+          floorPolygon: room.floorPolygon,
           widthM: roomDimensions?.widthM,
           lengthM: roomDimensions?.lengthM,
           ceilingHeightM: roomCeiling ?? undefined,
@@ -298,7 +479,18 @@ function collectSurfaces(payload: unknown): {
   } else if (Array.isArray(root.sections)) {
     for (const section of root.sections) {
       const parsed = sectionFromRaw(section);
-      if (parsed) sections.push(parsed);
+      if (parsed) {
+        const singleFloorArea =
+          root.sections.length === 1 && topLevelFloorAreaSqM > 0
+            ? Number(topLevelFloorAreaSqM.toFixed(1))
+            : undefined;
+        sections.push({
+          ...parsed,
+          areaSqM: singleFloorArea,
+          areaSource: singleFloorArea ? 'floor' : undefined,
+          floorPolygon: root.sections.length === 1 ? largestFloorPolygon(root.floors) : undefined,
+        });
+      }
     }
   }
 
@@ -307,6 +499,7 @@ function collectSurfaces(payload: unknown): {
     objects,
     openings,
     sections: dedupeRoomSections(sections, 0.95),
+    floorAreaSqM: Number((roomFloorAreaSqM || topLevelFloorAreaSqM).toFixed(1)),
   };
 }
 
@@ -322,7 +515,7 @@ export function buildFloorPlanScanMeta(
     headingSource?: 'true' | 'magnetic' | null;
   },
 ): FloorPlanScanMeta {
-  const { walls, objects, openings, sections } = collectSurfaces(payload);
+  const { walls, objects, openings, sections, floorAreaSqM } = collectSurfaces(payload);
   const ceilingHeightM = averageCeilingHeight(walls);
 
   const xs = walls.flatMap((w) => [w.x1, w.x2]);
@@ -361,13 +554,17 @@ export function buildFloorPlanScanMeta(
       },
     ];
   }
-  const finalSections = displaySections.map((section) => ({
-    ...section,
-    widthM: section.widthM ?? (displaySections.length === 1 ? overallDimensions?.widthM : undefined),
-    lengthM: section.lengthM ?? (displaySections.length === 1 ? overallDimensions?.lengthM : undefined),
-    ceilingHeightM: section.ceilingHeightM ?? ceilingHeightM ?? undefined,
-  }));
-  const measuredTotalArea = totalUniqueAreaSqM(finalSections, walls);
+  const finalSections = normalizeSectionAreasToFloor(
+    displaySections.map((section) => ({
+      ...section,
+      widthM: section.widthM ?? (displaySections.length === 1 ? overallDimensions?.widthM : undefined),
+      lengthM: section.lengthM ?? (displaySections.length === 1 ? overallDimensions?.lengthM : undefined),
+      ceilingHeightM: section.ceilingHeightM ?? ceilingHeightM ?? undefined,
+    })),
+    floorAreaSqM,
+  );
+  const measuredTotalArea =
+    floorAreaSqM > 0 ? Number(floorAreaSqM.toFixed(1)) : totalUniqueAreaSqM(finalSections, walls);
   const listingCount = listingRoomCountFromSections(finalSections);
 
   return {
