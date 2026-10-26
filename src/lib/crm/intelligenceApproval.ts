@@ -315,6 +315,20 @@ export async function recordOwnerCallOutcome(params: {
   }
 
   if (params.outcome === 'available') {
+    // Ogłoszenie zniknęło z portali i nocne sprawdzanie zarchiwizowało ofertę — właściciel potwierdził, że sprzedaje,
+    // więc oferta wraca do bazy. sourceArchivedAt zostaje, więc nocne sprawdzanie już jej nie zarchiwizuje.
+    if (row.offerId) {
+      const archived = (await prisma.$queryRawUnsafe(
+        `SELECT offerId FROM OfferPrivateNote WHERE offerId = ? AND sourceArchivedAt IS NOT NULL LIMIT 1`,
+        row.offerId,
+      ).catch(() => [])) as Array<{ offerId: number }>;
+      if (archived.length) {
+        await prisma.offer.updateMany({
+          where: { id: row.offerId, status: 'ARCHIVED' },
+          data: { status: 'ACTIVE', updatedAt: new Date() },
+        });
+      }
+    }
     await prisma.agencyClientActivity.update({
       where: { id: row.id },
       data: { metadata: { ...m, ownerCalls: calls, ownerConfirmedAt: new Date().toISOString() } as object },

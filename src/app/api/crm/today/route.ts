@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
 import { loadAgentToday } from '@/lib/crm/agentToday';
-import { recordOwnerCallOutcome, type OwnerCallOutcome } from '@/lib/crm/intelligenceApproval';
+import { INTELLIGENCE_APPROVAL_KIND, recordOwnerCallOutcome, type OwnerCallOutcome } from '@/lib/crm/intelligenceApproval';
+import { canSeeOfferOwner, saveAgentOwnerPhone } from '@/lib/crm/ownerContactLookup';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +43,29 @@ export async function POST(req: Request) {
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 409 });
     return NextResponse.json({ success: true, ...result });
+  }
+
+  if (action === 'owner_phone') {
+    // Agent dopisuje numer właściciela (znalazł go w telefonie, w notatkach, u klienta) — od teraz jest na karcie.
+    const activityId = Number(body.approvalId);
+    const row = Number.isFinite(activityId)
+      ? await prisma.agencyClientActivity.findFirst({
+          where: { id: activityId, agencyUserId, kind: INTELLIGENCE_APPROVAL_KIND },
+          select: { offerId: true },
+        })
+      : null;
+    const offer = row?.offerId
+      ? await prisma.offer.findUnique({ where: { id: row.offerId }, select: { id: true, userId: true } })
+      : null;
+    if (!offer) return NextResponse.json({ error: 'Nie znaleziono oferty.' }, { status: 404 });
+    const actor = await prisma.user.findUnique({ where: { id: agencyUserId }, select: { role: true } });
+    const isAdmin = String(actor?.role || '').toUpperCase() === 'ADMIN';
+    if (!(await canSeeOfferOwner(agencyUserId, offer.userId, isAdmin))) {
+      return NextResponse.json({ error: 'To oferta innego agenta — numer dopisuje agent prowadzący.' }, { status: 403 });
+    }
+    const phone = await saveAgentOwnerPhone(offer, String(body.phone || ''));
+    if (!phone) return NextResponse.json({ error: 'Wpisz 9-cyfrowy numer telefonu.' }, { status: 400 });
+    return NextResponse.json({ success: true, phone });
   }
 
   return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400 });

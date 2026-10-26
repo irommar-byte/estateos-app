@@ -4,9 +4,9 @@ import { INTELLIGENCE_APPROVAL_KIND } from '@/lib/crm/intelligenceApproval';
 import { shapeAgencyClientMatchOffer } from '@/lib/crm/matchOfferShape';
 import { fetchUpcomingScheduleEvents } from '@/lib/crm/upcomingScheduleEvents';
 import { isSameWarsawDay } from '@/lib/crm/scheduleIdentity';
-import { getOfferPrivateNote } from '@/lib/offerPrivateNotes';
 import { JOURNEY_ACTIVITY } from '@/lib/crm/clientJourney';
-import { extractOwnerContact, type TodayOwnerContact } from '@/lib/crm/ownerContact';
+import { type TodayOwnerContact } from '@/lib/crm/ownerContact';
+import { resolveOwnerContact } from '@/lib/crm/ownerContactLookup';
 import { listPendingOutbox, type OutboxItem } from '@/lib/crm/clientOutbox';
 
 /**
@@ -144,6 +144,7 @@ const OFFER_FIELDS = {
   area: true,
   rooms: true,
   transactionType: true,
+  propertyType: true,
   images: true,
   userId: true,
   status: true,
@@ -190,6 +191,18 @@ export async function loadAgentToday(params: {
     ? await prisma.offer.findMany({ where: { id: { in: approvalOfferIds } }, select: OFFER_FIELDS })
     : [];
   const offerById = new Map(approvalOffers.map((offer) => [offer.id, offer]));
+  // Oferty zarchiwizowane przez nocne sprawdzanie portali (ogłoszenie zniknęło) — właściciel może nadal sprzedawać,
+  // więc karta „Zadzwoń do właściciela” zostaje. Ręcznie zarchiwizowane / sprzedane odpadają.
+  const archivedIds = approvalOffers.filter((offer) => offer.status === 'ARCHIVED').map((offer) => offer.id);
+  const sourceArchived = new Set<number>();
+  if (archivedIds.length) {
+    const rows = (await prisma.$queryRawUnsafe(
+      `SELECT offerId FROM OfferPrivateNote WHERE sourceArchivedAt IS NOT NULL AND offerId IN (${archivedIds.map(() => '?').join(',')})`,
+      ...archivedIds,
+    ).catch(() => [])) as Array<{ offerId: number }>;
+    for (const row of rows) sourceArchived.add(Number(row.offerId));
+  }
+  let keiLookups = 0;
 
   const ownerCalls: TodayOwnerCall[] = [];
   const approvals: TodayApproval[] = [];
@@ -197,8 +210,9 @@ export async function loadAgentToday(params: {
     const meta = record(row.metadata);
     const pick = record(meta.pick);
     const offer = row.offerId ? offerById.get(row.offerId) : undefined;
-    // Oferta już nieaktywna w bazie (sprzedana / zarchiwizowana) — nie zawracamy nią głowy.
-    if (offer && offer.status !== 'ACTIVE') continue;
+    // Oferta już nieaktywna w bazie (sprzedana / zarchiwizowana ręcznie) — nie zawracamy nią głowy.
+    const archivedBySourceCheck = Boolean(offer && offer.status === 'ARCHIVED' && sourceArchived.has(offer.id));
+    if (offer && offer.status !== 'ACTIVE' && !archivedBySourceCheck) continue;
     const base: TodayApproval = {
       approvalId: row.id,
       clientId: row.clientId,
@@ -218,15 +232,22 @@ export async function loadAgentToday(params: {
       clientWhy: pick.clientWhy ? String(pick.clientWhy) : null,
       createdAt: row.createdAt.toISOString(),
     };
-    const expired = Boolean(meta.sourceExpired || pick.sourceExpired);
+    const expired = Boolean(meta.sourceExpired || pick.sourceExpired || archivedBySourceCheck);
     if (!expired) {
       approvals.push(base);
       continue;
     }
     let owner: TodayOwnerContact | null = null;
-    // Kontakt do właściciela widzi tylko właściciel oferty w bazie albo administrator.
-    if (offer && (isAdmin || offer.userId === agencyUserId)) {
-      owner = extractOwnerContact(await getOfferPrivateNote(offer.id, offer.userId).catch(() => null));
+    if (offer) {
+      // Numer właściciela widzi agent prowadzący, jego biuro i administrator; pozostali dostają numer agenta prowadzącego.
+      // Brak numeru w imporcie → szukamy w KEI na żywo (maks. 2 oferty na jedno otwarcie ekranu, wynik zapamiętany).
+      owner = await resolveOwnerContact({
+        offer,
+        viewerId: agencyUserId,
+        isAdmin,
+        allowKeiLookup: keiLookups < 2,
+      }).catch(() => null);
+      if (owner && !owner.phone && !owner.listingAgent) keiLookups += 1;
     }
     const calls = Array.isArray(meta.ownerCalls) ? meta.ownerCalls : [];
     const last = record(calls[calls.length - 1]);

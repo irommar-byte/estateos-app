@@ -9,14 +9,40 @@ test('kontakt do właściciela: telefon z importu KEI ma pierwszeństwo', () => 
     importSnapshotJson: JSON.stringify({ contact: { keiPhone: '+48 501 234 567', directOwner: true } }),
     importExternalUrl: 'https://www.otodom.pl/pl/oferta/x',
   });
-  assert.equal(contact?.phone, '+48 501 234 567');
+  assert.equal(contact?.phone, '501 234 567');
+  assert.equal(contact?.phoneSource, 'kei');
+  assert.equal(contact?.advertiser, 'Właściciel prywatny');
+  assert.equal(contact?.sourceLabel, 'Otodom');
   assert.equal(contact?.directOwner, true);
   assert.equal(contact?.note, 'Pan Marek, dzwonić po 17');
 });
 
 test('kontakt do właściciela: numer wyciągnięty z notatki agenta', () => {
   const contact = extractOwnerContact({ userNote: 'Właścicielka: 601-222-333, prosi o SMS', importSnapshotJson: null });
-  assert.equal(contact?.phone, '601-222-333');
+  assert.equal(contact?.phone, '601 222 333');
+  assert.equal(contact?.phoneSource, 'note');
+});
+
+test('kontakt do właściciela: numer dopisany przez agenta wygrywa, zamaskowany nie jest numerem', () => {
+  const agent = extractOwnerContact({
+    importSnapshotJson: JSON.stringify({ contact: { agentPhone: '600100200', keiPhone: '501234567' } }),
+  });
+  assert.equal(agent?.phone, '600 100 200');
+  assert.equal(agent?.phoneSource, 'agent');
+  const masked = extractOwnerContact({
+    importSnapshotJson: JSON.stringify({ contactHints: { phone: '601 222 ...', agencyName: 'Dom Plus' }, contact: { advertiserType: 'agency' } }),
+  });
+  assert.equal(masked?.phone, null);
+  assert.equal(masked?.phoneMasked, '601 222 ...');
+  assert.equal(masked?.advertiser, 'Biuro: Dom Plus');
+});
+
+test('kontakt do właściciela: numer z treści ogłoszenia', () => {
+  const contact = extractOwnerContact({
+    importSnapshotJson: JSON.stringify({ descriptionOriginalText: 'Zapraszam do kontaktu: tel. 512-345-678, bez pośredników.' }),
+  });
+  assert.equal(contact?.phone, '512 345 678');
+  assert.equal(contact?.phoneSource, 'description');
 });
 
 test('kontakt do właściciela: brak danych = null', () => {

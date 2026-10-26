@@ -1,5 +1,8 @@
 import { prisma } from '@/lib/prisma';
 import { verifyPortalListingActive } from '@/lib/keiAmerPortalVerify';
+import { extractOwnerContact } from '@/lib/crm/ownerContact';
+import { lookupKeiOwnerPhone } from '@/lib/crm/ownerContactLookup';
+import { getOfferPrivateNote } from '@/lib/offerPrivateNotes';
 
 /**
  * Cykl życia ofert z importu KEI: raz na dobę sprawdzamy, czy ogłoszenie źródłowe nadal wisi.
@@ -11,6 +14,18 @@ const RECHECK_HOURS = 20;
 const ARCHIVE_AFTER_STREAK = 2;
 
 type Candidate = { offerId: number; userId: number; url: string; streak: number };
+
+/** Ogłoszenie właśnie zniknęło z portalu, a nie mamy numeru właściciela → pytamy KEI, póki jeszcze go trzyma. */
+async function secureOwnerPhone(offerId: number, userId: number): Promise<boolean> {
+  const contact = extractOwnerContact(await getOfferPrivateNote(offerId, userId).catch(() => null));
+  if (contact?.phone) return false;
+  const offer = await prisma.offer.findUnique({
+    where: { id: offerId },
+    select: { id: true, userId: true, propertyType: true, transactionType: true },
+  });
+  if (!offer) return false;
+  return Boolean(await lookupKeiOwnerPhone(offer, 15_000).catch(() => null));
+}
 
 export async function runImportSourceLifecycle(options?: { limit?: number; dryRun?: boolean }) {
   const limit = Math.min(500, Math.max(1, options?.limit ?? 150));
@@ -35,7 +50,8 @@ export async function runImportSourceLifecycle(options?: { limit?: number; dryRu
     streak: Number(row.streak || 0),
   }));
 
-  const summary = { checked: 0, active: 0, inactive: 0, unknown: 0, archived: 0, archivedOfferIds: [] as number[] };
+  const summary = { checked: 0, active: 0, inactive: 0, unknown: 0, archived: 0, archivedOfferIds: [] as number[], phonesSecured: 0 };
+  let phoneLookups = 0;
   let cursor = 0;
   const worker = async () => {
     while (cursor < candidates.length) {
@@ -72,6 +88,10 @@ export async function runImportSourceLifecycle(options?: { limit?: number; dryRu
         item.offerId,
         item.userId,
       );
+      if (!verdict.active && streak === 1 && phoneLookups < 20) {
+        phoneLookups += 1;
+        if (await secureOwnerPhone(item.offerId, item.userId)) summary.phonesSecured += 1;
+      }
       if (!verdict.active && streak >= ARCHIVE_AFTER_STREAK) {
         const updated = await prisma.offer.updateMany({
           where: { id: item.offerId, status: { in: ['ACTIVE', 'PENDING'] } },
