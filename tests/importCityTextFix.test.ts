@@ -24,7 +24,13 @@ test('dzielnica: numer KEI odrzucony, nazwa z adresu wygrywa', () => {
   assert.equal(draft.district, 'Praga-Południe');
 });
 
-test('pinezka poza Warszawą — nic nie zmieniamy', () => {
-  const draft = pinKeiDraftToWarsaw({ city: 'Mińsk Mazowiecki', district: null, lat: 52.18, lng: 21.57 }, { address: 'warszawa', district: '3' });
+test('bez adresu KEI i z pinezką poza Warszawą — nic nie zmieniamy', () => {
+  const draft = pinKeiDraftToWarsaw({ city: 'Mińsk Mazowiecki', district: null, lat: 52.18, lng: 21.57 }, { address: '', district: '3' });
   assert.equal(draft.city, 'Mińsk Mazowiecki');
+});
+
+test('adres KEI w Warszawie wygrywa nawet z pinezką w Białymstoku', () => {
+  const draft = pinKeiDraftToWarsaw({ city: 'Białystok', district: 'Centrum', lat: 53.132706, lng: 23.157434 }, { address: 'warszawa, wawer, międzylesie', district: '13' });
+  assert.equal(draft.city, 'Warszawa');
+  assert.equal(draft.district, 'Wawer');
 });

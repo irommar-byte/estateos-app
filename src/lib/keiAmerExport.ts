@@ -24,7 +24,8 @@ import {
 } from '@/lib/keiAmerListingState';
 import { importUrlLookupCandidates } from '@/lib/importDuplicateGuard';
 import { buildKeiImportContext, keiContextFromSelection, type KeiImportContext } from '@/lib/keiAmerListingExtras';
-import { pinKeiDraftToWarsaw } from '@/lib/keiAmerDistrict';
+import { isInsideWarsaw, pinKeiDraftToWarsaw } from '@/lib/keiAmerDistrict';
+import { geocodeWarsawPlace, keiNeighborhoodFromAddress } from '@/lib/keiWarsawGeocode';
 
 const DEFAULT_EXPORT_USER_ID = 55;
 const DEFAULT_COMMISSION_PERCENT = 2;
@@ -124,6 +125,24 @@ function alignDraftWithKeiExportFilters(
     transactionType: draft.transactionType || (transactionKind === 'rent' ? 'RENT' : 'SALE'),
     propertyType: draft.propertyType || (propertyKind === 'house' ? 'HOUSE' : 'FLAT'),
   };
+}
+
+/**
+ * KEI = Warszawa. Miasto i dzielnica z adresu KEI; gdy pinezka z portalu wypada poza Warszawą
+ * (portal bez współrzędnych + geokoder szukał ulicy w złym mieście), szukamy jej na nowo w Warszawie.
+ * Bez trafienia w Warszawie zostawiamy ofertę bez pinezki — tworzenie zgłosi błąd i spróbuje później.
+ */
+async function anchorKeiDraftInWarsaw(draft: OtodomImportDraft, kei: KeiImportContext | null | undefined): Promise<OtodomImportDraft> {
+  const pinned = pinKeiDraftToWarsaw(draft, kei);
+  if (pinned.city !== 'Warszawa' || isInsideWarsaw(pinned.lat, pinned.lng)) return pinned;
+  const hit = await geocodeWarsawPlace({
+    street: kei?.street || null,
+    neighborhood: keiNeighborhoodFromAddress(kei?.address),
+    district: pinned.district,
+  });
+  return hit
+    ? { ...pinned, lat: hit.lat, lng: hit.lng, street: kei?.street || pinned.street }
+    : { ...pinned, lat: null, lng: null };
 }
 
 const DEFAULT_MIN_IMAGES_TO_PUBLISH = 3;
@@ -443,7 +462,7 @@ export async function exportKeiListingsToEstateOS(options?: {
 
       // KEI to wyłącznie Warszawa: gdy pinezka jest w Warszawie, miasto i dzielnica idą z KEI, nie z tekstu ogłoszenia
       // (tekst potrafi wskazać np. Białystok — a AI pisałoby wtedy opis o złym mieście).
-      const draft = pinKeiDraftToWarsaw(
+      const draft = await anchorKeiDraftInWarsaw(
         alignDraftWithKeiExportFilters(
           await withTimeBudget(
             enrichOtodomImportDraft(await importOfferFromUrl(portalUrl)),

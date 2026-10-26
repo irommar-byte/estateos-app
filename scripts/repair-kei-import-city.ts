@@ -1,16 +1,20 @@
 import 'dotenv/config';
 import { prisma } from '@/lib/prisma';
-import { extractWarsawDistrictFromKeiAddress, isInsideWarsaw, resolveWarsawDistrict } from '@/lib/keiAmerDistrict';
+import { extractWarsawDistrictFromKeiAddress, isWarsawAddress, resolveWarsawDistrict } from '@/lib/keiAmerDistrict';
+import { geocodeWarsawPlace, keiNeighborhoodFromAddress } from '@/lib/keiWarsawGeocode';
 import { replaceWrongCityInText } from '@/lib/importCityTextFix';
 
 /**
  * Naprawa ofert z KEI zapisanych z błędnym miastem (np. „Białystok” zamiast „Warszawa”).
- * Poprawiamy tylko oferty, których pinezka leży w Warszawie: miasto, dzielnicę (z adresu KEI)
- * oraz nazwę złego miasta w tytule i opisie. Oferty z pinezką poza Warszawą tylko wypisujemy.
+ * Źródłem prawdy jest adres z KEI („warszawa, dzielnica, osiedle”) zapisany przy imporcie:
+ * poprawiamy miasto, dzielnicę, pinezkę (szukaną w granicach Warszawy) oraz złe miasto w tytule i opisie.
+ * Oferty bez adresu KEI w Warszawie albo bez pinezki w Warszawie tylko wypisujemy.
  *
  *   npx tsx scripts/repair-kei-import-city.ts          → tylko lista (nic nie zmienia)
  *   npx tsx scripts/repair-kei-import-city.ts --apply  → zapisuje poprawki
  */
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function main() {
   const apply = process.argv.includes('--apply');
   const rows = (await prisma.$queryRawUnsafe(
@@ -36,28 +40,42 @@ async function main() {
   }
 
   let fixed = 0;
-  const outside: string[] = [];
+  let exactPins = 0;
+  const skipped: string[] = [];
   for (const row of rows) {
-    if (!isInsideWarsaw(row.lat, row.lng)) {
-      outside.push(`#${row.id} ${row.city} (pinezka ${row.lat ?? '—'}, ${row.lng ?? '—'}) · ${String(row.title || '').slice(0, 60)}`);
-      continue;
-    }
-    let keiAddress = '';
-    let keiDistrict = '';
+    let kei: { address?: string; district?: string; street?: string } = {};
     try {
-      const snap = JSON.parse(row.snapshot || '{}') as { kei?: { address?: string; district?: string } };
-      keiAddress = String(snap.kei?.address || '');
-      keiDistrict = String(snap.kei?.district || '');
+      kei = (JSON.parse(row.snapshot || '{}') as { kei?: typeof kei }).kei || {};
     } catch {
       /* brak migawki */
     }
-    const district = resolveWarsawDistrict(extractWarsawDistrictFromKeiAddress(keiAddress), keiDistrict, row.district) || null;
+    const address = String(kei.address || '');
+    if (!address || !isWarsawAddress(address)) {
+      skipped.push(`#${row.id} ${row.city} · adres KEI: ${address || '(brak)'} · ${String(row.title || '').slice(0, 50)}`);
+      continue;
+    }
+
+    const district =
+      resolveWarsawDistrict(extractWarsawDistrictFromKeiAddress(address), kei.district, row.district) || null;
+    const pin = await geocodeWarsawPlace({
+      street: kei.street || null,
+      neighborhood: keiNeighborhoodFromAddress(address),
+      district,
+    });
+    await sleep(120);
+    if (!pin) {
+      skipped.push(`#${row.id} ${row.city} · adres KEI: ${address} · nie znaleziono miejsca w Warszawie`);
+      continue;
+    }
+
     const title = replaceWrongCityInText(String(row.title || ''), row.city);
     const description = row.description == null ? null : replaceWrongCityInText(row.description, row.city);
     const descriptionChanged = description !== row.description;
+    if (pin.exact) exactPins += 1;
 
     console.info(
-      `#${row.id} ${row.city} / ${row.district || '—'} → Warszawa / ${district || '(bez dzielnicy)'}\n` +
+      `#${row.id} ${row.city} → Warszawa / ${district || '(bez dzielnicy)'} · KEI: ${address}\n` +
+        `      pinezka: ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)} (${pin.exact ? 'ulica' : 'okolica'})\n` +
         `      tytuł: ${title === row.title ? '(bez zmian) ' : ''}${title.slice(0, 90)}` +
         (descriptionChanged ? '\n      opis: poprawiony' : ''),
     );
@@ -66,7 +84,11 @@ async function main() {
         where: { id: row.id },
         data: {
           city: 'Warszawa',
-          district,
+          ...(district ? { district } : {}),
+          lat: pin.lat,
+          lng: pin.lng,
+          isExactLocation: pin.exact,
+          street: kei.street || null,
           ...(title && title !== row.title ? { title } : {}),
           ...(descriptionChanged ? { description } : {}),
           updatedAt: new Date(),
@@ -76,14 +98,13 @@ async function main() {
     fixed += 1;
   }
 
-  if (outside.length) {
-    console.info(`\n[repair-kei-import-city] ${outside.length} ofert ma pinezkę poza Warszawą — NIE zmieniam ich:`);
-    for (const line of outside) console.info(`  ${line}`);
+  if (skipped.length) {
+    console.info(`\n[repair-kei-import-city] pominięte (${skipped.length}) — NIE zmieniam:`);
+    for (const line of skipped) console.info(`  ${line}`);
   }
   console.info(
-    apply
-      ? `\n[repair-kei-import-city] poprawiono ${fixed} ofert.`
-      : `\n[repair-kei-import-city] do poprawy: ${fixed} ofert — uruchom z --apply, żeby zapisać.`,
+    `\n[repair-kei-import-city] ${apply ? 'poprawiono' : 'do poprawy'}: ${fixed} ofert (pinezka na ulicy: ${exactPins}, w okolicy: ${fixed - exactPins})` +
+      (apply ? '.' : ' — uruchom z --apply, żeby zapisać.'),
   );
 }
 

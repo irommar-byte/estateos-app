@@ -83,14 +83,17 @@ export function resolveWarsawDistrict(...candidates: Array<string | null | undef
 }
 
 /**
- * Oferta z KEI, której pinezka leży w Warszawie, to zawsze Warszawa — niezależnie od tego,
+ * Oferta z KEI z adresem w Warszawie (albo z pinezką w Warszawie) to zawsze Warszawa — niezależnie od tego,
  * co tekst ogłoszenia sugeruje. Dzielnica: z adresu KEI, potem z portalu, potem z pola KEI.
+ * Pinezki nie rusza — tym zajmuje się anchorKeiDraftInWarsaw (geokodowanie).
  */
 export function pinKeiDraftToWarsaw<T extends { city: string; district?: string | null; lat: number | null; lng: number | null }>(
   draft: T,
   kei: { address?: string | null; district?: string | null } | null | undefined,
 ): T {
-  if (!isInsideWarsaw(draft.lat, draft.lng)) return draft;
+  // KEI mówi „warszawa” w adresie albo pinezka już leży w Warszawie → to Warszawa.
+  const keiSaysWarsaw = Boolean(kei?.address) && isWarsawAddress(kei?.address);
+  if (!keiSaysWarsaw && !isInsideWarsaw(draft.lat, draft.lng)) return draft;
   const district = resolveWarsawDistrict(
     extractWarsawDistrictFromKeiAddress(String(kei?.address || '')),
     draft.district,
