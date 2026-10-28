@@ -3,17 +3,29 @@ import {
   RCN_WFS_URL,
   WARSAW_TERYT_PREFIX,
 } from '@/lib/market/constants';
-import { parseRcnLocalesGml, wfsNumberMatched, wfsNumberReturned, type RcnLocalFeature } from '@/lib/market/rcnParse';
+import {
+  parseRcnGenericGml,
+  parseRcnLocalesGml,
+  wfsNumberMatched,
+  wfsNumberReturned,
+  type RcnLocalFeature,
+} from '@/lib/market/rcnParse';
+import { MARKET_KIND_LOCAL, type MarketKind } from '@/lib/market/marketKinds';
+
+const TYPE_NAMES: Record<MarketKind, string> = { LOCAL: 'ms:lokale', BUILDING: 'ms:budynki', PLOT: 'ms:dzialki' };
 
 const UA = 'EstateOS-Market/1.0 (rcn-ingest; estateos.pl)';
 
-function warsawResidentialFilter(sinceIsoDate: string) {
+/** Warszawa + data aktu; dla mieszkań dodatkowo tylko lokale mieszkalne (funkcję domów sprawdza jakość). */
+function warsawFilter(kind: MarketKind, sinceIsoDate: string) {
   return (
     `<Filter xmlns="http://www.opengis.net/fes/2.0"><And>` +
     `<PropertyIsLike wildCard="*" singleChar="." escapeChar="\\">` +
     `<ValueReference>teryt</ValueReference><Literal>${WARSAW_TERYT_PREFIX}*</Literal></PropertyIsLike>` +
-    `<PropertyIsEqualTo><ValueReference>lok_funkcja</ValueReference>` +
-    `<Literal>${MARKET_FUNCTION_RESIDENTIAL}</Literal></PropertyIsEqualTo>` +
+    (kind === MARKET_KIND_LOCAL
+      ? `<PropertyIsEqualTo><ValueReference>lok_funkcja</ValueReference>` +
+        `<Literal>${MARKET_FUNCTION_RESIDENTIAL}</Literal></PropertyIsEqualTo>`
+      : '') +
     `<PropertyIsGreaterThanOrEqualTo><ValueReference>dok_data</ValueReference>` +
     `<Literal>${sinceIsoDate}</Literal></PropertyIsGreaterThanOrEqualTo>` +
     `</And></Filter>`
@@ -41,38 +53,42 @@ async function wfsGet(params: Record<string, string>, attempt = 1): Promise<stri
   }
 }
 
-export async function countWarsawResidentialSince(sinceIsoDate: string): Promise<number | null> {
+export async function countWarsawSince(kind: MarketKind, sinceIsoDate: string): Promise<number | null> {
   const xml = await wfsGet({
     service: 'WFS',
     version: '2.0.0',
     request: 'GetFeature',
-    typeNames: 'ms:lokale',
+    typeNames: TYPE_NAMES[kind],
     resultType: 'hits',
-    FILTER: warsawResidentialFilter(sinceIsoDate),
+    FILTER: warsawFilter(kind, sinceIsoDate),
   });
   return wfsNumberMatched(xml);
 }
 
-export async function fetchWarsawResidentialPage(opts: {
+export async function fetchWarsawPage(opts: {
+  kind: MarketKind;
   sinceIsoDate: string;
   startIndex: number;
   count: number;
-}): Promise<{ features: RcnLocalFeature[]; returned: number }> {
+}): Promise<{ features: Array<RcnLocalFeature & { priceScope?: 'unit' | 'property' }>; returned: number; sample: string | null }> {
   const xml = await wfsGet({
     service: 'WFS',
     version: '2.0.0',
     request: 'GetFeature',
-    typeNames: 'ms:lokale',
+    typeNames: TYPE_NAMES[opts.kind],
     count: String(opts.count),
     startIndex: String(opts.startIndex),
-    FILTER: warsawResidentialFilter(opts.sinceIsoDate),
+    FILTER: warsawFilter(opts.kind, opts.sinceIsoDate),
     SORTBY: 'dok_data D',
   });
   if (xml.includes('Exception')) {
-    throw new Error(`WFS exception: ${xml.slice(0, 400)}`);
+    throw new Error(`WFS exception (${TYPE_NAMES[opts.kind]}): ${xml.slice(0, 400)}`);
   }
+  const features = opts.kind === MARKET_KIND_LOCAL ? parseRcnLocalesGml(xml) : parseRcnGenericGml(xml, opts.kind);
   return {
-    features: parseRcnLocalesGml(xml),
+    features,
     returned: wfsNumberReturned(xml),
+    // Pierwszy obiekt strony — do logu, żeby było widać, jakie pola zwraca warstwa.
+    sample: opts.startIndex === 0 ? (xml.match(/<wfs:member>[\s\S]*?<\/wfs:member>/)?.[0] || null) : null,
   };
 }

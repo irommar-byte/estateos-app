@@ -1,3 +1,5 @@
+import type { MarketKind } from '@/lib/market/marketKinds';
+
 export type MarketTypeFilter = 'all' | 'pierwotny' | 'wtorny';
 
 export type ValuationPurpose = 'crm' | 'listing' | 'consumer' | 'hub' | 'status';
@@ -15,6 +17,8 @@ export type ValuationSubject = {
   rooms?: number | null;
   floor?: number | null;
   marketType?: MarketTypeFilter;
+  /** Mieszkanie (domyślnie), dom albo działka — porównujemy tylko z aktami tego samego rodzaju. */
+  kind?: MarketKind;
 };
 
 export type MarketComp = {
@@ -148,6 +152,9 @@ export type PricePulseTrend = {
 
 export type PricePulsePayload = {
   ok: true;
+  kind: MarketKind;
+  /** Jednostka ceny: za m² użytkowy (mieszkania, domy) albo za m² gruntu (działki). */
+  unit: string;
   city: string;
   source: string;
   disclaimer: string;

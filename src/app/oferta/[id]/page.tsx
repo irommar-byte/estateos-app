@@ -1176,6 +1176,7 @@ function OfferDetails({
                     district={districtSpecified ? districtRaw : null}
                     address={[streetRaw, cityRaw].filter(Boolean).join(", ")}
                     price={plnResolved?.displayAmount || listingPrice.plnAmount || listingPrice.amount || null}
+                    propertyType={offer.propertyType ? String(offer.propertyType) : null}
                     hasMarketPro={Boolean(isPro)}
                     teaserHref={
                       currentUser &&

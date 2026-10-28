@@ -134,3 +134,81 @@ export function wfsNumberMatched(xml: string): number | null {
   const m = xml.match(/numberMatched="(\d+)"/);
   return m ? Number(m[1]) : null;
 }
+
+/** Wszystkie proste pola <ms:nazwa>wartość</ms:nazwa> obiektu WFS. */
+export function rcnTags(block: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of block.matchAll(/<ms:([a-z0-9_]+)>([^<]*)<\/ms:\1>/gi)) {
+    const key = m[1].toLowerCase();
+    const value = m[2].trim();
+    if (value && !(key in out)) out[key] = value;
+  }
+  return out;
+}
+
+function pickTag(tags: Record<string, string>, patterns: RegExp[]): { key: string; value: string } | null {
+  for (const pattern of patterns) {
+    const key = Object.keys(tags).find((k) => pattern.test(k));
+    if (key) return { key, value: tags[key] };
+  }
+  return null;
+}
+
+/**
+ * Budynki i działki z RCN. Nazwy pól różnią się między warstwami (bud_*, dzi_*), więc dobieramy je
+ * po wzorcu: powierzchnia (…_pow…), cena (…_cena_brutto, a gdy brak — cena całej nieruchomości),
+ * funkcja/rodzaj. Powierzchnia działki bywa w hektarach — przeliczamy na m².
+ */
+export function parseRcnGenericGml(xml: string, kind: 'BUILDING' | 'PLOT'): Array<RcnLocalFeature & { priceScope: 'unit' | 'property' }> {
+  const prefix = kind === 'BUILDING' ? 'bud' : 'dzi';
+  const members = xml.match(/<wfs:member>[\s\S]*?<\/wfs:member>/g) || [];
+  const out: Array<RcnLocalFeature & { priceScope: 'unit' | 'property' }> = [];
+  for (const member of members) {
+    const gmlId = member.match(/gml:id="([^"]+)"/)?.[1] || '';
+    if (!gmlId) continue;
+    const tags = rcnTags(member);
+    const pos =
+      member.match(/<gml:pos>([^<]+)<\/gml:pos>/)?.[1] ||
+      (member.match(/<gml:posList[^>]*>([^<]+)<\/gml:posList>/)?.[1] || '').trim().split(/\s+/).slice(0, 2).join(' ');
+    const coords = parseCs92Pos(pos);
+    const areaTag =
+      kind === 'BUILDING'
+        ? pickTag(tags, [new RegExp(`^${prefix}_pow_uzyt`), new RegExp(`^${prefix}_pow`)])
+        : pickTag(tags, [new RegExp(`^${prefix}_pow`), /pow_ewid/]);
+    let areaM2 = areaTag ? num(areaTag.value) : null;
+    if (kind === 'PLOT' && areaM2 != null && (/_ha$|_ha_/.test(areaTag!.key) || areaM2 < 30)) areaM2 = areaM2 * 10_000;
+    const unitPrice = pickTag(tags, [new RegExp(`^${prefix}_cena_brutto`), new RegExp(`^${prefix}_cena`)]);
+    const propertyPrice = pickTag(tags, [/^nier_cena_brutto/, /^tran_cena_brutto/, /cena_brutto/]);
+    const addressRaw = pickTag(tags, [new RegExp(`^${prefix}_adres`), /_adres$/, /adres/])?.value || '';
+    const parsedAddr = parseRcnAddress(addressRaw);
+    const share = tags.nier_udzial || '';
+    out.push({
+      gmlId,
+      sourceIip: tags.tran_lokalny_id_iip || gmlId,
+      unitId: pickTag(tags, [new RegExp(`^${prefix}_id`), /_id_iip$/])?.value || '',
+      teryt: tags.teryt || '',
+      functionCode:
+        pickTag(tags, [new RegExp(`^${prefix}_funkcja`), new RegExp(`^${prefix}_rodzaj`), new RegExp(`^${prefix}_przezn`), /funkcja/])?.value || '',
+      rooms: num(tags.bud_liczba_izb || ''),
+      floor: null,
+      areaM2,
+      ancillaryM2: null,
+      priceGross: num(unitPrice?.value || '') ?? num(propertyPrice?.value || ''),
+      priceScope: unitPrice ? 'unit' : 'property',
+      vatAmount: num(tags[`${prefix}_vat`] || ''),
+      deedAt: parseDeedAt(tags.dok_data || ''),
+      marketType: tags.tran_rodzaj_rynku || null,
+      transactionKind: tags.tran_rodzaj_trans || null,
+      share,
+      shareRatio: parseShareRatio(share),
+      addressRaw,
+      city: parsedAddr.city,
+      street: parsedAddr.street,
+      streetNo: parsedAddr.streetNo,
+      formattedAddress: parsedAddr.formatted,
+      lat: coords?.lat ?? null,
+      lng: coords?.lng ?? null,
+    });
+  }
+  return out;
+}

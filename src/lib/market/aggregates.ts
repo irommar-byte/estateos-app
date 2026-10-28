@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { MARKET_KIND_LOCAL, WARSAW_CITY } from '@/lib/market/constants';
+import { MARKET_KINDS, type MarketKind } from '@/lib/market/marketKinds';
 import { WARSAW_DISTRICT_CENTROIDS } from '@/lib/market/warsawDistricts';
 import { rcnLagNote, resolveRcnAsOfDate, windowStart } from '@/lib/market/asOf';
 import type { MarketAreaStatView, MarketIntelligencePayload } from '@/lib/market/types';
@@ -20,11 +21,11 @@ function mean(values: number[]) {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-async function ppsmFor(city: string, district: string | null, since: Date, until?: Date) {
+async function ppsmFor(kind: MarketKind, city: string, district: string | null, since: Date, until?: Date) {
   const rows = await prisma.marketTransaction.findMany({
     where: {
       city,
-      kind: MARKET_KIND_LOCAL,
+      kind,
       qualityOk: true,
       ...(district ? { district } : {}),
       deedAt: until ? { gte: since, lte: until } : { gte: since },
@@ -41,52 +42,54 @@ export async function recomputeWarsawAreaStats() {
   const now = new Date();
   const asOf = await resolveRcnAsOfDate(city);
 
-  for (const periodDays of PERIODS) {
-    const since = windowStart(asOf, periodDays);
-    const prevSince = windowStart(since, periodDays);
-    for (const district of districts) {
-      const values = await ppsmFor(city, district || null, since, asOf);
-      const prev = await ppsmFor(city, district || null, prevSince, since);
-      const median = percentile(values, 0.5);
-      const prevMedian = percentile(prev, 0.5);
-      const yoy =
-        median != null && prevMedian != null && prevMedian > 0
-          ? ((median - prevMedian) / prevMedian) * 100
-          : null;
-      await prisma.marketAreaStat.upsert({
-        where: {
-          city_district_periodDays_kind_marketType: {
+  for (const kind of MARKET_KINDS) {
+    for (const periodDays of PERIODS) {
+      const since = windowStart(asOf, periodDays);
+      const prevSince = windowStart(since, periodDays);
+      for (const district of districts) {
+        const values = await ppsmFor(kind, city, district || null, since, asOf);
+        const prev = await ppsmFor(kind, city, district || null, prevSince, since);
+        const median = percentile(values, 0.5);
+        const prevMedian = percentile(prev, 0.5);
+        const yoy =
+          median != null && prevMedian != null && prevMedian > 0
+            ? ((median - prevMedian) / prevMedian) * 100
+            : null;
+        await prisma.marketAreaStat.upsert({
+          where: {
+            city_district_periodDays_kind_marketType: {
+              city,
+              district,
+              periodDays,
+              kind,
+              marketType: 'all',
+            },
+          },
+          create: {
             city,
             district,
             periodDays,
-            kind: MARKET_KIND_LOCAL,
+            kind,
             marketType: 'all',
+            txnCount: values.length,
+            avgPpsm: mean(values),
+            medianPpsm: median,
+            p25Ppsm: percentile(values, 0.25),
+            p75Ppsm: percentile(values, 0.75),
+            yoyChangePct: yoy,
+            computedAt: now,
           },
-        },
-        create: {
-          city,
-          district,
-          periodDays,
-          kind: MARKET_KIND_LOCAL,
-          marketType: 'all',
-          txnCount: values.length,
-          avgPpsm: mean(values),
-          medianPpsm: median,
-          p25Ppsm: percentile(values, 0.25),
-          p75Ppsm: percentile(values, 0.75),
-          yoyChangePct: yoy,
-          computedAt: now,
-        },
-        update: {
-          txnCount: values.length,
-          avgPpsm: mean(values),
-          medianPpsm: median,
-          p25Ppsm: percentile(values, 0.25),
-          p75Ppsm: percentile(values, 0.75),
-          yoyChangePct: yoy,
-          computedAt: now,
-        },
-      });
+          update: {
+            txnCount: values.length,
+            avgPpsm: mean(values),
+            medianPpsm: median,
+            p25Ppsm: percentile(values, 0.25),
+            p75Ppsm: percentile(values, 0.75),
+            yoyChangePct: yoy,
+            computedAt: now,
+          },
+        });
+      }
     }
   }
 }

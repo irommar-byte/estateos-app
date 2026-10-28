@@ -307,11 +307,20 @@ export function pickBestGeocodeFeature(
 export function mapboxForwardGeocodeUrl(
   query: string,
   token: string,
-  options?: { limit?: number; autocomplete?: boolean; cityHint?: string; types?: string },
+  options?: {
+    limit?: number;
+    autocomplete?: boolean;
+    cityHint?: string;
+    types?: string;
+    /** Kraj, gdy z zapytania nie da się go wywnioskować (np. „Marszałkowska 10”). */
+    defaultCountry?: string;
+    /** Podbija wyniki blisko tego punktu (pinezka / ostatnia lokalizacja). */
+    proximity?: { lat: number; lng: number } | null;
+  },
 ): string {
   const limit = options?.limit ?? 6;
   const autocomplete = options?.autocomplete ?? true;
-  const countryIso = inferCountryIsoFromQuery(query, options?.cityHint);
+  const countryIso = inferCountryIsoFromQuery(query, options?.cityHint) || options?.defaultCountry || null;
   const params = new URLSearchParams({
     access_token: token,
     language: "pl",
@@ -321,6 +330,9 @@ export function mapboxForwardGeocodeUrl(
   });
   if (countryIso) {
     params.set("country", countryIso.toLowerCase());
+  }
+  if (options?.proximity && Number.isFinite(options.proximity.lat) && Number.isFinite(options.proximity.lng)) {
+    params.set("proximity", `${options.proximity.lng},${options.proximity.lat}`);
   }
   return `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?${params.toString()}`;
 }

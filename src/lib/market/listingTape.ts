@@ -6,13 +6,8 @@ import { canShowOfferOnPublicMarket } from '@/lib/offerMarketVisibility';
 import { activePublicationOfferIds } from '@/lib/offerPublication';
 import { legalStatusOverridesForOffers } from '@/lib/offerLegalStatusOverlay';
 import { shapePublicListOffer, type PublicListOffer } from '@/lib/offers/publicListShape';
-import {
-  MARKET_KIND_LOCAL,
-  QUALITY_MAX_PPSM,
-  QUALITY_MIN_PPSM,
-  RCN_SOURCE_LABEL,
-  WARSAW_CITY,
-} from '@/lib/market/constants';
+import { MARKET_KIND_LOCAL, RCN_SOURCE_LABEL, WARSAW_CITY } from '@/lib/market/constants';
+import { KIND_QUALITY } from '@/lib/market/marketKinds';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
 import { formatTapeDelta, marketPriceScore } from '@/lib/market/format';
 import { resolveWarsawDistrict } from '@/lib/market/warsawDistricts';
@@ -245,7 +240,7 @@ export async function buildListingTape(opts?: {
     const price = Number(offer.pricePln ?? offer.price ?? 0);
     if (!Number.isFinite(area) || area < 15 || !Number.isFinite(price) || price < 80_000) continue;
     const listingPpsm = price / area;
-    if (listingPpsm < QUALITY_MIN_PPSM || listingPpsm > QUALITY_MAX_PPSM) continue;
+    if (listingPpsm < KIND_QUALITY.LOCAL.minPpsm || listingPpsm > KIND_QUALITY.LOCAL.maxPpsm) continue;
     const district =
       resolveWarsawDistrict({
         street: offer.street,

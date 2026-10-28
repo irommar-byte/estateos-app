@@ -5,14 +5,13 @@ import {
   COMPS_TARGET_COUNT,
   DEFAULT_COMPS_MONTHS,
   FALLBACK_COMPS_MONTHS,
-  AREA_TOLERANCE,
   ROOMS_TOLERANCE,
-  MARKET_KIND_LOCAL,
   RCN_ATTRIBUTION,
   RCN_SOURCE_LABEL,
   WARSAW_CITY,
 } from '@/lib/market/constants';
 import { prisma } from '@/lib/prisma';
+import { KIND_LABEL, KIND_QUALITY, MARKET_KIND_LOCAL, type MarketKind } from '@/lib/market/marketKinds';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
 import { marketPriceScore } from '@/lib/market/format';
 import { sortCompsBySimilarity } from '@/lib/market/compSimilarity';
@@ -55,16 +54,19 @@ function bboxFor(lat: number, lng: number, radiusM: number) {
   };
 }
 
+function kindOf(subject: ValuationSubject): MarketKind {
+  return subject.kind || MARKET_KIND_LOCAL;
+}
+
 function similarEnough(
   row: { areaM2: number | null; rooms: number | null },
   subject: ValuationSubject,
 ) {
   if (row.areaM2 == null) return false;
-  const areaOk =
-    row.areaM2 >= subject.area * (1 - AREA_TOLERANCE) &&
-    row.areaM2 <= subject.area * (1 + AREA_TOLERANCE);
+  const tolerance = KIND_QUALITY[kindOf(subject)].areaTolerance;
+  const areaOk = row.areaM2 >= subject.area * (1 - tolerance) && row.areaM2 <= subject.area * (1 + tolerance);
   if (!areaOk) return false;
-  if (subject.rooms == null || row.rooms == null) return true;
+  if (kindOf(subject) === 'PLOT' || subject.rooms == null || row.rooms == null) return true;
   return Math.abs(row.rooms - subject.rooms) <= ROOMS_TOLERANCE;
 }
 
@@ -120,7 +122,7 @@ async function loadCandidates(
     subject.marketType && subject.marketType !== 'all' ? subject.marketType : undefined;
   const rows = await prisma.marketTransaction.findMany({
     where: {
-      kind: MARKET_KIND_LOCAL,
+      kind: kindOf(subject),
       qualityOk: true,
       city: subject.city || WARSAW_CITY,
       deedAt: { gte: since },
@@ -177,7 +179,7 @@ function toComps(rows: Candidate[], subject: ValuationSubject): MarketComp[] {
 async function districtOrCityMedian(subject: ValuationSubject, since: Date) {
   const city = subject.city || WARSAW_CITY;
   const districtWhere = {
-    kind: MARKET_KIND_LOCAL,
+    kind: kindOf(subject),
     qualityOk: true,
     city,
     deedAt: { gte: since },
@@ -220,7 +222,7 @@ export async function valueProperty(
   }
 
   const coverageCount = await prisma.marketTransaction.count({
-    where: { city: subject.city || WARSAW_CITY, qualityOk: true },
+    where: { city: subject.city || WARSAW_CITY, qualityOk: true, kind: kindOf(subject) },
   });
   const lastIngest = await prisma.marketIngestRun.findFirst({
     where: { status: 'SUCCESS' },
@@ -232,8 +234,7 @@ export async function valueProperty(
     return {
       ok: false,
       code: 'SYNCING',
-      message:
-        'EstateOS™ Market synchronizuje Rejestr Cen Nieruchomości dla Warszawy. Wycena z aktów będzie dostępna po pierwszym imporcie.',
+      message: `EstateOS™ Market synchronizuje Rejestr Cen Nieruchomości (${KIND_LABEL[kindOf(subject)].many}) dla Warszawy. Wycena z aktów będzie dostępna po imporcie.`,
     };
   }
 

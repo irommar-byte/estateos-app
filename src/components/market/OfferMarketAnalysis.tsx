@@ -13,6 +13,7 @@ type Props = {
   district?: string | null;
   address?: string | null;
   price?: number | null;
+  propertyType?: string | null;
   hasMarketPro?: boolean;
   teaserHref?: string;
   teaserCta?: string;

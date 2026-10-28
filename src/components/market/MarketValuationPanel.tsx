@@ -25,6 +25,8 @@ type Props = {
   district?: string | null;
   address?: string | null;
   listingPrice?: number | null;
+  /** FLAT / HOUSE / PLOT — porównanie tylko z aktami tego samego rodzaju. */
+  propertyType?: string | null;
   purpose?: "crm" | "listing" | "consumer" | "hub";
   onApply?: (price: number) => void;
   applyLabel?: string;
@@ -135,6 +137,7 @@ export default function MarketValuationPanel({
   district,
   address,
   listingPrice,
+  propertyType,
   purpose = "crm",
   onApply,
   applyLabel = "Zastosuj rekomendację",
@@ -201,6 +204,7 @@ export default function MarketValuationPanel({
           address,
           listingPrice,
           purpose,
+          propertyType,
         }),
       });
       const json = await res.json();
@@ -216,7 +220,7 @@ export default function MarketValuationPanel({
     } finally {
       setLoading(false);
     }
-  }, [lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose]);
+  }, [lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose, propertyType]);
 
   useEffect(() => {
     const t = setTimeout(() => void load(), 400);
@@ -224,6 +228,7 @@ export default function MarketValuationPanel({
   }, [load]);
 
   const reportBody = () => ({
+    propertyType,
     lat,
     lng,
     area,

@@ -99,6 +99,7 @@ import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { qrSvg } from '@/lib/qrSvg';
 import { ensureClientInvite, inviteLink } from '@/lib/crm/clientInviteCode';
 import { offerReach } from '@/lib/crm/facebookPromotion';
+import { loadBuyerPortalDeals } from '@/lib/crm/offerBuyerDealSteps';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -707,6 +708,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
         : null,
       searchPolygon: parseSearchPolygon(client.buyerPreference?.searchPolygon),
       seller,
+      buyerDeals: client.type === 'BUYER' ? await loadBuyerPortalDeals(client.id).catch(() => []) : [],
       documents,
       documentsSummary: documentsSummary(documents),
       review: lastReview

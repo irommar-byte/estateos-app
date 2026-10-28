@@ -1,15 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { canonicalizeCity } from '@/lib/location/locationCatalog';
-import {
-  MARKET_KIND_LOCAL,
-  QUALITY_MAX_PPSM,
-  QUALITY_MIN_AREA,
-  QUALITY_MIN_PPSM,
-  QUALITY_MIN_PRICE,
-  RCN_ATTRIBUTION,
-  RCN_SOURCE_LABEL,
-  WARSAW_CITY,
-} from '@/lib/market/constants';
+import { RCN_ATTRIBUTION, RCN_SOURCE_LABEL, WARSAW_CITY } from '@/lib/market/constants';
+import { KIND_LABEL, KIND_QUALITY, MARKET_KIND_LOCAL, marketKindForPropertyType, type MarketKind } from '@/lib/market/marketKinds';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
 import { formatPlDate, resolveRcnAsOfDate } from '@/lib/market/asOf';
 import {
@@ -28,7 +20,6 @@ import {
   collect,
   daysInMonth,
   isResidentialFlatDeed,
-  isResidentialFlatListing,
   lastNMonths,
   median,
   pctChange,
@@ -52,10 +43,20 @@ const LOOKBACK_DAYS = 180;
 const TREND_LOOKBACK_DAYS = 800;
 const SERIES_DAYS = 90;
 const ROLLING_DAYS = 7;
-const MIN_DISTRICT_LISTINGS = 4;
 const SHARE_TITLE = /udzia[łl]/i;
 
-const cache: { at: number; payload: PricePulsePayload | null } = { at: 0, payload: null };
+const cache = new Map<MarketKind, { at: number; payload: PricePulsePayload }>();
+
+/**
+ * Domów i działek sprzedaje się w Warszawie kilkanaście razy mniej niż mieszkań — progi liczby aktów
+ * skalujemy, żeby puls nie był pusty, ale też nie pokazywał przypadkowych skoków z kilku transakcji.
+ */
+type Thresholds = { day: number; week: number; month: number; year: number; window: number; listings: number; districtListings: number };
+const THRESHOLDS: Record<MarketKind, Thresholds> = {
+  LOCAL: { day: MIN_DAY_DEEDS, week: MIN_WEEK_DEEDS, month: MIN_MONTH_DEEDS, year: MIN_YEAR_DEEDS, window: MIN_WINDOW_DEEDS, listings: MIN_WINDOW_LISTINGS, districtListings: 4 },
+  BUILDING: { day: 4, week: 6, month: 12, year: 60, window: 12, listings: 3, districtListings: 2 },
+  PLOT: { day: 4, week: 6, month: 12, year: 60, window: 12, listings: 3, districtListings: 2 },
+};
 
 function dayKey(value: Date): string {
   return value.toLocaleDateString('sv-SE', { timeZone: 'Europe/Warsaw' });
@@ -91,8 +92,8 @@ function directionOf(listingChangePct: number | null): PricePulseDirection {
   return 'stable';
 }
 
-function pulseLagNote(asOf: Date) {
-  return `Akty RCN dla Warszawy są kompletne do ${formatPlDate(asOf)}. Procent to zmiana mediany zł/m² mieszkań (lokale mieszkalne, bez domów) w ostatnim pełnym miesiącu względem poprzedniego.`;
+function pulseLagNote(asOf: Date, kind: MarketKind) {
+  return `Akty RCN dla Warszawy są kompletne do ${formatPlDate(asOf)}. Procent to zmiana mediany ceny transakcyjnej (${KIND_LABEL[kind].unit}, ${KIND_LABEL[kind].many}) w ostatnim pełnym miesiącu względem poprzedniego.`;
 }
 
 function pushPpsm(map: Map<string, number[]>, key: string, ppsm: number) {
@@ -159,6 +160,7 @@ function windowStats(
   listingDays: string[],
   deedDays: string[],
   size: number,
+  min: Thresholds,
 ): PricePulseWindow {
   const listingCurrent = listingDays.slice(-size);
   const listingPrevious = listingDays.slice(Math.max(0, listingDays.length - size * 2), listingDays.length - size);
@@ -168,9 +170,9 @@ function windowStats(
   const prevListingValues = collect(listings, listingPrevious);
   const deedValues = collect(deeds, deedCurrent);
   const prevDeedValues = collect(deeds, deedPrevious);
-  const listingPpsm = listingValues.length >= MIN_WINDOW_LISTINGS ? median(listingValues) : null;
-  const prevListing = prevListingValues.length >= MIN_WINDOW_LISTINGS ? median(prevListingValues) : null;
-  const deedMin = size <= 7 ? MIN_WEEK_DEEDS : MIN_WINDOW_DEEDS;
+  const listingPpsm = listingValues.length >= min.listings ? median(listingValues) : null;
+  const prevListing = prevListingValues.length >= min.listings ? median(prevListingValues) : null;
+  const deedMin = size <= 7 ? min.week : min.window;
   const deedPpsm = deedValues.length >= deedMin ? median(deedValues) : null;
   const prevDeed = prevDeedValues.length >= deedMin ? median(prevDeedValues) : null;
   const listingMaxAbs = size <= 7 ? 12 : size <= 30 ? 10 : 15;
@@ -187,9 +189,13 @@ function windowStats(
   };
 }
 
-export async function buildPricePulse(): Promise<PricePulsePayload> {
+export async function buildPricePulse(kind: MarketKind = MARKET_KIND_LOCAL): Promise<PricePulsePayload> {
   const now = Date.now();
-  if (cache.payload && now - cache.at < CACHE_MS) return cache.payload;
+  const cached = cache.get(kind);
+  if (cached && now - cached.at < CACHE_MS) return cached.payload;
+  const quality = KIND_QUALITY[kind];
+  const min = THRESHOLDS[kind];
+  const listingType = kind === 'BUILDING' ? 'HOUSE' : kind === 'PLOT' ? 'PLOT' : 'FLAT';
 
   await ensureMarketTables();
 
@@ -207,7 +213,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     prisma.marketTransaction.findMany({
       where: {
         city: WARSAW_CITY,
-        kind: MARKET_KIND_LOCAL,
+        kind,
         qualityOk: true,
         deedAt: { gte: deedSince, lte: asOf },
         pricePerM2: { not: null },
@@ -223,16 +229,16 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     prisma.offer.findMany({
       where: {
         transactionType: 'SELL',
-        propertyType: 'FLAT',
+        propertyType: listingType,
         status: { in: ['ACTIVE', 'SOLD', 'ARCHIVED', 'IN_DEAL'] },
         createdAt: { gte: listingSince },
-        area: { gte: QUALITY_MIN_AREA },
       },
       select: {
         title: true,
         price: true,
         pricePln: true,
         area: true,
+        plotArea: true,
         city: true,
         district: true,
         street: true,
@@ -246,7 +252,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
       where: {
         city: WARSAW_CITY,
         periodDays: 365,
-        kind: MARKET_KIND_LOCAL,
+        kind,
         marketType: 'all',
         medianPpsm: { not: null },
       },
@@ -260,23 +266,24 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
 
   for (const row of txns) {
     if (!row.deedAt || row.pricePerM2 == null) continue;
-    if (!isResidentialFlatDeed(row)) continue;
+    if (kind === MARKET_KIND_LOCAL && !isResidentialFlatDeed(row)) continue;
     const ppsm = Number(row.pricePerM2);
-    if (!Number.isFinite(ppsm) || ppsm < QUALITY_MIN_PPSM || ppsm > QUALITY_MAX_PPSM) continue;
+    if (!Number.isFinite(ppsm) || ppsm < quality.minPpsm || ppsm > quality.maxPpsm) continue;
     pushPpsm(deedsByDay, dayKey(row.deedAt), ppsm);
   }
 
   for (const offer of offers) {
-    if (!isResidentialFlatListing(offer.propertyType)) continue;
+    if (marketKindForPropertyType(offer.propertyType) !== kind) continue;
     if (SHARE_TITLE.test(String(offer.title || ''))) continue;
     if (canonicalizeCity(offer.city) !== WARSAW_CITY) continue;
-    const area = Number(offer.area);
+    // Działka: cena za m² gruntu; dom i mieszkanie: za m² powierzchni użytkowej.
+    const area = Number(kind === 'PLOT' ? offer.plotArea || offer.area : offer.area);
     const price = Number(offer.pricePln ?? offer.price ?? 0);
-    if (!Number.isFinite(area) || area < QUALITY_MIN_AREA || !Number.isFinite(price) || price < QUALITY_MIN_PRICE) {
+    if (!Number.isFinite(area) || area < quality.minArea || !Number.isFinite(price) || price < quality.minPrice) {
       continue;
     }
     const ppsm = price / area;
-    if (ppsm < QUALITY_MIN_PPSM || ppsm > QUALITY_MAX_PPSM) continue;
+    if (ppsm < quality.minPpsm || ppsm > quality.maxPpsm) continue;
     pushPpsm(listingsByDay, dayKey(offer.createdAt), ppsm);
     const district =
       resolveWarsawDistrict({ street: offer.street, lat: offer.lat, lng: offer.lng }) ||
@@ -284,10 +291,10 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     if (district) pushPpsm(listingsByDistrict, district, ppsm);
   }
 
-  const dayTrend = adjacentWindowChange(deedsByDay, asOfDay, 1, MIN_DAY_DEEDS, MAX_ABS_DAY_PCT);
-  const weekTrend = adjacentWindowChange(deedsByDay, asOfDay, 7, MIN_WEEK_DEEDS, MAX_ABS_WEEK_PCT);
-  const monthTrend = calendarMonthChange(deedsByDay, asOfDay, MIN_MONTH_DEEDS, MAX_ABS_MONTH_PCT);
-  const yearTrend = trailingMonthsChange(deedsByDay, asOfDay, 12, MIN_YEAR_DEEDS, MAX_ABS_YEAR_PCT);
+  const dayTrend = adjacentWindowChange(deedsByDay, asOfDay, 1, min.day, MAX_ABS_DAY_PCT);
+  const weekTrend = adjacentWindowChange(deedsByDay, asOfDay, 7, min.week, MAX_ABS_WEEK_PCT);
+  const monthTrend = calendarMonthChange(deedsByDay, asOfDay, min.month, MAX_ABS_MONTH_PCT);
+  const yearTrend = trailingMonthsChange(deedsByDay, asOfDay, 12, min.year, MAX_ABS_YEAR_PCT);
 
   const trends: PricePulsePayload['trends'] = {
     day: {
@@ -296,7 +303,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
       currentPpsm: dayTrend.currentPpsm,
       previousPpsm: dayTrend.previousPpsm,
       count: dayTrend.count,
-      points: bucketSeries(deedsByDay, trendDays, (day) => day, 21, MIN_DAY_DEEDS).map((row) => ({
+      points: bucketSeries(deedsByDay, trendDays, (day) => day, 21, min.day).map((row) => ({
         key: row.key,
         ppsm: row.ppsm,
       })),
@@ -307,7 +314,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
       currentPpsm: weekTrend.currentPpsm,
       previousPpsm: weekTrend.previousPpsm,
       count: weekTrend.count,
-      points: bucketSeries(deedsByDay, trendDays, isoWeekKey, 12, MIN_WEEK_DEEDS).map((row) => ({
+      points: bucketSeries(deedsByDay, trendDays, isoWeekKey, 12, min.week).map((row) => ({
         key: row.key,
         ppsm: row.ppsm,
       })),
@@ -318,7 +325,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
       currentPpsm: monthTrend.currentPpsm,
       previousPpsm: monthTrend.previousPpsm,
       count: monthTrend.count,
-      points: monthPoints(deedsByDay, asOfDay, 12, MIN_MONTH_DEEDS),
+      points: monthPoints(deedsByDay, asOfDay, 12, min.month),
     },
     year: {
       key: 'year',
@@ -326,7 +333,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
       currentPpsm: yearTrend.currentPpsm,
       previousPpsm: yearTrend.previousPpsm,
       count: yearTrend.count,
-      points: monthPoints(deedsByDay, asOfDay, 24, MIN_MONTH_DEEDS),
+      points: monthPoints(deedsByDay, asOfDay, 24, min.month),
     },
   };
 
@@ -334,7 +341,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     const listingPpsm = rollingMedian(listingsByDay, seriesDays, index, ROLLING_DAYS);
     const deedDays = enumerateDays(date, ROLLING_DAYS);
     const deedValues = date <= asOfDay ? collect(deedsByDay, deedDays) : [];
-    const deedPpsm = deedValues.length >= MIN_WEEK_DEEDS ? median(deedValues) : null;
+    const deedPpsm = deedValues.length >= min.week ? median(deedValues) : null;
     return {
       date,
       listingPpsm: listingPpsm != null ? Math.round(listingPpsm) : null,
@@ -343,9 +350,9 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     };
   });
 
-  const d7 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 7);
-  const d30 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 30);
-  const d90 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 90);
+  const d7 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 7, min);
+  const d30 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 30, min);
+  const d90 = windowStats(listingsByDay, deedsByDay, listingLookback, deedLookback, 90, min);
 
   const vsDeedsPct = d30.vsDeedsPct ?? d7.vsDeedsPct;
   const listingPpsm = d30.listingPpsm ?? d7.listingPpsm;
@@ -364,7 +371,7 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
 
   const districts: PricePulseDistrict[] = [];
   for (const [district, values] of listingsByDistrict) {
-    if (values.length < MIN_DISTRICT_LISTINGS) continue;
+    if (values.length < min.districtListings) continue;
     const listingMedian = median(values);
     const deedMedian = deedByDistrict.get(district) ?? cityDeed;
     if (listingMedian == null || deedMedian == null) continue;
@@ -389,12 +396,14 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
 
   const payload: PricePulsePayload = {
     ok: true,
+    kind,
+    unit: KIND_LABEL[kind].unit,
     city: WARSAW_CITY,
     source: RCN_SOURCE_LABEL,
-    disclaimer: `${RCN_ATTRIBUTION} Puls liczy lokale mieszkalne (mieszkania), bez domów, działek i udziałów. Miesiąc to ostatni pełny miesiąc kompletnych aktów względem poprzedniego, nie ostatnie 30 dni od dziś.`,
+    disclaimer: `${RCN_ATTRIBUTION} Puls liczy osobno mieszkania, domy i działki — tutaj: ${KIND_LABEL[kind].many} (${KIND_LABEL[kind].unit}), bez udziałów. Miesiąc to ostatni pełny miesiąc kompletnych aktów względem poprzedniego, nie ostatnie 30 dni od dziś.`,
     updatedAt: new Date().toISOString(),
     asOf: asOf.toISOString(),
-    lagNote: pulseLagNote(asOf),
+    lagNote: pulseLagNote(asOf, kind),
     vsDeedsPct,
     listingPpsm,
     deedPpsm,
@@ -407,7 +416,6 @@ export async function buildPricePulse(): Promise<PricePulsePayload> {
     districts: districts.slice(0, 12),
   };
 
-  cache.at = now;
-  cache.payload = payload;
+  cache.set(kind, { at: now, payload });
   return payload;
 }

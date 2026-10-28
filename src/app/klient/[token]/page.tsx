@@ -50,6 +50,7 @@ import {
 import { portalAction } from "@/components/portal/lux/portalApi";
 import PortalDocuments, { computeDocumentsSummary, type PortalDocument } from "@/components/portal/lux/PortalDocuments";
 import PortalGroup, { usePortalGroups } from "@/components/portal/lux/PortalGroup";
+import PortalBuyerDeals, { type PortalBuyerDeal } from "@/components/portal/lux/PortalBuyerDeals";
 import PortalNotificationsBell, { useNoticeReadState } from "@/components/portal/lux/PortalNotificationsBell";
 import { buildPortalNotices, type PortalNotice, type PortalNoticeGroup } from "@/lib/crm/portalNotices";
 import { PortalReferral, PortalReview } from "@/components/portal/lux/PortalReviewReferral";
@@ -140,6 +141,7 @@ type PortalData = {
   appInvite?: { code: string; link: string; qrSvg?: string; expiresAt?: string | null } | null;
   searchPolygon?: unknown;
   seller?: SellerPortalV2 | null;
+  buyerDeals?: PortalBuyerDeal[];
   documents?: PortalDocument[];
   documentsSummary?: { required: number; done: number; missing: number; toReview: number } | null;
   review?: { rating: number; comment: string | null; at: string } | null;
@@ -367,7 +369,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     [],
   );
   const groupDefaults = useMemo(
-    () => ({ journey: true, offers: true, sale: true, listing: false, agreement: false, documents: true, tools: false, chat: true, more: false }),
+    () => ({ journey: true, deals: true, offers: true, sale: true, listing: false, agreement: false, documents: true, tools: false, chat: true, more: false }),
     [],
   );
   const groups = usePortalGroups(token, groupDefaults);
@@ -1082,7 +1084,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     chat: "chat",
   };
   const groupIds = portal.type === "BUYER"
-    ? ["journey", "offers", "documents", "chat", "tools", "more"]
+    ? ["journey", "deals", "offers", "documents", "chat", "tools", "more"]
     : ["journey", "sale", "listing", "agreement", "documents", "chat", "tools", "more"];
   const groupBadge = (groupId: string) => {
     const actions = notices.filter((n) => NOTICE_TO_GROUP[n.group] === groupId && n.tone === "action").length;
@@ -1111,6 +1113,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           };
   const GROUP_LABEL: Record<string, string> = {
     journey: "Etapy",
+    deals: "Transakcje",
     offers: "Propozycje",
     sale: "Sprzedaż",
     listing: "Ogłoszenie",
@@ -1122,6 +1125,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   };
   const groupAvailable: Record<string, boolean> = {
     journey: true,
+    deals: portal.type === "BUYER" && Boolean(portal.buyerDeals?.length),
     offers: portal.type === "BUYER",
     sale: portal.type === "SELLER",
     listing: portal.type === "SELLER" && Boolean(portal.listing || seller),
@@ -1207,6 +1211,22 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </PortalGroup>
 
         <p className="eos-group-divider pt-3">Twoje sprawy</p>
+
+        {portal.type === "BUYER" && portal.buyerDeals?.length ? (
+          <PortalGroup
+            id="deals"
+            title={portal.buyerDeals.length === 1 ? "Twoja nieruchomość" : "Twoje nieruchomości"}
+            summary={portal.buyerDeals.map((deal) => deal.status).slice(0, 2).join(" · ")}
+            icon={Handshake}
+            tone="green"
+            open={groups.isOpen("deals")}
+            onToggle={() => groups.setOpen("deals", !groups.isOpen("deals"))}
+            badge={groupBadge("deals")}
+            blink={groupBlink("deals")}
+          >
+            <PortalBuyerDeals deals={portal.buyerDeals} />
+          </PortalGroup>
+        ) : null}
 
         {portal.type === "BUYER" ? (
           <PortalGroup

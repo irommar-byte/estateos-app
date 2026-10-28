@@ -3,6 +3,7 @@ import { resolveWebUserId } from '@/lib/webSessionAuth';
 import { canUseAgentMarket, loadMarketUser } from '@/lib/market/access';
 import { hitRateLimit } from '@/lib/market/rateLimit';
 import { buildPricePulse } from '@/lib/market/pricePulse';
+import { parseMarketKind } from '@/lib/market/marketKinds';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
         { status: 403 },
       );
     }
-    const payload = await buildPricePulse();
+    const payload = await buildPricePulse(parseMarketKind(new URL(req.url).searchParams.get('kind')));
     return NextResponse.json(payload);
   } catch (error) {
     console.error('[market.price-pulse]', error);

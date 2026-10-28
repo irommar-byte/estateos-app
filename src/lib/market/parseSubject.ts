@@ -1,5 +1,6 @@
 import { parseLooseNumber } from '@/lib/market/format';
 import { WARSAW_CITY } from '@/lib/market/constants';
+import { KIND_QUALITY, marketKindForPropertyType, parseMarketKind } from '@/lib/market/marketKinds';
 import type { MarketTypeFilter, ValuationPurpose, ValuationSubject } from '@/lib/market/types';
 
 export function parseValuationSubject(body: Record<string, unknown>): ValuationSubject | { error: string } {
@@ -7,7 +8,11 @@ export function parseValuationSubject(body: Record<string, unknown>): ValuationS
   const lng = parseLooseNumber(body.lng);
   const area = parseLooseNumber(body.area);
   if (lat == null || lng == null) return { error: 'Brak współrzędnych nieruchomości.' };
-  if (area == null || area < 10) return { error: 'Podaj powierzchnię użytkową (min. 10 m²).' };
+  const kind = body.kind ? parseMarketKind(body.kind) : body.propertyType ? marketKindForPropertyType(body.propertyType) : 'LOCAL';
+  if (!kind) return { error: 'Dla lokali użytkowych nie mamy jeszcze porównania z aktami RCN.' };
+  if (area == null || area < Math.min(10, KIND_QUALITY[kind].minArea)) {
+    return { error: kind === 'PLOT' ? 'Podaj powierzchnię działki.' : 'Podaj powierzchnię użytkową (min. 10 m²).' };
+  }
   const city = String(body.city || WARSAW_CITY).trim() || WARSAW_CITY;
   const marketRaw = String(body.marketType || 'all').toLowerCase();
   const marketType: MarketTypeFilter =
@@ -22,6 +27,7 @@ export function parseValuationSubject(body: Record<string, unknown>): ValuationS
     rooms: parseLooseNumber(body.rooms),
     floor: parseLooseNumber(body.floor),
     marketType,
+    kind,
   };
 }
 

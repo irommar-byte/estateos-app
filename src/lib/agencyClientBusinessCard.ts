@@ -241,11 +241,22 @@ export async function sendAgencyClientBusinessCard(params: {
   const meeting = params.meeting;
   const prepList = (params.prepLabels || []).filter(Boolean);
   const prepHtml = prepList.length
-    ? `<div style="margin:0 0 20px;padding:16px 18px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;">
-        <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#475569;">Proszę przygotować</p>
-        <ul style="margin:10px 0 0;padding:0 0 0 18px;color:#334155;font-size:14px;line-height:1.55;">
-          ${prepList.map((label) => `<li style="margin:0 0 4px;">${escapeHtml(label)}</li>`).join('')}
-        </ul>
+    ? `<div style="margin:0 0 20px;padding:18px 18px 12px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;">
+        <p style="margin:0;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#475569;">Do przygotowania na spotkanie</p>
+        <p style="margin:6px 0 12px;font-size:14px;line-height:1.5;color:#334155;">Żeby spotkanie przebiegło sprawnie, prosimy przygotować:</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;">
+          ${prepList
+            .map(
+              (label) => `<tr>
+            <td valign="top" width="30" style="padding:0 0 10px;">
+              <div style="width:20px;height:20px;border-radius:6px;border:1.5px solid #10b981;background:#ecfdf5;color:#047857;font-size:13px;line-height:20px;text-align:center;font-weight:900;">&#10003;</div>
+            </td>
+            <td valign="top" style="padding:1px 0 10px;font-size:14px;line-height:1.45;color:#0f172a;font-weight:600;">${escapeHtml(label)}</td>
+          </tr>`,
+            )
+            .join('')}
+        </table>
+        <p style="margin:2px 0 6px;font-size:12px;line-height:1.5;color:#64748b;">Jeśli czegoś nie ma pod ręką — nic się nie stało, uzupełnimy to razem.</p>
       </div>`
     : '';
   const meetingHtml = meeting

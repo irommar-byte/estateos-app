@@ -48,6 +48,8 @@ export async function resolveOfferReportInput(params: {
       lat: true,
       lng: true,
       area: true,
+      plotArea: true,
+      propertyType: true,
       rooms: true,
       floor: true,
       pricePln: true,
@@ -83,11 +85,14 @@ export async function resolveOfferReportInput(params: {
     lat: params.body?.lat ?? offer.lat ?? formProperty?.lat,
     lng: params.body?.lng ?? offer.lng ?? formProperty?.lng,
   });
+  const isPlot = offer.propertyType === 'PLOT';
   const area =
     parseLooseNumber(params.body?.area) ??
+    (isPlot && offer.plotArea && offer.plotArea > 0 ? offer.plotArea : null) ??
     (offer.area > 0 ? offer.area : null) ??
     parseLooseNumber(formProperty?.area);
   const parsed = parseValuationSubject({
+    propertyType: params.body?.propertyType ?? offer.propertyType,
     lat: coords?.lat ?? params.body?.lat,
     lng: coords?.lng ?? params.body?.lng,
     area,

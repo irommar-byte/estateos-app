@@ -27,15 +27,65 @@ const TRACKED_KINDS: string[] = [
 ];
 
 export type DealStatus = 'ACTIVE' | 'PAUSED' | 'LOST' | 'WON';
-export type DealStage = 'interested' | 'scheduling' | 'scheduled' | 'viewed' | 'feedback' | 'lost';
+export type DealStage =
+  | 'interested'
+  | 'scheduling'
+  | 'scheduled'
+  | 'viewed'
+  | 'feedback'
+  | 'negotiation'
+  | 'reserved'
+  | 'preliminary'
+  | 'deed'
+  | 'closed'
+  | 'lost';
 export type DealSentiment = 'like' | 'maybe' | 'dislike';
 export type DealActor = 'agent' | 'buyer' | 'seller' | 'other_agent';
 
 type DealEvent = { at: string; actor: DealActor; text: string };
-type DealData = {
+
+export type OfferSide = 'buyer' | 'seller';
+export type NegotiationOffer = {
+  id: string;
+  at: string;
+  by: OfferSide;
+  amount: number;
+  note: string | null;
+  status: 'open' | 'accepted' | 'rejected' | 'countered' | 'withdrawn';
+  /** Propozycja przekazana sprzedającemu do panelu (SellerBuyerOffer). */
+  sellerBuyerOfferId?: number | null;
+  sentToSellerAt?: string | null;
+  sentToBuyerAt?: string | null;
+};
+export type Negotiation = {
+  startedAt?: string | null;
+  skippedPresentation?: boolean;
+  offers?: NegotiationOffer[];
+  financing?: { kind: 'cash' | 'mortgage' | 'mixed'; bank?: string | null; decision?: 'none' | 'pending' | 'approved' | 'rejected' } | null;
+  terms?: { deposit?: number | null; preliminaryAt?: string | null; deedAt?: string | null; handoverAt?: string | null; note?: string | null } | null;
+  reservation?: { until: string; at: string } | null;
+  agreedPrice?: number | null;
+  othersDecision?: 'paused' | 'backup' | null;
+};
+export type TransactionStepId = 'preliminary' | 'deed' | 'handover' | 'commission';
+export type TransactionStep = {
+  date?: string | null;
+  done?: boolean;
+  doneAt?: string | null;
+  place?: string | null;
+  amount?: number | null;
+  note?: string | null;
+  fileUrl?: string | null;
+  fileName?: string | null;
+};
+export type Transaction = Partial<Record<TransactionStepId, TransactionStep>> & { documentsStartedAt?: string | null };
+
+export type DealData = {
   events?: DealEvent[];
   reminders?: Record<string, string>;
   searchOther?: { wanted: boolean; note: string | null; at: string } | null;
+  negotiation?: Negotiation;
+  transaction?: Transaction;
 };
 
 export type DealView = {
@@ -50,7 +100,13 @@ export type DealView = {
     | { kind: 'client'; clientId: number; name: string; phone: string | null; email: string | null }
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
   stage: DealStage;
-  phases: Array<{ id: 'presentation' | 'feedback' | 'negotiation' | 'transaction'; label: string; done: boolean; current: boolean }>;
+  phases: Array<{
+    id: 'presentation' | 'feedback' | 'negotiation' | 'transaction';
+    label: string;
+    done: boolean;
+    current: boolean;
+    skipped: boolean;
+  }>;
   presentation: {
     startsAt: string;
     status: 'pending' | 'confirmed';
@@ -64,6 +120,10 @@ export type DealView = {
   feedbackRequestedAt: string | null;
   sellerInformedAt: string | null;
   searchOther: DealData['searchOther'];
+  negotiation: Required<Pick<Negotiation, 'offers'>> & Omit<Negotiation, 'offers'>;
+  transaction: Transaction;
+  /** Agent zaczął etap dokumentów (cena uzgodniona, rezerwacja albo ręcznie). */
+  documentsVisible: boolean;
   nextAction: string;
   timeline: DealEvent[];
   updatedAt: string;
@@ -93,19 +153,39 @@ function iso(value: Date | string | null | undefined): string | null {
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
-function parseData(raw: unknown): DealData {
+export function parseData(raw: unknown): DealData {
   const meta = asMeta(raw);
   return {
+    ...(meta as DealData),
     events: Array.isArray(meta.events) ? (meta.events as DealEvent[]) : [],
     reminders: asMeta(meta.reminders) as Record<string, string>,
     searchOther: (meta.searchOther as DealData['searchOther']) ?? null,
+    negotiation: asMeta(meta.negotiation) as Negotiation,
+    transaction: asMeta(meta.transaction) as Transaction,
   };
 }
 
-function withEvent(raw: unknown, event: Omit<DealEvent, 'at'>, at = new Date()): Prisma.InputJsonValue {
-  const data = parseData(raw);
-  const events = [...(data.events || []), { ...event, at: at.toISOString() }].slice(-120);
+/** Zmienia dane ścieżki i dopisuje wpis do historii. */
+export function withEvent(
+  raw: unknown,
+  event: Omit<DealEvent, 'at'>,
+  at = new Date(),
+  patch?: (data: DealData) => DealData,
+): Prisma.InputJsonValue {
+  const base = parseData(raw);
+  const data = patch ? patch(base) : base;
+  const events = [...(data.events || []), { ...event, at: at.toISOString() }].slice(-200);
   return { ...data, events } as unknown as Prisma.InputJsonValue;
+}
+
+const DAY = new Intl.DateTimeFormat('pl-PL', { timeZone: 'Europe/Warsaw', day: 'numeric', month: 'long' });
+
+export function day(value: string | Date): string {
+  return DAY.format(typeof value === 'string' ? new Date(value) : value);
+}
+
+export function pln(value: number): string {
+  return `${Math.round(value).toLocaleString('pl-PL')} zł`;
 }
 
 const WHEN = new Intl.DateTimeFormat('pl-PL', {
@@ -117,7 +197,7 @@ const WHEN = new Intl.DateTimeFormat('pl-PL', {
   minute: '2-digit',
 });
 
-function when(value: string | Date): string {
+export function when(value: string | Date): string {
   return WHEN.format(typeof value === 'string' ? new Date(value) : value);
 }
 
@@ -267,7 +347,12 @@ function latest(rows: ActivityRow[], kind: string): ActivityRow | null {
   return found.length ? found[found.length - 1] : null;
 }
 
-function buildTimeline(rows: ActivityRow[], deal: DealRow, matchFeedback: { text: string; at: string } | null): DealEvent[] {
+function buildTimeline(
+  rows: ActivityRow[],
+  deal: DealRow,
+  matchFeedback: { text: string; at: string } | null,
+  extra: DealEvent[],
+): DealEvent[] {
   const events: DealEvent[] = [];
   const foreign = (row: ActivityRow) => row.agencyUserId !== deal.agencyUserId;
   for (const row of rows) {
@@ -305,7 +390,7 @@ function buildTimeline(rows: ActivityRow[], deal: DealRow, matchFeedback: { text
     }
   }
   if (matchFeedback) events.push({ at: matchFeedback.at, actor: 'buyer', text: matchFeedback.text });
-  events.push(...(parseData(deal.data).events || []));
+  events.push(...(parseData(deal.data).events || []), ...extra);
   return events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 }
 
@@ -315,7 +400,41 @@ type Context = {
   clients: Map<number, { firstName: string; lastName: string; phone: string | null; email: string | null }>;
   offers: Map<number, { id: number; title: string; street: string | null; district: string; city: string; price: number; images: string | null }>;
   agencies: Map<number, string>;
+  sellerOffers: Map<number, { status: string; clientResponse: string | null; counterAmount: number | null; clientComment: string | null; updatedAt: Date }>;
 };
+
+/** Propozycje cen z odpowiedziami sprzedającego z panelu (przyjmuje / kontroferta / odrzuca). */
+function mergeSellerResponses(offers: NegotiationOffer[], ctx: Context): { offers: NegotiationOffer[]; events: DealEvent[] } {
+  const merged: NegotiationOffer[] = [];
+  const events: DealEvent[] = [];
+  const storedIds = new Set(offers.map((offer) => offer.id));
+  for (const offer of offers) {
+    const row = offer.sellerBuyerOfferId ? ctx.sellerOffers.get(offer.sellerBuyerOfferId) : null;
+    if (!row?.clientResponse) {
+      merged.push(offer);
+      continue;
+    }
+    const at = row.updatedAt.toISOString();
+    const comment = row.clientComment ? ` — „${row.clientComment}”` : '';
+    const open = offer.status === 'open';
+    if (row.clientResponse === 'accept') {
+      merged.push(open ? { ...offer, status: 'accepted' } : offer);
+      events.push({ at, actor: 'seller', text: `Przyjmuje ${pln(offer.amount)}${comment}` });
+    } else if (row.clientResponse === 'reject') {
+      merged.push(open ? { ...offer, status: 'rejected' } : offer);
+      events.push({ at, actor: 'seller', text: `Odrzuca ${pln(offer.amount)}${comment}` });
+    } else if (row.clientResponse === 'counter' && row.counterAmount) {
+      merged.push(open ? { ...offer, status: 'countered' } : offer);
+      const counterId = `seller-${offer.sellerBuyerOfferId}`;
+      // Kontroferta z panelu: pokazujemy ją, dopóki agent nie zapisze decyzji (wtedy jest już w historii).
+      if (!storedIds.has(counterId)) {
+        merged.push({ id: counterId, at, by: 'seller', amount: row.counterAmount, note: row.clientComment, status: open ? 'open' : 'countered' });
+      }
+      events.push({ at, actor: 'seller', text: `Kontroferta: ${pln(row.counterAmount)}${comment}` });
+    } else merged.push(offer);
+  }
+  return { offers: merged.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()), events };
+}
 
 function shapeDeal(deal: DealRow, ctx: Context): DealView {
   const now = Date.now();
@@ -371,22 +490,49 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
   const feedback = candidates.sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())[0] || null;
 
   const status = (['ACTIVE', 'PAUSED', 'LOST', 'WON'].includes(deal.status) ? deal.status : 'ACTIVE') as DealStatus;
+  const data = parseData(deal.data);
+  const neg = data.negotiation || {};
+  const tx = data.transaction || {};
+  const sellerMerge = mergeSellerResponses(neg.offers || [], ctx);
+  const offers = sellerMerge.offers;
+  const acceptedOffer = [...offers].reverse().find((offer) => offer.status === 'accepted') || null;
+  const agreedPrice = neg.agreedPrice ?? acceptedOffer?.amount ?? null;
+  const reservationActive = Boolean(neg.reservation && new Date(neg.reservation.until).getTime() > now);
+  const negotiationStarted = Boolean(neg.startedAt || offers.length || neg.financing);
+
   const stage: DealStage =
     status === 'LOST'
       ? 'lost'
-      : feedback
-        ? 'feedback'
-        : heldAt
-          ? 'viewed'
-          : presentation?.status === 'confirmed'
-            ? 'scheduled'
-            : presentation
-              ? 'scheduling'
-              : 'interested';
+      : tx.handover?.done
+        ? 'closed'
+        : tx.deed?.done
+          ? 'deed'
+          : tx.preliminary?.done
+            ? 'preliminary'
+            : reservationActive
+              ? 'reserved'
+              : negotiationStarted
+                ? 'negotiation'
+                : feedback
+                  ? 'feedback'
+                  : heldAt
+                    ? 'viewed'
+                    : presentation?.status === 'confirmed'
+                      ? 'scheduled'
+                      : presentation
+                        ? 'scheduling'
+                        : 'interested';
 
-  const presentationDone = Boolean(heldAt);
-  const feedbackDone = Boolean(feedback);
-  const phaseDone = [presentationDone, feedbackDone, false, false];
+  const negotiationDone = Boolean(agreedPrice || reservationActive || tx.preliminary?.done || tx.deed?.done);
+  const transactionDone = Boolean(tx.handover?.done);
+  const presentationSkipped = negotiationStarted && !heldAt;
+  const feedbackSkipped = negotiationStarted && !feedback;
+  const phaseDone = [
+    Boolean(heldAt) || presentationSkipped,
+    Boolean(feedback) || feedbackSkipped,
+    negotiationDone,
+    transactionDone,
+  ];
   const firstOpen = phaseDone.findIndex((done) => !done);
   const labels = ['Prezentacja', 'Opinia', 'Negocjacje', 'Transakcja'] as const;
   const ids = ['presentation', 'feedback', 'negotiation', 'transaction'] as const;
@@ -395,12 +541,32 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     label: labels[index],
     done: phaseDone[index],
     current: status !== 'LOST' && index === firstOpen,
+    skipped: (index === 0 && presentationSkipped) || (index === 1 && feedbackSkipped),
   }));
 
-  const data = parseData(deal.data);
+  const lastOpen = [...offers].reverse().find((offer) => offer.status === 'open') || null;
   const nextAction = (() => {
     if (status === 'LOST') return data.searchOther?.wanted ? 'Nie pasuje — szukamy dla niego czegoś innego' : 'Zakończone — kupujący zrezygnował';
     if (status === 'PAUSED') return 'Wstrzymane';
+    if (stage === 'closed') return tx.commission?.done ? 'Transakcja zakończona, prowizja rozliczona' : 'Klucze przekazane — rozlicz prowizję';
+    if (stage === 'deed') return tx.handover?.date ? `Przekazanie kluczy ${when(tx.handover.date)}` : 'Akt podpisany — ustal przekazanie kluczy';
+    if (stage === 'preliminary') {
+      const deedAt = tx.deed?.date || neg.terms?.deedAt;
+      return deedAt ? `Akt notarialny ${when(deedAt)}` : 'Umowa przedwstępna podpisana — ustal termin aktu';
+    }
+    if (stage === 'reserved') {
+      const prelimAt = tx.preliminary?.date || neg.terms?.preliminaryAt;
+      return prelimAt ? `Umowa przedwstępna ${when(prelimAt)}` : `Rezerwacja do ${day(neg.reservation!.until)} — umów umowę przedwstępną`;
+    }
+    if (stage === 'negotiation') {
+      if (agreedPrice) return `Cena uzgodniona: ${pln(agreedPrice)} — ustal zadatek, terminy i rezerwację`;
+      if (!lastOpen) return 'Zapisz propozycję ceny kupującego';
+      if (lastOpen.by === 'buyer') {
+        if (!deal.sellerClientId) return `Kupujący proponuje ${pln(lastOpen.amount)} — przekaż sprzedającemu`;
+        return lastOpen.sentToSellerAt ? `Czekamy na odpowiedź sprzedającego (${pln(lastOpen.amount)})` : `Przekaż sprzedającemu propozycję ${pln(lastOpen.amount)}`;
+      }
+      return lastOpen.sentToBuyerAt ? `Czekamy na odpowiedź kupującego (${pln(lastOpen.amount)})` : `Sprzedający chce ${pln(lastOpen.amount)} — przekaż kupującemu`;
+    }
     if (stage === 'interested') return 'Umów prezentację';
     if (stage === 'scheduling') {
       return presentation?.proposedBy === 'client' ? 'Kupujący proponuje termin — potwierdź' : 'Czekamy, aż kupujący wybierze termin';
@@ -410,7 +576,7 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     if (feedback?.sentiment === 'dislike') return 'Nie pasuje — zapytaj, czy szukamy czegoś innego';
     if (!deal.sellerInformedAt && deal.sellerClientId) return 'Przekaż opinię sprzedającemu';
     if (feedback?.sentiment === 'maybe') return 'Zastanawia się — dopytaj za kilka dni';
-    return 'Porozmawiaj o cenie i warunkach';
+    return 'Klient kupuje? Przejdź do negocjacji';
   })();
 
   const offer = ctx.offers.get(deal.offerId);
@@ -459,8 +625,11 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     feedbackRequestedAt: iso(deal.feedbackRequestedAt),
     sellerInformedAt: iso(deal.sellerInformedAt),
     searchOther: data.searchOther ?? null,
+    negotiation: { ...neg, offers, agreedPrice },
+    transaction: tx,
+    documentsVisible: Boolean(agreedPrice || reservationActive || tx.documentsStartedAt || stage === 'preliminary' || stage === 'deed' || stage === 'closed'),
     nextAction,
-    timeline: buildTimeline(rows, deal, matchFeedback),
+    timeline: buildTimeline(rows, deal, matchFeedback, sellerMerge.events),
     updatedAt: deal.updatedAt.toISOString(),
   };
 }
@@ -498,6 +667,15 @@ async function buildContext(deals: DealRow[]): Promise<Context> {
         })
       : [],
   ]);
+  const sellerOfferIds = deals.flatMap((deal) =>
+    (parseData(deal.data).negotiation?.offers || []).map((offer) => offer.sellerBuyerOfferId).filter((id): id is number => Boolean(id)),
+  );
+  const sellerOffers = sellerOfferIds.length
+    ? await prisma.sellerBuyerOffer.findMany({
+        where: { id: { in: sellerOfferIds } },
+        select: { id: true, status: true, clientResponse: true, counterAmount: true, clientComment: true, updatedAt: true },
+      })
+    : [];
   const agentIds = [...new Set(activities.map((row) => row.agencyUserId))];
   const agents = agentIds.length
     ? await prisma.user.findMany({ where: { id: { in: agentIds } }, select: { id: true, name: true, companyName: true } })
@@ -508,6 +686,7 @@ async function buildContext(deals: DealRow[]): Promise<Context> {
     clients: new Map(clients.map((row) => [row.id, row])),
     offers: new Map(offers.map((row) => [row.id, row])),
     agencies: new Map(agents.map((row) => [row.id, row.companyName || row.name || 'Inna agencja'])),
+    sellerOffers: new Map(sellerOffers.map((row) => [row.id, row])),
   };
 }
 
@@ -515,7 +694,19 @@ function shapeAll(deals: DealRow[], ctx: Context): DealView[] {
   return deals.map((deal) => shapeDeal(deal, ctx));
 }
 
-const STAGE_ORDER: Record<DealStage, number> = { feedback: 0, viewed: 1, scheduled: 2, scheduling: 3, interested: 4, lost: 5 };
+const STAGE_ORDER: Record<DealStage, number> = {
+  deed: 0,
+  preliminary: 1,
+  reserved: 2,
+  negotiation: 3,
+  feedback: 4,
+  viewed: 5,
+  scheduled: 6,
+  scheduling: 7,
+  interested: 8,
+  closed: 9,
+  lost: 10,
+};
 
 function sortDeals(views: DealView[]): DealView[] {
   return views.sort((a, b) => {
@@ -551,7 +742,7 @@ export async function getDeal(agencyUserId: number, dealId: number): Promise<Dea
 
 /* ───────────────────────── działania agenta ───────────────────────── */
 
-async function ownedDeal(agencyUserId: number, dealId: number) {
+export async function ownedDeal(agencyUserId: number, dealId: number) {
   const deal = await prisma.offerBuyerDeal.findFirst({ where: { id: dealId, agencyUserId } });
   if (!deal) throw new Error('Nie znaleziono kupującego przy tej ofercie.');
   return deal;
@@ -924,6 +1115,26 @@ export async function scanBuyerDealReminders(): Promise<{ sent: number }> {
         key = `feedback:${view.presentation.heldAt}`;
         title = 'Brak opinii po prezentacji';
         body = `${who} · ${view.offer.title} — zapytaj o wrażenia.`;
+      }
+    }
+    if (!key) {
+      // Terminy transakcji: dzień wcześniej przypominamy o rezerwacji, umowie, akcie i kluczach.
+      const tx = view.transaction;
+      const terms = view.negotiation.terms || {};
+      const upcoming: Array<[string, string | null | undefined, string]> = [
+        ['reservation', view.negotiation.reservation?.until, 'Jutro kończy się rezerwacja'],
+        ['preliminary', tx.preliminary?.done ? null : tx.preliminary?.date || terms.preliminaryAt, 'Jutro umowa przedwstępna'],
+        ['deed', tx.deed?.done ? null : tx.deed?.date || terms.deedAt, 'Jutro akt notarialny'],
+        ['handover', tx.handover?.done ? null : tx.handover?.date || terms.handoverAt, 'Jutro przekazanie kluczy'],
+      ];
+      for (const [kind, date, label] of upcoming) {
+        const at = date ? new Date(date).getTime() : NaN;
+        if (Number.isFinite(at) && at - now > 0 && at - now <= 26 * H && !reminders[`${kind}:${date}`]) {
+          key = `${kind}:${date}`;
+          title = label;
+          body = `${who} · ${view.offer.title} · ${when(date!)}`;
+          break;
+        }
       }
     }
     if (!key || reminders[key] || !pushTarget) continue;
