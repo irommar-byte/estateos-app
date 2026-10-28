@@ -128,12 +128,17 @@ export default function ClientEmailPreviewModal({
 
               {prep.length > 0 ? (
                 <View style={styles.prepBox}>
-                  <Text style={styles.prepKicker}>Proszę przygotować</Text>
+                  <Text style={styles.prepKicker}>Do przygotowania na spotkanie</Text>
+                  <Text style={styles.prepLead}>Żeby spotkanie przebiegło sprawnie, prosimy przygotować:</Text>
                   {prep.map((item) => (
-                    <Text key={item} style={styles.prepItem}>
-                      • {item}
-                    </Text>
+                    <View key={item} style={styles.prepRow}>
+                      <View style={styles.prepCheck}>
+                        <Ionicons name="checkmark" size={13} color="#047857" />
+                      </View>
+                      <Text style={styles.prepItem}>{item}</Text>
+                    </View>
                   ))}
+                  <Text style={styles.prepFoot}>Jeśli czegoś nie ma pod ręką — nic się nie stało, uzupełnimy to razem.</Text>
                 </View>
               ) : null}
 
@@ -271,8 +276,22 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
-  prepKicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, color: '#475569', textTransform: 'uppercase', marginBottom: 8 },
-  prepItem: { fontSize: 14, color: '#334155', lineHeight: 22 },
+  prepKicker: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, color: '#475569', textTransform: 'uppercase' },
+  prepLead: { fontSize: 14, color: '#334155', lineHeight: 20, marginTop: 6, marginBottom: 10 },
+  prepRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 8 },
+  prepCheck: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: '#10b981',
+    backgroundColor: '#ecfdf5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  prepItem: { flex: 1, fontSize: 14, color: '#0f172a', fontWeight: '600', lineHeight: 20 },
+  prepFoot: { fontSize: 12, color: '#64748b', lineHeight: 17, marginTop: 2 },
   contact: { fontSize: 13, fontWeight: '700', marginTop: 4 },
   attachHint: { marginTop: 16, fontSize: 12, color: '#9ca3af', lineHeight: 18 },
   footer: { flexDirection: 'row', gap: 12, paddingTop: 10 },

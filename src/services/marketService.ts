@@ -203,8 +203,13 @@ export type PricePulseTrend = {
   points: Array<{ key: string; ppsm: number | null }>;
 };
 
+export type PricePulseKind = 'LOCAL' | 'BUILDING' | 'PLOT';
+
 export type PricePulsePayload = {
   ok: true;
+  kind?: PricePulseKind;
+  /** Za m² użytkowy (mieszkania, domy) albo za m² gruntu (działki). */
+  unit?: string;
   city: string;
   source: string;
   disclaimer: string;
@@ -236,8 +241,9 @@ export type PricePulsePayload = {
 
 export async function fetchPricePulse(
   token?: string | null,
+  kind: PricePulseKind = 'LOCAL',
 ): Promise<PricePulsePayload | { ok: false; message: string }> {
-  const res = await fetch(`${API_URL}/api/market/price-pulse`, {
+  const res = await fetch(`${API_URL}/api/market/price-pulse?kind=${kind}`, {
     headers: authHeaders(token),
   });
   const json = await res.json().catch(() => ({}));

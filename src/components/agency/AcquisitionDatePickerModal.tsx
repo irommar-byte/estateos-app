@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import SafeModal from '../SafeModal';
 import { Ionicons } from '@expo/vector-icons';
 import { capitalizeSentence, formatPolishDateTime } from '../../lib/polishText';
@@ -7,11 +7,9 @@ import { capitalizeSentence, formatPolishDateTime } from '../../lib/polishText';
 type Mode = 'meeting' | 'timeline';
 
 const WEEKDAYS = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
-const TIME_OPTIONS = [
-  '08:00', '09:00', '10:00', '11:00', '12:00',
-  '13:00', '14:00', '15:00', '16:00', '17:00',
-  '18:00', '19:00', '20:00',
-];
+const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+const HOUR_ROWS = [HOURS.slice(0, 4), HOURS.slice(4, 8), HOURS.slice(8, 12), HOURS.slice(12)];
+const MINUTES = ['00', '30'] as const;
 
 const TIMELINE_PRESETS = [
   { label: '2 tygodnie', days: 14 },
@@ -49,7 +47,9 @@ function parseInitial(initialValue?: string): { date: Date; time: string; preset
   const m = raw.match(/(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
   if (!m) return { date: now, time: '10:00' };
   const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const time = m[4] && m[5] ? `${m[4]}:${m[5]}` : '10:00';
+  // Siatka ma pełne i wpół do — inne minuty zaokrąglamy do najbliższego pół godziny.
+  const total = m[4] && m[5] ? Math.round((Number(m[4]) * 60 + Number(m[5])) / 30) * 30 : 600;
+  const time = `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
   return { date, time };
 }
 
@@ -92,6 +92,7 @@ export default function AcquisitionDatePickerModal({
   title?: string;
 }) {
   const parsed = useMemo(() => parseInitial(initialValue), [initialValue, visible]);
+  const { height: windowHeight } = useWindowDimensions();
   const [viewYear, setViewYear] = useState(parsed.date.getFullYear());
   const [viewMonth, setViewMonth] = useState(parsed.date.getMonth());
   const [selectedDate, setSelectedDate] = useState(startOfDay(parsed.date));
@@ -118,7 +119,11 @@ export default function AcquisitionDatePickerModal({
     weekend: isDark ? '#FF9F0A' : '#C2410C',
   };
 
-  const today = startOfDay(new Date());
+  const now = new Date();
+  const today = startOfDay(now);
+  const [selectedHour, selectedMinute] = selectedTime.split(':');
+  const isPastSlot = (hour: number, minute: string) =>
+    sameDay(selectedDate, today) && hour * 60 + Number(minute) <= now.getHours() * 60 + now.getMinutes();
   const weeks = useMemo(() => buildWeeks(viewYear, viewMonth), [viewYear, viewMonth]);
   const monthLabel = capitalizeSentence(
     new Date(viewYear, viewMonth, 1).toLocaleDateString('pl-PL', {
@@ -182,7 +187,7 @@ export default function AcquisitionDatePickerModal({
             </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 540 }}>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: Math.min(680, windowHeight - 220) }}>
             {mode === 'timeline' ? (
               <>
                 <Text style={[styles.sectionLabel, { color: colors.secondary }]}>ORIENTACYJNIE</Text>
@@ -312,30 +317,58 @@ export default function AcquisitionDatePickerModal({
 
             {mode === 'meeting' ? (
               <>
-                <Text style={[styles.sectionLabel, { color: colors.secondary, marginTop: 10 }]}>GODZINA</Text>
-                <View style={styles.timeGrid}>
-                  {TIME_OPTIONS.map((time) => {
-                    const active = selectedTime === time;
-                    return (
-                      <Pressable
-                        key={time}
-                        onPress={() => setSelectedTime(time)}
-                        style={[
-                          styles.timeChip,
-                          {
-                            backgroundColor: active ? colors.accent : colors.input,
-                            borderColor: active ? colors.accent : colors.border,
-                            shadowOpacity: active ? 0.18 : 0,
-                          },
-                        ]}
-                      >
-                        <Text style={{ color: active ? '#052e16' : colors.text, fontWeight: active ? '900' : '700', fontSize: 13 }}>
-                          {time}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
+                <View style={styles.timeHead}>
+                  <Text style={[styles.sectionLabel, { color: colors.secondary, marginBottom: 0 }]}>GODZINA</Text>
+                  <View style={[styles.minuteSwitch, { backgroundColor: colors.input, borderColor: colors.border }]}>
+                    {MINUTES.map((minute) => {
+                      const active = selectedMinute === minute;
+                      return (
+                        <Pressable
+                          key={minute}
+                          onPress={() => setSelectedTime(`${selectedHour}:${minute}`)}
+                          accessibilityLabel={minute === '00' ? 'Pełna godzina' : 'Wpół do'}
+                          style={[styles.minuteBtn, active && { backgroundColor: colors.accent }]}
+                        >
+                          <Text style={{ color: active ? '#052e16' : colors.text, fontWeight: '900', fontSize: 14 }}>
+                            :{minute}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
                 </View>
+                {HOUR_ROWS.map((row, ri) => (
+                  <View key={`h-${ri}`} style={styles.timeRow}>
+                    {row.map((hour) => {
+                      const value = `${pad(hour)}:${selectedMinute}`;
+                      const active = selectedTime === value;
+                      const past = isPastSlot(hour, selectedMinute);
+                      return (
+                        <Pressable
+                          key={hour}
+                          disabled={past}
+                          onPress={() => setSelectedTime(value)}
+                          style={[
+                            styles.timeChip,
+                            {
+                              backgroundColor: active ? colors.accent : colors.input,
+                              borderColor: active ? colors.accent : colors.border,
+                              shadowOpacity: active ? 0.22 : 0,
+                              opacity: past ? 0.35 : 1,
+                            },
+                          ]}
+                        >
+                          <Text style={{ color: active ? '#052e16' : colors.text, fontWeight: active ? '900' : '800', fontSize: 17, letterSpacing: -0.3 }}>
+                            {hour}:{selectedMinute}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                    {Array.from({ length: 4 - row.length }).map((_, k) => (
+                      <View key={`f-${k}`} style={{ flex: 1 }} />
+                    ))}
+                  </View>
+                ))}
               </>
             ) : null}
           </ScrollView>
@@ -365,7 +398,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 480,
     borderRadius: 28,
     borderWidth: 1,
     padding: 18,
@@ -415,9 +448,9 @@ const styles = StyleSheet.create({
   weekCell: { flex: 1, alignItems: 'center', justifyContent: 'flex-start' },
   wd: { fontSize: 11, fontWeight: '800', letterSpacing: 0.3, paddingBottom: 4 },
   day: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -432,11 +465,15 @@ const styles = StyleSheet.create({
     borderColor: '#34C759',
   },
   todayHint: { fontSize: 8, fontWeight: '800', height: 12, marginTop: 1 },
-  timeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  timeHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 10 },
+  minuteSwitch: { flexDirection: 'row', borderRadius: 14, borderWidth: 1, padding: 3, gap: 3 },
+  minuteBtn: { minWidth: 58, paddingVertical: 8, borderRadius: 11, alignItems: 'center' },
+  timeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   timeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 12,
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
     borderWidth: 1,
     shadowColor: '#34C759',
     shadowRadius: 8,

@@ -97,6 +97,20 @@ export type LuxSeller = {
 
 export type LuxCompanion = { id: number; name: string; url: string; lastSeenAt: string | null };
 
+/** Ścieżka kupującego przy nieruchomości: etapy i terminy (bez danych sprzedającego). */
+export type LuxBuyerDeal = {
+  offerId: number;
+  title: string;
+  address: string;
+  imageUrl: string | null;
+  phases: Array<{ id: string; label: string; done: boolean; current: boolean; skipped: boolean }>;
+  status: string;
+  dates: Array<{ label: string; at: string; done: boolean }>;
+  yourOffer: { amount: number; status: 'open' | 'accepted' | 'rejected' | 'countered' | 'withdrawn' } | null;
+  agreedPrice: number | null;
+  reservedUntil: string | null;
+};
+
 export type LuxPortal = Omit<ClientPortalPayload, 'matches'> & {
   matches: LuxMatch[];
   viewer?: { role: 'owner' } | { role: 'partner'; companionId: number; name: string };
@@ -106,6 +120,7 @@ export type LuxPortal = Omit<ClientPortalPayload, 'matches'> & {
   companions?: LuxCompanion[];
   searchPolygon?: Array<[number, number]> | null;
   seller?: LuxSeller | null;
+  buyerDeals?: LuxBuyerDeal[];
   documents?: LuxDocument[];
   documentsSummary?: { total?: number; required: number; done: number; missing: number; toReview: number };
   review?: { rating: number; comment: string | null; at: string } | null;

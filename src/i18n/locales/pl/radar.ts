@@ -139,7 +139,6 @@ export const radar = {
     showRadarMatchesA11y: 'Pokaż {{count}} dopasowań Radaru',
     legallyVerified: 'Nieruchomość zweryfikowana prawnie',
     publishDate: 'Publikacja: {{date}}',
-    publishDateEmpty: 'Publikacja: -',
     locationFallback: 'Lokalizacja',
     transactionRent: 'WYNAJEM',
     transactionSell: 'SPRZEDAŻ',

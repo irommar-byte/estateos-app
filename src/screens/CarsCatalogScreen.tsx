@@ -929,7 +929,7 @@ export default function CarsCatalogScreen({
                   },
                   {
                     key: 'cover',
-                    icon: viewMode === 'cover' ? 'square' : 'square-outline',
+                    icon: viewMode === 'cover' ? 'tablet-portrait' : 'tablet-portrait-outline',
                     accessibilityLabel: t('radar.home.galleryViewCover'),
                   },
                 ]}

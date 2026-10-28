@@ -917,6 +917,7 @@ export default function OfferDetail({ route, navigation }: any) {
         district: offer?.district ? String(offer.district) : null,
         address: [offer?.street, offer?.city].filter(Boolean).join(', '),
         listingPrice: listingPricePln,
+        propertyType: offer?.propertyType || null,
       }).then((json) => {
         if (cancelled) return;
         if (json.ok) {
@@ -2359,6 +2360,7 @@ export default function OfferDetail({ route, navigation }: any) {
                   district={offer?.district ? String(offer.district) : null}
                   address={[offer?.street, offer?.city].filter(Boolean).join(', ')}
                   listingPrice={listingPricePln || priceNumForStats}
+                  propertyType={offer?.propertyType ? String(offer.propertyType) : null}
                   purpose="consumer"
                   onResultChange={onMarketValuationChange}
                   colors={{
@@ -2369,6 +2371,31 @@ export default function OfferDetail({ route, navigation }: any) {
                     accent: '#34C759',
                   }}
                 />
+                {showRcnScale ? (
+                  <View style={{ marginTop: 14 }}>
+                    <Text style={{ color: '#34C759', fontSize: 11, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                      Cena na tle aktów notarialnych
+                    </Text>
+                    <OfferPriceRcnScale
+                      listingPrice={listingPricePln}
+                      recommendedAsk={recommendedAsk}
+                      isDark={isDark}
+                      labels={{
+                        below: t('offer.detail.rcnScale.below'),
+                        recommended: t('offer.detail.rcnScale.recommended'),
+                        above: t('offer.detail.rcnScale.above'),
+                        beyond: t('offer.detail.rcnScale.beyond'),
+                      }}
+                    />
+                    <Text style={{ marginTop: 6, fontSize: 12, lineHeight: 17, color: isDark ? '#9ca3af' : '#6b7280' }}>
+                      {String(offer?.propertyType || '').toUpperCase() === 'PLOT'
+                        ? 'Gdzie leży cena tej działki względem ceny rekomendowanej z transakcji działkami w okolicy (zł/m² gruntu, Rejestr Cen Nieruchomości).'
+                        : String(offer?.propertyType || '').toUpperCase() === 'HOUSE'
+                          ? 'Gdzie leży cena tego domu względem ceny rekomendowanej z transakcji domami w okolicy (Rejestr Cen Nieruchomości).'
+                          : 'Gdzie leży cena tego mieszkania względem ceny rekomendowanej z transakcji podobnymi mieszkaniami w okolicy (Rejestr Cen Nieruchomości).'}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             ) : (
               <Pressable

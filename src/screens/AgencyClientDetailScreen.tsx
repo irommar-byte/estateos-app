@@ -56,6 +56,7 @@ import ClientAutoSendCard from '../components/agency/ClientAutoSendCard';
 import ClientPortalToolsCard from '../components/agency/ClientPortalToolsCard';
 import ClientPersonHub from '../components/agency/ClientPersonHub';
 import ClientPersonCard from '../components/agency/ClientPersonCard';
+import OfferBuyersSection from '../components/agency/OfferBuyersSection';
 import ClientPresentationComposer from '../components/agency/ClientPresentationComposer';
 import ClientOutboundPreviewSheet, {
   type ClientOutboundPreview,
@@ -123,6 +124,7 @@ import { fetchOfficeReviewCapability, postOfficeReviewAction } from '../services
 import { LAND_REGISTRY_REGEX } from '../utils/landRegistry';
 import SellerClientPipelineBar from '../components/agency/SellerClientPipelineBar';
 import { sellerPipelineFromClientDetail, buyerPipelineFromClientDetail } from '../lib/sellerClientPipeline';
+import { buildSellerProjectSummary, type SellerProjectSource } from '../lib/sellerProjectSummary';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -411,6 +413,10 @@ export default function AgencyClientDetailScreen() {
   const [presentationExpanded, setPresentationExpanded] = useState(false);
   const [focusSellerEvents, setFocusSellerEvents] = useState(false);
   const [offerCovers, setOfferCovers] = useState<Record<number, string>>({});
+  const [projectOrigin, setProjectOrigin] = useState<'person' | 'lane'>('lane');
+  const [sellingDetails, setSellingDetails] = useState<
+    Record<number, Pick<SellerProjectSource, 'detail' | 'acquisition' | 'linkedOffer'>>
+  >({});
   const chatScrollRef = useRef<ScrollView | null>(null);
   const chatPinnedToEndRef = useRef(true);
   const [presentationAt, setPresentationAt] = useState('');
@@ -624,6 +630,14 @@ export default function AgencyClientDetailScreen() {
       }
     }
   }, [token, clientId]);
+
+  useEffect(() => {
+    const offerId = Number(route.params?.presentationOfferId || 0);
+    if (!offerId) return;
+    setPresentationOfferId(String(offerId));
+    setPresentationExpanded(true);
+    scrollToPresentation();
+  }, [route.params?.presentationOfferId, scrollToPresentation]);
 
   useEffect(() => {
     hydratedRef.current = false;
@@ -1161,6 +1175,7 @@ export default function AgencyClientDetailScreen() {
 
   const openPersonProject = (projectId: number) => {
     setPresentationFocus(false);
+    setProjectOrigin(crmLevel === 'lane' ? 'lane' : 'person');
     const project =
       relatedProjects.selling.find((item) => item.id === projectId) ||
       relatedProjects.buying.find((item) => item.id === projectId);
@@ -1182,11 +1197,23 @@ export default function AgencyClientDetailScreen() {
     }
     const nextId = Number(res.clientId);
     if (Number.isFinite(nextId) && nextId > 0) {
+      setProjectOrigin(crmLevel === 'lane' ? 'lane' : 'person');
       navigation.setParams({ clientId: nextId, startAt: 'project', lane: type === 'BUYER' ? 'BUY' : 'SELL' });
       setCrmLane(type === 'BUYER' ? 'BUY' : 'SELL');
       setCrmLevel('project');
     }
   };
+  const outboundLog = (client?.activities || []).filter((a) => {
+    const kind = String(a.kind || '');
+    return (
+      kind === 'VISIT_PREP_PACKET' ||
+      kind === 'OUTBOUND_EMAIL' ||
+      (a.metadata &&
+        typeof a.metadata === 'object' &&
+        ('subject' in a.metadata || 'bodyPreview' in a.metadata || 'smsBody' in a.metadata))
+    );
+  });
+  const sellerOfferId = client?.type === 'SELLER' ? linkedOffer?.id || client.linkedOfferId || null : null;
   const latestPortalMessage = portalMessages[portalMessages.length - 1];
   const latestPortalText = latestPortalMessage
     ? cleanAttachmentOnlyMessage(latestPortalMessage.content, latestPortalMessage.attachments)
@@ -1279,6 +1306,54 @@ export default function AgencyClientDetailScreen() {
       cancelled = true;
     };
   }, [client, linkedOffer, relatedProjects.buying, relatedProjects.selling, offerCovers]);
+
+  useEffect(() => {
+    if (!token || !client || crmLevel === 'project') return;
+    const others = relatedProjects.selling.filter((project) => project.id !== client.id);
+    if (!others.length) return;
+    let cancelled = false;
+    void Promise.all(
+      others.map(async (project) => {
+        const [detail, acq] = await Promise.all([
+          fetchAgencyClient(token, project.id),
+          fetchAcquisition(token, project.id),
+        ]);
+        const linked = acq.ok ? acq.linkedOffer ?? (acq.linkedOfferId ? { id: acq.linkedOfferId } : null) : null;
+        return [
+          project.id,
+          {
+            detail: detail.ok ? detail.client : null,
+            acquisition: acq.ok ? acq.acquisition : null,
+            linkedOffer: linked,
+          },
+        ] as const;
+      }),
+    ).then((rows) => {
+      if (!cancelled) setSellingDetails(Object.fromEntries(rows));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, client, crmLevel]);
+
+  const sellingSummaries = useMemo(
+    () =>
+      relatedProjects.selling.map((project) => {
+        const isCurrent = project.id === client?.id;
+        const loaded = isCurrent
+          ? { detail: client, acquisition: record, linkedOffer }
+          : sellingDetails[project.id] || { detail: null, acquisition: null, linkedOffer: null };
+        const offerId = loaded.linkedOffer?.id || project.linkedOfferId;
+        const coverUrl = isCurrent
+          ? offerCoverUrl
+          : resolveMediaUrl(project.coverImageUrl) ||
+            resolveMediaUrl(loaded.linkedOffer?.imageUrl) ||
+            (offerId ? offerCovers[offerId] : null) ||
+            null;
+        return buildSellerProjectSummary({ project, ...loaded, coverUrl });
+      }),
+    [relatedProjects.selling, client, record, linkedOffer, sellingDetails, offerCoverUrl, offerCovers],
+  );
 
   const saveBuyerRadar = async (enabled: boolean, filters = buyerFilters) => {
     if (!token) return false;
@@ -1474,8 +1549,9 @@ export default function AgencyClientDetailScreen() {
         <Pressable
           onPress={() => {
             if (crmLevel === 'project') {
-              setCrmLevel(presentationFocus ? 'person' : 'lane');
-              if (presentationFocus) setCrmLane(null);
+              const toPerson = presentationFocus || projectOrigin === 'person';
+              setCrmLevel(toPerson ? 'person' : 'lane');
+              if (toPerson) setCrmLane(null);
               setPresentationFocus(false);
               return;
             }
@@ -1565,6 +1641,9 @@ export default function AgencyClientDetailScreen() {
                   busy={busy === 'project'}
                   colors={colors}
                   coverOverrides={offerCovers}
+                  sellingSummaries={sellingSummaries}
+                  isDark={isDark}
+                  onOpenOffer={(offerId) => navigation.navigate('OfferDetail', { offerId })}
                   onOpenLane={(next) => {
                     setPresentationFocus(false);
                     setCrmLane(next);
@@ -2237,6 +2316,7 @@ export default function AgencyClientDetailScreen() {
                         district={String(form?.property?.district || client?.sellerDistrict || '')}
                         address={form?.property?.address}
                         listingPrice={parseGroupedNumber(String(form?.strategy?.expectedPrice ?? ''))}
+                        propertyType={String(form?.property?.propertyType || 'Mieszkanie')}
                         purpose="crm"
                         colors={colors}
                         reportEmail={client?.email}
@@ -2581,6 +2661,7 @@ export default function AgencyClientDetailScreen() {
                           district={String(form?.property?.district || client?.sellerDistrict || '')}
                           address={form?.property?.address}
                           listingPrice={parseGroupedNumber(String(form?.strategy?.expectedPrice ?? ''))}
+                          propertyType={String(form?.property?.propertyType || 'Mieszkanie')}
                           purpose="crm"
                           colors={colors}
                           reportEmail={client?.email}
@@ -2616,7 +2697,38 @@ export default function AgencyClientDetailScreen() {
               ) : null}
 
 
-              {/* ═══ SECTION: WSPÓŁPRACA / PREZENTACJE ═══ */}
+              {/* ═══ SECTION: KUPUJĄCY (sprzedający) / W PROCESIE (kupujący) ═══ */}
+              {client.type === 'SELLER' ? (
+                sellerOfferId ? (
+                  <OfferBuyersSection
+                    mode="offer"
+                    offerId={sellerOfferId}
+                    token={token}
+                    colors={colors}
+                    isDark={isDark}
+                    onOpenDeal={(dealId) => navigation.navigate('BuyerDeal', { dealId })}
+                  />
+                ) : (
+                  <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={{ color: '#C25E00', fontSize: 11, fontWeight: '700', letterSpacing: 0.9 }}>KUPUJĄCY</Text>
+                    <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 6, lineHeight: 19 }}>
+                      Kupujący pojawią się tutaj, gdy z pozysku powstanie oferta.
+                    </Text>
+                  </View>
+                )
+              ) : (
+                <OfferBuyersSection
+                  mode="buyer"
+                  buyerClientId={client.id}
+                  token={token}
+                  colors={colors}
+                  isDark={isDark}
+                  onOpenDeal={(dealId) => navigation.navigate('BuyerDeal', { dealId })}
+                />
+              )}
+
+              {/* ═══ SECTION: WSPÓŁPRACA / PREZENTACJE (u sprzedającego: spotkanie i wysłane wiadomości) ═══ */}
+              {client.type !== 'SELLER' || client.meeting || outboundLog.length ? (
               <View
                 ref={presentationAnchorRef}
                 collapsable={false}
@@ -2655,15 +2767,17 @@ export default function AgencyClientDetailScreen() {
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ color: colors.accent, fontSize: 11, fontWeight: '900', letterSpacing: 0.8 }}>
-                      {client.type === 'BUYER' ? 'PREZENTACJA' : 'WSPÓŁPRACA'} · {sentMatches.length} WYSŁANYCH
+                      {client.type === 'SELLER' ? 'SPOTKANIE I WIADOMOŚCI' : `PREZENTACJA · ${sentMatches.length} WYSŁANYCH`}
                     </Text>
                     <Text style={{ color: colors.text, fontSize: 16, fontWeight: '900', marginTop: 2 }} numberOfLines={1}>
-                      {client.type === 'BUYER' ? 'Prezentacja oferty' : 'Współpraca z klientem'}
+                      {client.type === 'SELLER' ? 'Kontakt ze sprzedającym' : 'Prezentacja oferty'}
                     </Text>
                     <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '600', marginTop: 3 }} numberOfLines={2}>
-                      {presentationSummary}
+                      {client.type === 'SELLER'
+                        ? [meetingStatusLabel, outboundLog.length ? `${outboundLog.length} wysłanych wiadomości` : null].filter(Boolean).join(' · ')
+                        : presentationSummary}
                     </Text>
-                    {!presentationExpanded ? (
+                    {!presentationExpanded && client.type !== 'SELLER' ? (
                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                         <View style={[styles.miniStat, { backgroundColor: colors.input, borderColor: colors.border }]}>
                           <Text style={{ color: colors.secondary, fontSize: 9, fontWeight: '800' }}>WYSŁANE</Text>
@@ -2744,10 +2858,10 @@ export default function AgencyClientDetailScreen() {
                   </View>
                 ) : null}
 
-                {client.presentation ? (
+                {client.type !== 'SELLER' && client.presentation ? (
                 <View style={{ marginTop: 14 }}>
                   <Text style={{ color: colors.secondary, fontSize: 11, fontWeight: '800' }}>
-                    {client.type === 'SELLER' ? 'POKAZ DLA KUPUJĄCEGO' : 'PREZENTACJA OFERTY'}
+                    PREZENTACJA OFERTY
                   </Text>
                   <Text style={{ color: colors.text, fontWeight: '800', marginTop: 4 }}>
                     {new Date(client.presentation.startsAt).toLocaleString('pl-PL')}
@@ -2847,6 +2961,7 @@ export default function AgencyClientDetailScreen() {
                 </View>
                 ) : null}
 
+                {client.type !== 'SELLER' ? (
                 <ClientPresentationComposer
                   clientType={client.type}
                   matches={client.matches || []}
@@ -3064,20 +3179,11 @@ export default function AgencyClientDetailScreen() {
                     );
                   }}
                 />
+                ) : null}
                 </View>
                 ) : null}
 
                 {(() => {
-                  const outboundLog = (client.activities || []).filter((a) => {
-                    const kind = String(a.kind || '');
-                    return (
-                      kind === 'VISIT_PREP_PACKET' ||
-                      kind === 'OUTBOUND_EMAIL' ||
-                      (a.metadata &&
-                        typeof a.metadata === 'object' &&
-                        ('subject' in a.metadata || 'bodyPreview' in a.metadata || 'smsBody' in a.metadata))
-                    );
-                  });
                   if (!outboundLog.length) return null;
                   return (
                     <View
@@ -3153,6 +3259,7 @@ export default function AgencyClientDetailScreen() {
                 })()}
 
               </View>
+              ) : null}
 
               {/* ═══ SECTION: LIVE CHAT ═══ */}
               <View

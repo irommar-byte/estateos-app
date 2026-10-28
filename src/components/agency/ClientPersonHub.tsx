@@ -4,6 +4,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import type { ClientPersonProject } from '../../services/agencyClientService';
 import { resolveMediaUrl } from '../../utils/userAvatar';
+import type { SellerProjectSummary } from '../../lib/sellerProjectSummary';
+import ClientSellingOverview from './ClientSellingOverview';
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '';
@@ -26,20 +28,26 @@ export default function ClientPersonHub({
   onOpenProject,
   onAddProject,
   onSchedulePresentation,
+  onOpenOffer,
   coverOverrides,
+  sellingSummaries,
+  isDark,
 }: {
   selling: ClientPersonProject[];
   buying: ClientPersonProject[];
   view: 'person' | 'lane';
   lane: 'SELL' | 'BUY' | null;
   busy?: boolean;
-  colors: { card: string; text: string; secondary: string; border: string; accent: string };
+  colors: { card: string; text: string; secondary: string; border: string; accent: string; input: string };
   onOpenLane: (next: 'SELL' | 'BUY') => void;
   onBackToPerson: () => void;
   onOpenProject: (projectId: number) => void;
   onAddProject: (type: 'BUYER' | 'SELLER') => void;
   onSchedulePresentation: () => void;
+  onOpenOffer: (offerId: number) => void;
   coverOverrides?: Record<number, string>;
+  sellingSummaries: SellerProjectSummary[];
+  isDark: boolean;
 }) {
   const [buyActionsOpen, setBuyActionsOpen] = useState(false);
 
@@ -154,66 +162,123 @@ export default function ClientPersonHub({
     );
   }
 
+  const emptyRow = (
+    kind: 'SELL' | 'BUY',
+    actions: Array<{ label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void }>,
+  ) => {
+    const isSell = kind === 'SELL';
+    const tint = isSell ? '#34C759' : '#FF9500';
+    return (
+      <View style={[styles.emptyRow, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.emptyIcon, { backgroundColor: isSell ? 'rgba(52,199,89,0.14)' : 'rgba(255,149,0,0.14)' }]}>
+          <Ionicons name={isSell ? 'home-outline' : 'search-outline'} size={17} color={tint} />
+        </View>
+        <View style={{ flex: 1, minWidth: 140 }}>
+          <Text style={{ color: isSell ? '#34C759' : '#C47A12', fontSize: 11, fontWeight: '600', letterSpacing: 0.6 }}>
+            {isSell ? 'Sprzedaje' : 'Kupuje'}
+          </Text>
+          <Text style={{ color: colors.text, fontSize: 15, fontWeight: '600', marginTop: 1 }}>
+            {isSell ? 'Brak pozysku' : 'Brak poszukiwania'}
+          </Text>
+        </View>
+        <View style={styles.emptyActions}>
+          {actions.map((action) => (
+            <Pressable
+              key={action.label}
+              disabled={busy}
+              onPress={action.onPress}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.emptyBtn,
+                { borderColor: colors.border, opacity: busy ? 0.5 : pressed ? 0.6 : 1 },
+              ]}
+            >
+              <Ionicons name={action.icon} size={14} color={colors.text} />
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' }}>{action.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const sellBlock = selling.length ? (
+    <ClientSellingOverview
+      items={sellingSummaries}
+      colors={colors}
+      isDark={isDark}
+      busy={busy}
+      onOpenProject={onOpenProject}
+      onOpenOffer={onOpenOffer}
+      onAddProject={() => onAddProject('SELLER')}
+    />
+  ) : (
+    emptyRow('SELL', [{ label: 'Nowy pozysk', icon: 'add', onPress: () => onAddProject('SELLER') }])
+  );
+
+  const buyBlock = buying.length ? (
+    <View>
+      <Pressable
+        onPress={() => setBuyActionsOpen((open) => !open)}
+        style={[styles.lane, { backgroundColor: colors.card, borderColor: buyActionsOpen ? '#FF9500' : colors.border }]}
+      >
+        <View style={[styles.iconWrap, { backgroundColor: 'rgba(255,149,0,0.14)' }]}>
+          <Ionicons name="search-outline" size={22} color="#FF9500" />
+        </View>
+        <Text style={{ color: '#C47A12', fontSize: 11, fontWeight: '500', letterSpacing: 0.8, marginTop: 14 }}>Kupuje</Text>
+        <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600', letterSpacing: -0.4, marginTop: 4 }}>
+          {`${buying.length} ${buying.length === 1 ? 'poszukiwanie' : 'poszukiwania'}`}
+        </Text>
+        <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 4 }}>{buying[0]?.title}</Text>
+        {!buyActionsOpen ? (
+          <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 10 }}>
+            Dotknij, żeby dodać poszukiwanie albo umówić prezentację.
+          </Text>
+        ) : null}
+      </Pressable>
+      {buyActionsOpen ? (
+        <View style={styles.buyActions}>
+          <Pressable
+            disabled={busy}
+            onPress={() => onAddProject('BUYER')}
+            style={[styles.buyBtn, { opacity: busy ? 0.5 : 1 }]}
+          >
+            <Text style={styles.buyBtnText}>Nowe poszukiwanie</Text>
+          </Pressable>
+          <Pressable
+            disabled={busy}
+            onPress={onSchedulePresentation}
+            style={[styles.buyBtnGhost, { borderColor: colors.border, opacity: busy ? 0.5 : 1 }]}
+          >
+            <Text style={[styles.buyBtnGhostText, { color: colors.text }]}>Nowa prezentacja</Text>
+          </Pressable>
+          <Pressable onPress={() => onOpenLane('BUY')} style={styles.buyLink}>
+            <Text style={styles.buyLinkText}>Zobacz poszukiwania</Text>
+            <Ionicons name="chevron-forward" size={14} color="#FF9500" />
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  ) : (
+    emptyRow('BUY', [
+      { label: 'Poszukiwanie', icon: 'add', onPress: () => onAddProject('BUYER') },
+      { label: 'Prezentacja', icon: 'calendar-outline', onPress: onSchedulePresentation },
+    ])
+  );
+
   return (
     <View style={{ gap: 12 }}>
-      <Pressable onPress={() => onOpenLane('SELL')} style={[styles.lane, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={styles.iconWrap}>
-          <Ionicons name="home-outline" size={22} color="#34C759" />
-        </View>
-        <Text style={{ color: '#34C759', fontSize: 11, fontWeight: '500', letterSpacing: 0.8, marginTop: 14 }}>Sprzedaje</Text>
-        <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600', letterSpacing: -0.4, marginTop: 4 }}>
-          {selling.length ? `${selling.length} ${selling.length === 1 ? 'pozysk' : 'pozyski'}` : 'Brak pozysku'}
-        </Text>
-        <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 4 }}>
-          {selling[0]?.title || 'Umowa, ogłoszenie, promocje i czat w jednym projekcie.'}
-        </Text>
-      </Pressable>
-      <View>
-        <Pressable
-          onPress={() => setBuyActionsOpen((open) => !open)}
-          style={[styles.lane, { backgroundColor: colors.card, borderColor: buyActionsOpen ? '#FF9500' : colors.border }]}
-        >
-          <View style={[styles.iconWrap, { backgroundColor: 'rgba(255,149,0,0.14)' }]}>
-            <Ionicons name="search-outline" size={22} color="#FF9500" />
-          </View>
-          <Text style={{ color: '#C47A12', fontSize: 11, fontWeight: '500', letterSpacing: 0.8, marginTop: 14 }}>Kupuje</Text>
-          <Text style={{ color: colors.text, fontSize: 20, fontWeight: '600', letterSpacing: -0.4, marginTop: 4 }}>
-            {buying.length ? `${buying.length} ${buying.length === 1 ? 'poszukiwanie' : 'poszukiwania'}` : 'Brak poszukiwania'}
-          </Text>
-          <Text style={{ color: colors.secondary, fontSize: 13, marginTop: 4 }}>
-            {buying[0]?.title || 'Kryteria, radar i live chat jako osobny projekt.'}
-          </Text>
-          {!buyActionsOpen ? (
-            <Text style={{ color: colors.secondary, fontSize: 11, marginTop: 10 }}>
-              Dotknij, żeby dodać poszukiwanie albo umówić prezentację.
-            </Text>
-          ) : null}
-        </Pressable>
-        {buyActionsOpen ? (
-          <View style={styles.buyActions}>
-            <Pressable
-              disabled={busy}
-              onPress={() => onAddProject('BUYER')}
-              style={[styles.buyBtn, { opacity: busy ? 0.5 : 1 }]}
-            >
-              <Text style={styles.buyBtnText}>Nowe poszukiwanie</Text>
-            </Pressable>
-            <Pressable
-              disabled={busy}
-              onPress={onSchedulePresentation}
-              style={[styles.buyBtnGhost, { borderColor: colors.border, opacity: busy ? 0.5 : 1 }]}
-            >
-              <Text style={[styles.buyBtnGhostText, { color: colors.text }]}>Nowa prezentacja</Text>
-            </Pressable>
-            {buying.length ? (
-              <Pressable onPress={() => onOpenLane('BUY')} style={styles.buyLink}>
-                <Text style={styles.buyLinkText}>Zobacz poszukiwania</Text>
-                <Ionicons name="chevron-forward" size={14} color="#FF9500" />
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-      </View>
+      {selling.length || !buying.length ? (
+        <>
+          {sellBlock}
+          {buyBlock}
+        </>
+      ) : (
+        <>
+          {buyBlock}
+          {sellBlock}
+        </>
+      )}
     </View>
   );
 }
@@ -311,5 +376,36 @@ const styles = StyleSheet.create({
     color: '#FF9500',
     fontWeight: '800',
     fontSize: 12,
+  },
+  emptyRow: {
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 34,
+    paddingHorizontal: 12,
+    borderRadius: 99,
+    borderWidth: StyleSheet.hairlineWidth,
   },
 });

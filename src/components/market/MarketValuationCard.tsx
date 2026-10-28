@@ -30,6 +30,8 @@ type Props = {
   district?: string | null;
   address?: string | null;
   listingPrice?: number | null;
+  /** FLAT / HOUSE / PLOT — wycena tylko z aktów tego samego rodzaju (działka: za m² gruntu). */
+  propertyType?: string | null;
   purpose?: 'crm' | 'listing' | 'consumer' | 'hub';
   colors: { card: string; text: string; secondary: string; border: string; accent: string; bg?: string };
   onApply?: (price: number) => void;
@@ -51,6 +53,7 @@ export default function MarketValuationCard({
   district,
   address,
   listingPrice,
+  propertyType,
   purpose = 'crm',
   colors,
   onApply,
@@ -144,7 +147,7 @@ export default function MarketValuationCard({
       setLoading(true);
       setError(null);
       void fetchMarketValuation(token, {
-        lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose,
+        lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose, propertyType,
       }).then((json) => {
         if (cancelled) return;
         if (!json.ok) {
@@ -164,10 +167,10 @@ export default function MarketValuationCard({
       cancelled = true;
       clearTimeout(t);
     };
-  }, [token, lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose, onResultChange, offerId]);
+  }, [token, lat, lng, area, rooms, floor, city, district, address, listingPrice, purpose, propertyType, onResultChange, offerId]);
 
   const payload = {
-    lat, lng, area, rooms, floor, city, district, address, listingPrice,
+    lat, lng, area, rooms, floor, city, district, address, listingPrice, propertyType,
     email,
     alternateEmail,
     clientId: clientId || undefined,

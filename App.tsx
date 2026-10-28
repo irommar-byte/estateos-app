@@ -25,7 +25,7 @@ import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View, Pressable, Animated, Alert, useColorScheme, ScrollView, PanResponder, Linking, AppState } from 'react-native';
+import { StyleSheet, Text, View, Pressable, Animated, Alert, Easing, useColorScheme, ScrollView, PanResponder, Linking, AppState } from 'react-native';
 
 import * as Notifications from "expo-notifications";
 
@@ -124,6 +124,7 @@ import AgencyTodayScreen from './src/screens/AgencyTodayScreen';
 import OutboxReviewHost from './src/components/agency/OutboxReviewHost';
 import CapturePortalLeadScreen from './src/screens/CapturePortalLeadScreen';
 import PresentationVisitWizardScreen from './src/screens/PresentationVisitWizardScreen';
+import BuyerDealScreen from './src/screens/BuyerDealScreen';
 import ClientPortalScreen from './src/screens/ClientPortalScreen';
 import ClientPortalChatScreen from './src/screens/ClientPortalChatScreen';
 import EstateOsMarketScreen from './src/screens/EstateOsMarketScreen';
@@ -211,6 +212,14 @@ function parseAddOfferStepFromTabNavState(navState: any): number | null {
 // ======================================================================
 // KASKADOWY PLUSIK (APPLE GLASS) - ZABEZPIECZONY PANRESPONDER I KĄTY
 // ======================================================================
+/** Bryła plusika: góra (światło) → kolor → dół (cień) + ciemniejszy „bok”, na którym przycisk stoi. */
+const PLUS_FACE = {
+  home: { face: ['#6EF0BC', '#10B981', '#047857'] as const, side: '#035E43', glow: '#10B981' },
+  car: { face: ['#7AD8FF', '#0EA5E9', '#0369A1'] as const, side: '#075079', glow: '#0EA5E9' },
+  idleDark: { face: ['#48484A', '#2C2C2E', '#18181A'] as const, side: '#0A0A0B', glow: '#000000' },
+  idleLight: { face: ['#FFFFFF', '#E9E9EC', '#CACAD0'] as const, side: '#AEAEB4', glow: '#8E8E93' },
+};
+
 const FloatingNextButton = (props: any) => {
   const { onPress, style, children: _tabChildren, ...tabBarProps } = props;
   const draft = useOfferStore((s) => s.draft);
@@ -247,6 +256,10 @@ const FloatingNextButton = (props: any) => {
   
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const holdScale = useRef(new Animated.Value(1)).current;
+  /** 0 → 1: przycisk wciśnięty w podstawę (twarz zjeżdża na „bok”, cień się chowa). */
+  const pressDepth = useRef(new Animated.Value(0)).current;
+  /** 0 → 1 przez czas przytrzymania: pierścień ładowania do menu szybkich akcji. */
+  const holdCharge = useRef(new Animated.Value(0)).current;
   const menuOpacity = useRef(new Animated.Value(0)).current;
   const menuProgress = useRef(new Animated.Value(0)).current;
   const itemScales = useRef([new Animated.Value(1), new Animated.Value(1), new Animated.Value(1)]).current;
@@ -420,6 +433,22 @@ const FloatingNextButton = (props: any) => {
     [discoveryEntrySeen, navigation, openLivePanel, requestVerticalSwitch, resolvedDark, switchToCar, user?.role],
   );
 
+  const pressIn = useCallback(() => {
+    holdCharge.setValue(0);
+    Animated.parallel([
+      Animated.spring(pressDepth, { toValue: 1, friction: 7, tension: 260, useNativeDriver: true }),
+      Animated.timing(holdCharge, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }),
+    ]).start();
+  }, [holdCharge, pressDepth]);
+
+  const pressOut = useCallback(() => {
+    holdCharge.stopAnimation();
+    Animated.parallel([
+      Animated.spring(pressDepth, { toValue: 0, friction: 3.6, tension: 180, useNativeDriver: true }),
+      Animated.timing(holdCharge, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start();
+  }, [holdCharge, pressDepth]);
+
   const clearLongPressTimer = useCallback(() => {
     if (!longPressTimeoutRef.current) return;
     clearTimeout(longPressTimeoutRef.current);
@@ -433,11 +462,13 @@ const FloatingNextButton = (props: any) => {
     quickActions.forEach((_, i) => itemScales[i].setValue(1));
     
     Animated.parallel([
+      Animated.spring(pressDepth, { toValue: 0, friction: 4, tension: 160, useNativeDriver: true }),
+      Animated.timing(holdCharge, { toValue: 0, duration: 260, useNativeDriver: true }),
       Animated.spring(holdScale, { toValue: 1.08, friction: 6, tension: 120, useNativeDriver: true }),
       Animated.timing(menuOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
       Animated.spring(menuProgress, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
     ]).start();
-  }, [holdScale, menuOpacity, menuProgress, itemScales, quickActions]);
+  }, [holdCharge, holdScale, menuOpacity, menuProgress, itemScales, pressDepth, quickActions]);
 
   const closeQuickMenu = useCallback((toScale = 1) => {
     Animated.parallel([
@@ -509,6 +540,8 @@ const FloatingNextButton = (props: any) => {
       onPanResponderGrant: () => {
         if (__DEV__) console.log('[PLUS] grant');
         clearLongPressTimer();
+        pressIn();
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
         setHoveredAction(null);
         initialDirectionRef.current = null;
         longPressTimeoutRef.current = setTimeout(() => {
@@ -548,14 +581,16 @@ const FloatingNextButton = (props: any) => {
         });
       },
       onPanResponderRelease: (e, gestureState) => {
+        pressOut();
         onReleaseGesture(gestureState.moveX - buttonLayoutRef.current.x , gestureState.moveY - buttonLayoutRef.current.y , e);
       },
       onPanResponderTerminate: (_, gestureState) => {
+        pressOut();
         onReleaseGesture(gestureState.moveX - buttonLayoutRef.current.x , gestureState.moveY - buttonLayoutRef.current.y , null);
       },
       onPanResponderTerminationRequest: () => false,
     }),
-    [clearLongPressTimer, isQuickMenuOpen, onReleaseGesture, openQuickMenu, resolveHoveredAction, itemScales, quickActions]
+    [clearLongPressTimer, isQuickMenuOpen, onReleaseGesture, openQuickMenu, pressIn, pressOut, resolveHoveredAction, itemScales, quickActions]
   );
 
   useEffect(() => () => clearLongPressTimer(), [clearLongPressTimer]);
@@ -564,8 +599,8 @@ const FloatingNextButton = (props: any) => {
 
   const isArrow = isFocused && step > 0;
   const isReady = !isFocused || step === 0 || isValid;
-  /** Jedyna zmiana plusika względem trybu: kolor wypełnienia (Home zielony / Cars niebieski). */
-  const plusFillColor = activeVertical === 'car' ? '#0EA5E9' : Colors.primary;
+  /** Bryła plusika według trybu (Home zielony / Cars niebieski) albo szara, gdy krok formularza nie jest gotowy. */
+  const plusFace = !isReady ? (isDark ? PLUS_FACE.idleDark : PLUS_FACE.idleLight) : activeVertical === 'car' ? PLUS_FACE.car : PLUS_FACE.home;
   // Apple-glass grawer: w obu motywach FILL jest CZYSTY BIAŁY (max
   // jasność), a STROKE robi „halo" w opposite-tone, żeby litery były
   // czytelne ZARÓWNO na zielonym plus-przycisku, JAK i na szklanym tab
@@ -653,12 +688,75 @@ const FloatingNextButton = (props: any) => {
           transform: [{ scale: Animated.multiply(pulseAnim, holdScale) }],
           width: 80,
           height: 80,
-          borderRadius: 40,
-          backgroundColor: isReady ? plusFillColor : (isDark ? '#222' : '#e5e5e5'),
           justifyContent: 'center',
           alignItems: 'center'
         }}>
-          <Ionicons name={isArrow ? "arrow-forward" : "add"} size={40} color="#fff" />
+          {/* Pierścień ładowania przytrzymania — rośnie i jaśnieje, aż otworzy się menu. */}
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              width: 98,
+              height: 98,
+              borderRadius: 49,
+              borderWidth: 3,
+              borderColor: plusFace.glow,
+              opacity: holdCharge.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.3, 0.95] }),
+              transform: [{ scale: holdCharge.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1.04] }) }],
+            }}
+          />
+          {/* „Bok” bryły — ciemniejsza podstawa z kolorowym cieniem. */}
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 5,
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              backgroundColor: plusFace.side,
+              shadowColor: plusFace.glow,
+              shadowOffset: { width: 0, height: 10 },
+              shadowRadius: 16,
+              shadowOpacity: isReady ? 0.5 : 0.22,
+              elevation: 10,
+            }}
+          />
+          <Animated.View
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              overflow: 'hidden',
+              alignItems: 'center',
+              justifyContent: 'center',
+              transform: [{ translateY: pressDepth.interpolate({ inputRange: [0, 1], outputRange: [0, 4] }) }],
+            }}
+          >
+            <LinearGradient colors={plusFace.face} locations={[0, 0.5, 1]} start={{ x: 0.3, y: 0 }} end={{ x: 0.7, y: 1 }} style={StyleSheet.absoluteFill} />
+            <LinearGradient
+              colors={['rgba(255,255,255,0.55)', 'rgba(255,255,255,0)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={{ position: 'absolute', top: 3, left: 14, right: 14, height: 30, borderRadius: 18 }}
+            />
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                ...StyleSheet.absoluteFillObject,
+                borderRadius: 40,
+                backgroundColor: 'rgba(0,0,0,0.16)',
+                opacity: pressDepth,
+              }}
+            />
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 40, borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' }} />
+            <Ionicons
+              name={isArrow ? "arrow-forward" : "add"}
+              size={40}
+              color={isReady || isDark ? '#fff' : '#8E8E93'}
+              style={{ textShadowColor: 'rgba(0,0,0,0.28)', textShadowOffset: { width: 0, height: 1.5 }, textShadowRadius: 3 }}
+            />
+          </Animated.View>
 
           {/*
             ╔══════════════════════════════════════════════════════════╗
@@ -814,6 +912,16 @@ const FloatingNextButton = (props: any) => {
 }
 
 const Tab = createBottomTabNavigator();
+
+/** Etykieta zakładki, która zmniejsza się zamiast ucinać („Mapy+Radar”, „Wiadomości” na wąskich ekranach). */
+const tabLabel = (text: string) =>
+  function TabLabel({ color }: { color: string }) {
+    return (
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} allowFontScaling={false} style={[styles.tabLabel, { color }]}>
+        {text}
+      </Text>
+    );
+  };
 const LUXURY_TAB_PRESS_DELAY_MS = 20;
 
 /**
@@ -1036,12 +1144,6 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       tabBarShowLabel: true, 
       tabBarActiveTintColor: activeVertical === 'car' ? '#0EA5E9' : Colors.primary, 
       tabBarInactiveTintColor: currentColors.subtitle, 
-      tabBarLabelStyle: {
-        fontSize: 11,
-        fontWeight: '700',
-        letterSpacing: -0.15,
-        marginTop: 1,
-      },
       tabBarItemStyle: {
         borderRadius: 20,
         marginHorizontal: 2,
@@ -1072,7 +1174,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       <Tab.Screen
         name="Market"
         options={{
-          tabBarLabel: t('tabs.market'),
+          tabBarLabel: tabLabel(t('tabs.market')),
           tabBarIcon: ({ color }) => (
             <Ionicons name={activeVertical === 'car' ? 'car-sport' : 'home'} size={26} color={color} />
           ),
@@ -1085,7 +1187,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       <Tab.Screen
         name="Explore"
         options={{
-          tabBarLabel: t('tabs.mapsRadar'),
+          tabBarLabel: tabLabel(t('tabs.mapsRadar')),
           tabBarIcon: ({ color }) => <Ionicons name="map" size={24} color={color} />,
         }}
       >
@@ -1143,7 +1245,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       <Tab.Screen
         name="Wiadomości"
         options={{
-          tabBarLabel: t('tabs.messages'),
+          tabBarLabel: tabLabel(t('tabs.messages')),
           tabBarIcon: ({ color }) => (
             <Ionicons name="chatbubble-ellipses" size={23} color={color} />
           ),
@@ -1169,7 +1271,7 @@ function MainTabs({ splashDone }: { splashDone: boolean }) {
       <Tab.Screen
         name="Profil"
         options={{
-          tabBarLabel: t('tabs.profile'),
+          tabBarLabel: tabLabel(t('tabs.profile')),
           tabBarIcon: ({ color }) => (
             <ProfileTabIconWithGlow color={color} pendingCount={profilePendingCount} />
           ),
@@ -2197,6 +2299,11 @@ export default function App() {
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen
+              name="BuyerDeal"
+              component={BuyerDealScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
               name="ClientPortal"
               component={ClientPortalScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
@@ -2267,6 +2374,15 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tabLabel: {
+    alignSelf: 'stretch',
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: -0.15,
+    marginTop: 1,
+    paddingHorizontal: 2,
   },
   luxuryTabButtonInner: {
     minWidth: 56,

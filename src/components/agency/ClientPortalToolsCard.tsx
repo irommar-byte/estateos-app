@@ -41,11 +41,13 @@ type ToolDocument = {
 };
 
 type DocTemplate = { id: number; label: string; hint: string | null; required: boolean };
+type DocSuggestion = { key: string; label: string; hint: string | null; required: boolean };
 
 type Tools = {
   documents?: ToolDocument[];
   documentsSummary?: { total?: number; required: number; done: number; missing: number; toReview: number };
   documentTemplates?: DocTemplate[];
+  documentSuggestions?: DocSuggestion[];
   permissions: Record<string, boolean>;
   portalUrl: string | null;
   appInvite: { code: string; link: string; qrSvg?: string; expiresAt?: string | null; portalLink?: string | null } | null;
@@ -135,6 +137,8 @@ export default function ClientPortalToolsCard({
   const [newDocRequired, setNewDocRequired] = useState(true);
   const [newDocTemplate, setNewDocTemplate] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<ToolDocument | null>(null);
+  const [docsOpen, setDocsOpen] = useState(false);
+  const [pickedSuggestions, setPickedSuggestions] = useState<string[]>([]);
   const isSeller = clientType === 'SELLER';
 
   const endpoint = `${API_URL}/api/crm/clients/${clientId}/portal-tools`;
@@ -294,7 +298,21 @@ export default function ClientPortalToolsCard({
             </View>
           ))}
 
-          {tools?.documents ? (
+          {tools?.documents && !tools.documents.length && !docsOpen ? (
+            <View style={[styles.section, { borderColor: colors.border }]}>
+              <Text style={[styles.kicker, { color: colors.secondary }]}>DOKUMENTY</Text>
+              <Text style={[styles.small, { color: colors.secondary }]}>
+                Klient nie widzi żadnej listy, dopóki o coś nie poprosisz. Wybierz dokumenty, gdy przyjdzie na nie czas.
+              </Text>
+              <Pressable
+                onPress={() => setDocsOpen(true)}
+                style={[styles.btn, { borderColor: colors.border, borderWidth: 1, alignSelf: 'flex-start', marginTop: 8 }]}
+              >
+                <Ionicons name="document-text-outline" size={15} color={colors.text} />
+                <Text style={[styles.btnText, { color: colors.text }]}>Poproś o dokumenty</Text>
+              </Pressable>
+            </View>
+          ) : tools?.documents ? (
             <View style={[styles.section, { borderColor: colors.border }]}>
               <Text style={[styles.kicker, { color: colors.secondary }]}>
                 DOKUMENTY ·{' '}
@@ -401,6 +419,54 @@ export default function ClientPortalToolsCard({
                   </View>
                 );
               })}
+
+              {tools.documentSuggestions?.length ? (
+                <>
+                  <Text style={[styles.small, { color: colors.secondary, marginTop: 12, fontWeight: '700' }]}>
+                    TYPOWE DOKUMENTY — zaznacz, o które prosisz
+                  </Text>
+                  <View style={styles.chips}>
+                    {tools.documentSuggestions.map((item) => {
+                      const picked = pickedSuggestions.includes(item.key);
+                      return (
+                        <Pressable
+                          key={item.key}
+                          onPress={() =>
+                            setPickedSuggestions((current) =>
+                              picked ? current.filter((key) => key !== item.key) : [...current, item.key],
+                            )
+                          }
+                          style={[
+                            styles.chip,
+                            {
+                              borderColor: picked ? '#34C759' : colors.border,
+                              backgroundColor: picked ? 'rgba(52,199,89,0.12)' : 'transparent',
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                            },
+                          ]}
+                        >
+                          <Ionicons name={picked ? 'checkmark' : 'add'} size={13} color={picked ? '#34C759' : colors.text} />
+                          <Text style={[styles.chipText, { color: colors.text }]}>{item.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {pickedSuggestions.length ? (
+                    <Pressable
+                      disabled={busy === 'doc-suggest'}
+                      onPress={async () => {
+                        const ok = await act('doc-suggest', { action: 'add_suggested_documents', keys: pickedSuggestions });
+                        if (ok) setPickedSuggestions([]);
+                      }}
+                      style={[styles.btn, { backgroundColor: '#34C759', alignSelf: 'flex-start', marginTop: 8 }]}
+                    >
+                      <Text style={[styles.btnText, { color: '#fff' }]}>Poproś o zaznaczone · {pickedSuggestions.length}</Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              ) : null}
 
               {tools.documentTemplates?.length ? (
                 <>

@@ -22,6 +22,7 @@ import { useThemeStore } from '../store/useThemeStore';
 import { createAgencyClient, previewPortalListing } from '../services/agencyClientService';
 import { API_URL } from '../config/network';
 import { formatPriceInput, parseGroupedNumber } from '../utils/crmFormatters';
+import ExpectedPriceInsight from '../components/agency/ExpectedPriceInsight';
 import AcquisitionPhoneField from '../components/agency/AcquisitionPhoneField';
 import AcquisitionAddressMapField, {
   type AcquisitionAddressValue,
@@ -130,6 +131,7 @@ export default function AgencyClientCreateScreen() {
     meetingAt: '',
     sellerPropertyType: 'FLAT' as SellerPropertyTypeId,
     apartmentNumber: '',
+    sellerArea: '',
   });
   const [address, setAddress] = useState<AcquisitionAddressValue>({
     address: '',
@@ -592,6 +594,7 @@ export default function AgencyClientCreateScreen() {
               sellerPropertyType: form.sellerPropertyType,
               apartmentNumber: form.sellerPropertyType === 'FLAT' ? form.apartmentNumber.trim() : '',
               sellerPrice: form.sellerPrice ? parseGroupedNumber(form.sellerPrice) : null,
+              sellerArea: Number(form.sellerArea.replace(',', '.')) > 0 ? Number(form.sellerArea.replace(',', '.')) : null,
               listingUrl: form.listingUrl.trim() || null,
               prepItems,
               lat: address.lat,
@@ -1109,6 +1112,19 @@ export default function AgencyClientCreateScreen() {
                   <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 8, lineHeight: 16 }}>
                     To pole jest widoczne na karcie klienta i w pozyskaniu — nie chowa się w tłumie pozostałych danych.
                   </Text>
+                  <ExpectedPriceInsight
+                    token={token}
+                    propertyType={form.sellerPropertyType}
+                    price={parseGroupedNumber(form.sellerPrice) || null}
+                    area={form.sellerArea}
+                    onAreaChange={(sellerArea) => setForm((current) => ({ ...current, sellerArea }))}
+                    lat={address.lat}
+                    lng={address.lng}
+                    city={address.city}
+                    district={address.district}
+                    address={address.address}
+                    isDark={isDark}
+                  />
                 </View>
               </>
             ) : null}

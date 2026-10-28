@@ -619,8 +619,9 @@ export async function uploadAcquisitionPaper(
   };
 }
 
-export async function suggestAddresses(token: string, query: string) {
-  const res = await fetch(`${API_URL}/api/location/forward?q=${encodeURIComponent(query)}`, {
+export async function suggestAddresses(token: string, query: string, near?: { lat: number; lng: number } | null) {
+  const nearParam = near ? `&near=${near.lat},${near.lng}` : '';
+  const res = await fetch(`${API_URL}/api/location/forward?q=${encodeURIComponent(query)}${nearParam}`, {
     headers: authHeaders(token),
   });
   const json = await parseJson(res);

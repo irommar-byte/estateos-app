@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatPeselDecode } from '../../lib/pesel';
@@ -116,6 +116,11 @@ export default function ClientPersonCard({
   ]
     .filter(Boolean)
     .join('  ·  ');
+  const [factsOpen, setFactsOpen] = useState(false);
+  const showStats = personRoles.includes('BUYER') || sentCount + opinionCount + chatCount > 0;
+  const factsHint = ['Telefon', 'e-mail', pesel ? 'PESEL' : null, kwNumbers.length ? 'KW' : null]
+    .filter(Boolean)
+    .join(', ');
 
   return (
     <View
@@ -158,77 +163,121 @@ export default function ClientPersonCard({
         </View>
       </View>
 
+      {phone || email ? (
+        <View style={styles.quickRow}>
+          {phone && phoneParts ? (
+            <Pressable
+              onPress={() => Linking.openURL(`tel:${phone}`)}
+              style={({ pressed }) => [styles.quickBtn, { backgroundColor: colors.input, opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Ionicons name="call" size={15} color="#34C759" />
+              <Text style={[styles.quickText, appleType, { color: colors.text }]} numberOfLines={1}>
+                {phoneParts.national}
+              </Text>
+            </Pressable>
+          ) : null}
+          {email ? (
+            <Pressable
+              onPress={() => Linking.openURL(`mailto:${email}`)}
+              style={({ pressed }) => [styles.quickBtn, { backgroundColor: colors.input, opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Ionicons name="mail" size={15} color="#007AFF" />
+              <Text style={[styles.quickText, appleType, { color: colors.text }]} numberOfLines={1}>
+                {email}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
       <View style={[styles.rule, { backgroundColor: colors.border }]} />
 
-      <View style={styles.facts}>
-        <FactRow
-          label="Telefon"
-          colors={colors}
-          onPress={phone ? () => Linking.openURL(`tel:${phone}`) : undefined}
-        >
-          {phoneParts ? (
-            <View style={styles.phoneValue}>
-              <Text style={styles.flag}>{phoneParts.flag}</Text>
-              <Text style={[styles.dial, appleType, { color: colors.secondary }]}>{phoneParts.dial}</Text>
-              <Text style={[styles.national, appleType, { color: colors.text }]}>{phoneParts.national}</Text>
-            </View>
-          ) : (
-            <Text style={[styles.rowValue, appleType, { color: colors.secondary, fontWeight: '400' }]}>Brak</Text>
-          )}
-        </FactRow>
-        <FactRow
-          label="E-mail"
-          colors={colors}
-          onPress={email ? () => Linking.openURL(`mailto:${email}`) : undefined}
-        >
-          <Text
-            style={[styles.rowValue, appleType, { color: email ? colors.text : colors.secondary, fontWeight: email ? '500' : '400' }]}
-            numberOfLines={2}
-          >
-            {email || 'Brak'}
+      <Pressable
+        onPress={() => setFactsOpen((open) => !open)}
+        style={({ pressed }) => [styles.disclosure, { opacity: pressed ? 0.6 : 1 }]}
+      >
+        <Text style={[styles.disclosureTitle, appleType, { color: colors.text }]}>Dane klienta</Text>
+        {!factsOpen ? (
+          <Text style={[styles.disclosureHint, appleType, { color: colors.secondary }]} numberOfLines={1}>
+            {factsHint}
           </Text>
-        </FactRow>
-        <FactRow label="PESEL" colors={colors} last={!kwNumbers.length}>
-          {pesel ? (
-            <View>
-              <Text style={[styles.rowValue, appleType, { color: colors.text }]}>{pesel}</Text>
-              {peselHint ? (
-                <Text style={[styles.peselHint, appleType, { color: colors.secondary }]}>{peselHint}</Text>
-              ) : null}
-            </View>
-          ) : (
-            <Text style={[styles.rowValue, appleType, { color: colors.secondary, fontWeight: '400' }]}>Brak</Text>
-          )}
-        </FactRow>
-        {kwNumbers.map((item, index) => (
-          <FactRow
-            key={`kw-${item.kw}`}
-            label="KW"
-            last={index === kwNumbers.length - 1}
-            colors={colors}
-            onPress={() => onOpenKw(item.kw)}
-          >
-            <Text style={[styles.rowValue, appleType, { color: colors.text }]}>{item.kw}</Text>
-          </FactRow>
-        ))}
-      </View>
+        ) : null}
+        <Ionicons name={factsOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.secondary} />
+      </Pressable>
 
-      <View style={[styles.stats, { borderTopColor: colors.border }]}>
-        <View style={styles.stat}>
-          <Text style={[styles.statValue, appleType, { color: colors.text }]}>{sentCount}</Text>
-          <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Wysłane</Text>
+      {factsOpen ? (
+        <View style={styles.facts}>
+          <FactRow
+            label="Telefon"
+            colors={colors}
+            onPress={phone ? () => Linking.openURL(`tel:${phone}`) : undefined}
+          >
+            {phoneParts ? (
+              <View style={styles.phoneValue}>
+                <Text style={styles.flag}>{phoneParts.flag}</Text>
+                <Text style={[styles.dial, appleType, { color: colors.secondary }]}>{phoneParts.dial}</Text>
+                <Text style={[styles.national, appleType, { color: colors.text }]}>{phoneParts.national}</Text>
+              </View>
+            ) : (
+              <Text style={[styles.rowValue, appleType, { color: colors.secondary, fontWeight: '400' }]}>Brak</Text>
+            )}
+          </FactRow>
+          <FactRow
+            label="E-mail"
+            colors={colors}
+            onPress={email ? () => Linking.openURL(`mailto:${email}`) : undefined}
+          >
+            <Text
+              style={[styles.rowValue, appleType, { color: email ? colors.text : colors.secondary, fontWeight: email ? '500' : '400' }]}
+              numberOfLines={2}
+            >
+              {email || 'Brak'}
+            </Text>
+          </FactRow>
+          <FactRow label="PESEL" colors={colors} last={!kwNumbers.length}>
+            {pesel ? (
+              <View>
+                <Text style={[styles.rowValue, appleType, { color: colors.text }]}>{pesel}</Text>
+                {peselHint ? (
+                  <Text style={[styles.peselHint, appleType, { color: colors.secondary }]}>{peselHint}</Text>
+                  ) : null}
+                </View>
+              ) : (
+                <Text style={[styles.rowValue, appleType, { color: colors.secondary, fontWeight: '400' }]}>Brak</Text>
+              )}
+            </FactRow>
+            {kwNumbers.map((item, index) => (
+              <FactRow
+                key={`kw-${item.kw}`}
+                label="KW"
+                last={index === kwNumbers.length - 1}
+                colors={colors}
+                onPress={() => onOpenKw(item.kw)}
+              >
+                <Text style={[styles.rowValue, appleType, { color: colors.text }]}>{item.kw}</Text>
+              </FactRow>
+            ))}
+          </View>
+      ) : null}
+
+      {showStats ? (
+        <View style={[styles.stats, { borderTopColor: colors.border }]}>
+          <View style={styles.stat}>
+            <Text style={[styles.statValue, appleType, { color: colors.text }]}>{sentCount}</Text>
+            <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Wysłane</Text>
+          </View>
+          <View style={[styles.statRule, { backgroundColor: colors.border }]} />
+          <View style={styles.stat}>
+            <Text style={[styles.statValue, appleType, { color: colors.text }]}>{opinionCount}</Text>
+            <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Z opinią</Text>
+          </View>
+          <View style={[styles.statRule, { backgroundColor: colors.border }]} />
+          <View style={styles.stat}>
+            <Text style={[styles.statValue, appleType, { color: colors.text }]}>{chatCount}</Text>
+            <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Czat</Text>
+          </View>
         </View>
-        <View style={[styles.statRule, { backgroundColor: colors.border }]} />
-        <View style={styles.stat}>
-          <Text style={[styles.statValue, appleType, { color: colors.text }]}>{opinionCount}</Text>
-          <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Z opinią</Text>
-        </View>
-        <View style={[styles.statRule, { backgroundColor: colors.border }]} />
-        <View style={styles.stat}>
-          <Text style={[styles.statValue, appleType, { color: colors.text }]}>{chatCount}</Text>
-          <Text style={[styles.statLabel, appleType, { color: colors.secondary }]}>Czat</Text>
-        </View>
-      </View>
+      ) : null}
     </View>
   );
 }
@@ -239,7 +288,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 22,
     paddingTop: 20,
-    paddingBottom: 8,
+    paddingBottom: 4,
     marginBottom: 16,
     overflow: 'hidden',
   },
@@ -296,8 +345,45 @@ const styles = StyleSheet.create({
   },
   rule: {
     height: StyleSheet.hairlineWidth,
-    marginTop: 18,
-    marginBottom: 4,
+    marginTop: 16,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 16,
+  },
+  quickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    minHeight: 38,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    maxWidth: '100%',
+  },
+  quickText: {
+    fontSize: 15,
+    fontWeight: '500',
+    letterSpacing: -0.2,
+    fontVariant: ['tabular-nums'],
+    flexShrink: 1,
+  },
+  disclosure: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 14,
+  },
+  disclosureTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  disclosureHint: {
+    flex: 1,
+    fontSize: 13,
+    textAlign: 'right',
   },
   facts: {
     alignSelf: 'stretch',

@@ -648,7 +648,7 @@ export default function RadarOfferGallery({
               },
               {
                 key: 'cover',
-                icon: viewMode === 'cover' ? 'square' : 'square-outline',
+                icon: viewMode === 'cover' ? 'tablet-portrait' : 'tablet-portrait-outline',
                 accessibilityLabel: t('radar.home.galleryViewCover'),
               },
             ]}
@@ -865,7 +865,8 @@ export default function RadarOfferGallery({
               ) : null}
             </View>
             <Text style={catalogStyles.cardFooter} numberOfLines={1}>
-              ID {item.id} · {publishLabel.replace(/^[^:]+:\s*/, '')}
+              ID {item.id}
+              {publishLabel ? ` · ${publishLabel.replace(/^[^:]+:\s*/, '')}` : ''}
             </Text>
           </View>
         </Pressable>

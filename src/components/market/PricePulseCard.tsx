@@ -19,6 +19,7 @@ import {
   fetchPricePulse,
   formatPpsm,
   formatSignedPct,
+  type PricePulseKind,
   type PricePulsePayload,
   type PricePulseTone,
   type PricePulseTrendKey,
@@ -83,17 +84,47 @@ function dualPaths(a: Array<number | null>, b: Array<number | null>, width: numb
   return { a: pathOf(a), b: pathOf(b) };
 }
 
+const KIND_TEXT: Record<PricePulseKind, { tab: string; gen: string; nom: string; title: string }> = {
+  LOCAL: { tab: 'Mieszkania', gen: 'mieszkań', nom: 'Mieszkania', title: 'mieszkania' },
+  BUILDING: { tab: 'Domy', gen: 'domów', nom: 'Domy', title: 'domy' },
+  PLOT: { tab: 'Działki', gen: 'działek', nom: 'Działki', title: 'działki (cena za m² gruntu)' },
+};
+
+const MONTHS = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
+const MONTHS_SHORT = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
+
+function monthName(key: string, short = false) {
+  const m = Number(key.split('-')[1]);
+  return (short ? MONTHS_SHORT : MONTHS)[m - 1] || key;
+}
+
+/** Krótko: z czego jest ta liczba — dwa porównywane okresy. */
+function comparedPeriods(trend: { key: PricePulseTrendKey; points: Array<{ key: string; ppsm: number | null }> } | null, short = false) {
+  if (!trend) return null;
+  if (trend.key === 'month') {
+    const filled = trend.points.filter((p) => p.ppsm != null);
+    if (filled.length < 2) return null;
+    const last = filled[filled.length - 1].key;
+    const prev = filled[filled.length - 2].key;
+    return short ? `${monthName(last, true)} vs ${monthName(prev, true)}` : `${monthName(last)} względem: ${monthName(prev)}`;
+  }
+  if (trend.key === 'year') return short ? '12 mies. vs poprz. 12' : 'ostatnie 12 miesięcy względem poprzednich 12';
+  if (trend.key === 'week') return short ? 'tydzień vs poprz.' : 'ostatni pełny tydzień aktów względem poprzedniego';
+  return short ? 'dzień vs poprz.' : 'ostatni dzień z aktami względem poprzedniego';
+}
+
 function toneColor(tone: PricePulseTone) {
   if (tone === 'up') return '#34C759';
   if (tone === 'down') return '#F43F5E';
   return '#8E8E93';
 }
 
-function directionLabel(changePct: number | null) {
+function directionLabel(changePct: number | null, kind: PricePulseKind) {
+  const k = KIND_TEXT[kind];
   if (changePct == null) return 'Za mało kompletnych aktów';
-  if (changePct > 0.4) return 'Mieszkania kupowane drożej';
-  if (changePct < -0.4) return 'Mieszkania kupowane taniej';
-  return 'Ceny mieszkań z aktów stabilne';
+  if (changePct > 0.4) return `${k.nom} kupowane drożej`;
+  if (changePct < -0.4) return `${k.nom} kupowane taniej`;
+  return `Ceny ${k.gen} z aktów stabilne`;
 }
 
 function periodCaption(key: TrendKey) {
@@ -103,13 +134,13 @@ function periodCaption(key: TrendKey) {
   return 'Miesiąc';
 }
 
-function narrative(data: PricePulsePayload, win: PricePulseWindow) {
+function narrative(data: PricePulsePayload, win: PricePulseWindow, kind: PricePulseKind) {
   const gap = formatSignedPct(win.vsDeedsPct ?? data.vsDeedsPct);
   const move = formatSignedPct(win.listingChangePct);
   const dir = win.listingChangePct ?? 0;
   const trend =
     dir <= -1 ? 'Ceny ofertowe schodzą.' : dir >= 1 ? 'Ceny ofertowe idą w górę.' : 'Ceny ofertowe stoją w miejscu.';
-  return `Oferty mieszkań w Warszawie (bez domów) są ${gap} względem cen z aktów. ${trend} Zmiana ofert w tym oknie: ${move}.`;
+  return `Oferty ${KIND_TEXT[kind].gen} w Warszawie są ${gap} względem cen z aktów. ${trend} Zmiana ofert w tym oknie: ${move}.`;
 }
 
 function toneOfChange(value: number | null): PricePulseTone {
@@ -132,16 +163,18 @@ export default function PricePulseCard({
   const [open, setOpen] = useState(false);
   const [windowKey, setWindowKey] = useState<WindowKey>('d30');
   const [trendKey, setTrendKey] = useState<TrendKey>('month');
+  const [kind, setKind] = useState<PricePulseKind>('LOCAL');
   const [loading, setLoading] = useState(true);
 
   const text = textColor || (isDark ? '#F4E7C5' : '#3F2B05');
   const muted = mutedColor || (isDark ? 'rgba(244,231,197,0.62)' : 'rgba(63,43,5,0.55)');
 
   const load = useCallback(async () => {
-    const json = await fetchPricePulse(token);
-    if (json.ok) setData(json);
+    setLoading(true);
+    const json = await fetchPricePulse(token, kind);
+    setData(json.ok ? json : null);
     setLoading(false);
-  }, [token]);
+  }, [token, kind]);
 
   useFocusEffect(
     useCallback(() => {
@@ -192,8 +225,13 @@ export default function PricePulseCard({
               <Text style={[styles.eyebrow, { color: muted }]}>PULS CENOWY</Text>
             </View>
             <Text style={[styles.hint, { color: muted }]} numberOfLines={1}>
-              Zmiana cen mieszkań z aktów · {periodCaption(trendKey)}
+              Zmiana cen {KIND_TEXT[kind].gen} z aktów · {periodCaption(trendKey)}
             </Text>
+            {comparedPeriods(trend, true) ? (
+              <Text style={[styles.explain, { color: muted }]} numberOfLines={1}>
+                mediana zł/m² z aktów notarialnych · {comparedPeriods(trend, true)}
+              </Text>
+            ) : null}
           </View>
           {loading && !data ? (
             <ActivityIndicator size="small" color={pctColor} />
@@ -217,7 +255,7 @@ export default function PricePulseCard({
         ) : null}
 
         <Text style={[styles.footer, { color: muted }]} numberOfLines={1}>
-          {data ? directionLabel(headlinePct) : 'Dotknij, aby zobaczyć trend'}
+          {data ? directionLabel(headlinePct, kind) : 'Dotknij, aby zobaczyć trend'}
         </Text>
       </InsetMetalRecess>
 
@@ -226,7 +264,7 @@ export default function PricePulseCard({
           <View style={styles.modalHeader}>
             <View>
               <Text style={[styles.eyebrow, { color: muted }]}>PULS CENOWY</Text>
-              <Text style={[styles.modalTitle, { color: text }]}>Warszawa · mieszkania, bez domów</Text>
+              <Text style={[styles.modalTitle, { color: text }]}>Warszawa · {KIND_TEXT[kind].title}</Text>
             </View>
             <Pressable onPress={() => setOpen(false)} style={styles.closeBtn} hitSlop={12}>
               <Ionicons name="close" size={22} color={text} />
@@ -234,13 +272,36 @@ export default function PricePulseCard({
           </View>
 
           <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} showsVerticalScrollIndicator={false}>
+            <View style={[styles.chipRow, { marginTop: 0, marginBottom: 14 }]}>
+              {(['LOCAL', 'BUILDING', 'PLOT'] as const).map((key) => {
+                const active = kind === key;
+                return (
+                  <Pressable
+                    key={key}
+                    onPress={() => setKind(key)}
+                    style={[styles.chip, active && { borderColor: '#34C759', backgroundColor: 'rgba(52,199,89,0.14)' }]}
+                  >
+                    <Text style={[styles.chipText, { color: active ? '#34C759' : muted }]}>{KIND_TEXT[key].tab}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <View style={styles.hero}>
               <Text style={[styles.hint, { color: muted }]}>
-                Zmiana cen mieszkań z aktów · {periodCaption(trendKey)}
+                Zmiana cen {KIND_TEXT[kind].gen} z aktów · {periodCaption(trendKey)}
               </Text>
-              <Text style={[styles.heroPct, { color: pctColor }]}>{pctLabel}</Text>
+              {loading ? <ActivityIndicator style={{ marginVertical: 12 }} color={pctColor} /> : <Text style={[styles.heroPct, { color: pctColor }]}>{pctLabel}</Text>}
+              <View style={styles.explainBox}>
+                <Text style={[styles.explainTitle, { color: text }]}>Co oznacza ta liczba?</Text>
+                <Text style={[styles.narrative, { color: muted, marginBottom: 0 }]}>
+                  {headlinePct == null
+                    ? `W tym okresie było za mało kompletnych aktów ${KIND_TEXT[kind].gen}, żeby uczciwie policzyć zmianę.`
+                    : `To zmiana mediany ceny za m² (${data?.unit || 'zł/m²'}) w aktach notarialnych z Rejestru Cen Nieruchomości — ${comparedPeriods(trend) || periodCaption(trendKey).toLowerCase()}. Mediana to cena „środkowa”: połowa transakcji była tańsza, połowa droższa, więc pojedyncze drogie czy tanie sprzedaże jej nie zawyżają.`}
+                  {data?.asOf ? ` Akty spływają z urzędów z opóźnieniem — są kompletne do ${new Date(data.asOf).toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })}.` : ''}
+                </Text>
+              </View>
               <Text style={[styles.narrative, { color: muted }]}>
-                {data && win ? narrative(data, win) : 'Brak pulsu.'}
+                {data && win ? narrative(data, win, kind) : 'Brak pulsu.'}
               </Text>
               <Svg width="100%" height={132} viewBox="0 0 320 120" preserveAspectRatio="none">
                 {dual.b ? <Path d={dual.b} fill="none" stroke="#C9A227" strokeWidth={2.2} /> : null}
@@ -356,6 +417,9 @@ const styles = StyleSheet.create({
   eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   eyebrow: { fontSize: 9, fontWeight: '900', letterSpacing: 1.1 },
   hint: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  explain: { fontSize: 9.5, fontWeight: '600', marginTop: 2, opacity: 0.85 },
+  explainBox: { borderRadius: 14, padding: 12, marginBottom: 12, backgroundColor: 'rgba(0,0,0,0.12)' },
+  explainTitle: { fontSize: 13, fontWeight: '800', marginBottom: 4 },
   pct: { fontSize: 26, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: -0.6 },
   chartWrap: { height: 64, marginTop: 2 },
   empty: { fontSize: 11, fontWeight: '600' },

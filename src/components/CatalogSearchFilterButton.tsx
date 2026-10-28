@@ -13,6 +13,8 @@ type Props = {
   lightChrome?: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
+  /** Wąski telefon: okrągły przycisk z ikoną filtrów, bez napisów (napis zostaje w a11y). */
+  compact?: boolean;
 };
 
 /**
@@ -28,6 +30,7 @@ export default function CatalogSearchFilterButton({
   lightChrome = false,
   onPress,
   accessibilityLabel,
+  compact = false,
 }: Props) {
   const pulse = useRef(new Animated.Value(1)).current;
 
@@ -72,7 +75,9 @@ export default function CatalogSearchFilterButton({
   const a11y = accessibilityLabel || (hint ? `${label}. ${hint}` : label);
 
   return (
-    <Animated.View style={[styles.wrap, lightChrome && styles.wrapLight, { transform: [{ scale: pulse }] }]}>
+    <Animated.View
+      style={[styles.wrap, compact && styles.wrapCompact, lightChrome && styles.wrapLight, { transform: [{ scale: pulse }] }]}
+    >
     <ApplePressable
       onPress={onPress}
       haptic="medium"
@@ -86,36 +91,43 @@ export default function CatalogSearchFilterButton({
         tint={isDark ? 'dark' : 'light'}
         style={[
           styles.glass,
+          compact && styles.glassCompact,
           lightChrome && styles.glassLight,
           active && { borderColor: `${accent}AA`, backgroundColor: `${accent}1F` },
         ]}
       >
-        <View style={[styles.iconBubble, { backgroundColor: `${accent}30` }]}>
-          <Ionicons name="search" size={16} color={accent} />
-        </View>
-        <View style={styles.copy}>
-          <Text
-            style={[styles.label, { color: isDark ? '#FFF' : '#0F172A' }]}
-            numberOfLines={1}
-            allowFontScaling={false}
-            adjustsFontSizeToFit
-            minimumFontScale={0.78}
-          >
-            {label}
-          </Text>
-          {hint ? (
-            <Text
-              style={[styles.hint, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}
-              numberOfLines={1}
-              allowFontScaling={false}
-              adjustsFontSizeToFit
-              minimumFontScale={0.78}
-            >
-              {hint}
-            </Text>
-          ) : null}
-        </View>
-        {active ? <View style={[styles.dot, { backgroundColor: accent }]} /> : null}
+        {compact ? (
+          <Ionicons name="options" size={21} color={accent} />
+        ) : (
+          <>
+            <View style={[styles.iconBubble, { backgroundColor: `${accent}30` }]}>
+              <Ionicons name="search" size={16} color={accent} />
+            </View>
+            <View style={styles.copy}>
+              <Text
+                style={[styles.label, { color: isDark ? '#FFF' : '#0F172A' }]}
+                numberOfLines={1}
+                allowFontScaling={false}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+              >
+                {label}
+              </Text>
+              {hint ? (
+                <Text
+                  style={[styles.hint, { color: isDark ? 'rgba(255,255,255,0.55)' : '#64748B' }]}
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                >
+                  {hint}
+                </Text>
+              ) : null}
+            </View>
+          </>
+        )}
+        {active ? <View style={[styles.dot, compact && styles.dotCompact, { backgroundColor: accent }]} /> : null}
       </BlurView>
     </ApplePressable>
     </Animated.View>
@@ -138,6 +150,11 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
   },
+  wrapCompact: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  },
   wrapLight: {
     borderColor: 'rgba(15,23,42,0.1)',
     shadowColor: '#0F172A',
@@ -150,6 +167,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     gap: 6,
     borderRadius: 25,
+  },
+  glassCompact: {
+    justifyContent: 'center',
+    paddingHorizontal: 0,
+    borderRadius: 23,
   },
   glassLight: {
     backgroundColor: 'rgba(255,255,255,0.96)',
@@ -183,5 +205,11 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     marginRight: 1,
     flexShrink: 0,
+  },
+  dotCompact: {
+    position: 'absolute',
+    top: 9,
+    right: 9,
+    marginRight: 0,
   },
 });

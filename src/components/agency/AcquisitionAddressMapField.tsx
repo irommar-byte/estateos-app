@@ -111,7 +111,10 @@ export default function AcquisitionAddressMapField({
   const mapRef = useRef<MapView>(null);
   const seq = useRef(0);
   const suggestSeq = useRef(0);
-  const skipRegion = useRef(false);
+  /** Pinezkę z mapy bierzemy tylko po dotknięciu mapy palcem — nie po animacji ani starcie mapy. */
+  const mapTouchedRef = useRef(false);
+  /** Ostatni tekst wysłany do rodzica — props nie nadpisują tego, co agent właśnie pisze. */
+  const lastEmittedRef = useRef(value.address);
   const suppressSuggestRef = useRef(false);
   const districtLockedRef = useRef(false);
   const [query, setQuery] = useState(value.address);
@@ -142,8 +145,13 @@ export default function AcquisitionAddressMapField({
   const restOfCountry = city === REST_OF_COUNTRY_CITY || (!cityDistricts.length && Boolean(city));
 
   useEffect(() => {
+    if (value.address === lastEmittedRef.current) return;
+    lastEmittedRef.current = value.address;
     setQuery(value.address);
   }, [value.address]);
+
+  const near = pinReady && value.lat != null && value.lng != null ? { lat: value.lat, lng: value.lng } : null;
+  const nearKey = near ? `${near.lat.toFixed(2)},${near.lng.toFixed(2)}` : '';
 
   useEffect(() => {
     const q = query.trim();
@@ -155,7 +163,7 @@ export default function AcquisitionAddressMapField({
     const handle = setTimeout(async () => {
       setLoading(true);
       try {
-        const next = await suggestAddresses(token, q);
+        const next = await suggestAddresses(token, q, near);
         if (request !== suggestSeq.current || suppressSuggestRef.current) return;
         setHints(next);
       } catch {
@@ -163,18 +171,18 @@ export default function AcquisitionAddressMapField({
       } finally {
         if (request === suggestSeq.current) setLoading(false);
       }
-    }, 280);
+    }, 320);
     return () => clearTimeout(handle);
-  }, [query, token, disabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `near` liczy się z nearKey
+  }, [query, token, disabled, nearKey]);
 
-  const flyTo = useCallback((lat: number, lng: number, delta?: number) => {
-    const zoom = delta ?? (Number.isFinite(value.lat) && Number.isFinite(value.lng) ? PIN_DELTA : DEFAULT_DELTA);
-    skipRegion.current = true;
+  const flyTo = useCallback((lat: number, lng: number) => {
+    mapTouchedRef.current = false;
     mapRef.current?.animateToRegion(
-      { latitude: lat, longitude: lng, latitudeDelta: zoom, longitudeDelta: zoom },
+      { latitude: lat, longitude: lng, latitudeDelta: PIN_DELTA, longitudeDelta: PIN_DELTA },
       280,
     );
-  }, [value.lat, value.lng]);
+  }, []);
 
   const applyCoords = useCallback(
     async (lat: number, lng: number, preferredLabel?: string, preferredCity?: string | null) => {
@@ -213,6 +221,7 @@ export default function AcquisitionAddressMapField({
           lat,
           lng,
         };
+        lastEmittedRef.current = label;
         onChange(next);
         setQuery(label);
 
@@ -254,6 +263,7 @@ export default function AcquisitionAddressMapField({
     suggestSeq.current += 1;
     setHints([]);
     setLoading(false);
+    lastEmittedRef.current = item.label || item.address;
     setQuery(item.label || item.address);
     const lat = Number(item.lat);
     const lng = Number(item.lng);
@@ -271,13 +281,18 @@ export default function AcquisitionAddressMapField({
     });
   };
 
-  const onRegionComplete = (region: Region, details?: { isGesture?: boolean }) => {
-    if (disabled) return;
-    if (skipRegion.current) {
-      skipRegion.current = false;
+  const onRegionComplete = (region: Region) => {
+    if (disabled || !mapTouchedRef.current) return;
+    mapTouchedRef.current = false;
+    // Samo przybliżenie palcami prawie nie rusza środka — zostawiamy wybrany adres.
+    if (
+      value.lat != null &&
+      value.lng != null &&
+      Math.abs(region.latitude - value.lat) < 0.00012 &&
+      Math.abs(region.longitude - value.lng) < 0.0002
+    ) {
       return;
     }
-    if (details && details.isGesture === false) return;
     void applyCoords(region.latitude, region.longitude);
   };
 
@@ -304,27 +319,34 @@ export default function AcquisitionAddressMapField({
     <View style={{ marginBottom: 14 }}>
       <Text style={[styles.label, { color: addressError ? ERROR_RED : colors.secondary }]}>{label}</Text>
       <View style={styles.inputRow}>
-        <TextInput
-          editable={!disabled}
-          value={query}
-          onChangeText={(text) => {
-            suppressSuggestRef.current = false;
-            setQuery(text);
-            onChange({ ...value, address: text });
-          }}
-          placeholder="Ulica, numer, miasto…"
-          placeholderTextColor={colors.secondary}
-          autoCorrect={false}
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.input,
-              color: colors.text,
-              borderColor: addressError ? ERROR_RED : colors.border,
-              flex: 1,
-            },
-          ]}
-        />
+        <View style={{ flex: 1 }}>
+          <TextInput
+            editable={!disabled}
+            value={query}
+            onChangeText={(text) => {
+              suppressSuggestRef.current = false;
+              lastEmittedRef.current = text;
+              setQuery(text);
+              // Tekst zmieniony ręcznie — pinezka przestaje pasować, aż agent wybierze podpowiedź albo przesunie mapę.
+              onChange({ ...value, address: text, lat: null, lng: null });
+            }}
+            placeholder="Ulica, numer, miasto…"
+            placeholderTextColor={colors.secondary}
+            autoCorrect={false}
+            autoComplete="off"
+            textContentType="fullStreetAddress"
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.input,
+                color: colors.text,
+                borderColor: addressError ? ERROR_RED : colors.border,
+                paddingRight: 36,
+              },
+            ]}
+          />
+          {loading ? <ActivityIndicator size="small" color={colors.accent} style={styles.inputSpinner} /> : null}
+        </View>
         <Pressable
           disabled={disabled || locating}
           onPress={() => void useGps()}
@@ -338,23 +360,39 @@ export default function AcquisitionAddressMapField({
         </Pressable>
       </View>
 
-      {loading ? (
-        <View style={styles.hintRow}>
-          <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={{ color: colors.secondary, fontSize: 12 }}>Szukam adresu…</Text>
+      {hints.length > 0 ? (
+        <View style={[styles.hintCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {hints.map((item, index) => {
+            const [main, ...rest] = item.label.split(', ');
+            return (
+              <Pressable
+                key={item.id}
+                onPress={() => selectHint(item)}
+                style={({ pressed }) => [
+                  styles.hint,
+                  index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+                  pressed && { opacity: 0.6 },
+                ]}
+              >
+                <Ionicons name="location" size={16} color={colors.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>{main}</Text>
+                  {rest.length ? (
+                    <Text style={{ color: colors.secondary, fontSize: 12 }} numberOfLines={1}>{rest.join(', ')}</Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
 
-      {hints.length > 0
-        ? hints.map((item) => (
-            <Pressable key={item.id} onPress={() => selectHint(item)} style={styles.hint}>
-              <Ionicons name="location" size={16} color={colors.accent} />
-              <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }}>{item.label}</Text>
-            </Pressable>
-          ))
-        : null}
-
-      <View style={[styles.mapWrap, { borderColor: addressError ? ERROR_RED : pinReady ? colors.accent : colors.border }]}>
+      <View
+        onTouchStart={() => {
+          mapTouchedRef.current = true;
+        }}
+        style={[styles.mapWrap, { borderColor: addressError ? ERROR_RED : pinReady ? colors.accent : colors.border }]}
+      >
         <MapView
           ref={mapRef}
           style={styles.map}
@@ -542,13 +580,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  hintRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  inputSpinner: { position: 'absolute', right: 12, top: 12 },
+  hintCard: { marginTop: 8, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   hint: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingVertical: 10,
-    paddingHorizontal: 4,
+    paddingHorizontal: 12,
   },
   mapWrap: {
     marginTop: 10,

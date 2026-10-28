@@ -560,6 +560,7 @@ export default function Step4_Finance({ theme }: { theme: any }) {
               district={draft.district}
               address={draft.street || draft.address}
               listingPrice={listingPricePln > 0 ? listingPricePln : null}
+              propertyType={draft.propertyType || null}
               purpose="listing"
               onResultChange={onMarketValuationChange}
               colors={{

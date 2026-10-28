@@ -110,6 +110,7 @@ import RadarOfferGallery, {
 } from '../components/radar/RadarOfferGallery';
 import { isOfferFeatured } from '../utils/listingPromotion';
 import CatalogSearchFilterButton from '../components/CatalogSearchFilterButton';
+import SpringMarqueeText from '../components/ui/SpringMarqueeText';
 import EosSpotlightHost from '../components/spotlight/EosSpotlightHost';
 import MarketCatalogViewToggle, {
   type MarketCatalogContentMode,
@@ -473,9 +474,9 @@ const formatOfferPublishDate = (raw: any, locale: import('../i18n').AppLocale) =
     raw?.publicationDate ||
     raw?.createdAt ||
     raw?.created_at;
-  if (!value) return translate('radar.home.publishDateEmpty');
+  if (!value) return '';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return translate('radar.home.publishDateEmpty');
+  if (Number.isNaN(date.getTime())) return '';
   const dateLocale = localeToDateFormat(locale);
   return translate('radar.home.publishDate', { date: date.toLocaleDateString(dateLocale) });
 };
@@ -4787,7 +4788,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             />
           </Pressable>
         </View>
-        <Text style={styles.cardSubtitle} numberOfLines={1}>{item.type}</Text>
+        <SpringMarqueeText text={String(item.type || '')} style={styles.cardSubtitle} containerStyle={styles.cardSubtitleBox} />
 
         <View style={styles.cardBadgesRow}>
           <View style={[styles.badge, { backgroundColor: showOnlyFavorites ? favoritesScopeSubtleBg : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)' }]}>
@@ -4817,7 +4818,9 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
                 ))}
             </View>
           </View>
-          <Text style={styles.publishDateText}>{formatOfferPublishDate(item.raw, locale)}</Text>
+          {formatOfferPublishDate(item.raw, locale) ? (
+            <Text style={styles.publishDateText}>{formatOfferPublishDate(item.raw, locale)}</Text>
+          ) : null}
         </View>
       </View>
     </Pressable>
@@ -5001,7 +5004,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
         ]}
         pointerEvents="auto"
       >
-        <View style={[styles.topBarSideSlot, styles.topBarToolsRow, { width: 'auto', maxWidth: 112 }]}>
+        <View style={[styles.topBarSideSlot, styles.topBarToolsRow, { width: 'auto', maxWidth: 112, gap: isNarrowChrome ? 6 : 10 }]}>
           {isGalleryBrowse && tabSurface === 'market' ? (
             <MarketCatalogViewToggle
               mode={marketContentMode}
@@ -5361,7 +5364,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
           <View style={styles.topBarCenterSpacer} />
         )}
 
-        <View style={{ flexShrink: 0, zIndex: 5, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexShrink: 0, zIndex: 5, flexDirection: 'row', alignItems: 'center', gap: isNarrowChrome ? 6 : 8 }}>
           <EosSpotlightHost isDark={isDark} lightChrome={isGalleryLightChrome} navigation={navigation} />
           <CatalogSearchFilterButton
             isDark={isDark}
@@ -5370,6 +5373,7 @@ export default function RadarHomeScreen({ navigation, route, splashDone }: any) 
             hint={t('radar.home.searchCtaHint')}
             active={hasAdvancedFiltersActive}
             lightChrome={isGalleryLightChrome}
+            compact={!isTablet}
             accessibilityLabel={t('radar.home.advancedSearch')}
             onPress={() => {
               setDraftAdvancedFilters({
@@ -7313,6 +7317,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#8E8E93',
     fontWeight: '600',
+  },
+  cardSubtitleBox: {
     marginTop: 2,
     marginBottom: 8,
   },

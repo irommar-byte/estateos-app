@@ -59,7 +59,6 @@ export default function SlidingIconSegment<T extends string>({
   const pillStyle = useAnimatedStyle(() => ({
     width: pillW,
     transform: [{ translateX: pillX.value * pillW }],
-    backgroundColor: isDark ? `${accent}66` : `${accent}33`,
   }));
 
   return (
@@ -69,13 +68,24 @@ export default function SlidingIconSegment<T extends string>({
         style={[
           styles.track,
           {
-            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)',
+            backgroundColor: isDark ? 'rgba(118,118,128,0.24)' : 'rgba(118,118,128,0.12)',
             borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.08)',
           },
         ]}
         onLayout={onTrackLayout}
       >
-        {pillW > 0 ? <Animated.View style={[styles.pill, pillStyle]} /> : null}
+        {pillW > 0 ? (
+          <Animated.View
+            style={[
+              styles.pill,
+              {
+                backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : '#FFFFFF',
+                borderColor: isDark ? `${accent}88` : `${accent}40`,
+              },
+              pillStyle,
+            ]}
+          />
+        ) : null}
         {options.map((opt) => {
           const selected = value === opt.key;
           return (
@@ -91,7 +101,7 @@ export default function SlidingIconSegment<T extends string>({
               }}
               style={styles.btn}
             >
-              <Ionicons name={opt.icon} size={16} color={selected ? accent : '#8E8E93'} />
+              <Ionicons name={opt.icon} size={17} color={selected ? accent : isDark ? 'rgba(235,235,245,0.6)' : '#6B7280'} />
             </ApplePressable>
           );
         })}
@@ -115,7 +125,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: 2,
     position: 'relative',
-    overflow: 'hidden',
   },
   pill: {
     position: 'absolute',
@@ -123,10 +132,16 @@ const styles = StyleSheet.create({
     bottom: 2,
     left: 2,
     borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+    elevation: 2,
   },
   btn: {
-    minWidth: 40,
-    paddingHorizontal: 12,
+    minWidth: 46,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',

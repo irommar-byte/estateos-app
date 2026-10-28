@@ -63,6 +63,7 @@ import LuxPartnerSheet from '../components/clientPortal/lux/LuxPartnerSheet';
 import LuxAreaSheet from '../components/clientPortal/lux/LuxAreaSheet';
 import LuxCostSheet from '../components/clientPortal/lux/LuxCostSheet';
 import LuxDocuments from '../components/clientPortal/lux/LuxDocuments';
+import LuxBuyerDeals from '../components/clientPortal/lux/LuxBuyerDeals';
 import { LuxReferral, LuxReview } from '../components/clientPortal/lux/LuxReviewReferral';
 import { LuxBuyerOffers, LuxCompetition, LuxNetSheet, LuxSellerStats, LuxShowingFeedback } from '../components/clientPortal/lux/LuxSeller';
 import { LuxButton, LuxCard, LuxChip, LuxKicker } from '../components/clientPortal/lux/LuxUI';
@@ -955,6 +956,8 @@ export default function ClientPortalScreen() {
           ) : null}
 
           {lux.type === 'BUYER' && buyerStageIndex !== 1 ? checkbackCard : null}
+
+          {lux.type === 'BUYER' && lux.buyerDeals?.length ? <LuxBuyerDeals deals={lux.buyerDeals} palette={lp} /> : null}
 
           {lux.type === 'SELLER' && seller ? (
             <View onLayout={onSection('buyerOffers')}>
