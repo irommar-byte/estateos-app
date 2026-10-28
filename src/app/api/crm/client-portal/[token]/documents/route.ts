@@ -42,7 +42,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   const { token } = await ctx.params;
   const owner = await ownerClient(token);
   if (!owner.client) return denied(owner.reason ?? 'expired');
-  const documents = await loadClientDocuments(owner.client.id, owner.client.type);
+  const documents = await loadClientDocuments(owner.client.id);
   return NextResponse.json({ success: true, documents, summary: documentsSummary(documents), maxBytes: PORTAL_MAX_FILE_BYTES });
 }
 
@@ -108,7 +108,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       body: `${`${client.firstName} ${client.lastName}`.trim()}: ${item.label}`,
       meta: { itemKey },
     });
-    const documents = await loadClientDocuments(client.id, client.type);
+    const documents = await loadClientDocuments(client.id);
     return NextResponse.json({ success: true, document: item, summary: documentsSummary(documents) });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Nie udało się zapisać pliku przy dokumencie.' }, { status: 409 });
@@ -127,7 +127,7 @@ export async function PATCH(req: Request, ctx: RouteCtx) {
       itemKey: String(body.itemKey || ''),
       notApplicable: body.notApplicable !== false,
     });
-    const documents = await loadClientDocuments(owner.client.id, owner.client.type);
+    const documents = await loadClientDocuments(owner.client.id);
     return NextResponse.json({ success: true, document: item, summary: documentsSummary(documents) });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'Nie udało się zapisać.' }, { status: 400 });

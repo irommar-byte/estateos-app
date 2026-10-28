@@ -1870,6 +1870,44 @@ model ClientDocumentItem {
   @@index([clientId])
 }
 
+/// Kupujący na konkretnej nieruchomości — jedna ścieżka: prezentacja → opinia → negocjacje → transakcja.
+/// Kupujący z CRM agenta (buyerClientId) albo spoza CRM (inna agencja / pokaz bez karty: externalKey).
+model OfferBuyerDeal {
+  id                  Int       @id @default(autoincrement())
+  agencyUserId        Int
+  offerId             Int
+  sellerClientId      Int?
+  buyerClientId       Int?
+  externalKey         String?   @db.VarChar(64)
+  externalAgency      String?   @db.VarChar(160)
+  externalName        String?   @db.VarChar(160)
+  externalPhone       String?   @db.VarChar(32)
+  externalEmail       String?   @db.VarChar(191)
+  /// radar | presentation | inquiry | listing_request | guest_agency | manual
+  source              String    @default("manual") @db.VarChar(24)
+  /// ACTIVE | PAUSED | LOST | WON
+  status              String    @default("ACTIVE") @db.VarChar(16)
+  scheduledAt         DateTime?
+  viewedAt            DateTime?
+  attendanceUrl       String?   @db.VarChar(500)
+  attendanceName      String?   @db.VarChar(200)
+  attendanceAt        DateTime?
+  feedbackSentiment   String?   @db.VarChar(16)
+  feedbackNote        String?   @db.Text
+  feedbackAt          DateTime?
+  feedbackRequestedAt DateTime?
+  sellerInformedAt    DateTime?
+  /// Historia działań agenta, przypomnienia, później negocjacje i transakcja.
+  data                Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@unique([offerId, buyerClientId], map: "OfferBuyerDeal_offer_buyer_key")
+  @@unique([offerId, externalKey], map: "OfferBuyerDeal_offer_external_key")
+  @@index([agencyUserId, offerId])
+  @@index([buyerClientId])
+}
+
 /// Pola dokumentów zapisane przez agenta „na zawsze” — do dodania jednym dotknięciem u kolejnych klientów.
 model AgentDocumentTemplate {
   id           Int      @id @default(autoincrement())

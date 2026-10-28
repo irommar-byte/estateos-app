@@ -678,7 +678,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
           netAtListPrice: listingPrice > 0 ? computeNetProceeds(listingPrice, sellerFinance) : null,
         }
       : null;
-  const documents = permissions.documents ? await loadClientDocuments(client.id, client.type).catch(() => []) : [];
+  const documents = permissions.documents ? await loadClientDocuments(client.id).catch(() => []) : [];
   const lastReview = await prisma.agencyClientActivity
     .findFirst({
       where: { clientId: client.id, kind: 'PORTAL_EVENT', title: { startsWith: 'Ocena współpracy' } },

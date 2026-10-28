@@ -4,6 +4,7 @@ import { tickClientIntelligence } from '@/lib/crm/clientIntelligenceRun';
 import { scanFavoriteAlerts } from '@/lib/crm/portalFavorites';
 import { isWithinSendWindow } from '@/lib/crm/intelligenceSchedule';
 import { scanViewingReminders } from '@/lib/crm/viewingReminders';
+import { scanBuyerDealReminders } from '@/lib/crm/offerBuyerDeals';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -30,7 +31,9 @@ async function runTick() {
   const favoriteAlerts = isWithinSendWindow() ? await scanFavoriteAlerts().catch(() => null) : null;
   // Przypomnienia przed potwierdzonym oglądaniem / spotkaniem (co godzinę).
   const viewingReminders = await scanViewingReminders().catch(() => null);
-  return NextResponse.json({ ok: true, ...tick, favoriteAlerts, viewingReminders });
+  // Przypomnienia dla agenta: jutro prezentacja, czy się odbyła, brak opinii po 24 h.
+  const buyerDealReminders = await scanBuyerDealReminders().catch(() => null);
+  return NextResponse.json({ ok: true, ...tick, favoriteAlerts, viewingReminders, buyerDealReminders });
 }
 
 export async function GET(req: Request) {

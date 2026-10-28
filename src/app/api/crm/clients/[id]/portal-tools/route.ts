@@ -24,7 +24,9 @@ import { parseSearchPolygon } from '@/lib/geo/searchPolygon';
 import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
 import {
   addClientDocumentItem,
+  addSuggestedDocuments,
   deleteDocumentTemplate,
+  documentSuggestions,
   documentsSummary,
   listDocumentTemplates,
   loadClientDocuments,
@@ -82,12 +84,13 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const invite = await ensureClientInvite(client.id).catch(() => null);
   const finance = parseSellerFinance(client.sellerFinance);
   const listPrice = Number(client.linkedOffer?.price || 0);
-  const documents = await loadClientDocuments(client.id, client.type).catch(() => []);
+  const documents = await loadClientDocuments(client.id).catch(() => []);
   return NextResponse.json({
     success: true,
     tools: {
       documents,
       documentsSummary: documentsSummary(documents),
+      documentSuggestions: documentSuggestions(client.type, documents),
       documentTemplates: await listDocumentTemplates(agencyUserId),
       permissions: parsePortalPermissions(client.portalPermissions),
       portalUrl: client.portalToken ? buildPortalUrl(client.portalToken) : null,
@@ -319,9 +322,24 @@ export async function POST(req: Request, ctx: RouteCtx) {
   }
 
   const documentsPayload = async () => {
-    const documents = await loadClientDocuments(client.id, client.type);
-    return { documents, documentsSummary: documentsSummary(documents), documentTemplates: await listDocumentTemplates(agencyUserId) };
+    const documents = await loadClientDocuments(client.id);
+    return {
+      documents,
+      documentsSummary: documentsSummary(documents),
+      documentSuggestions: documentSuggestions(client.type, documents),
+      documentTemplates: await listDocumentTemplates(agencyUserId),
+    };
   };
+
+  if (action === 'add_suggested_documents') {
+    try {
+      const keys = Array.isArray(body.keys) ? body.keys.map(String) : [];
+      await addSuggestedDocuments({ clientId: client.id, clientType: client.type, keys });
+      return NextResponse.json({ success: true, ...(await documentsPayload()) });
+    } catch (e) {
+      return fail(e instanceof Error ? e.message : 'Błąd');
+    }
+  }
 
   if (action === 'add_document') {
     try {

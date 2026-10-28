@@ -2,8 +2,8 @@ import { prisma } from '@/lib/prisma';
 
 /**
  * Dokumenty klienta — lista „co jeszcze brakuje”.
- * Domyślna lista tworzy się przy pierwszym otwarciu; agent dopisuje własne pozycje
- * (z komentarzem pod nazwą) i może usunąć dowolną — także domyślną.
+ * Nic nie pojawia się samo: agent wybiera, o co prosi (z podpowiedzi, swoich szablonów albo własne pole),
+ * dopiero wtedy pozycja trafia do klienta. Agent może usunąć dowolną pozycję.
  * Statusy: missing → uploaded (klient wrzucił) → accepted / rejected (agent sprawdził).
  *          na = klient zaznaczył „nie dotyczy” (tylko pozycje „jeśli dotyczy”),
  *          removed = agent zdjął pozycję z listy (miękkie usunięcie, żeby domyślna lista nie wracała).
@@ -13,9 +13,9 @@ export type DocumentStatus = 'missing' | 'uploaded' | 'accepted' | 'rejected' | 
 const VISIBLE_STATUSES: DocumentStatus[] = ['missing', 'uploaded', 'accepted', 'rejected', 'na'];
 const REMOVED = 'removed';
 
-type DefaultItem = { key: string; label: string; hint?: string; required?: boolean };
+type SuggestedItem = { key: string; label: string; hint?: string; required?: boolean };
 
-const SELLER_DEFAULTS: DefaultItem[] = [
+const SELLER_SUGGESTIONS: SuggestedItem[] = [
   { key: 'kw', label: 'Numer księgi wieczystej', hint: 'Wystarczy zdjęcie albo wpisany numer — odpis pobiorę sam.' },
   { key: 'ownership', label: 'Podstawa nabycia', hint: 'Akt notarialny kupna, darowizny albo postanowienie o spadku.' },
   { key: 'no_debts', label: 'Zaświadczenie o braku zaległości', hint: 'Ze spółdzielni albo od zarządcy wspólnoty.' },
@@ -25,7 +25,7 @@ const SELLER_DEFAULTS: DefaultItem[] = [
   { key: 'plan', label: 'Rzut lub dokumentacja lokalu', hint: 'Jeśli masz — przyda się do ogłoszenia.', required: false },
 ];
 
-const BUYER_DEFAULTS: DefaultItem[] = [
+const BUYER_SUGGESTIONS: SuggestedItem[] = [
   { key: 'id', label: 'Dane do umowy', hint: 'Imię, nazwisko, PESEL i adres — wystarczy zdjęcie dowodu (bez rewersu z CAN).' },
   { key: 'financing', label: 'Potwierdzenie finansowania', hint: 'Wyciąg ze środkami albo decyzja / promesa kredytowa.' },
   { key: 'mortgage_decision', label: 'Decyzja kredytowa', hint: 'Jeśli kupujesz z kredytem.', required: false },
@@ -84,26 +84,47 @@ function toView(row: Row): ClientDocumentView {
   };
 }
 
-export async function loadClientDocuments(clientId: number, clientType: string): Promise<ClientDocumentView[]> {
-  let rows = await prisma.clientDocumentItem.findMany({ where: { clientId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
-  if (!rows.length) {
-    const defaults = clientType === 'SELLER' ? SELLER_DEFAULTS : BUYER_DEFAULTS;
-    await prisma.clientDocumentItem
-      .createMany({
-        data: defaults.map((item, index) => ({
-          clientId,
-          itemKey: item.key,
-          label: item.label,
-          hint: item.hint ?? null,
-          required: item.required !== false,
-          sortOrder: index * 10,
-        })),
-        skipDuplicates: true,
-      })
-      .catch(() => null);
-    rows = await prisma.clientDocumentItem.findMany({ where: { clientId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
-  }
+export async function loadClientDocuments(clientId: number): Promise<ClientDocumentView[]> {
+  const rows = await prisma.clientDocumentItem.findMany({ where: { clientId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
   return rows.filter((row) => row.status !== REMOVED).map(toView);
+}
+
+export type DocumentSuggestionView = { key: string; label: string; hint: string | null; required: boolean };
+
+/** Typowe dokumenty dla sprzedającego / kupującego, których agent jeszcze nie poprosił. */
+export function documentSuggestions(clientType: string, current: ClientDocumentView[]): DocumentSuggestionView[] {
+  const taken = new Set(current.map((item) => item.key));
+  return (clientType === 'SELLER' ? SELLER_SUGGESTIONS : BUYER_SUGGESTIONS)
+    .filter((item) => !taken.has(item.key))
+    .map((item) => ({ key: item.key, label: item.label, hint: item.hint ?? null, required: item.required !== false }));
+}
+
+/** Agent prosi o wybrane typowe dokumenty — także te, które wcześniej zdjął z listy. */
+export async function addSuggestedDocuments(params: { clientId: number; clientType: string; keys: string[] }) {
+  const wanted = new Set(params.keys.map(String));
+  const items = (params.clientType === 'SELLER' ? SELLER_SUGGESTIONS : BUYER_SUGGESTIONS).filter((item) => wanted.has(item.key));
+  if (!items.length) throw new Error('Wybierz co najmniej jeden dokument.');
+  const last = await prisma.clientDocumentItem.findFirst({ where: { clientId: params.clientId }, orderBy: { sortOrder: 'desc' } });
+  let sortOrder = last?.sortOrder ?? 0;
+  for (const item of items) {
+    sortOrder += 10;
+    const data = { label: item.label, hint: item.hint ?? null, required: item.required !== false, updatedAt: new Date() };
+    await prisma.clientDocumentItem.upsert({
+      where: { clientId_itemKey: { clientId: params.clientId, itemKey: item.key } },
+      create: { ...data, clientId: params.clientId, itemKey: item.key, sortOrder },
+      update: {
+        ...data,
+        status: 'missing',
+        fileUrl: null,
+        fileName: null,
+        mimeType: null,
+        note: null,
+        uploadedAt: null,
+        reviewedAt: null,
+        sortOrder,
+      },
+    });
+  }
 }
 
 /**
@@ -230,7 +251,7 @@ export async function updateClientDocumentItem(params: {
   return toView(updated);
 }
 
-/** Usunięcie z listy — każdej pozycji, także domyślnej. Miękko, żeby domyślna lista nie wróciła. */
+/** Usunięcie z listy — miękko, żeby historia pliku nie przepadła. */
 export async function removeClientDocumentItem(clientId: number, itemKey: string) {
   const row = await findItem(clientId, itemKey);
   if (!row) return;
