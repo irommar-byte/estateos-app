@@ -47,11 +47,6 @@ export function offerSharePrintFilename(
   return `estateos-oferta-${card.id}${slug ? `-${slug}` : ''}.${ext}`;
 }
 
-function isLikelyMobileBrowser(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
-}
-
 function waitForImages(root: HTMLElement, timeoutMs = 10000): Promise<void> {
   const images = Array.from(root.querySelectorAll('img'));
   return Promise.all(
@@ -79,6 +74,41 @@ type Html2CanvasFn = (
 async function loadHtml2Canvas(): Promise<Html2CanvasFn> {
   const mod = await import('html2canvas');
   return ((mod as { default?: Html2CanvasFn }).default || mod) as Html2CanvasFn;
+}
+
+/**
+ * Dopasowuje teksty kartki do ich ramek bez cięcia w połowie wiersza:
+ * akapit, który się nie mieści, traci ostatnie słowa i dostaje „…”; jednowierszowy napis skraca się do szerokości.
+ * Potem ramki tekstowe nie muszą już przycinać — html2canvas rysuje litery odrobinę niżej niż przeglądarka,
+ * więc przycinanie zjadało dolny pasek liter.
+ */
+export function fitSheetText(root: HTMLElement, releaseOverflow = false): void {
+  const nodes = Array.from(root.querySelectorAll<HTMLElement>('*'));
+  for (const el of nodes) {
+    if (el.children.length || !el.textContent?.trim()) continue;
+    const cs = getComputedStyle(el);
+    const clipsSelf = cs.overflow === 'hidden' || cs.overflowY === 'hidden' || cs.overflowX === 'hidden';
+    const parent = el.parentElement;
+    const clipsParent = parent ? getComputedStyle(parent).overflow === 'hidden' && !parent.querySelector('img') : false;
+    if (!clipsSelf && !clipsParent) continue;
+    const box = clipsSelf ? el : parent!;
+    const singleLine = cs.whiteSpace === 'nowrap';
+    const overflows = () => (singleLine ? el.scrollWidth > el.clientWidth + 1 : box.scrollHeight > box.clientHeight + 1);
+    if (overflows()) {
+      const words = (el.dataset.fullText || el.textContent || '').trim().split(/\s+/);
+      el.dataset.fullText = words.join(' ');
+      while (words.length > 1 && overflows()) {
+        words.pop();
+        el.textContent = `${words.join(' ').replace(/[,;:·–—-]+$/, '')}…`;
+      }
+    }
+    if (releaseOverflow) {
+      el.style.overflow = 'visible';
+      el.style.textOverflow = 'clip';
+      if (clipsParent && parent) parent.style.overflow = 'visible';
+      if (!singleLine) el.style.maxHeight = 'none';
+    }
+  }
 }
 
 function findSheet(): HTMLElement {
@@ -117,6 +147,7 @@ async function captureSheet(root: HTMLElement): Promise<HTMLCanvasElement> {
         node.style.transform = 'none';
       }
       Object.assign(clone.style, { position: 'fixed', left: '0px', top: '0px', margin: '0', zIndex: '2147483647' });
+      fitSheetText(clone, true);
     },
   });
 }
@@ -129,36 +160,11 @@ async function buildPdfBlob(root: HTMLElement): Promise<Blob> {
   return pdf.output('blob');
 }
 
+/** Zapis pliku: zwykłe pobranie (działa też w Safari na iPhonie od iOS 13); arkusz udostępniania tylko awaryjnie. */
 async function deliverBlobFile(blob: Blob, filename: string, mime: string): Promise<void> {
-  const file = new File([blob], filename, { type: mime });
-  const nav = navigator as Navigator & {
-    canShare?: (data?: ShareData) => boolean;
-    share?: (data?: ShareData) => Promise<void>;
-  };
-
-  // iOS Safari często ignoruje <a download> — arkusz udostępniania jest pewniejszy.
-  if (typeof nav.canShare === 'function' && typeof nav.share === 'function') {
-    try {
-      if (nav.canShare({ files: [file] })) {
-        await nav.share({ files: [file], title: filename });
-        return;
-      }
-    } catch (err) {
-      if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') {
-        return;
-      }
-    }
-  }
-
   const url = URL.createObjectURL(blob);
-  try {
-    if (isLikelyMobileBrowser()) {
-      const opened = window.open(url, '_blank', 'noopener,noreferrer');
-      if (opened) {
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        return;
-      }
-    }
+  const canDownload = typeof document !== 'undefined' && 'download' in HTMLAnchorElement.prototype;
+  if (canDownload) {
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -167,11 +173,21 @@ async function deliverBlobFile(blob: Blob, filename: string, mime: string): Prom
     document.body.appendChild(a);
     a.click();
     a.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 4_000);
-  } catch {
-    window.location.assign(url);
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    return;
   }
+  const file = new File([blob], filename, { type: mime });
+  const nav = navigator as Navigator & { canShare?: (data?: ShareData) => boolean; share?: (data?: ShareData) => Promise<void> };
+  if (typeof nav.canShare === 'function' && typeof nav.share === 'function' && nav.canShare({ files: [file] })) {
+    try {
+      await nav.share({ files: [file], title: filename });
+      return;
+    } catch (err) {
+      if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') return;
+    }
+  }
+  window.location.assign(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** Drukujemy gotowy PDF A4 — przeglądarka nie dokłada marginesów ani drugiej strony. */

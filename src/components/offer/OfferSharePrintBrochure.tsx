@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { OfferShareCard } from '@/lib/offerShareLanding';
-import { buildOfferShareQrSrc, truncateOfferShareDescription } from '@/lib/offerSharePrint';
+import { buildOfferShareQrSrc, fitSheetText, truncateOfferShareDescription } from '@/lib/offerSharePrint';
 import { offerFontVars } from '@/components/offer/offerFonts';
 import type { OfferSheetStyle } from '@/components/offer/offerSheetStyle';
 
@@ -513,8 +513,16 @@ function Pelna({ data }: { data: SheetData }) {
  */
 export default function OfferSharePrintBrochure({ card, variant }: { card: OfferShareCard; variant: OfferSheetStyle }) {
   const data = sheetData(card);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    const run = () => fitSheetText(el);
+    run();
+    void document.fonts?.ready.then(run);
+  }, [card, variant]);
   return (
-    <div id="offer-share-print-brochure" className={offerFontVars} style={{ width: '794px', height: '1123px' }}>
+    <div ref={sheetRef} id="offer-share-print-brochure" className={offerFontVars} style={{ width: '794px', height: '1123px' }}>
       {variant === 'galeria' ? <Galeria data={data} /> : variant === 'architekt' ? <Architekt data={data} /> : <Pelna data={data} />}
     </div>
   );
