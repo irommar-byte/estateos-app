@@ -4089,3 +4089,70 @@ html.dark .eos-plan-chip.is-active { color: #15171a; background: #f3eee6; border
   .eos-plan-photos__item:hover { transform: translateY(-2px) scale(1.03); box-shadow: 0 14px 26px -14px rgba(15, 23, 42, 0.6); }
 }
 @keyframes eos-plan-photo-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: none; } }
+.eos-plan-mosaic {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 8px;
+  grid-auto-rows: minmax(0, 1fr);
+}
+.eos-plan-mosaic__tile {
+  position: relative;
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 10px 22px -16px rgba(15, 23, 42, 0.5);
+  cursor: pointer;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s ease;
+}
+.eos-plan-mosaic__tile img { width: 100%; height: 100%; object-fit: contain; }
+.eos-plan-mosaic__label {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  max-width: calc(100% - 12px);
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(21, 23, 26, 0.82);
+  white-space: nowrap;
+}
+.eos-plan-mosaic__label b { color: #c9a96e; font-weight: 700; }
+@media (hover: hover) {
+  .eos-plan-mosaic__tile:hover { transform: translateY(-2px); box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 16px 28px -16px rgba(15, 23, 42, 0.6); }
+}
+.eos-plan-specs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 6px;
+  animation: eos-plan-fade 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.eos-plan-specs__item {
+  border-radius: 12px;
+  border: 1px solid var(--eos-border);
+  padding: 7px 10px;
+  background: linear-gradient(160deg, var(--eos-input), var(--eos-card));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+}
+.eos-plan-specs__item dt {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--eos-muted);
+}
+.eos-plan-specs__item dd {
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--eos-text);
+  font-variant-numeric: tabular-nums;
+}

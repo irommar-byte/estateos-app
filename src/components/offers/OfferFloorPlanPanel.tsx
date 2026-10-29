@@ -12,6 +12,7 @@ import FloorPlanScanArtboard from '@/components/offers/FloorPlanScanArtboard';
 import { formatListingAreaSqm } from '@/lib/listingRoomAreas';
 import { cropScanMetaToRoom, roomsFromScanMeta } from '@/lib/roomScan/refineScanSections';
 import { normalizeScanMeta } from '@/lib/roomScan/planNormalize';
+import { planSpecs } from '@/lib/roomScan/planSpecs';
 import type { RoomScanObjectCategory } from '@/types/roomScan';
 import { photoRoomKey, sameRoomName, type OfferPhotoRoom } from '@/lib/offerPhotoRoomKey';
 
@@ -110,12 +111,16 @@ export default function OfferFloorPlanPanel({
   const selectedPhotos = selectedRoom ? photosFor(selectedRoom.name) : selectedPhotoRoom ? photosFor(selectedPhotoRoom) : [];
   const croppedSelected = selectedRoom ? cropScanMetaToRoom(scanMeta, selectedRoom) : null;
   const activeMeta = useMemo(() => normalizeScanMeta(croppedSelected || selectedRoom?.scanMeta || scanMeta), [croppedSelected, selectedRoom, scanMeta]);
-  const activeImage = assetUrl(selectedRoom?.floorPlanPngUri) || floorPlanSrc;
   const active3d = assetUrl(selectedRoom?.floorPlan3dUri) || floorPlan3dSrc || '';
   const hasInteractive = Boolean(activeMeta?.walls?.length);
   // Zawsze „ubrany” rzut: pokój — gotowy rysunek z aplikacji (meble, wymiary); całe mieszkanie — wyprostowany plan z meblami.
   const roomImage = assetUrl(selectedRoom?.floorPlanPngUri);
   const showDrawing = selectedRoom ? !roomImage && hasInteractive : hasInteractive;
+  // Bez planu całości (skanowane tylko pokoje) „Całe mieszkanie” to zestawienie pomieszczeń, a nie rysunek jednego z nich.
+  const roomPngs = new Set(roomScans.map((room) => assetUrl(room.floorPlanPngUri)).filter(Boolean));
+  const wholeImage = floorPlanSrc && !roomPngs.has(assetUrl(floorPlanSrc)) ? floorPlanSrc : '';
+  const mosaicRooms = roomScans.filter((room) => room.floorPlanPngUri);
+  const showMosaic = !selectedRoom && !hasInteractive && !wholeImage && mosaicRooms.length > 0;
   const furniture = activeMeta?.objects || [];
 
   const metaLine = useMemo(() => {
@@ -177,6 +182,19 @@ export default function OfferFloorPlanPanel({
     </div>
   ) : null;
 
+  // Pomiary z LiDAR-u pod każdym rzutem (pokój albo całe mieszkanie).
+  const specs = scanMeta || roomScans.length ? planSpecs(selectedRoom, selectedRoom?.scanMeta || scanMeta || null, roomScans) : [];
+  const specGrid = specs.length ? (
+    <dl className="eos-plan-specs" key={`specs-${planKey}`}>
+      {specs.map((spec) => (
+        <div key={spec.label} className="eos-plan-specs__item">
+          <dt>{spec.label}</dt>
+          <dd>{spec.value}</dd>
+        </div>
+      ))}
+    </dl>
+  ) : null;
+
   const photoStrip = selectedPhotos.length ? (
     <div className="eos-plan-photos" key={planKey}>
       {selectedPhotos.slice(0, 12).map((url, i) => (
@@ -230,11 +248,36 @@ export default function OfferFloorPlanPanel({
           height={variant === 'compact' ? 480 : 600}
           locale={locale}
         />
-      ) : roomImage || activeImage ? (
+      ) : showMosaic ? (
+        <div className="eos-plan-mosaic" style={{ gridTemplateColumns: `repeat(${mosaicRooms.length <= 2 ? mosaicRooms.length : mosaicRooms.length <= 4 ? 2 : 3}, minmax(0, 1fr))` }}>
+          {mosaicRooms.map((room) => (
+            <span
+              key={room.id || room.name}
+              role="button"
+              tabIndex={0}
+              className="eos-plan-mosaic__tile"
+              onClick={(event) => {
+                event.stopPropagation();
+                setPlanKey(room.id);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') setPlanKey(room.id);
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={assetUrl(room.floorPlanPngUri)} alt="" loading="lazy" />
+              <span className="eos-plan-mosaic__label">
+                {room.name}
+                {room.areaM2 ? <b>{String(room.areaM2).replace('.', ',')} m²</b> : null}
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : roomImage || (selectedRoom ? '' : wholeImage) ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          key={roomImage || activeImage}
-          src={roomImage || activeImage}
+          key={roomImage || wholeImage}
+          src={roomImage || wholeImage}
           alt={copy.floorPlan}
           className="eos-plan-fade h-full w-full object-contain"
         />
@@ -274,6 +317,7 @@ export default function OfferFloorPlanPanel({
               {copy.enlarge}
             </span>
           </button>
+          {specGrid ? <div className="mt-3">{specGrid}</div> : null}
           {photoStrip ? <div className="mt-3">{photoStrip}</div> : null}
         </div>
         {furnitureRow ? <div className="px-4 pb-4">{furnitureRow}</div> : null}
@@ -339,6 +383,7 @@ export default function OfferFloorPlanPanel({
         </div>
       </button>
 
+      {specGrid ? <div className="px-6 pb-4 md:px-8">{specGrid}</div> : null}
       {photoStrip ? <div className="px-6 pb-5 md:px-8">{photoStrip}</div> : null}
 
       {furnitureRow ? (
