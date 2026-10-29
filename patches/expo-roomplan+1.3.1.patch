@@ -1,5 +1,5 @@
 diff --git a/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift b/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
-index 99b99f4..0f820e3 100644
+index 99b99f4..fceaf5c 100644
 --- a/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
 +++ b/node_modules/expo-roomplan/ios/ExpoRoomPlanModule.swift
 @@ -1,10 +1,51 @@
@@ -134,7 +134,7 @@ index 99b99f4..0f820e3 100644
          }
      }
 diff --git a/node_modules/expo-roomplan/ios/RoomPlanCaptureUIView.swift b/node_modules/expo-roomplan/ios/RoomPlanCaptureUIView.swift
-index 09c58fc..5e3e3d0 100644
+index 09c58fc..338c1f9 100644
 --- a/node_modules/expo-roomplan/ios/RoomPlanCaptureUIView.swift
 +++ b/node_modules/expo-roomplan/ios/RoomPlanCaptureUIView.swift
 @@ -65,9 +65,25 @@ class RoomPlanCaptureUIView: ExpoView, RoomCaptureSessionDelegate, RoomCaptureVi
@@ -191,14 +191,34 @@ index 09c58fc..5e3e3d0 100644
        self.roomCaptureView.captureSession.run(configuration: self.configuration)
      }
 diff --git a/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift b/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
-index 4e0fcdc..dfaf5b6 100644
+index 4e0fcdc..c15f854 100644
 --- a/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
 +++ b/node_modules/expo-roomplan/ios/RoomPlanCaptureViewController.swift
-@@ -46,6 +46,19 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -25,16 +25,6 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+         get { _finalStructure as? CapturedStructure }
+         set { _finalStructure = newValue }
+     }
+-    private var _structureBuilder: Any?
+-    @available(iOS 17.0, *)
+-    private var structureBuilder: StructureBuilder {
+-        if let existing = _structureBuilder as? StructureBuilder {
+-            return existing
+-        }
+-        let builder = StructureBuilder(options: [.beautifyObjects])
+-        _structureBuilder = builder
+-        return builder
+-    }
+ 
+     var onDismiss: (([String: Any]) -> Void)?
+ 
+@@ -46,6 +36,22 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
      // is still running, so export can be deferred instead of racing it with a fixed timer.
      private var isBuildingRoom = false
      private var pendingExportAfterBuild = false
 +    private var isExporting = false
++    // Only one export may run: two parallel StructureBuilder passes crash RoomScanCore
++    // (offlineFloorPlanGeneration mutates a collection the other pass is enumerating).
++    private var exportStarted = false
 +    private let scanHud = UIView()
 +    private let scanHudTitle = UILabel()
 +    private let scanHudStats = UILabel()
@@ -214,7 +234,7 @@ index 4e0fcdc..dfaf5b6 100644
  
      // UI elements
      private let activityIndicator = UIActivityIndicatorView(style: .large)
-@@ -70,18 +83,363 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -70,18 +76,363 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
      private func setupRoomCaptureView() {
          roomCaptureView = RoomCaptureView(frame: view.bounds)
          roomCaptureView?.captureSession.delegate = self
@@ -586,7 +606,7 @@ index 4e0fcdc..dfaf5b6 100644
      }
  
      private func setupButtons() {
-@@ -95,7 +453,11 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -95,7 +446,11 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -599,7 +619,7 @@ index 4e0fcdc..dfaf5b6 100644
  
          // Finish should either stop scanning (if running) or confirm exit (if post-scan)
          finishButton.addTarget(
-@@ -117,7 +479,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -117,7 +472,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -609,7 +629,7 @@ index 4e0fcdc..dfaf5b6 100644
          // round corners
          cancelButton.layer.masksToBounds = true
          cancelButton.layer.cornerRadius = 5
-@@ -137,25 +500,25 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -137,25 +493,25 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
          NSLayoutConstraint.activate([
              finishButton.topAnchor.constraint(
                  equalTo: view.safeAreaLayoutGuide.topAnchor,
@@ -643,7 +663,7 @@ index 4e0fcdc..dfaf5b6 100644
          ])
      }
  
-@@ -178,7 +541,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -178,7 +534,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              ofSize: 16,
              weight: .bold
          )
@@ -652,7 +672,7 @@ index 4e0fcdc..dfaf5b6 100644
          // round corners
          exportButton.layer.masksToBounds = true
          exportButton.layer.cornerRadius = 15
-@@ -204,7 +567,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -204,7 +560,7 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
                  ofSize: 16,
                  weight: .bold
              )
@@ -661,7 +681,7 @@ index 4e0fcdc..dfaf5b6 100644
              // round corners
              anotherScanButton.layer.masksToBounds = true
              anotherScanButton.layer.cornerRadius = 15
-@@ -270,7 +633,22 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -270,7 +626,22 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
  
      override func viewWillDisappear(_ flag: Bool) {
          super.viewWillDisappear(flag)
@@ -685,7 +705,7 @@ index 4e0fcdc..dfaf5b6 100644
      }
  
      @IBAction func superExportResults(_ sender: Any) {
-@@ -336,6 +714,33 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -336,7 +707,39 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
          }
      }
  
@@ -717,9 +737,15 @@ index 4e0fcdc..dfaf5b6 100644
 +    }
 +
      func exportResults() {
++        guard !exportStarted else {
++            print("[RoomPlan] Export already running; ignoring duplicate request.")
++            return
++        }
++        exportStarted = true
          let exportedScanName = scanName ?? "Room"
  
-@@ -363,6 +768,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+         let destinationFolderURL = FileManager.default.temporaryDirectory
+@@ -363,6 +766,8 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
  
          Task {
              do {
@@ -728,7 +754,7 @@ index 4e0fcdc..dfaf5b6 100644
                  try FileManager.default.createDirectory(
                      at: destinationFolderURL,
                      withIntermediateDirectories: true
-@@ -379,15 +786,6 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -379,17 +784,9 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
                  let jsonEncoder = JSONEncoder()
  
                  if #available(iOS 17.0, *) {
@@ -741,10 +767,15 @@ index 4e0fcdc..dfaf5b6 100644
 -                            ]
 -                        )
 -                    }
-                     finalStructure = try await structureBuilder.capturedStructure(
-                         from: capturedRoomArray
+-                    finalStructure = try await structureBuilder.capturedStructure(
+-                        from: capturedRoomArray
++                    let rooms = await MainActor.run { self.capturedRoomArray }
++                    finalStructure = try await StructureBuilder(options: [.beautifyObjects]).capturedStructure(
++                        from: rooms
                      )
-@@ -421,36 +819,43 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+ 
+                     let jsonData = try jsonEncoder.encode(finalStructure)
+@@ -421,36 +818,43 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
  
                  let shouldSendFileLoc = sendFileLoc ?? false
  
@@ -811,7 +842,7 @@ index 4e0fcdc..dfaf5b6 100644
              }
          }
      }
-@@ -474,34 +879,49 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -474,34 +878,49 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
              eventData["errorMessage"] = errorMessage
          }
  
@@ -819,23 +850,23 @@ index 4e0fcdc..dfaf5b6 100644
 -        onDismiss?(eventData)
 +        if didDeliverResult { return }
 +        didDeliverResult = true
- 
--        let dismissAction = {
--            self.activityIndicator.stopAnimating()
--            self.dismiss(animated: true, completion: nil)
++        
 +        if #available(iOS 17.0, *) {
 +            finalStructure = nil
 +        }
 +
 +        coverCameraWithProcessingOverlay()
 +        hardStopAR()
-+
+ 
+-        let dismissAction = {
+-            self.activityIndicator.stopAnimating()
+-            self.dismiss(animated: true, completion: nil)
 +        let deliver = { [weak self] in
 +            guard let self else { return }
 +            self.onDismiss?(eventData)
 +            self.onDismiss = nil
          }
- 
+         
 -        // Handle timing and cleanup based on status
 +        // Keep this controller on screen (opaque overlay) until JS calls stopCapture.
 +        // Dismissing first revealed a stopped AR frame and a black RN window.
@@ -876,7 +907,7 @@ index 4e0fcdc..dfaf5b6 100644
      }
  
      @IBAction func restartSession() {
-@@ -544,56 +964,57 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -544,56 +963,59 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
  
      @objc
      private func finishTapped() {
@@ -921,6 +952,8 @@ index 4e0fcdc..dfaf5b6 100644
 +            isSessionRunning = false
 +        }
 +        let exportNow = {
++            // The RoomBuilder task may already have exported when it finished first.
++            guard self.pendingExportAfterBuild else { return }
 +            self.pendingExportAfterBuild = false
 +            self.exportResults()
 +        }
@@ -976,7 +1009,7 @@ index 4e0fcdc..dfaf5b6 100644
      }
  
      @objc
-@@ -602,21 +1023,39 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
+@@ -602,21 +1024,39 @@ class RoomPlanCaptureViewController: UIViewController, RoomCaptureViewDelegate,
      }
  }
  
@@ -1026,7 +1059,7 @@ index 4e0fcdc..dfaf5b6 100644
      // captureSession(_:didEndWith:error:) is a base RoomCaptureSessionDelegate
      // requirement present since iOS 16 (unlike didUpdate/didChange above, which
      // are iOS 17+ additions for multi-room support). It must live at the same
-@@ -626,23 +1065,26 @@ extension RoomPlanCaptureViewController {
+@@ -626,23 +1066,26 @@ extension RoomPlanCaptureViewController {
      // callback at all and silently never fired.
      func captureSession(
          _ session: RoomCaptureSession,
@@ -1048,17 +1081,18 @@ index 4e0fcdc..dfaf5b6 100644
 -                    from: didEndWith
 -                )
 -                print("[RoomPlan] Appending new captured room")
+-                self.capturedRoomArray.append(capturedRoom)
 +                let capturedRoom = try await roomBuilder.capturedRoom(from: data)
 +                print("[RoomPlan] Appending new captured room (walls=\(capturedRoom.walls.count))")
-                 self.capturedRoomArray.append(capturedRoom)
-+                self.lastLiveRoom = capturedRoom
 +                await MainActor.run {
++                    self.capturedRoomArray.append(capturedRoom)
++                    self.lastLiveRoom = capturedRoom
 +                    self.updateScanHud(from: capturedRoom)
 +                }
              } catch {
                  print("[RoomPlan] Failed to build captured room: \(error.localizedDescription)")
              }
-@@ -660,11 +1102,102 @@ extension RoomPlanCaptureViewController {
+@@ -660,11 +1103,102 @@ extension RoomPlanCaptureViewController {
          shouldPresent roomDataForProcessing: CapturedRoomData,
          error: Error?
      ) -> Bool {

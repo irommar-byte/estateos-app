@@ -115,7 +115,8 @@ export default function AcquisitionAddressMapField({
   const mapTouchedRef = useRef(false);
   /** Ostatni tekst wysłany do rodzica — props nie nadpisują tego, co agent właśnie pisze. */
   const lastEmittedRef = useRef(value.address);
-  const suppressSuggestRef = useRef(false);
+  /** Podpowiedzi tylko po wpisaniu tekstu — nie po otwarciu ekranu z zapisanym adresem ani po wyborze. */
+  const suppressSuggestRef = useRef(true);
   const districtLockedRef = useRef(false);
   const [query, setQuery] = useState(value.address);
   const [hints, setHints] = useState<Suggestion[]>([]);

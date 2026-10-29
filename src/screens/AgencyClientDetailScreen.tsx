@@ -2611,22 +2611,45 @@ export default function AgencyClientDetailScreen() {
                             </View>
                           ) : null}
                           {canSubmitLinkedOffer ? (
-                            <Pressable
-                              disabled={offerActionBusy}
-                              onPress={() => void submitLinkedOfferActivation()}
-                              style={[
-                                styles.primary,
-                                { marginTop: 12, opacity: offerActionBusy ? 0.6 : 1 },
-                              ]}
-                            >
-                              <Text style={styles.primaryText}>
-                                {offerActionBusy
-                                  ? 'Przetwarzam…'
-                                  : canManageOfficeOffers
-                                    ? 'Aktywuj ofertę'
-                                    : 'Wyślij do aktywacji'}
+                            <>
+                              <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 10, lineHeight: 18 }}>
+                                Dodaj zdjęcia, plan i opis przed aktywacją. Klient zobaczy ogłoszenie dopiero po aktywacji i dostanie
+                                o tym powiadomienie.
                               </Text>
-                            </Pressable>
+                              <Pressable
+                                onPress={() => navigation.navigate('EditOffer', { offerId: linkedOffer.id })}
+                                style={[styles.secondary, { marginTop: 10, borderColor: colors.border }]}
+                              >
+                                <Text style={{ color: colors.text, fontWeight: '800', textAlign: 'center' }}>
+                                  Uzupełnij ogłoszenie
+                                </Text>
+                              </Pressable>
+                              <Pressable
+                                disabled={offerActionBusy}
+                                onPress={() => {
+                                  if (linkedOffer.imageUrl) {
+                                    void submitLinkedOfferActivation();
+                                    return;
+                                  }
+                                  Alert.alert('Ogłoszenie bez zdjęć', 'Oferta nie ma jeszcze zdjęć. Aktywować mimo to?', [
+                                    { text: 'Dodaj zdjęcia', onPress: () => navigation.navigate('EditOffer', { offerId: linkedOffer.id }) },
+                                    { text: 'Aktywuj', style: 'destructive', onPress: () => void submitLinkedOfferActivation() },
+                                  ]);
+                                }}
+                                style={[
+                                  styles.primary,
+                                  { marginTop: 10, opacity: offerActionBusy ? 0.6 : 1 },
+                                ]}
+                              >
+                                <Text style={styles.primaryText}>
+                                  {offerActionBusy
+                                    ? 'Przetwarzam…'
+                                    : canManageOfficeOffers
+                                      ? 'Aktywuj ofertę'
+                                      : 'Wyślij do aktywacji'}
+                                </Text>
+                              </Pressable>
+                            </>
                           ) : offerUiStatus.key === 'review' ? (
                             <Text style={{ color: colors.secondary, fontSize: 12, marginTop: 10, lineHeight: 18 }}>
                               {canManageOfficeOffers
