@@ -4,7 +4,7 @@ export type OfferShareDownloadFormat = 'pdf' | 'jpeg';
 
 const A4_MM_WIDTH = 210;
 const A4_MM_HEIGHT = 297;
-const PRINT_CAPTURE_BG = '#efe6d2';
+const PRINT_CAPTURE_BG = '#f8f5ef';
 
 export function truncateOfferShareDescription(text: string | null | undefined, max = 420): string {
   const plain = String(text || '').replace(/\s+/g, ' ').trim();
@@ -123,24 +123,19 @@ async function withVisiblePrintPortal<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-function lockBrochureToA4(el: HTMLElement): void {
-  el.style.width = '210mm';
-  el.style.height = '297mm';
-  el.style.minHeight = '297mm';
-  el.style.maxHeight = '297mm';
-  el.style.overflow = 'hidden';
-  el.style.margin = '0';
-  el.style.boxSizing = 'border-box';
+/** Kartki ofertówki (okładka + szczegóły) — każda to pełna strona A4. */
+function brochurePages(root: HTMLElement): HTMLElement[] {
+  const pages = Array.from(root.querySelectorAll<HTMLElement>('.ofb-page'));
+  return pages.length ? pages : [root];
 }
 
-async function captureOfferShareCanvas(root: HTMLElement): Promise<HTMLCanvasElement> {
+async function captureOfferSharePage(page: HTMLElement): Promise<HTMLCanvasElement> {
   const html2canvas = await loadHtml2Canvas();
-  await waitForImages(root);
+  await waitForImages(page);
   await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-  lockBrochureToA4(root);
-  const width = Math.max(1, root.offsetWidth);
-  const height = Math.max(1, root.offsetHeight);
-  return html2canvas(root, {
+  const width = Math.max(1, page.offsetWidth);
+  const height = Math.max(1, page.offsetHeight);
+  return html2canvas(page, {
     scale: 2,
     useCORS: true,
     backgroundColor: PRINT_CAPTURE_BG,
@@ -151,22 +146,13 @@ async function captureOfferShareCanvas(root: HTMLElement): Promise<HTMLCanvasEle
     windowHeight: height,
     scrollX: 0,
     scrollY: 0,
-    x: 0,
-    y: 0,
     onclone: (doc: Document) => {
       const clonePortal = doc.getElementById('offer-share-print-portal');
-      const cloneRoot = doc.getElementById('offer-share-print-brochure');
       if (clonePortal) {
         clonePortal.style.position = 'static';
-        clonePortal.style.left = '0';
-        clonePortal.style.top = '0';
         clonePortal.style.opacity = '1';
-        clonePortal.style.pointerEvents = 'none';
         clonePortal.style.width = '210mm';
-        clonePortal.style.height = '297mm';
-        clonePortal.style.overflow = 'hidden';
       }
-      if (cloneRoot) lockBrochureToA4(cloneRoot);
     },
   });
 }
@@ -218,11 +204,14 @@ async function deliverBlobFile(blob: Blob, filename: string, mime: string): Prom
 }
 
 async function buildOfferSharePdfBlob(root: HTMLElement): Promise<Blob> {
-  const canvas = await captureOfferShareCanvas(root);
   const { jsPDF } = await import('jspdf');
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
-  const img = canvas.toDataURL('image/jpeg', 0.95);
-  pdf.addImage(img, 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'FAST');
+  const pages = brochurePages(root);
+  for (let i = 0; i < pages.length; i += 1) {
+    const canvas = await captureOfferSharePage(pages[i]);
+    if (i > 0) pdf.addPage('a4', 'portrait');
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'FAST');
+  }
   return pdf.output('blob');
 }
 
@@ -319,7 +308,7 @@ export async function downloadOfferSharePdf(root: HTMLElement, filename: string)
 
 export async function downloadOfferShareJpeg(root: HTMLElement, filename: string): Promise<void> {
   await withVisiblePrintPortal(async () => {
-    const canvas = await captureOfferShareCanvas(root);
+    const canvas = await captureOfferSharePage(brochurePages(root)[0]);
     const blob = await new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
         (result) => {

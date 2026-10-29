@@ -2,15 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  ArrowRight,
-  Building2,
-  Copy,
-  ExternalLink,
-  MapPin,
-  Ruler,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowRight, Copy, MapPin } from 'lucide-react';
 import type { OfferShareCard } from '@/lib/offerShareLanding';
 import OfferSharePublisherCard from '@/components/offer/OfferSharePublisherCard';
 import OfferShareQr from '@/components/offer/OfferShareQr';
@@ -22,7 +14,7 @@ import OfferShareMessageModal from '@/components/offer/OfferShareMessageModal';
 import OfferSharePrintActions from '@/components/offer/OfferSharePrintActions';
 import OfferSharePrintBrochure from '@/components/offer/OfferSharePrintBrochure';
 import { loadOfferShareIntent, resumeOfferShareIntent } from '@/lib/offerShareIntent';
-import { eosBtn } from '@/components/ui/eosButtonStyles';
+import { offerSerif } from '@/components/offer/offerSerif';
 
 export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
   const [activeImage, setActiveImage] = useState(0);
@@ -66,179 +58,142 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
     }
   }, [card.canonicalUrl]);
 
+  const specs = [
+    card.area != null ? { label: 'Powierzchnia', value: `${card.area} m²` } : null,
+    card.rooms != null ? { label: 'Pokoje', value: String(card.rooms) } : null,
+    card.floor != null && String(card.floor).trim() !== ''
+      ? { label: 'Piętro', value: Number(card.floor) === 0 ? 'Parter' : String(card.floor) }
+      : null,
+    card.yearBuilt != null ? { label: 'Rok budowy', value: String(card.yearBuilt) } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item));
+
   return (
-    <main className="min-h-[100dvh] bg-[#ececea] text-[#141416] dark:bg-[#060608] dark:text-[#f5f5f7]">
+    <main className={`${offerSerif.variable} min-h-[100dvh] bg-[#f6f3ee] text-[#15171a] dark:bg-[#0c0b0a] dark:text-[#f3eee6]`}>
       <OfferShareAppBanner offerId={card.id} canonicalUrl={card.canonicalUrl} offerTitle={card.title} />
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(900px_520px_at_50%_-10%,rgba(184,146,46,0.12),transparent_60%)]" />
 
-      <div className="relative mx-auto max-w-xl px-3 pb-12 pt-[calc(env(safe-area-inset-top)+1rem)]">
-        <div className="rounded-[28px] bg-gradient-to-br from-[#b8922e]/55 via-[#b8922e]/10 to-transparent p-[3px] shadow-[0_28px_80px_rgba(20,20,22,0.12)]">
-          <article className="overflow-hidden rounded-[25px] border border-black/10 bg-[#fafaf8] dark:border-white/10 dark:bg-[#101014]">
-            <header className="border-b border-black/10 px-4 py-3 dark:border-white/10">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-baseline gap-2 text-[9px] font-bold uppercase tracking-[0.22em] text-[#5c5c66] dark:text-[#9a9aa8]">
-                  <strong className="text-[11px] tracking-[0.18em] text-[#141416] dark:text-white">
-                    EstateOS™
-                  </strong>
-                  <span>Wizytówka oferty</span>
-                </div>
-                <span className="rounded-full border border-[#b8922e]/35 bg-[#b8922e]/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-[#b8922e]">
-                  #{card.id}
-                </span>
-              </div>
-            </header>
+      <div className="mx-auto max-w-xl px-3 pb-12 pt-[calc(env(safe-area-inset-top)+1rem)]">
+        <article className="overflow-hidden rounded-[26px] border border-[#e4dccd] bg-white shadow-[0_24px_60px_rgba(21,23,26,0.08)] dark:border-[#d8c3a0]/15 dark:bg-[#161412] dark:shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
+          <header className="flex items-center justify-between gap-3 border-b border-[#e4dccd] px-5 py-3.5 dark:border-[#d8c3a0]/15">
+            <span className="text-[11px] font-bold uppercase tracking-[0.28em]">EstateOS™</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#8a8478] dark:text-[#968e82]">
+              Oferta #{card.id}
+            </span>
+          </header>
 
-            <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#0a0a0c]">
-              {hero ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={hero} alt={card.title} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-white/50">
-                  Brak zdjęcia
+          <div className="relative aspect-[4/3] w-full overflow-hidden bg-[#1c1b19]">
+            {hero ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={hero} alt={card.title} className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm tracking-[0.3em] text-[#d8c3a0]">ESTATEOS™</div>
+            )}
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-5 pt-20">
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#d8c3a0]">
+                {card.transactionLabel} · {card.propertyTypeLabel}
+              </p>
+              <h1 className="mt-1.5 font-[family-name:var(--ofb-serif)] text-[26px] font-medium leading-[1.12] text-white">
+                {card.title}
+              </h1>
+              <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-white/85">
+                <MapPin size={14} className="shrink-0" />
+                {card.addressLine || card.locationLabel}
+              </p>
+            </div>
+          </div>
+
+          {images.length > 1 ? (
+            <div className="flex gap-2 overflow-x-auto px-4 py-3">
+              {images.slice(0, 10).map((src, i) => (
+                <button
+                  key={`${src}-${i}`}
+                  type="button"
+                  onClick={() => setActiveImage(i)}
+                  aria-label={`Zdjęcie ${i + 1}`}
+                  className={`h-14 w-20 shrink-0 overflow-hidden rounded-xl transition ${
+                    i === activeImage ? 'ring-2 ring-[#a8844e] ring-offset-2 ring-offset-white dark:ring-offset-[#161412]' : 'opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt="" className="h-full w-full object-cover" />
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="space-y-6 px-5 pb-6 pt-4">
+            <div className="border-b border-[#e4dccd] pb-5 dark:border-[#d8c3a0]/15">
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8a6a3a] dark:text-[#d8c3a0]">
+                {card.isRent ? 'Czynsz najmu' : 'Cena ofertowa'}
+              </p>
+              <p className="mt-1 font-[family-name:var(--ofb-serif)] text-[34px] font-medium leading-none">{card.priceLabel}</p>
+              {card.pricePerSqmLabel ? (
+                <p className="mt-1.5 text-[13px] text-[#8a8478] dark:text-[#968e82]">{card.pricePerSqmLabel}</p>
+              ) : null}
+              {specs.length ? (
+                <dl className="mt-5 grid gap-3" style={{ gridTemplateColumns: `repeat(${specs.length}, minmax(0, 1fr))` }}>
+                  {specs.map((spec, index) => (
+                    <div key={spec.label} className={index ? 'border-l border-[#e4dccd] pl-3 dark:border-[#d8c3a0]/15' : ''}>
+                      <dt className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#8a8478] dark:text-[#968e82]">{spec.label}</dt>
+                      <dd className="mt-1 font-[family-name:var(--ofb-serif)] text-[18px]">{spec.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {card.amenities.length ? (
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {card.amenities.map((item) => (
+                    <span key={item} className="rounded-full border border-[#e4dccd] px-2.5 py-1 text-[11px] font-semibold text-[#4a4740] dark:border-[#d8c3a0]/20 dark:text-[#c8c0b3]">
+                      {item}
+                    </span>
+                  ))}
                 </div>
-              )}
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-4 pt-16">
-                <div className="mb-2 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white backdrop-blur">
-                    {card.transactionLabel}
-                  </span>
-                  <span className="rounded-full bg-emerald-500/90 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-black">
-                    {card.propertyTypeLabel}
-                  </span>
-                </div>
-                <h1 className="text-xl font-black leading-tight text-white sm:text-2xl">{card.title}</h1>
-                <p className="mt-1 flex items-center gap-1.5 text-sm text-white/85">
-                  <MapPin size={14} className="shrink-0" />
-                  {card.locationLabel}
-                </p>
-              </div>
+              ) : null}
             </div>
 
-            {images.length > 1 ? (
-              <div className="flex gap-2 overflow-x-auto border-b border-black/10 px-3 py-3 dark:border-white/10">
-                {images.slice(0, 8).map((src, i) => (
-                  <button
-                    key={`${src}-${i}`}
-                    type="button"
-                    onClick={() => setActiveImage(i)}
-                    className={[
-                      'h-14 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition',
-                      i === activeImage ? 'border-emerald-500' : 'border-transparent opacity-75 hover:opacity-100',
-                    ].join(' ')}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt="" className="h-full w-full object-cover" />
-                  </button>
-                ))}
-              </div>
+            {card.description ? (
+              <p className="line-clamp-6 text-[14px] leading-relaxed text-[#4a4740] dark:text-[#c8c0b3]">{card.description}</p>
             ) : null}
 
-            <div className="space-y-5 p-5">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#5c5c66] dark:text-[#9a9aa8]">
-                  {card.summaryLine}
-                </p>
-                <p className="mt-2 text-3xl font-black tracking-tight text-[#141416] dark:text-white">
-                  {card.priceLabel}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {card.area != null ? (
-                  <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66] dark:text-[#9a9aa8]">Metraż</p>
-                    <p className="mt-1 flex items-center gap-1 text-sm font-bold">
-                      <Ruler size={14} className="text-emerald-500" />
-                      {card.area} m²
-                    </p>
-                  </div>
-                ) : null}
-                {card.rooms != null ? (
-                  <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66] dark:text-[#9a9aa8]">Pokoje</p>
-                    <p className="mt-1 text-sm font-bold">{card.rooms}</p>
-                  </div>
-                ) : null}
-                {card.floor != null ? (
-                  <div className="rounded-2xl border border-black/10 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                    <p className="text-[9px] font-bold uppercase tracking-widest text-[#5c5c66] dark:text-[#9a9aa8]">Piętro</p>
-                    <p className="mt-1 text-sm font-bold">{card.floor}</p>
-                  </div>
-                ) : null}
-              </div>
-
-              {card.description ? (
-                <p className="text-sm leading-relaxed text-[#5c5c66] dark:text-[#9a9aa8] line-clamp-6">
-                  {card.description}
-                </p>
-              ) : null}
-
-              {card.publisher ? (
-                <OfferSharePublisherCard
-                  publisher={card.publisher}
-                  onScheduleVisit={() => setAppointmentOpen(true)}
-                  onWriteMessage={() => setMessageOpen(true)}
-                />
-              ) : null}
-
-              <OfferShareQr
-                url={card.canonicalUrl}
-                label="Kod QR oferty"
-                caption="Zeskanuj telefonem — otworzy wizytówkę lub aplikację EstateOS™ z tą nieruchomością."
+            {card.publisher ? (
+              <OfferSharePublisherCard
+                publisher={card.publisher}
+                onScheduleVisit={() => setAppointmentOpen(true)}
+                onWriteMessage={() => setMessageOpen(true)}
               />
+            ) : null}
 
+            <div className="flex flex-col gap-2.5">
+              <Link
+                href={card.fullOfferPath}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#15171a] text-[14px] font-semibold text-[#d8c3a0] dark:bg-[#d8c3a0] dark:text-[#0c0b0a]"
+              >
+                Zobacz pełną ofertę
+                <ArrowRight size={16} />
+              </Link>
               <OfferShareOpenInAppButton offerId={card.id} canonicalUrl={card.canonicalUrl} />
-
-              <p className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
-                Galeria, rzut i mapa — na pełnej stronie oferty. Kontakt z wystawcą i negocjacje wymagają
-                bezpłatnego konta na zweryfikowanej platformie EstateOS™.
-              </p>
-
-              <div className="flex flex-col gap-3">
-                <Link href={card.fullOfferPath} className={eosBtn('primary', { block: true, size: 'lg' })}>
-                  Zobacz pełną ofertę
-                  <ArrowRight size={16} />
-                </Link>
-                <button type="button" onClick={() => void copyLink()} className="eos-lux-btn eos-lux-btn--gold w-full px-5 py-3 text-[11px]">
-                  <Copy size={14} />
-                  {copied ? 'Skopiowano link' : 'Kopiuj link wizytówki'}
-                </button>
-                <OfferSharePrintActions card={card} />
-              </div>
+              <button
+                type="button"
+                onClick={() => void copyLink()}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full border border-[#e4dccd] text-[13px] font-semibold dark:border-[#d8c3a0]/20"
+              >
+                <Copy size={14} />
+                {copied ? 'Skopiowano link' : 'Kopiuj link wizytówki'}
+              </button>
+              <OfferSharePrintActions card={card} />
             </div>
 
-            <footer className="border-t border-black/10 bg-[#f5f5f3] px-5 py-6 dark:border-white/10 dark:bg-[#0c0c10]">
-              <div className="flex items-start gap-3">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600">
-                  <Sparkles size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-sm font-black text-[#141416] dark:text-white">Dlaczego EstateOS™?</h2>
-                  <p className="mt-1 text-xs leading-relaxed text-[#5c5c66] dark:text-[#9a9aa8]">
-                    Radar dopasowań, Deal Room, weryfikacja ofert i aplikacja mobilna — nowoczesny rynek
-                    nieruchomości zamiast kolejnego portalu ogłoszeń.
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Link href="/dla-agencji" className={eosBtn('promote', { size: 'sm' })}>
-                      <Building2 size={12} />
-                      Biuro za 0 zł
-                    </Link>
-                    <Link href="https://estateos.pl" className={eosBtn('secondary', { size: 'sm' })}>
-                      estateos.pl
-                      <ExternalLink size={11} />
-                    </Link>
-                  </div>
-                  <div className="mt-5 rounded-2xl border border-black/8 bg-white/80 p-4 dark:border-white/10 dark:bg-white/[0.06]">
-                    <p className="mb-3 text-[9px] font-black uppercase tracking-[0.2em] text-[#5c5c66] dark:text-[#9a9aa8]">
-                      Pobierz aplikację
-                    </p>
-                    <AppStoreBadgeLink compact androidComingSoon />
-                  </div>
-                </div>
-              </div>
-            </footer>
-          </article>
-        </div>
+            <OfferShareQr
+              url={card.canonicalUrl}
+              label="Kod QR oferty"
+              caption="Zeskanuj telefonem — otworzy tę ofertę na stronie albo w aplikacji EstateOS™."
+            />
+          </div>
+
+          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[#e4dccd] bg-[#f8f5ef] px-5 py-4 dark:border-[#d8c3a0]/15 dark:bg-[#1c1a17]">
+            <p className="text-[11px] text-[#8a8478] dark:text-[#968e82]">Zweryfikowany rynek nieruchomości · estateos.pl</p>
+            <AppStoreBadgeLink compact androidComingSoon />
+          </footer>
+        </article>
       </div>
 
       {card.publisher ? (

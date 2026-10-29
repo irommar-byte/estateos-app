@@ -15,11 +15,11 @@ function post(payload: Record<string, unknown>) {
   bridge.ReactNativeWebView?.postMessage(JSON.stringify(payload));
 }
 
-/** Pełny ekran tej samej kartki A4, którą na WWW zapisuje się jako ofertówkę. */
+/** Podgląd tych samych dwóch kartek A4, które na WWW zapisuje się jako ofertówkę — dopasowany do szerokości ekranu. */
 export default function OfferShareArkusz({ card }: { card: OfferShareCard }) {
   const pageRef = useRef<HTMLDivElement | null>(null);
   const fitRef = useRef<HTMLDivElement | null>(null);
-  const [box, setBox] = useState({ width: 794, height: 1123, scale: 0.6 });
+  const [box, setBox] = useState({ width: 794, height: 2276, scale: 0.45 });
 
   useEffect(() => {
     const fit = () => {
@@ -27,10 +27,10 @@ export default function OfferShareArkusz({ card }: { card: OfferShareCard }) {
       const sheet = fitRef.current;
       if (!page || !sheet) return;
       const width = sheet.offsetWidth || 794;
-      const height = sheet.offsetHeight || 1123;
+      const height = sheet.offsetHeight || 2276;
       if (width < 40 || height < 40) return;
-      const scale = Math.min((page.clientWidth - 12) / width, (page.clientHeight - 12) / height);
-      setBox({ width, height, scale: Number.isFinite(scale) && scale > 0.05 && scale < 3 ? scale : 0.45 });
+      const scale = Math.min(1.2, (page.clientWidth - 24) / width);
+      setBox({ width, height, scale: Number.isFinite(scale) && scale > 0.05 ? scale : 0.45 });
     };
     fit();
     const timer = window.setTimeout(fit, 60);
@@ -69,7 +69,7 @@ export default function OfferShareArkusz({ card }: { card: OfferShareCard }) {
 
   return (
     <div ref={pageRef} className="offer-share-arkusz-page">
-      <div style={{ width: box.width * box.scale, height: box.height * box.scale }}>
+      <div style={{ width: box.width * box.scale, height: box.height * box.scale, margin: '0 auto' }}>
         <div
           ref={fitRef}
           className="offer-share-arkusz-fit"

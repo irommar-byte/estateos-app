@@ -3095,7 +3095,7 @@ html.light .eos-modal-panel {
   }
 }
 
-/* —— Ofertówka A4 (jedna strona, równa siatka) —— */
+/* —— Ofertówka na prezentację: dwie strony A4 (okładka + szczegóły) —— */
 .offer-share-print-portal {
   position: fixed;
   left: -10000px;
@@ -3106,600 +3106,457 @@ html.light .eos-modal-panel {
   z-index: -1;
 }
 
-.offer-share-arkusz-page {
-  min-height: 100dvh;
-  margin: 0;
-  background: #111113;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.offer-share-arkusz-fit {
-  width: 210mm;
-  height: 297mm;
-  transform-origin: top left;
-}
-
 body.offer-share-pdf-capturing #offer-share-print-portal,
 #offer-share-print-portal.offer-share-pdf-capturing {
   opacity: 1 !important;
   z-index: 1 !important;
 }
 
-.offer-share-print-brochure {
+.offer-share-arkusz-page {
+  min-height: 100dvh;
+  margin: 0;
+  padding: 12px 0 24px;
+  background: #111113;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.offer-share-arkusz-fit {
+  width: 210mm;
+  transform-origin: top left;
+}
+
+.ofb {
+  --ofb-paper: #f8f5ef;
+  --ofb-ink: #15171a;
+  --ofb-ink-2: #4a4740;
+  --ofb-ink-3: #8a8478;
+  --ofb-gold: #a8844e;
+  --ofb-line: #e4dccd;
+  width: 210mm;
+  color: var(--ofb-ink);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.offer-share-arkusz-fit .ofb-page + .ofb-page {
+  margin-top: 8mm;
+}
+
+.ofb-page {
+  position: relative;
   box-sizing: border-box;
   width: 210mm;
   height: 297mm;
-  min-height: 297mm;
-  max-height: 297mm;
-  margin: 0;
-  padding: 3mm;
+  overflow: hidden;
+  padding: 13mm 14mm 11mm;
+  background: var(--ofb-paper);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background:
-    linear-gradient(180deg, #e4d19a 0%, #c4a046 38%, #a98428 72%, #d7c07a 100%);
-  color: #1a1916;
-  font-family: 'Iowan Old Style', Palatino, 'Palatino Linotype', Georgia, serif;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
 }
 
-.offer-share-print-plate {
+.ofb-page::before {
+  content: '';
+  position: absolute;
+  inset: 6mm;
+  border: 0.3mm solid var(--ofb-line);
+  pointer-events: none;
+}
+
+.ofb-head {
   position: relative;
-  box-sizing: border-box;
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 5mm 6mm 4mm;
-  background:
-    radial-gradient(120% 70% at 50% -10%, rgba(255, 252, 244, 0.92) 0%, rgba(247, 243, 234, 0) 46%),
-    linear-gradient(180deg, #f8f4ea 0%, #f3ead8 100%);
-  border: 0.35mm solid rgba(168, 132, 40, 0.55);
-  box-shadow: inset 0 0 0 1mm #f7f3ea;
-}
-
-.offer-share-print-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4mm;
-  padding-bottom: 2.2mm;
-  margin-bottom: 2.2mm;
-  border-bottom: 0.28mm solid rgba(168, 132, 40, 0.45);
-  flex: 0 0 auto;
-}
-
-.offer-share-print-brand-left {
   display: flex;
   align-items: baseline;
-  gap: 2.5mm;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 7pt;
+  justify-content: space-between;
+  gap: 6mm;
+  padding-bottom: 3.2mm;
+  border-bottom: 0.3mm solid var(--ofb-ink);
+}
+
+.ofb-head__brand {
+  font-size: 9pt;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.ofb-head__meta {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 7.5pt;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #6b624c;
+  color: var(--ofb-ink-3);
 }
 
-.offer-share-print-brand-left strong {
-  font-size: 9pt;
-  letter-spacing: 0.18em;
-  color: #1a1916;
-}
-
-.offer-share-print-ref {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-width: 26mm;
-  padding: 1.4mm 3.6mm 1.6mm;
-  text-align: center;
-  background: rgba(255, 252, 244, 0.55);
-  border: 0.28mm solid rgba(168, 132, 40, 0.55);
-}
-
-.offer-share-print-ref-label,
-.offer-share-print-spec-label {
-  display: block;
-  width: 100%;
+.ofb-eyebrow {
   margin: 0;
-  padding: 0;
-  text-align: center;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 5.5pt;
+  font-size: 6.8pt;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #6a5418;
-  line-height: 1.15;
+  color: var(--ofb-gold);
 }
 
-.offer-share-print-ref-value,
-.offer-share-print-spec-value {
-  display: block;
-  width: 100%;
-  margin: 0.6mm 0 0;
-  padding: 0;
-  text-align: center;
-  font-family: 'Iowan Old Style', Palatino, 'Palatino Linotype', Georgia, serif;
-  font-size: 11.5pt;
-  font-weight: 700;
-  letter-spacing: 0;
-  line-height: 1.05;
-  font-variant-numeric: tabular-nums;
-  color: #2c2412;
-}
-
-.offer-share-print-hero {
+.ofb-hero {
   position: relative;
-  height: 72mm;
-  flex: 0 0 auto;
+  margin-top: 5mm;
+  height: 112mm;
   overflow: hidden;
-  border-radius: 1.2mm;
-  background: #e8e0d0;
-  border: 0.28mm solid rgba(168, 132, 40, 0.4);
+  background: #1c1b19;
 }
 
-.offer-share-print-hero img {
+.ofb-hero img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
 }
 
-.offer-share-print-hero-placeholder {
+.ofb-hero__empty {
+  display: flex;
   height: 100%;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, #ece4d4, #d8cbb0);
-  color: #6b624c;
-  font-size: 10pt;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  align-items: center;
+  justify-content: center;
+  color: #d8c3a0;
+  font-size: 14pt;
+  letter-spacing: 0.3em;
 }
 
-.offer-share-print-hero-overlay {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 12mm 6mm 4.5mm;
-  background: linear-gradient(180deg, transparent 0%, rgba(18, 16, 12, 0.78) 100%);
-  color: #f7f3ea;
+.ofb-title {
+  margin-top: 6mm;
 }
 
-.offer-share-print-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.8mm;
-  margin-bottom: 1.2mm;
-}
-
-.offer-share-print-badges span {
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 6.5pt;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 0.9mm 2.2mm;
-  border-radius: 999px;
-  border: 1px solid rgba(244, 230, 192, 0.45);
-  background: rgba(255, 255, 255, 0.12);
-  color: #f7f3ea;
-}
-
-.offer-share-print-brochure h1 {
-  margin: 0 0 1.2mm;
-  font-size: 14.5pt;
-  line-height: 1.2;
-  font-weight: 700;
+.ofb-title h1 {
+  margin: 1.6mm 0 0;
+  font-family: var(--ofb-serif), Georgia, serif;
+  font-size: 22pt;
+  font-weight: 500;
+  line-height: 1.12;
   letter-spacing: -0.01em;
-}
-
-.offer-share-print-location {
-  margin: 0 0 1mm;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 8.5pt;
-  line-height: 1.35;
-  color: #6b624c;
-}
-
-.offer-share-print-summary {
-  margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 8pt;
-  color: #6b624c;
-}
-
-.offer-share-print-price {
-  margin: 0;
-  font-size: 18pt;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  color: #f4e6c0;
-}
-
-.offer-share-print-main {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4.5mm;
-  flex: 1 1 auto;
-  min-height: 0;
-  margin-top: 3.6mm;
-  align-items: stretch;
-}
-
-.offer-share-print-copy,
-.offer-share-print-side {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.offer-share-print-side {
-  gap: 2.6mm;
-}
-
-/* Jedna równa belka parametrów zamiast osobnych „karteczek” */
-.offer-share-print-spec-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  align-items: stretch;
-  margin-top: 3mm;
-  border: 0.28mm solid rgba(168, 132, 40, 0.42);
-  background: rgba(255, 252, 244, 0.55);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.offer-share-print-spec {
+.ofb-title__address {
+  margin: 1.6mm 0 0;
+  font-size: 9pt;
+  color: var(--ofb-ink-2);
+}
+
+.ofb-price {
   display: flex;
-  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8mm;
+  margin-top: 5.5mm;
+  padding: 4.5mm 0;
+  border-top: 0.3mm solid var(--ofb-line);
+  border-bottom: 0.3mm solid var(--ofb-line);
+}
+
+.ofb-price__value {
+  margin: 1mm 0 0;
+  font-family: var(--ofb-serif), Georgia, serif;
+  font-size: 25pt;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ofb-price__sub {
+  margin: 1.4mm 0 0;
+  font-size: 8pt;
+  color: var(--ofb-ink-3);
+}
+
+.ofb-specs {
+  display: flex;
+  margin: 0;
+}
+
+.ofb-specs > div {
+  padding: 0 0 0 5mm;
+  margin-left: 5mm;
+  border-left: 0.3mm solid var(--ofb-line);
+}
+
+.ofb-specs > div:first-child {
+  margin-left: 0;
+  border-left: 0;
+  padding-left: 0;
+}
+
+.ofb-specs dt,
+.ofb-facts dt {
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ofb-ink-3);
+}
+
+.ofb-specs dd {
+  margin: 1.4mm 0 0;
+  font-family: var(--ofb-serif), Georgia, serif;
+  font-size: 14pt;
+  white-space: nowrap;
+}
+
+.ofb-strip {
+  display: grid;
+  gap: 2.5mm;
+  margin-top: 5mm;
+  height: 30mm;
+}
+
+.ofb-strip img,
+.ofb-gallery img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #e9e3d8;
+}
+
+.ofb-contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8mm;
+  margin-top: auto;
+  padding-top: 5mm;
+}
+
+.ofb-agent {
+  display: flex;
+  align-items: center;
+  gap: 4.5mm;
+  min-width: 0;
+}
+
+.ofb-agent__photo {
+  flex-shrink: 0;
+  width: 21mm;
+  height: 21mm;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #ece4d5;
+  box-shadow: 0 0 0 0.4mm var(--ofb-gold);
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1.2mm;
-  min-height: 16mm;
+  font-family: var(--ofb-serif), Georgia, serif;
+  font-size: 16pt;
+  color: var(--ofb-gold);
+}
+
+.ofb-agent__photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.ofb-agent__body {
   min-width: 0;
-  padding: 2mm 1mm;
-  text-align: center;
-  border-right: 0.28mm solid rgba(168, 132, 40, 0.28);
 }
 
-.offer-share-print-spec:last-child {
-  border-right: 0;
+.ofb-agent__name {
+  margin: 1mm 0 0;
+  font-family: var(--ofb-serif), Georgia, serif;
+  font-size: 14pt;
+  line-height: 1.15;
 }
 
-.offer-share-print-spec-label {
-  letter-spacing: 0.06em;
+.ofb-agent__company {
+  margin: 0.6mm 0 0;
+  font-size: 8.5pt;
+  color: var(--ofb-ink-2);
 }
 
-.offer-share-print-spec-value {
+.ofb-agent__contact {
+  margin: 1.4mm 0 0;
+  font-size: 8.5pt;
+  font-weight: 600;
+  white-space: pre;
+}
+
+.ofb-agent--compact .ofb-agent__photo {
+  width: 14mm;
+  height: 14mm;
   font-size: 11pt;
-  margin-top: 0;
 }
 
-/* Udogodnienia jako jedna linia — bez osobnych ramek-przycisków */
-.offer-share-print-amenities {
-  margin: 2.6mm 0 0;
-  padding: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 7.2pt;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  line-height: 1.45;
-  color: #5a4a22;
+.ofb-agent--compact .ofb-agent__name {
+  font-size: 11pt;
 }
 
-.offer-share-print-amenity-sep {
-  font-weight: 400;
-  opacity: 0.55;
+.ofb-qr {
+  display: flex;
+  align-items: center;
+  gap: 3.5mm;
+  flex-shrink: 0;
 }
 
-.offer-share-print-description {
-  margin-top: 2.4mm;
-  padding-top: 2.2mm;
-  border-top: 0.25mm solid rgba(184, 146, 46, 0.35);
+.ofb-qr img {
+  width: 24mm;
+  height: 24mm;
+  padding: 1.5mm;
+  background: #fff;
+  border: 0.3mm solid var(--ofb-line);
 }
 
-.offer-share-print-section-title {
-  margin: 0 0 1.2mm;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 6.5pt;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #8a6d1f;
-}
-
-.offer-share-print-description-body {
+.ofb-qr p {
   margin: 0;
-  font-size: 8.2pt;
-  line-height: 1.42;
-  color: #3d3a32;
+  font-size: 7.5pt;
+  line-height: 1.45;
+  color: var(--ofb-ink-2);
+}
+
+.ofb-foot {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: 4mm;
+  margin-top: 5mm;
+  padding-top: 2.6mm;
+  border-top: 0.3mm solid var(--ofb-line);
+  font-size: 6.8pt;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ofb-ink-3);
+}
+
+.ofb-foot__brand {
+  font-weight: 700;
+  color: var(--ofb-ink);
+}
+
+.ofb-details {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 8mm;
+  margin-top: 6mm;
+  min-height: 0;
+  flex: 1;
+}
+
+.ofb-h2 {
+  margin: 0 0 3mm;
+  font-family: var(--ofb-serif), Georgia, serif;
+  font-size: 15pt;
+  font-weight: 500;
+}
+
+.ofb-h2:not(:first-child) {
+  margin-top: 6mm;
+}
+
+.ofb-description {
+  margin: 0;
+  font-size: 8.8pt;
+  line-height: 1.6;
+  color: var(--ofb-ink-2);
   text-align: justify;
   hyphens: auto;
 }
 
-.offer-share-print-rooms {
-  margin-top: 2.4mm;
-  padding-top: 2mm;
-  border-top: 0.22mm solid rgba(184, 146, 46, 0.32);
+.ofb-facts {
+  margin: 5mm 0 0;
 }
 
-.offer-share-print-rooms-list {
-  list-style: none;
+.ofb-facts > div {
+  display: flex;
+  gap: 4mm;
+  padding: 2mm 0;
+  border-top: 0.3mm solid var(--ofb-line);
+}
+
+.ofb-facts dt {
+  width: 26mm;
+  flex-shrink: 0;
+  padding-top: 0.6mm;
+}
+
+.ofb-facts dd {
+  margin: 0;
+  font-size: 8.8pt;
+}
+
+.ofb-rooms {
   margin: 0;
   padding: 0;
-  display: grid;
-  gap: 0.5mm;
+  list-style: none;
+  columns: 2;
+  column-gap: 6mm;
 }
 
-.offer-share-print-rooms-list li {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 3mm;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 7.5pt;
-  line-height: 1.3;
-  color: #3d3a32;
-}
-
-.offer-share-print-rooms-list span {
-  min-width: 0;
-}
-
-.offer-share-print-rooms-list strong {
-  flex: 0 0 auto;
-  font-family: 'Iowan Old Style', Palatino, Georgia, serif;
-  font-size: 8pt;
-  font-weight: 700;
-  color: #6a5418;
-}
-
-.offer-share-print-map {
-  overflow: hidden;
-  border-radius: 1.2mm;
-  border: 0.28mm solid rgba(184, 146, 46, 0.35);
-  background: #efe6d4;
-  flex: 0 0 auto;
-}
-
-.offer-share-print-map img,
-.offer-share-print-map-fallback {
-  width: 100%;
-  height: 46mm;
-  object-fit: cover;
-  display: block;
-}
-
-.offer-share-print-map-fallback {
-  display: grid;
-  place-content: center;
-  text-align: center;
-  gap: 1mm;
-  color: #6b624c;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-
-.offer-share-print-map-fallback p {
-  margin: 0;
-  font-size: 6.5pt;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.offer-share-print-map-fallback strong {
-  font-size: 10pt;
-  color: #1a1916;
-}
-
-.offer-share-print-map-caption {
-  margin: 0;
-  padding: 1.4mm 2.2mm 1.8mm;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 6pt;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #8a6d1f;
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.offer-share-print-gallery {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.4mm;
-  flex: 0 0 auto;
-}
-
-.offer-share-print-gallery img {
-  width: 100%;
-  height: 20mm;
-  object-fit: cover;
-  display: block;
-  border-radius: 1mm;
-  border: 0.2mm solid rgba(168, 132, 40, 0.28);
-}
-
-.offer-share-print-qr-row {
-  display: flex;
-  align-items: center;
-  gap: 2.8mm;
-  margin-top: auto;
-  padding: 2.2mm 2.4mm;
-  border: 0.28mm solid rgba(168, 132, 40, 0.42);
-  border-radius: 1.2mm;
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.offer-share-print-qr {
-  width: 20mm;
-  height: 20mm;
-  flex: 0 0 auto;
-  border: 1px solid rgba(20, 20, 22, 0.1);
-  border-radius: 1mm;
-  background: #fff;
-}
-
-.offer-share-print-qr-title {
-  margin: 0 0 0.8mm;
-  font-size: 7pt;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #8a6d1f;
-}
-
-.offer-share-print-qr-caption {
-  margin: 0 0 0.8mm;
-  font-size: 7.5pt;
-  line-height: 1.35;
-  color: #3d3d46;
-}
-
-.offer-share-print-qr-url {
-  margin: 0;
-  font-size: 6pt;
-  line-height: 1.3;
-  color: #6b6b76;
-  word-break: break-all;
-}
-
-.offer-share-print-foot {
+.ofb-rooms li {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 4mm;
-  margin-top: 2mm;
-  padding-top: 1.8mm;
-  border-top: 0.28mm solid rgba(168, 132, 40, 0.45);
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  font-size: 6.5pt;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #8a6d1f;
-  flex: 0 0 auto;
-}
-
-.offer-share-agent-print-card {
-  margin-top: 2.4mm;
-  page-break-inside: avoid;
-  flex: 0 0 auto;
-}
-
-.offer-share-agent-print-inner {
-  display: grid;
-  grid-template-columns: 18mm minmax(0, 1fr) 42mm;
   gap: 3mm;
-  align-items: center;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 2.8mm 3.6mm;
-  border: 0.28mm solid rgba(168, 132, 40, 0.5);
-  background: rgba(255, 255, 255, 0.55);
-}
-
-.offer-share-agent-print-photo {
-  width: 18mm;
-  height: 18mm;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 0.35mm solid #c9a227;
-  background: #ece7dc;
-  display: grid;
-  place-items: center;
-}
-
-.offer-share-agent-print-photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.offer-share-agent-photo-initial {
-  font-size: 9mm;
-  font-weight: 700;
-  color: #8a6d1f;
-  line-height: 1;
-}
-
-.offer-share-agent-print-kicker {
-  margin: 0 0 0.6mm;
-  font-size: 6.5pt;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #8a6d1f;
-  font-weight: 700;
-}
-
-.offer-share-agent-print-name {
-  margin: 0 0 0.6mm;
-  font-size: 12pt;
-  line-height: 1.15;
-  font-weight: 700;
-  color: #141416;
-}
-
-.offer-share-agent-print-company {
-  margin: 0 0 1.2mm;
+  padding: 1.6mm 0;
+  border-bottom: 0.3mm dotted var(--ofb-line);
   font-size: 8.5pt;
-  font-weight: 600;
-  color: #3d3d46;
+  break-inside: avoid;
 }
 
-.offer-share-agent-print-contacts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1mm 3mm;
-  font-size: 8pt;
-  line-height: 1.35;
-  color: #5c5c66;
+.ofb-gallery {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 32mm;
+  gap: 2.5mm;
 }
 
-.offer-share-agent-print-contacts span {
-  white-space: nowrap;
+.ofb-map {
+  margin: 4mm 0 0;
 }
 
-.offer-share-agent-print-ref {
-  margin-top: 1.2mm;
-  font-size: 6pt;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8a6d1f;
-}
-
-.offer-share-agent-print-brand {
-  text-align: right;
-  padding-left: 3mm;
-  border-left: 0.28mm solid rgba(168, 132, 40, 0.38);
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.offer-share-agent-print-brand strong {
+.ofb-map img {
   display: block;
-  font-family: 'Iowan Old Style', Palatino, 'Palatino Linotype', Georgia, serif;
-  font-size: 9.5pt;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #141416;
+  width: 100%;
+  height: 52mm;
+  object-fit: cover;
+  border: 0.3mm solid var(--ofb-line);
 }
 
-.offer-share-agent-print-brand p {
-  margin: 1mm 0 0;
+.ofb-map figcaption {
+  margin-top: 1.6mm;
+  font-size: 7pt;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ofb-ink-3);
+}
+
+.ofb-notes {
+  margin-top: 6mm;
+}
+
+.ofb-notes__lines span {
+  display: block;
+  height: 8mm;
+  border-bottom: 0.3mm solid var(--ofb-line);
+}
+
+.ofb-closing {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8mm;
+  margin-top: 5mm;
+}
+
+.ofb-closing__note {
+  max-width: 70mm;
+  margin: 0;
   font-size: 6.5pt;
-  line-height: 1.35;
-  color: #6b6b76;
+  line-height: 1.45;
+  color: var(--ofb-ink-3);
+  text-align: right;
 }
 
 @media print {
@@ -3707,14 +3564,10 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
     display: none !important;
   }
 
-  body.offer-share-printing,
-  body.offer-share-printing html {
+  body.offer-share-printing {
     background: #fff !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: 210mm !important;
-    height: 297mm !important;
-    overflow: hidden !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
@@ -3722,30 +3575,18 @@ body.offer-share-pdf-capturing #offer-share-print-portal,
   body.offer-share-printing #offer-share-print-portal {
     position: static !important;
     left: auto !important;
-    top: auto !important;
-    width: 210mm !important;
-    height: 297mm !important;
     opacity: 1 !important;
-    pointer-events: auto !important;
     z-index: auto !important;
-    overflow: hidden !important;
   }
 
-  body.offer-share-printing .offer-share-print-brochure {
-    width: 210mm !important;
-    height: 297mm !important;
-    min-height: 297mm !important;
-    max-height: 297mm !important;
-    overflow: hidden !important;
-    page-break-after: avoid !important;
-    page-break-inside: avoid !important;
-    break-after: avoid !important;
-    break-inside: avoid !important;
+  body.offer-share-printing .ofb-page {
+    break-after: page;
+    page-break-after: always;
   }
 
-  body.offer-share-printing .offer-share-print-plate {
-    height: 100% !important;
-    overflow: hidden !important;
+  body.offer-share-printing .ofb-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 
   @page {

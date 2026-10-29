@@ -110,6 +110,8 @@ export type OfferShareCard = {
   updatedAtIso: string | null;
   images: string[];
   priceLabel: string;
+  /** cena za m² (tylko sprzedaż), np. „22 508 zł/m²” */
+  pricePerSqmLabel: string | null;
   isRent: boolean;
   locationLabel: string;
   summaryLine: string;
@@ -286,6 +288,12 @@ export async function loadOfferShareCard(
     updatedAtIso,
     images: images.length ? images : primary ? [primary] : [],
     priceLabel,
+    pricePerSqmLabel: (() => {
+      const price = Number(row.pricePln ?? row.price);
+      const area = Number(row.area);
+      if (isRent || !(price > 0) || !(area > 0)) return null;
+      return `${Math.round(price / area).toLocaleString('pl-PL')} zł/m²`;
+    })(),
     isRent,
     locationLabel,
     summaryLine,
@@ -296,7 +304,7 @@ export async function loadOfferShareCard(
     rooms: row.rooms != null ? Number(row.rooms) : null,
     floor: row.floor != null ? row.floor : null,
     description: row.description
-      ? stripHtmlToPlain(stripInternalOfferDescriptionMarkers(String(row.description))).slice(0, 900)
+      ? stripHtmlToPlain(stripInternalOfferDescriptionMarkers(String(row.description))).slice(0, 2400)
       : null,
     publisher,
     fullOfferPath,
@@ -309,7 +317,7 @@ export async function loadOfferShareCard(
     yearBuilt: row.yearBuilt != null && Number(row.yearBuilt) > 1800 ? Number(row.yearBuilt) : null,
     heating: String(row.heating || '').trim() || null,
     amenities: amenityLabels(row),
-    gallery: images.filter((url) => url && url !== primary).slice(0, 3),
+    gallery: images.filter((url) => url && url !== primary).slice(0, 8),
     mapImageUrl: hasCoords
       ? `/api/map/static?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}&v=2`
       : null,

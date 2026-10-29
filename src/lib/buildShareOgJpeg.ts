@@ -97,22 +97,6 @@ type OverlayTheme = {
   panelFill: string;
 };
 
-const REALTY_THEME: OverlayTheme = {
-  brand: 'ESTATEOS™',
-  eyebrow: 'OFERTA PREMIUM',
-  accent: '#0f3d34',
-  accentSoft: '#1a5c4f',
-  accentLine: '#c4a574',
-  chipFill: 'rgba(15, 61, 52, 0.08)',
-  chipStroke: 'rgba(196, 165, 116, 0.55)',
-  chipText: '#0f3d34',
-  priceFill: '#0f3d34',
-  priceStroke: '#c4a574',
-  priceLabel: '#e8d5b5',
-  priceValue: '#ffffff',
-  panelFill: 'rgba(255, 252, 248, 0.96)',
-};
-
 const CAR_THEME: OverlayTheme = {
   brand: 'ESTATEOS™ CAR',
   eyebrow: 'OFERTA PREMIUM',
@@ -200,6 +184,86 @@ function buildOverlaySvg(params: {
   return Buffer.from(svg);
 }
 
+function wrapLines(text: string, maxChars: number, maxLines: number): string[] {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word;
+    if (next.length <= maxChars) {
+      line = next;
+      continue;
+    }
+    if (line) lines.push(line);
+    line = word.length > maxChars ? truncate(word, maxChars) : word;
+    if (lines.length === maxLines) break;
+  }
+  if (line && lines.length < maxLines) lines.push(line);
+  if (lines.length === maxLines && words.join(' ').length > lines.join(' ').length) {
+    lines[maxLines - 1] = truncate(lines[maxLines - 1], Math.max(4, maxChars - 1)).replace(/…?$/, '…');
+  }
+  return lines.slice(0, maxLines);
+}
+
+const OG_PHOTO_WIDTH = 760;
+const OG_SANS = 'DejaVu Sans, Liberation Sans, Arial, Helvetica, sans-serif';
+const OG_SERIF = 'DejaVu Serif, Liberation Serif, Georgia, serif';
+
+/**
+ * Karta nieruchomości do udostępniania (Facebook, Messenger, iMessage): zdjęcie po lewej,
+ * czarny panel EstateOS po prawej — tytuł, lokalizacja, cena i parametry czytelne nawet w miniaturze.
+ */
+function buildOfferPanelSvg(params: {
+  kicker: string;
+  title: string;
+  location: string;
+  price: string;
+  priceSub: string | null;
+  specs: string;
+  url: string;
+}): Buffer {
+  const x = OG_PHOTO_WIDTH + 52;
+  const titleLines = wrapLines(params.title, 18, 3);
+  const locationLines = wrapLines(params.location, 32, 2);
+  let y = 178;
+  const title = titleLines
+    .map((line, i) => `<text x="${x}" y="${y + i * 40}" font-family="${OG_SERIF}" font-size="31" fill="#f7f1e8">${escapeXml(line)}</text>`)
+    .join('');
+  y += titleLines.length * 40 + 8;
+  const location = locationLines
+    .map((line, i) => `<text x="${x}" y="${y + i * 24}" font-family="${OG_SANS}" font-size="17" fill="#c8c0b3">${escapeXml(line)}</text>`)
+    .join('');
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <rect x="${OG_PHOTO_WIDTH}" y="0" width="${1200 - OG_PHOTO_WIDTH}" height="630" fill="#0c0b0a"/>
+  <rect x="${OG_PHOTO_WIDTH}" y="0" width="3" height="630" fill="#d8c3a0"/>
+  <text x="${x}" y="78" font-family="${OG_SANS}" font-size="15" letter-spacing="6" fill="#d8c3a0">ESTATEOS™</text>
+  <text x="${x}" y="128" font-family="${OG_SANS}" font-size="13" letter-spacing="3.2" fill="#968e82">${escapeXml(params.kicker.toUpperCase())}</text>
+  ${title}
+  ${location}
+  <line x1="${x}" y1="430" x2="${1200 - 52}" y2="430" stroke="#d8c3a0" stroke-opacity="0.45" stroke-width="1"/>
+  <text x="${x}" y="486" font-family="${OG_SERIF}" font-size="42" fill="#ffffff">${escapeXml(truncate(params.price, 18))}</text>
+  ${params.priceSub ? `<text x="${x}" y="516" font-family="${OG_SANS}" font-size="16" fill="#968e82">${escapeXml(params.priceSub)}</text>` : ''}
+  ${params.specs ? `<text x="${x}" y="${params.priceSub ? 552 : 530}" font-family="${OG_SANS}" font-size="18" fill="#e8e0d2">${escapeXml(params.specs)}</text>` : ''}
+  <text x="${x}" y="596" font-family="${OG_SANS}" font-size="13" letter-spacing="1.4" fill="#968e82">${escapeXml(params.url)}</text>
+</svg>`;
+  return Buffer.from(svg);
+}
+
+async function composeOfferOgJpeg(photoUrl: string, panel: Buffer): Promise<Buffer> {
+  const photo = await loadPhotoBuffer(photoUrl);
+  const left = photo
+    ? await sharp(photo).rotate().resize(OG_PHOTO_WIDTH, 630, { fit: 'cover', position: 'attention' }).toBuffer()
+    : await sharp({ create: { width: OG_PHOTO_WIDTH, height: 630, channels: 3, background: '#1c1b19' } }).png().toBuffer();
+  return sharp({ create: { width: 1200, height: 630, channels: 3, background: '#0c0b0a' } })
+    .composite([
+      { input: left, top: 0, left: 0 },
+      { input: panel, top: 0, left: 0 },
+    ])
+    .jpeg({ quality: 86, mozjpeg: true, chromaSubsampling: '4:2:0' })
+    .toBuffer();
+}
+
 async function composeOgJpeg(photoUrl: string, overlay: Buffer, fallbackHex: string): Promise<Buffer> {
   const photo = await loadPhotoBuffer(photoUrl);
   let base: sharp.Sharp;
@@ -273,19 +337,23 @@ export async function getOfferOgJpeg(offerId: number): Promise<Buffer | null> {
   const cached = await readCache(filePath);
   if (cached) return cached;
 
-  const chips = [card.propertyTypeLabel, card.transactionLabel];
-  if (card.area != null && card.area > 0) chips.push(`${card.area} m²`);
-  if (card.rooms != null && card.rooms > 0) chips.push(`${card.rooms} pok.`);
+  const specs = [
+    card.area != null && card.area > 0 ? `${card.area} m²` : null,
+    card.rooms != null && card.rooms > 0 ? `${card.rooms} ${card.rooms === 1 ? 'pokój' : card.rooms < 5 ? 'pokoje' : 'pokoi'}` : null,
+    card.floor != null && String(card.floor).trim() !== '' ? (Number(card.floor) === 0 ? 'parter' : `piętro ${card.floor}`) : null,
+  ].filter(Boolean).join('  ·  ');
 
-  const overlay = buildOverlaySvg({
-    theme: REALTY_THEME,
+  const panel = buildOfferPanelSvg({
+    kicker: `${card.transactionLabel} · ${card.propertyTypeLabel}`,
     title: card.title,
     location: card.locationLabel,
-    chips,
     price: card.priceLabel,
+    priceSub: card.pricePerSqmLabel,
+    specs,
+    url: `estateos.pl/o/${offerId}`,
   });
 
-  const jpeg = await composeOgJpeg(card.imageUrl, overlay, '#1a2e28');
+  const jpeg = await composeOfferOgJpeg(card.imageUrl, panel);
   await pruneOtherOgCache(`offer-${offerId}-`, filePath);
   await writeCache(filePath, jpeg);
   return jpeg;

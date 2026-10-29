@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { CalendarDays, MessageCircle, Star } from "lucide-react";
 import type { OfferSharePublisher } from "@/lib/offerShareLanding";
-import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 function initialsFrom(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -29,25 +28,24 @@ export default function OfferSharePublisherCard({
       : "Wystawca oferty";
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-[#b8922e]/30 bg-gradient-to-br from-[#faf8f2] to-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:from-[#141416] dark:to-[#101014]">
-      <p className="text-[9px] font-black uppercase tracking-[0.24em] text-[#b8922e]">{kicker}</p>
+    <section className="rounded-2xl border border-[#e4dccd] bg-[#f8f5ef] p-4 dark:border-[#d8c3a0]/15 dark:bg-[#1c1a17]">
+      <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8a6a3a] dark:text-[#d8c3a0]">{kicker}</p>
       <div className="mt-4 flex items-start gap-4">
         <div className="relative shrink-0">
-          <div className="size-16 overflow-hidden rounded-2xl border-2 border-[#b8922e]/35 bg-[#141416] shadow-lg">
+          <div className="size-16 overflow-hidden rounded-full bg-[#141416] ring-1 ring-[#a8844e] ring-offset-2 ring-offset-[#f8f5ef] dark:ring-offset-[#1c1a17]">
             {publisher.imageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={publisher.imageUrl} alt={primaryName} className="h-full w-full object-cover" />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-emerald-500 to-emerald-700 text-lg font-black text-white">
+              <div className="flex h-full w-full items-center justify-center bg-[#141416] text-lg font-semibold text-[#d8c3a0]">
                 {initialsFrom(primaryName)}
               </div>
             )}
           </div>
-          <span className="absolute -bottom-1 -right-1 size-3.5 rounded-full border-2 border-white bg-emerald-500 dark:border-[#101014]" />
         </div>
 
         <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-black leading-tight text-[#141416] dark:text-white">{primaryName}</h2>
+          <h2 className="font-[family-name:var(--ofb-serif)] text-[20px] font-medium leading-tight text-[#141416] dark:text-[#f3eee6]">{primaryName}</h2>
           {publisher.companyName && publisher.companyName !== primaryName ? (
             <p className="mt-1 text-sm font-semibold text-[#5c5c66] dark:text-[#9a9aa8]">{publisher.companyName}</p>
           ) : null}
@@ -73,7 +71,7 @@ export default function OfferSharePublisherCard({
           ) : null}
           <Link
             href={publisher.profileHref}
-            className="mt-2 inline-block text-[10px] font-bold uppercase tracking-wider text-emerald-600 hover:text-emerald-500"
+            className="mt-2 inline-block text-[11px] font-semibold text-[#8a6a3a] underline underline-offset-2 dark:text-[#d8c3a0]"
           >
             Zobacz profil publiczny
           </Link>
@@ -81,19 +79,23 @@ export default function OfferSharePublisherCard({
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <button type="button" onClick={onScheduleVisit} className={eosBtn("home", { block: true })}>
+        <button
+          type="button"
+          onClick={onScheduleVisit}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#15171a] text-[13px] font-semibold text-[#d8c3a0] dark:bg-[#d8c3a0] dark:text-[#0c0b0a]"
+        >
           <CalendarDays size={15} />
           Umów wizytę
         </button>
-        <button type="button" onClick={onWriteMessage} className={eosBtn("secondary", { block: true })}>
+        <button
+          type="button"
+          onClick={onWriteMessage}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#d5ccbd] text-[13px] font-semibold text-[#15171a] dark:border-[#d8c3a0]/25 dark:text-[#f3eee6]"
+        >
           <MessageCircle size={15} />
           Napisz wiadomość
         </button>
       </div>
-      <p className="mt-3 text-[10px] leading-relaxed text-[#5c5c66] dark:text-[#9a9aa8]">
-        Wybierz termin lub napisz wiadomość — po potwierdzeniu poprowadzimy Cię do bezpłatnej rejestracji i Deal
-        Room.
-      </p>
     </section>
   );
 }

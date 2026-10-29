@@ -1,7 +1,7 @@
 /** Bump when layout/copy of OG card changes — busts FB + disk cache.
  *  Facebook ignores query-string cache-busters on og:image and og:title —
  *  keep version in the PATH (image file + /o/:id/og/:stamp). */
-export const OG_CARD_VERSION = 'v8';
+export const OG_CARD_VERSION = 'v9';
 
 const STAMP_SAFE = /[^a-zA-Z0-9-]/g;
 
