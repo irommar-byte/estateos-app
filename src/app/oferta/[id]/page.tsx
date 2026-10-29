@@ -649,7 +649,7 @@ function OfferDetails({
       
       <div className="eos-cinematic-dark relative h-[58svh] min-h-[52svh] w-full overflow-hidden bg-black sm:h-[100dvh] sm:min-h-[100vh]">
         <motion.div style={{ y: bgY }} className="absolute inset-0 z-0 overflow-hidden">
-          <LiveOfferHero images={images} disabled={isArchived || isLocked} imageMeta={offerImageMeta} />
+          <LiveOfferHero images={images} disabled={isArchived || isLocked} />
         </motion.div>
         <div className="absolute inset-0 eos-offer-hero-vignette z-10" />
 

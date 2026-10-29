@@ -119,6 +119,7 @@ export async function scanFavoriteAlerts(): Promise<{ scanned: number; alerts: n
   const { deliverToClient, emailStep } = await import('@/lib/crm/clientOutbox');
   const { buildClientVoice } = await import('@/lib/crm/clientVoice');
   const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
+  const { buildClientMessageEmailHtml } = await import('@/lib/crm/clientMessageEmail');
   let alerts = 0;
   for (const row of rows) {
     const change = computeFavoriteChange(parseFavoriteSnapshot(row.favoriteSnapshot), row.offer);
@@ -131,18 +132,23 @@ export async function scanFavoriteAlerts(): Promise<{ scanned: number; alerts: n
       agentName: client.agencyUser?.name,
     });
     const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : null;
-    const agentName = client.agencyUser?.name || 'Twój agent';
-    const agencyName = client.agencyUser?.companyName || 'EstateOS';
     const intro = change.reserved
       ? `Daję znać od razu: oferta „${row.offer.title}”, którą ${voice.c('Pani zapisała', 'Pan zapisał', 'zapisano')} w ulubionych, ${change.label.toLowerCase().replace('oferta ', '')}. Jeśli to była ta jedyna — proszę zadzwonić, sprawdzę, czy sprawa jest jeszcze otwarta.`
       : change.priceDiff != null && change.priceDiff < 0
         ? `Dobra wiadomość przy jednej z ${voice.c('Pani ulubionych ofert', 'Pana ulubionych ofert', 'ulubionych ofert')}: „${row.offer.title}” — ${change.label.toLowerCase()}. To może być dobry moment, żeby ją obejrzeć.`
         : `Przy ofercie „${row.offer.title}” z ulubionych pojawiła się zmiana: ${change.label.toLowerCase()}.`;
-    const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#15171A">
-      <p style="margin:0 0 14px;font-size:15px">${voice.greeting}</p>
-      <p style="margin:0 0 18px;font-size:15px;line-height:1.6">${intro}</p>
-      ${portalUrl ? `<p><a href="${portalUrl}" style="display:inline-block;background:#0E4D3F;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Zobacz w panelu</a></p>` : ''}
-      <p style="margin:22px 0 0;font-size:13px;color:#5B574F">${agentName}<br/>${agencyName}</p></div>`;
+    const html = client.email
+      ? await buildClientMessageEmailHtml({
+          agencyUserId: client.agencyUserId,
+          client,
+          eyebrow: 'Twoje ulubione',
+          title: change.reserved ? 'Ulubiona oferta jest zarezerwowana' : change.priceDiff != null && change.priceDiff < 0 ? 'Ulubiona oferta jest tańsza' : 'Zmiana w ulubionej ofercie',
+          paragraphs: [intro],
+          property: { title: row.offer.title },
+          facts: [{ label: 'Co się zmieniło', value: change.label, tone: change.reserved ? 'warn' : change.priceDiff != null && change.priceDiff < 0 ? 'good' : undefined }],
+          ctas: portalUrl ? [{ label: 'Zobacz w panelu', href: portalUrl }] : [],
+        })
+      : '';
     await deliverToClient({
       agencyUserId: client.agencyUserId,
       clientId: client.id,
@@ -155,7 +161,7 @@ export async function scanFavoriteAlerts(): Promise<{ scanned: number; alerts: n
         {
           kind: 'push' as const,
           clientId: client.id,
-          payload: { title: agentName, body: `${change.label}: ${row.offer.title}`.slice(0, 170), tag: `fav-${row.id}`, url: portalUrl || undefined },
+          payload: { title: 'Twoje ulubione', body: `${change.label}: ${row.offer.title}`.slice(0, 170), tag: `fav-${row.id}`, url: portalUrl || undefined },
         },
       ],
     }).catch(() => null);

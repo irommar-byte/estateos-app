@@ -1,192 +1,155 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
-import type { OfferImageMetaPublic } from "@/lib/upload/offerImageMeta";
-import { OfferAdaptiveImage } from "@/components/offer/OfferAdaptiveImage";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 
 type Props = {
   images: string[];
   className?: string;
   disabled?: boolean;
-  imageMeta?: Record<string, OfferImageMetaPublic>;
 };
 
-const CYCLE_S = 22;
+/** Ile widać jedno zdjęcie, zanim zacznie przenikać w następne. */
+const HOLD_MS = 6500;
+/** Długość przenikania — dość długa, żeby wyglądała jak przejście kamery, nie jak przełączenie. */
+const FADE_MS = 2600;
+/** Ruch kamery trwa cały pobyt zdjęcia na ekranie (z przenikaniem po obu stronach). */
+const MOVE_MS = HOLD_MS + FADE_MS * 2;
+const MOVES = ["eos-walk-a", "eos-walk-b", "eos-walk-c", "eos-walk-d"] as const;
 
-const IMG_COVER = "h-full w-full object-cover object-center";
+/** Czeka, aż przeglądarka pobierze i zdekoduje zdjęcie — przenikanie zaczyna się dopiero na gotowym obrazie. */
+function preload(url: string): Promise<void> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    if (typeof img.decode === "function") {
+      img.decode().then(() => resolve(), () => resolve());
+    } else {
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+    }
+  });
+}
+
+type Layer = { url: string; move: (typeof MOVES)[number]; run: number };
 
 /**
- * Wolny pan + crossfade — warstwy oparte o OfferAdaptiveImage (HDR master / SDR fallback).
+ * „Spacer” po zdjęciach oferty: dwie stałe warstwy, które na zmianę przenikają się,
+ * a każde zdjęcie powoli przesuwa się i przybliża jak kamera. Ruch i przenikanie liczy
+ * karta graficzna (CSS transform/opacity), więc nie ma przeliczeń w JS co klatkę.
+ * Następne zdjęcie jest pobierane i dekodowane zawczasu, a animacja staje, gdy karta
+ * jest w tle albo hero zniknie z ekranu.
  */
-export default function LiveOfferHero({ images, className, disabled, imageMeta }: Props) {
+export default function LiveOfferHero({ images, className, disabled }: Props) {
   const reduce = useReducedMotion();
-  const list = useMemo(
-    () => (images || []).map((u) => String(u || "").trim()).filter(Boolean),
-    [images],
-  );
+  const list = useMemo(() => (images || []).map((u) => String(u || "").trim()).filter(Boolean), [images]);
   const listKey = list.join("|");
-  const multi = list.length > 1 && !disabled && !reduce;
+  const animate = list.length > 1 && !disabled && !reduce;
 
-  const [slotA, setSlotA] = useState(list[0] || "");
-  const [slotB, setSlotB] = useState(list[1] || list[0] || "");
-  const [aOutgoing, setAOutgoing] = useState(true);
-  const [cycle, setCycle] = useState(0);
-  const [cursor, setCursor] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [layers, setLayers] = useState<[Layer, Layer]>([
+    { url: list[0] || "", move: MOVES[0], run: 0 },
+    { url: "", move: MOVES[1], run: 0 },
+  ]);
+  const [front, setFront] = useState<0 | 1>(0);
+  const [visible, setVisible] = useState(true);
+  const cursorRef = useRef(0);
 
   useEffect(() => {
-    setSlotA(list[0] || "");
-    setSlotB(list[1] || list[0] || "");
-    setAOutgoing(true);
-    setCursor(0);
-    setCycle(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on gallery change
+    cursorRef.current = 0;
+    setFront(0);
+    setLayers([
+      { url: list[0] || "", move: MOVES[0], run: 0 },
+      { url: "", move: MOVES[1], run: 0 },
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- nowa galeria = start od pierwszego zdjęcia
   }, [listKey]);
 
+  // Pauza, gdy karta przeglądarki jest w tle albo hero jest poza ekranem.
   useEffect(() => {
-    if (!multi || !list.length) return;
-    const t = window.setTimeout(() => {
-      const nextCursor = (cursor + 1) % list.length;
-      const upcoming = list[(nextCursor + 1) % list.length]!;
-      if (aOutgoing) {
-        setSlotA(upcoming);
-        setAOutgoing(false);
-      } else {
-        setSlotB(upcoming);
-        setAOutgoing(true);
-      }
-      setCursor(nextCursor);
-      setCycle((c) => c + 1);
-    }, CYCLE_S * 1000);
-    return () => window.clearTimeout(t);
-  }, [multi, cycle, cursor, aOutgoing, list]);
+    const el = rootRef.current;
+    let onScreen = true;
+    const update = () => setVisible(onScreen && document.visibilityState === "visible");
+    const io = el
+      ? new IntersectionObserver(([entry]) => {
+          onScreen = entry.isIntersecting;
+          update();
+        })
+      : null;
+    if (el && io) io.observe(el);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      io?.disconnect();
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
 
-  if (!slotA) {
+  useEffect(() => {
+    if (!animate || !visible) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      const nextIndex = (cursorRef.current + 1) % list.length;
+      const nextUrl = list[nextIndex]!;
+      await preload(nextUrl);
+      if (cancelled) return;
+      cursorRef.current = nextIndex;
+      const back: 0 | 1 = front === 0 ? 1 : 0;
+      setLayers((current) => {
+        const next: [Layer, Layer] = [current[0], current[1]];
+        next[back] = { url: nextUrl, move: MOVES[nextIndex % MOVES.length], run: current[back].run + 1 };
+        return next;
+      });
+      setFront(back);
+      // Kolejne zdjęcie pobieramy od razu, żeby przy następnym przejściu było gotowe.
+      void preload(list[(nextIndex + 1) % list.length]!);
+    }, HOLD_MS + FADE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [animate, visible, front, list]);
+
+  if (!list[0]) {
     return <div className={`absolute inset-0 bg-black ${className || ""}`} aria-hidden />;
   }
 
-  const dim = Boolean(disabled);
-  const solo = !multi;
-
   return (
-    <div className={`absolute inset-0 overflow-hidden bg-black ${className || ""}`}>
-      <HeroLayer
-        url={slotA}
-        meta={imageMeta?.[slotA]}
-        role={solo ? "solo" : aOutgoing ? "out" : "in"}
-        cycle={cycle}
-        dimmed={dim}
-        z={solo || aOutgoing ? 1 : 2}
-        layerKey="a"
-        priority={solo || aOutgoing}
-      />
-      {!solo ? (
-        <HeroLayer
-          url={slotB}
-          meta={imageMeta?.[slotB]}
-          role={aOutgoing ? "in" : "out"}
-          cycle={cycle}
-          dimmed={dim}
-          z={aOutgoing ? 2 : 1}
-          layerKey="b"
-          priority={!aOutgoing}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function HeroLayer({
-  url,
-  meta,
-  role,
-  cycle,
-  dimmed,
-  z,
-  layerKey,
-  priority,
-}: {
-  url: string;
-  meta?: OfferImageMetaPublic;
-  role: "out" | "in" | "solo";
-  cycle: number;
-  dimmed: boolean;
-  z: number;
-  layerKey: string;
-  priority: boolean;
-}) {
-  const isOut = role === "out";
-  const isSolo = role === "solo";
-
-  const dimClass = dimmed ? (isSolo ? "blur-xl" : "blur-md") : "";
-
-  const imageBlock = (
-    <OfferAdaptiveImage
-      sdrSrc={url}
-      meta={meta || null}
-      className="h-full w-full"
-      imgClassName={IMG_COVER}
-      alt=""
-      draggable={false}
-      loading={priority ? "eager" : "lazy"}
-      fetchPriority={priority ? "high" : "auto"}
-    />
-  );
-
-  if (isSolo) {
-    return (
-      <motion.div
-        className={`absolute inset-[-14%] overflow-hidden will-change-transform ${dimClass}`}
-        style={{ zIndex: z }}
-        animate={
-          dimmed
-            ? undefined
-            : {
-                scale: [1.22, 1.3, 1.24],
-                x: ["0%", "-6%"],
-                y: ["0%", "-1%", "0.4%"],
+    <div ref={rootRef} className={`absolute inset-0 overflow-hidden bg-black ${className || ""}`} aria-hidden>
+      <style>{`
+        @keyframes eos-walk-a { from { transform: translate3d(-3%, 0, 0) scale(1.10); } to { transform: translate3d(3%, -1%, 0) scale(1.16); } }
+        @keyframes eos-walk-b { from { transform: translate3d(3%, -1%, 0) scale(1.16); } to { transform: translate3d(-3%, 0.5%, 0) scale(1.10); } }
+        @keyframes eos-walk-c { from { transform: translate3d(0, 1.5%, 0) scale(1.08); } to { transform: translate3d(-2%, -1.5%, 0) scale(1.18); } }
+        @keyframes eos-walk-d { from { transform: translate3d(2%, -1%, 0) scale(1.18); } to { transform: translate3d(0, 1%, 0) scale(1.09); } }
+        .eos-walk-layer { position: absolute; inset: 0; transition: opacity ${FADE_MS}ms cubic-bezier(0.45, 0, 0.25, 1); backface-visibility: hidden; }
+        .eos-walk-img { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; will-change: transform; backface-visibility: hidden; }
+        @media (prefers-reduced-motion: reduce) { .eos-walk-img { animation: none !important; } }
+      `}</style>
+      {layers.map((layer, index) =>
+        layer.url ? (
+          <div key={index} className="eos-walk-layer" style={{ opacity: index === front ? 1 : 0, zIndex: index === front ? 2 : 1 }}>
+            {/* Nowy klucz przy każdym zdjęciu restartuje ruch kamery; obraz jest już zdekodowany, więc podmiana jest natychmiastowa. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              key={layer.run}
+              src={layer.url}
+              alt=""
+              draggable={false}
+              decoding="async"
+              fetchPriority={index === 0 && layer.run === 0 ? "high" : "auto"}
+              className={`eos-walk-img ${disabled ? "blur-md" : ""}`}
+              style={
+                animate
+                  ? {
+                      animation: `${layer.move} ${MOVE_MS}ms linear both`,
+                      animationPlayState: visible ? "running" : "paused",
+                    }
+                  : { transform: "scale(1.06)" }
               }
-        }
-        transition={dimmed ? undefined : { duration: CYCLE_S, repeat: Infinity, ease: "linear" }}
-      >
-        {imageBlock}
-      </motion.div>
-    );
-  }
-
-  return (
-    <motion.div
-      className={`absolute inset-[-14%] overflow-hidden will-change-transform ${dimClass}`}
-      style={{ zIndex: z }}
-      key={`${layerKey}-${cycle}-${isOut ? "out" : "in"}`}
-      animate={
-        isOut
-          ? {
-              opacity: dimmed ? 1 : [1, 1, 0.38, 0],
-              scale: [1.22, 1.3, 1.24],
-              x: ["0%", "-12%"],
-              y: ["0%", "-1%", "0.4%"],
-            }
-          : {
-              opacity: dimmed ? 1 : [0, 0.18, 0.88, 1],
-              scale: [1.28, 1.26, 1.22],
-              x: ["12%", "0%"],
-              y: ["0.4%", "0%"],
-            }
-      }
-      transition={{
-        duration: CYCLE_S,
-        ease: "linear",
-        opacity: dimmed
-          ? undefined
-          : {
-              duration: CYCLE_S,
-              ease: "linear",
-              times: isOut ? [0, 0.55, 0.8, 1] : [0, 0.48, 0.72, 1],
-            },
-      }}
-    >
-      {imageBlock}
-    </motion.div>
+            />
+          </div>
+        ) : null,
+      )}
+    </div>
   );
 }

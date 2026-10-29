@@ -12,10 +12,6 @@ import { loadListingStats, loadShowingFeedbackSummary } from '@/lib/crm/sellerPo
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-function esc(v: string) {
-  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 export async function runWeeklyDigest(): Promise<{ scanned: number; queued: number }> {
   const since = new Date(Date.now() - WEEK_MS);
   const clients = await prisma.agencyClient.findMany({
@@ -36,6 +32,7 @@ export async function runWeeklyDigest(): Promise<{ scanned: number; queued: numb
   });
   const { deliverToClient, emailStep } = await import('@/lib/crm/clientOutbox');
   const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
+  const { buildClientMessageEmailHtml } = await import('@/lib/crm/clientMessageEmail');
   let queued = 0;
   for (const c of clients) {
     if (!parsePortalPermissions(c.portalPermissions).weeklyDigest) continue;
@@ -87,15 +84,16 @@ export async function runWeeklyDigest(): Promise<{ scanned: number; queued: numb
     if (!lines.length) continue;
 
     const portalUrl = c.portalToken ? buildPortalUrl(c.portalToken) : null;
-    const agentName = c.agencyUser?.name || 'Twój agent';
-    const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#15171A">
-      <p style="margin:0 0 6px;font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#7A5F33">Podsumowanie tygodnia</p>
-      <p style="margin:0 0 14px;font-size:15px">${esc(voice.greeting)}</p>
-      <p style="margin:0 0 10px;font-size:15px;line-height:1.6">${voice.pick('digest-intro', ['krótko o tym, co wydarzyło się w tym tygodniu:', 'tak wyglądał ten tydzień:', 'kilka słów podsumowania:'], new Date().toISOString().slice(0, 10))}</p>
-      <ul style="margin:0 0 16px;padding-left:18px;font-size:15px;line-height:1.6">${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
-      <p style="margin:0 0 18px;font-size:15px;line-height:1.6">${esc(next)}</p>
-      ${portalUrl ? `<p><a href="${portalUrl}" style="display:inline-block;background:#0E4D3F;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Otwórz panel</a></p>` : ''}
-      <p style="margin:22px 0 0;font-size:13px;color:#5B574F">Miłego weekendu,<br/>${esc(agentName)}<br/>${esc(c.agencyUser?.companyName || 'EstateOS')}</p></div>`;
+    const html = await buildClientMessageEmailHtml({
+      agencyUserId: c.agencyUserId,
+      client: c,
+      eyebrow: 'Podsumowanie tygodnia',
+      title: c.type === 'BUYER' ? 'Twoje poszukiwania w tym tygodniu' : 'Twoja sprzedaż w tym tygodniu',
+      paragraphs: [voice.pick('digest-intro', ['Krótko o tym, co wydarzyło się w tym tygodniu:', 'Tak wyglądał ten tydzień:', 'Kilka słów podsumowania:'], new Date().toISOString().slice(0, 10))],
+      bullets: lines,
+      closing: next,
+      ctas: portalUrl ? [{ label: 'Otwórz panel', href: portalUrl }] : [],
+    });
     const delivery = await deliverToClient({
       agencyUserId: c.agencyUserId,
       clientId: c.id,

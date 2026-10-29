@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { JOURNEY_ACTIVITY, resolvePresentation, type ActivityLike, type ScheduleSlot } from '@/lib/crm/clientJourney';
 import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
+import { tidySentence } from '@/lib/crm/clientMessageEmail';
 
 /**
  * Kupujący na nieruchomości — jedno miejsce, które łączy sprzedającego, kupującego i ofertę.
@@ -960,15 +961,16 @@ export async function requestBuyerFeedback(params: { agencyUserId: number; dealI
     select: { id: true, firstName: true, salutation: true, email: true, portalToken: true, linkedUserId: true, agencyUser: { select: { name: true, email: true } } },
   });
   if (!buyer) throw new Error('Nie znaleziono kupującego.');
-  const offer = await prisma.offer.findUnique({ where: { id: deal.offerId }, select: { title: true } });
+  const offer = await prisma.offer.findUnique({ where: { id: deal.offerId }, select: { title: true, street: true, district: true, city: true } });
+  const offerAddress = offer ? [offer.street, offer.district !== 'OTHER' ? offer.district : null, offer.city].filter(Boolean).join(', ') : '';
   const { deliverToClient, emailStep } = await import('@/lib/crm/clientOutbox');
   const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
-  const { buildClientVoice } = await import('@/lib/crm/clientVoice');
+  const { buildClientVoice, withChatLead } = await import('@/lib/crm/clientVoice');
+  const { buildClientMessageEmailHtml } = await import('@/lib/crm/clientMessageEmail');
   const voice = buildClientVoice({ clientId: buyer.id, firstName: buyer.firstName, salutation: buyer.salutation, agentName: buyer.agencyUser?.name });
-  const title = offer?.title || `oferta #${deal.offerId}`;
+  const title = offer?.title || `Oferta #${deal.offerId}`;
   const portalUrl = buyer.portalToken ? buildPortalUrl(buyer.portalToken) : null;
-  const question = `jak wrażenia po oglądaniu „${title}”? Podoba się, zastanawia, czy raczej nie pasuje? Jedno kliknięcie w panelu wystarczy — każda uwaga pomoże mi w dalszych poszukiwaniach.`;
-  const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string);
+  const question = `Jak wrażenia po oglądaniu „${title}”? Podoba się, zastanawia czy raczej nie pasuje? Wystarczy jedno kliknięcie w panelu — każda uwaga pomoże mi w dalszych poszukiwaniach.`;
   const steps: Parameters<typeof deliverToClient>[0]['steps'] = [
     {
       kind: 'chat',
@@ -977,18 +979,25 @@ export async function requestBuyerFeedback(params: { agencyUserId: number; dealI
         agencyUserId: params.agencyUserId,
         linkedUserId: buyer.linkedUserId,
         from: 'agent',
-        content: `${voice.chatLead}${question}`,
+        content: withChatLead(voice, question),
         activityMetadata: { offerId: deal.offerId, kind: 'feedback_request' },
       },
     },
   ];
   if (portalUrl) steps.push({ kind: 'push', clientId: buyer.id, payload: { title: 'Jak wrażenia po oglądaniu?', body: title, tag: `feedback-${deal.id}`, url: portalUrl } });
   if (buyer.email) {
-    const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#15171A">
-      <p style="margin:0 0 14px;font-size:15px">${esc(voice.greeting)}</p>
-      <p style="margin:0 0 18px;font-size:15px;line-height:1.6">${esc(question)}</p>
-      ${portalUrl ? `<p><a href="${portalUrl}" style="display:inline-block;background:#0E4D3F;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Oceń w panelu</a></p>` : ''}
-      <p style="margin:22px 0 0;font-size:13px;color:#5B574F">Pozdrawiam,<br/>${esc(buyer.agencyUser?.name || 'Twój agent')}</p></div>`;
+    const html = await buildClientMessageEmailHtml({
+      agencyUserId: params.agencyUserId,
+      client: buyer,
+      eyebrow: 'Po oglądaniu',
+      title: 'Jak wrażenia?',
+      paragraphs: [
+        'Dziękuję za wspólne oglądanie. Daj znać, jak Ci się podobało — podoba się, zastanawiasz się, czy raczej nie pasuje.',
+        'To zajmie chwilę, a każda uwaga pomoże mi lepiej dobierać kolejne propozycje.',
+      ],
+      property: { title, address: offerAddress || null },
+      ctas: portalUrl ? [{ label: 'Oceń w panelu', href: portalUrl }] : [],
+    });
     steps.push(emailStep({ to: buyer.email, subject: `Jak wrażenia po oglądaniu? ${title}`, html, replyTo: buyer.agencyUser?.email || undefined }));
   }
   const result = await deliverToClient({
@@ -1020,21 +1029,24 @@ export async function informSellerAboutDeal(params: { agencyUserId: number; deal
   });
   if (!seller || !view) throw new Error('Nie znaleziono sprzedającego.');
   const custom = String(params.message || '').trim().slice(0, 2000);
-  const viewedLabel = view.presentation?.heldAt ? `oglądanie ${when(view.presentation.heldAt)}` : 'oglądanie';
-  const text =
-    custom ||
-    [
-      `po ${viewedLabel}: ${view.feedback ? SENTIMENT_LABEL[view.feedback.sentiment].toLowerCase() : 'kupujący jeszcze się zastanawia'}.`,
-      view.feedback?.note ? `Uwagi: ${view.feedback.note}.` : null,
-    ]
-      .filter(Boolean)
-      .join(' ');
+  const sentiment = view.feedback?.sentiment || null;
+  const lead =
+    sentiment === 'like'
+      ? 'Mam dobre wieści — kupujący, który oglądał Twoją nieruchomość, jest zainteresowany. Porozmawiam z nim o dalszych krokach i od razu dam znać.'
+      : sentiment === 'maybe'
+        ? 'Kupujący po oglądaniu jeszcze się zastanawia. Zostaję z nim w kontakcie i dam znać, gdy podejmie decyzję.'
+        : sentiment === 'dislike'
+          ? 'Kupujący po oglądaniu zrezygnował — ta nieruchomość nie odpowiada jego potrzebom. Szukamy dalej, a jego uwagi pomogą lepiej dobierać kolejne pokazy.'
+          : 'Oglądanie się odbyło. Czekam na opinię kupującego i przekażę ją, jak tylko ją dostanę.';
+  const note = view.feedback?.note ? tidySentence(view.feedback.note) : '';
+  const viewedAt = view.presentation?.heldAt || view.presentation?.startsAt || null;
   const { deliverToClient, emailStep } = await import('@/lib/crm/clientOutbox');
   const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
-  const { buildClientVoice } = await import('@/lib/crm/clientVoice');
+  const { buildClientVoice, withChatLead } = await import('@/lib/crm/clientVoice');
+  const { buildClientMessageEmailHtml } = await import('@/lib/crm/clientMessageEmail');
   const voice = buildClientVoice({ clientId: seller.id, firstName: seller.firstName, salutation: seller.salutation, agentName: seller.agencyUser?.name });
   const portalUrl = seller.portalToken ? buildPortalUrl(seller.portalToken) : null;
-  const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string);
+  const chatText = [lead, note ? `Uwagi kupującego: „${note}”` : '', custom].filter(Boolean).join(' ');
   const steps: Parameters<typeof deliverToClient>[0]['steps'] = [
     {
       kind: 'chat',
@@ -1043,20 +1055,32 @@ export async function informSellerAboutDeal(params: { agencyUserId: number; deal
         agencyUserId: params.agencyUserId,
         linkedUserId: seller.linkedUserId,
         from: 'agent',
-        content: `${voice.chatLead}${text}`,
+        content: withChatLead(voice, chatText),
         activityMetadata: { offerId: deal.offerId, kind: 'showing_result' },
       },
     },
   ];
-  if (portalUrl) steps.push({ kind: 'push', clientId: seller.id, payload: { title: 'Wynik oglądania', body: text.slice(0, 160), tag: `showing-${deal.id}`, url: portalUrl } });
+  if (portalUrl) steps.push({ kind: 'push', clientId: seller.id, payload: { title: 'Wynik oglądania', body: chatText.slice(0, 160), tag: `showing-${deal.id}`, url: portalUrl } });
   if (seller.email) {
-    const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#15171A">
-      <p style="margin:0 0 6px;font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#7A5F33">Wynik oglądania</p>
-      <p style="margin:0 0 14px;font-size:15px">${esc(voice.greeting)}</p>
-      <p style="margin:0 0 18px;font-size:15px;line-height:1.6">${esc(text)}</p>
-      ${portalUrl ? `<p><a href="${portalUrl}" style="display:inline-block;background:#0E4D3F;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Otwórz panel</a></p>` : ''}
-      <p style="margin:22px 0 0;font-size:13px;color:#5B574F">Pozdrawiam,<br/>${esc(seller.agencyUser?.name || 'Twój agent')}</p></div>`;
-    steps.push(emailStep({ to: seller.email, subject: 'Wynik oglądania Twojej nieruchomości', html, replyTo: seller.agencyUser?.email || undefined }));
+    const html = await buildClientMessageEmailHtml({
+      agencyUserId: params.agencyUserId,
+      client: seller,
+      eyebrow: 'Wynik oglądania',
+      title: sentiment === 'like' ? 'Kupujący jest zainteresowany' : 'Wynik oglądania Twojej nieruchomości',
+      paragraphs: [lead, ...(custom ? custom.split(/\n{2,}/) : [])],
+      property: { title: view.offer.title, address: view.offer.address || null },
+      facts: [
+        { label: 'Oglądanie', value: viewedAt ? when(viewedAt) : '' },
+        {
+          label: 'Ocena kupującego',
+          value: sentiment ? SENTIMENT_LABEL[sentiment] : 'Czekamy na opinię',
+          tone: sentiment === 'like' ? 'good' : sentiment === 'dislike' ? 'bad' : 'warn',
+        },
+      ],
+      quote: note ? { label: 'Uwagi kupującego', text: note } : null,
+      ctas: portalUrl ? [{ label: 'Zobacz w panelu', href: portalUrl }] : [],
+    });
+    steps.push(emailStep({ to: seller.email, subject: sentiment === 'like' ? 'Kupujący jest zainteresowany Twoją nieruchomością' : 'Wynik oglądania Twojej nieruchomości', html, replyTo: seller.agencyUser?.email || undefined }));
   }
   const result = await deliverToClient({
     agencyUserId: params.agencyUserId,

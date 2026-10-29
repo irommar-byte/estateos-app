@@ -163,27 +163,34 @@ export async function sendOfferToSeller(params: {
   if (seller) {
     const { deliverToClient, emailStep } = await import('@/lib/crm/clientOutbox');
     const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
-    const { buildClientVoice } = await import('@/lib/crm/clientVoice');
-    const voice = buildClientVoice({ clientId: seller.id, firstName: seller.firstName, salutation: seller.salutation, agentName: seller.agencyUser?.name });
+    const { buildClientMessageEmailHtml, tidySentence } = await import('@/lib/crm/clientMessageEmail');
     const portalUrl = seller.portalToken ? buildPortalUrl(seller.portalToken) : null;
-    const text = `${buyerLabel} proponuje ${pln(offer.amount)}${neg.financing?.kind === 'mortgage' ? ' (kredyt)' : neg.financing?.kind === 'cash' ? ' (gotówka)' : ''}. Szczegóły${recommendation ? ' i moja rekomendacja' : ''} są w panelu — możesz przyjąć, odrzucić albo zaproponować swoją kwotę.`;
-    const esc = (v: string) => v.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string);
+    const financing = neg.financing?.kind === 'mortgage' ? 'Kredyt' : neg.financing?.kind === 'mixed' ? 'Gotówka + kredyt' : neg.financing?.kind === 'cash' ? 'Gotówka' : '';
+    const text = `${buyerLabel} proponuje ${pln(offer.amount)}. Możesz przyjąć, odrzucić albo zaproponować swoją kwotę w panelu.`;
     const steps: Parameters<typeof deliverToClient>[0]['steps'] = [];
     if (portalUrl) steps.push({ kind: 'push', clientId: seller.id, payload: { title: 'Nowa oferta kupującego', body: text.slice(0, 170), tag: `buyer-offer-${row.id}`, url: portalUrl } });
     if (seller.email) {
-      steps.push(
-        emailStep({
-          to: seller.email,
-          subject: `Oferta kupującego: ${pln(offer.amount)}`,
-          replyTo: seller.agencyUser?.email || undefined,
-          html: `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#15171A">
-            <p style="margin:0 0 6px;font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#7A5F33">Oferta kupującego</p>
-            <p style="margin:0 0 14px;font-size:15px">${esc(voice.greeting)}</p>
-            <p style="margin:0 0 18px;font-size:15px;line-height:1.6">${esc(text)}</p>
-            ${portalUrl ? `<p><a href="${portalUrl}" style="display:inline-block;background:#0E4D3F;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Odpowiedz w panelu</a></p>` : ''}
-            <p style="margin:22px 0 0;font-size:13px;color:#5B574F">Pozdrawiam,<br/>${esc(seller.agencyUser?.name || 'Twój agent')}</p></div>`,
-        }),
-      );
+      const html = await buildClientMessageEmailHtml({
+        agencyUserId: params.agencyUserId,
+        client: seller,
+        eyebrow: 'Oferta kupującego',
+        title: `${pln(offer.amount)} za Twoją nieruchomość`,
+        paragraphs: [
+          `${buyerLabel} złożył ofertę zakupu. Poniżej najważniejsze warunki${recommendation ? ' i moja rekomendacja' : ''}.`,
+          'Decyzję podejmiesz jednym kliknięciem w panelu: przyjmij, odrzuć albo zaproponuj swoją kwotę.',
+        ],
+        property: { title: view.offer.title, address: view.offer.address || null },
+        facts: [
+          { label: 'Proponowana cena', value: pln(offer.amount) },
+          { label: 'Finansowanie', value: financing },
+          { label: 'Zadatek', value: neg.terms?.deposit ? pln(neg.terms.deposit) : '' },
+          { label: 'Akt notarialny', value: neg.terms?.deedAt ? day(neg.terms.deedAt) : '' },
+          { label: 'Przekazanie', value: neg.terms?.handoverAt ? day(neg.terms.handoverAt) : '' },
+        ],
+        quote: recommendation ? { label: 'Moja rekomendacja', text: tidySentence(recommendation) } : offer.note ? { label: 'Uwagi kupującego', text: tidySentence(offer.note) } : null,
+        ctas: portalUrl ? [{ label: 'Odpowiedz w panelu', href: portalUrl }] : [],
+      });
+      steps.push(emailStep({ to: seller.email, subject: `Oferta kupującego: ${pln(offer.amount)}`, replyTo: seller.agencyUser?.email || undefined, html }));
     }
     const result = await deliverToClient({ agencyUserId: params.agencyUserId, clientId: seller.id, category: 'decision', source: 'buyer_deal_offer', steps });
     queued = result.queued;
@@ -214,10 +221,11 @@ export async function messageBuyer(params: { agencyUserId: number; dealId: numbe
   if (!buyer) throw new Error('Nie znaleziono kupującego.');
   const { deliverToClient, emailStep } = await import('@/lib/crm/clientOutbox');
   const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
-  const { buildClientVoice } = await import('@/lib/crm/clientVoice');
+  const { buildClientVoice, withChatLead } = await import('@/lib/crm/clientVoice');
+  const { buildClientMessageEmailHtml } = await import('@/lib/crm/clientMessageEmail');
   const voice = buildClientVoice({ clientId: buyer.id, firstName: buyer.firstName, salutation: buyer.salutation, agentName: buyer.agencyUser?.name });
   const portalUrl = buyer.portalToken ? buildPortalUrl(buyer.portalToken) : null;
-  const esc = (v: string) => v.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string);
+  const view = await getDeal(params.agencyUserId, deal.id);
   const steps: Parameters<typeof deliverToClient>[0]['steps'] = [
     {
       kind: 'chat',
@@ -226,29 +234,26 @@ export async function messageBuyer(params: { agencyUserId: number; dealId: numbe
         agencyUserId: params.agencyUserId,
         linkedUserId: buyer.linkedUserId,
         from: 'agent',
-        content: `${voice.chatLead}${message}`,
+        content: withChatLead(voice, message),
         activityMetadata: { offerId: deal.offerId, kind: 'deal_update' },
       },
     },
   ];
   if (portalUrl) steps.push({ kind: 'push', clientId: buyer.id, payload: { title: 'Wiadomość od agenta', body: message.slice(0, 170), tag: `deal-${deal.id}`, url: portalUrl } });
   if (buyer.email) {
-    steps.push(
-      emailStep({
-        to: buyer.email,
-        subject: 'Aktualizacja w sprawie nieruchomości',
-        replyTo: buyer.agencyUser?.email || undefined,
-        html: `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#15171A">
-          <p style="margin:0 0 14px;font-size:15px">${esc(voice.greeting)}</p>
-          <p style="margin:0 0 18px;font-size:15px;line-height:1.6">${esc(message)}</p>
-          ${portalUrl ? `<p><a href="${portalUrl}" style="display:inline-block;background:#0E4D3F;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Otwórz panel</a></p>` : ''}
-          <p style="margin:22px 0 0;font-size:13px;color:#5B574F">Pozdrawiam,<br/>${esc(buyer.agencyUser?.name || 'Twój agent')}</p></div>`,
-      }),
-    );
+    const html = await buildClientMessageEmailHtml({
+      agencyUserId: params.agencyUserId,
+      client: buyer,
+      eyebrow: 'Twoja nieruchomość',
+      title: view?.offer.title || 'Aktualizacja w sprawie nieruchomości',
+      paragraphs: message.split(/\n{2,}/),
+      property: view ? { title: view.offer.title, address: view.offer.address || null } : null,
+      ctas: portalUrl ? [{ label: 'Otwórz panel', href: portalUrl }] : [],
+    });
+    steps.push(emailStep({ to: buyer.email, subject: `Aktualizacja: ${view?.offer.title || 'Twoja nieruchomość'}`, replyTo: buyer.agencyUser?.email || undefined, html }));
   }
   const result = await deliverToClient({ agencyUserId: params.agencyUserId, clientId: buyer.id, category: 'decision', source: 'buyer_deal_message', steps });
-  const view = params.offerId ? await getDeal(params.agencyUserId, deal.id) : null;
-  const offer = view?.negotiation.offers.find((row) => row.id === params.offerId) || null;
+  const offer = params.offerId ? view?.negotiation.offers.find((row) => row.id === params.offerId) || null : null;
   const at = new Date().toISOString();
   await save(
     deal,

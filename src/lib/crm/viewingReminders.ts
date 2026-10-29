@@ -48,6 +48,7 @@ export async function scanViewingReminders(): Promise<{ sent: number }> {
   if (!seedRows.length) return { sent: 0 };
   const { deliverToClient, emailStep } = await import('@/lib/crm/clientOutbox');
   const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
+  const { buildClientMessageEmailHtml } = await import('@/lib/crm/clientMessageEmail');
   let sent = 0;
 
   for (const { clientId } of seedRows) {
@@ -119,16 +120,21 @@ export async function scanViewingReminders(): Promise<{ sent: number }> {
         },
       ];
       if (which === '24h' && client.email) {
-        const esc = (s: string) => s.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch] as string);
-        const html = `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#15171A">
-          <p style="margin:0 0 6px;font-size:11px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#7A5F33">Przypomnienie</p>
-          <p style="margin:0 0 14px;font-size:15px">${esc(voice.greeting)}</p>
-          <p style="margin:0 0 10px;font-size:15px;line-height:1.6">przypominam o terminie: <b>${esc(what.toLowerCase())} ${esc(WHEN.format(new Date(startsAt)))}</b>.</p>
-          ${offer?.title ? `<p style="margin:0 0 6px;font-size:15px">${esc(offer.title)}</p>` : ''}
-          ${place ? `<p style="margin:0 0 16px;font-size:15px;color:#5B574F">${esc(place)}${mapsUrl ? ` · <a href="${mapsUrl}" style="color:#0E4D3F">mapa</a>` : ''}</p>` : ''}
-          <p style="margin:0 0 18px;font-size:15px;line-height:1.6">Gdyby coś wypadło, termin można przełożyć jednym kliknięciem w panelu${agentPhone ? ` albo zadzwonić: ${esc(agentPhone)}` : ''}.</p>
-          ${portalUrl ? `<p><a href="${portalUrl}" style="display:inline-block;background:#0E4D3F;color:#fff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Otwórz panel</a></p>` : ''}
-          <p style="margin:22px 0 0;font-size:13px;color:#5B574F">Do zobaczenia,<br/>${esc(client.agencyUser?.name || 'Twój agent')}</p></div>`;
+        const html = await buildClientMessageEmailHtml({
+          agencyUserId: client.agencyUserId,
+          client,
+          eyebrow: 'Przypomnienie',
+          title: `${what} ${whenLabel}`,
+          paragraphs: [
+            `Przypominam o naszym terminie. Gdyby coś wypadło, termin można przełożyć jednym kliknięciem w panelu${agentPhone ? ` albo dzwoniąc pod ${agentPhone}` : ''}.`,
+          ],
+          property: offer?.title ? { title: offer.title, address: place || null } : place ? { title: place } : null,
+          facts: [{ label: 'Termin', value: WHEN.format(new Date(startsAt)) }],
+          ctas: [
+            ...(portalUrl ? [{ label: 'Otwórz panel', href: portalUrl }] : []),
+            ...(mapsUrl ? [{ label: 'Pokaż na mapie', href: mapsUrl, variant: 'soft' as const }] : []),
+          ],
+        });
         steps.push(emailStep({ to: client.email, subject: `Przypomnienie: ${what.toLowerCase()} ${whenLabel}`, html, replyTo: client.agencyUser?.email || undefined }));
       }
 
