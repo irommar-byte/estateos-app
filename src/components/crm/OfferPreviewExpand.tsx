@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { plainOfferDescription } from "@/lib/offerDescriptionHtml";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type ExpandableOfferPreviewData = {
   title: string;
@@ -52,6 +53,7 @@ export function OfferPhotoCascade({
   thumbClassName?: string;
   onOpen?: () => void;
 }) {
+  const { t } = usePortalLocale();
   const images = collectImages(offer);
   const [open, setOpen] = useState(false);
   const [enlarged, setEnlarged] = useState<string | null>(null);
@@ -127,7 +129,7 @@ export function OfferPhotoCascade({
               <motion.div
                 role="dialog"
                 aria-modal="true"
-                aria-label="Zdjęcia oferty"
+                aria-label={t("Zdjęcia oferty")}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -145,7 +147,7 @@ export function OfferPhotoCascade({
                     close();
                   }}
                   className="absolute right-4 top-[max(0.85rem,env(safe-area-inset-top))] z-[95] inline-flex size-11 items-center justify-center rounded-full border border-white/25 bg-black/70 text-white shadow-lg"
-                  aria-label="Zamknij zdjęcia"
+                  aria-label={t("Zamknij zdjęcia")}
                 >
                   <X className="size-5" />
                 </button>
@@ -227,7 +229,7 @@ export function OfferPhotoCascade({
           openCascade();
         }}
         className={`${thumbClassName} bg-[var(--eos-input)]`}
-        aria-label={`Pokaż zdjęcia: ${offer.title}`}
+        aria-label={`${t("Pokaż zdjęcia")}: ${offer.title}`}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={images[0]} alt="" className="h-full w-full object-contain" />
@@ -246,6 +248,7 @@ export function OfferDescriptionToggle({
   className?: string;
   hint?: boolean;
 }) {
+  const { t } = usePortalLocale();
   const text = plainOfferDescription(offer.description || offer.excerpt);
   const [open, setOpen] = useState(false);
   if (!text) return null;
@@ -255,7 +258,7 @@ export function OfferDescriptionToggle({
       <p className={`${className} ${open ? "whitespace-pre-wrap" : "line-clamp-2"}`}>{text}</p>
       {hint ? (
         <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--eos-subtle)]">
-          {open ? "Zwiń opis" : "Kliknij początek opisu, żeby otworzyć całość do szybkiego przeglądu"}
+          {open ? t("Zwiń opis") : t("Rozwiń opis")}
         </p>
       ) : null}
     </button>

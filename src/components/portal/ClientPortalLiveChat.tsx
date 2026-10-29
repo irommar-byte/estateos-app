@@ -21,6 +21,7 @@ import {
   validatePortalFile,
   type UploadProgress,
 } from "@/lib/portalUpload";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 type PortalMessage = {
   id: number;
@@ -45,10 +46,10 @@ function sentimentChip(value?: string | null) {
   return null;
 }
 
-function messageTime(value: string) {
+function messageTime(value: string, dateLocale: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleString("pl-PL", {
+  return date.toLocaleString(dateLocale, {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
@@ -66,6 +67,7 @@ export default function ClientPortalLiveChat({
   /** nieprzeczytane wiadomości od agenta — dla dzwonka i plakietki grupy */
   onUnreadChange?: (info: { unread: number; latestAgentId: string | null; latestAt: string | null; preview: string | null }) => void;
 }) {
+  const { t, p, dateLocale } = usePortalLocale();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<PortalMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -144,10 +146,10 @@ export default function ClientPortalLiveChat({
         if (freshFromAgent.length > 0 && (!openRef.current || document.hidden)) {
           const latest = freshFromAgent[freshFromAgent.length - 1];
           const visibleContent = cleanAttachmentOnlyMessage(latest.content, latest.attachments);
-          showWebNotification(`Nowa wiadomość · ${agentName}`, {
+          showWebNotification(`${t("Nowa wiadomość")} · ${agentName}`, {
             body:
               visibleContent ||
-              (latest.attachments?.[0] ? contactAttachmentPreviewLabel(latest.attachments[0]) : "Nowy załącznik"),
+              (latest.attachments?.[0] ? t(contactAttachmentPreviewLabel(latest.attachments[0])) : t("Nowy załącznik")),
             tag: `estateos-portal-chat-${token}`,
             onClickPath: `/klient/${token}?chat=1`,
           });
@@ -182,7 +184,7 @@ export default function ClientPortalLiveChat({
     } catch {
       /* zachowaj poprzedni stan przy chwilowej utracie sieci */
     }
-  }, [agentName, markRead, token]);
+  }, [agentName, markRead, token, t]);
 
   useEffect(() => {
     openRef.current = open;
@@ -260,10 +262,10 @@ export default function ClientPortalLiveChat({
         body: JSON.stringify({ action: "intelligence_checkback", activityId, optionId }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Nie udało się wysłać odpowiedzi.");
+      if (!res.ok) throw new Error(json.error || t("Nie udało się wysłać odpowiedzi."));
       await loadMessages();
     } catch (respondError) {
-      setError(respondError instanceof Error ? respondError.message : "Nie udało się wysłać odpowiedzi.");
+      setError(respondError instanceof Error ? respondError.message : t("Nie udało się wysłać odpowiedzi."));
     } finally {
       setBusy(false);
     }
@@ -301,9 +303,9 @@ export default function ClientPortalLiveChat({
         body: JSON.stringify({ action: "send_message", content, attachments }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Nie udało się wysłać wiadomości.");
+      if (!res.ok) throw new Error(json.error || t("Nie udało się wysłać wiadomości."));
       if (json.needsCheckbackChoice) {
-        setError("Wybierz proszę jedną z opcji odpowiedzi poniżej.");
+        setError(t("Wybierz proszę jedną z opcji odpowiedzi poniżej."));
       } else {
         setError("");
       }
@@ -311,7 +313,7 @@ export default function ClientPortalLiveChat({
       setPendingFile(null);
       await loadMessages();
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "Nie udało się wysłać wiadomości.");
+      setError(sendError instanceof Error ? sendError.message : t("Nie udało się wysłać wiadomości."));
     } finally {
       setBusy(false);
     }
@@ -368,23 +370,23 @@ export default function ClientPortalLiveChat({
               <Radio className="size-3 animate-pulse" />
               Live Chat
             </span>
-            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700">
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[var(--lux-good)]">
               <span className="relative flex size-2">
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
               </span>
-              Online · {agentName}
+              {agentName}
             </span>
           </div>
           <p className="mt-1 truncate text-sm font-black text-[var(--eos-text)]">
             {unreadCount > 0
-              ? `${unreadCount} ${unreadCount === 1 ? "nowa wiadomość" : "nowe wiadomości"}`
+              ? `${unreadCount} ${p(unreadCount, "nowa wiadomość|nowe wiadomości|nowych wiadomości")}`
               : latestMessage
                 ? latestVisibleContent ||
                   (latestMessage.attachments?.[0]
-                    ? contactAttachmentPreviewLabel(latestMessage.attachments[0])
-                    : "Załącznik")
-                : "Napisz — agent dostanie powiadomienie od razu"}
+                    ? t(contactAttachmentPreviewLabel(latestMessage.attachments[0]))
+                    : t("Załącznik"))
+                : t("Napisz — agent dostanie powiadomienie od razu")}
           </p>
         </div>
         {unreadCount > 0 ? <BellRing className="size-5 shrink-0 animate-bounce text-emerald-600" /> : null}
@@ -405,9 +407,9 @@ export default function ClientPortalLiveChat({
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center">
                 <MessageSquare className="size-8 text-emerald-500/60" />
-                <p className="mt-3 text-sm font-bold text-[var(--eos-text)]">Tu zaczyna się Wasza rozmowa</p>
+                <p className="mt-3 text-sm font-bold text-[var(--eos-text)]">{t("Tu zaczyna się Wasza rozmowa")}</p>
                 <p className="mt-1 max-w-sm text-xs text-[var(--eos-muted)]">
-                  Gdy dostaniesz ofertę, oceń ją przyciskami na karcie. Tutaj piszesz tylko wtedy, gdy chcesz dodać godzinę, pytanie albo doprecyzowanie.
+                  {t("Napisz pytanie albo dogodną godzinę — agent dostanie powiadomienie.")}
                 </p>
               </div>
             ) : (
@@ -444,22 +446,22 @@ export default function ClientPortalLiveChat({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <p className="eos-portal-label">
-                      {message.fromMe ? "Ty" : isStep ? "Co teraz zrób" : agentName}
+                      {message.fromMe ? t("Ty") : isStep ? t("Następny krok") : agentName}
                     </p>
                     <time className="shrink-0 text-[9px] text-[var(--eos-muted)]">
-                      {messageTime(message.createdAt)}
+                      {messageTime(message.createdAt, dateLocale)}
                     </time>
                   </div>
                   {message.offerTitle || sentiment ? (
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {message.offerTitle ? (
                         <span className="rounded-full bg-[var(--eos-input)] px-2 py-0.5 text-[10px] font-semibold text-[var(--eos-muted)]">
-                          Oferta · {message.offerTitle}
+                          {t("Oferta")} · {message.offerTitle}
                         </span>
                       ) : null}
                       {sentiment ? (
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
-                          {sentiment}
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-[var(--lux-good)]">
+                          {t(sentiment)}
                         </span>
                       ) : null}
                     </div>
@@ -467,8 +469,8 @@ export default function ClientPortalLiveChat({
                   {visibleContent ? <p className="mt-1 whitespace-pre-wrap leading-relaxed">{visibleContent}</p> : null}
                   {message.checkbackQuickReplies?.options?.length ? (
                     <div className="mt-3 flex flex-col gap-2">
-                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">
-                        Wybierz jedną opcję
+                      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--lux-good)]">
+                        {t("Wybierz jedną opcję")}
                       </p>
                       {message.checkbackQuickReplies.options.map((option) => (
                         <button
@@ -480,7 +482,7 @@ export default function ClientPortalLiveChat({
                           }
                           className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-left text-xs font-semibold text-[var(--eos-text)] transition hover:border-emerald-400 disabled:opacity-50"
                         >
-                          {option.label}
+                          {t(option.label)}
                         </button>
                       ))}
                     </div>
@@ -489,7 +491,7 @@ export default function ClientPortalLiveChat({
                     <ContactAttachmentBubble key={attachment.url} attachment={attachment} isMe={message.fromMe} />
                   ))}
                   {copiedId === message.id ? (
-                    <p className="mt-1 text-[10px] font-bold text-emerald-700">Skopiowano</p>
+                    <p className="mt-1 text-[10px] font-bold text-[var(--lux-good)]">{t("Skopiowano")}</p>
                   ) : null}
                   </div>
                 );
@@ -513,9 +515,9 @@ export default function ClientPortalLiveChat({
                   <p className="text-[10px] text-[var(--eos-muted)]">
                     {uploadProgress
                       ? uploadProgress.processing
-                        ? "Plik dotarł — zapisuję…"
-                        : `${uploadProgress.percent}% · ${formatBytes(uploadProgress.loaded)} z ${formatBytes(uploadProgress.total)}`
-                      : `${formatContactBytes(pendingFile.size)} z 20 MB · sprawdź podgląd przed wysłaniem`}
+                        ? t("Plik dotarł — zapisuję…")
+                        : `${uploadProgress.percent}% · ${formatBytes(uploadProgress.loaded)} / ${formatBytes(uploadProgress.total)}`
+                      : `${formatContactBytes(pendingFile.size)} / 20 MB`}
                   </p>
                 </div>
                 <button type="button" onClick={() => setPendingFile(null)} disabled={busy} className="rounded-full p-1.5 text-[var(--eos-muted)] disabled:opacity-30">
@@ -534,7 +536,7 @@ export default function ClientPortalLiveChat({
             </div>
           ) : null}
 
-          {error ? <p className="px-4 pb-2 text-xs font-semibold text-red-500 sm:px-5">{error}</p> : null}
+          {error ? <p className="px-4 pb-2 text-xs font-semibold text-[var(--lux-danger)] sm:px-5">{error}</p> : null}
 
           <div className="flex gap-2 border-t border-[var(--eos-border)]/70 p-3 sm:p-4">
             <label className="eos-inset-well flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--eos-muted)] hover:text-emerald-600">
@@ -561,7 +563,7 @@ export default function ClientPortalLiveChat({
                   void sendChat();
                 }
               }}
-                  placeholder="Np. jutro o 12:00 albo pytanie do oferty…"
+              placeholder={t("Np. jutro o 12:00 albo pytanie do oferty…")}
               className="eos-field-inset min-w-0 flex-1 rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
             />
             <SendPlaneButton
@@ -571,7 +573,7 @@ export default function ClientPortalLiveChat({
               onClick={() => void sendChat()}
               className="shrink-0 px-4"
             >
-              <span className="hidden sm:inline">Wyślij</span>
+              <span className="hidden sm:inline">{t("Wyślij")}</span>
               <Send className="size-4 sm:hidden" />
             </SendPlaneButton>
           </div>

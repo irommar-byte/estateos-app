@@ -7,6 +7,7 @@ import LuxSheet from "@/components/portal/lux/LuxSheet";
 import PortalFilePreview from "@/components/portal/lux/PortalFilePreview";
 import PortalUploadSheet from "@/components/portal/lux/PortalUploadSheet";
 import { PORTAL_UPLOAD_ACCEPT, PORTAL_UPLOAD_MAX_BYTES, fileKind, formatBytes } from "@/lib/portalUpload";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type PortalDocument = {
   key: string;
@@ -42,13 +43,6 @@ const STATUS = {
   na: { label: "Nie dotyczy", Icon: MinusCircle, tone: "text-[var(--lux-ink-3)]" },
 } as const;
 
-function plDocs(n: number) {
-  if (n === 1) return "dokument";
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  return mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? "dokumenty" : "dokumentów";
-}
-
 /** Liczy wszystko z listy — licznik zawsze zgadza się z tym, co klient widzi na ekranie. */
 export function computeDocumentsSummary(documents: PortalDocument[]) {
   const total = documents.length;
@@ -78,6 +72,7 @@ export default function PortalDocuments({
   /** w grupie zwijanej — bez własnej karty i nagłówka sekcji */
   embedded?: boolean;
 }) {
+  const { t, p, dateLocale } = usePortalLocale();
   const [file, setFile] = useState<File | null>(null);
   const [target, setTarget] = useState<PortalDocument | null>(null);
   const [preview, setPreview] = useState<PortalDocument | null>(null);
@@ -102,10 +97,10 @@ export default function PortalDocuments({
         body: JSON.stringify({ itemKey: doc.key, notApplicable }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(String(json.error || `Serwer odpowiedział błędem ${res.status}. Spróbuj ponownie.`));
+      if (!res.ok) throw new Error(String(json.error || t("Serwer odpowiedział błędem {status}. Spróbuj ponownie.", { status: res.status })));
       onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Nie udało się zapisać — sprawdź połączenie z internetem.");
+      setError(e instanceof Error ? e.message : t("Nie udało się zapisać — sprawdź połączenie z internetem."));
     } finally {
       setBusyKey(null);
     }
@@ -116,19 +111,19 @@ export default function PortalDocuments({
 
   const body = (
     <>
-      {!embedded ? <p className="lux-kicker">Dokumenty</p> : null}
+      {!embedded ? <p className="lux-kicker">{t("Dokumenty")}</p> : null}
       <h2 className={`lux-serif ${embedded ? "" : "mt-1.5"} text-[22px] font-medium`}>
-        {s.missing ? `Brakuje ${s.missing} z ${s.total}` : `Komplet — ${s.total} z ${s.total}`}
+        {s.missing ? t("Brakuje {n} z {total}", { n: s.missing, total: s.total }) : t("Komplet — {n} z {total}", { n: s.total, total: s.total })}
       </h2>
       <p className="mt-0.5 text-[12px] font-semibold text-[var(--lux-ink-3)]">
         {[
-          s.accepted ? `${s.accepted} gotowe` : null,
-          s.uploaded ? `${s.uploaded} u agenta do sprawdzenia` : null,
-          s.rejected ? `${s.rejected} do poprawy` : null,
-          s.na ? `${s.na} nie dotyczy` : null,
+          s.accepted ? t("{n} gotowe", { n: s.accepted }) : null,
+          s.uploaded ? t("{n} u agenta do sprawdzenia", { n: s.uploaded }) : null,
+          s.rejected ? t("{n} do poprawy", { n: s.rejected }) : null,
+          s.na ? t("{n} nie dotyczy", { n: s.na }) : null,
         ]
           .filter(Boolean)
-          .join(" · ") || `${s.total} ${plDocs(s.total)} na liście`}
+          .join(" · ") || t("{n} {docs} na liście", { n: s.total, docs: p(s.total, "dokument|dokumenty|dokumentów") })}
       </p>
       <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-[var(--lux-well)]" aria-hidden>
         <motion.div className="h-full bg-[#2F9E6A]" initial={false} animate={{ width: pct(s.accepted) }} />
@@ -136,7 +131,7 @@ export default function PortalDocuments({
         <motion.div className="h-full bg-[var(--lux-line-strong)]" initial={false} animate={{ width: pct(s.na) }} />
       </div>
       <p className="mt-2 text-[13px] text-[var(--lux-ink-2)]">
-        Wystarczy zdjęcie telefonem albo PDF (do {formatBytes(PORTAL_UPLOAD_MAX_BYTES)}). Przed wysłaniem zobaczysz podgląd. {agentFirst} sprawdzi każdy dokument i da znać, jeśli coś trzeba poprawić.
+        {t("Wystarczy zdjęcie telefonem albo PDF (do {size}) — przed wysłaniem zobaczysz podgląd.", { size: formatBytes(PORTAL_UPLOAD_MAX_BYTES) })}
       </p>
       <input
         ref={inputRef}
@@ -168,11 +163,11 @@ export default function PortalDocuments({
                   <st.Icon className={`mt-0.5 size-5 shrink-0 ${st.tone}`} />
                   <div className="min-w-0 flex-1">
                     <p className={`text-[15px] font-semibold ${doc.status === "na" ? "text-[var(--lux-ink-3)] line-through decoration-[var(--lux-line-strong)]" : ""}`}>
-                      {doc.label}
-                      {!doc.required ? <span className="font-normal text-[var(--lux-ink-3)] no-underline"> · jeśli dotyczy</span> : null}
+                      {t(doc.label)}
+                      {!doc.required ? <span className="font-normal text-[var(--lux-ink-3)] no-underline"> · {t("jeśli dotyczy")}</span> : null}
                     </p>
-                    {doc.hint ? <p className="mt-0.5 text-[12px] leading-snug text-[var(--lux-ink-3)]">{doc.hint}</p> : null}
-                    <p className={`mt-1 text-[12px] font-bold ${st.tone}`}>{st.label}</p>
+                    {doc.hint ? <p className="mt-0.5 text-[12px] leading-snug text-[var(--lux-ink-3)]">{t(doc.hint)}</p> : null}
+                    <p className={`mt-1 text-[12px] font-bold ${st.tone}`}>{t(st.label)}</p>
                     {doc.status === "rejected" && doc.note ? (
                       <p className="mt-0.5 rounded-lg bg-[var(--lux-danger-soft)] px-2 py-1 text-[12px] text-[var(--lux-danger)]">{agentFirst}: {doc.note}</p>
                     ) : null}
@@ -183,7 +178,7 @@ export default function PortalDocuments({
                         className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-full bg-[var(--lux-well)] px-3 py-1 text-[12px] font-semibold text-[var(--lux-accent)]"
                       >
                         <Eye className="size-3.5 shrink-0" />
-                        <span className="truncate">{doc.fileName || "Zobacz plik"}</span>
+                        <span className="truncate">{doc.fileName || t("Zobacz plik")}</span>
                       </button>
                     ) : null}
                     {canUpload && !doc.required && (doc.status === "missing" || doc.status === "na") ? (
@@ -193,7 +188,7 @@ export default function PortalDocuments({
                         onClick={() => void setNotApplicable(doc, doc.status !== "na")}
                         className="mt-1.5 block text-[12px] font-semibold text-[var(--lux-ink-3)] underline decoration-[var(--lux-line-strong)] underline-offset-2 disabled:opacity-40"
                       >
-                        {doc.status === "na" ? "Jednak dotyczy — dodam plik" : "Nie dotyczy mnie"}
+                        {doc.status === "na" ? t("Jednak dotyczy — dodam plik") : t("Nie dotyczy mnie")}
                       </button>
                     ) : null}
                   </div>
@@ -206,10 +201,10 @@ export default function PortalDocuments({
                           ? "bg-[var(--lux-solid)] text-[var(--lux-solid-ink)]"
                           : "border border-[var(--lux-line)] bg-[var(--lux-card)] text-[var(--lux-ink)]"
                       }`}
-                      aria-label={`${doc.status === "missing" ? "Dodaj" : "Wymień"}: ${doc.label}`}
+                      aria-label={`${doc.status === "missing" ? t("Dodaj") : t("Wymień")}: ${t(doc.label)}`}
                     >
                       {doc.status === "missing" ? <Plus className="size-4" /> : <RefreshCw className="size-3.5" />}
-                      {doc.status === "missing" ? "Dodaj" : doc.status === "rejected" ? "Popraw" : "Wymień"}
+                      {doc.status === "missing" ? t("Dodaj") : doc.status === "rejected" ? t("Popraw") : t("Wymień")}
                     </button>
                   ) : null}
                 </div>
@@ -223,8 +218,8 @@ export default function PortalDocuments({
       <PortalUploadSheet
         key={file ? `${file.name}:${file.size}:${file.lastModified}` : "none"}
         file={file}
-        targetLabel={target?.label || "Dokument"}
-        targetHint={target?.hint}
+        targetLabel={target?.label ? t(target.label) : t("Dokument")}
+        targetHint={target?.hint ? t(target.hint) : undefined}
         agentFirst={agentFirst}
         url={`/api/crm/client-portal/${encodeURIComponent(token)}/documents`}
         buildForm={(f) => {
@@ -246,17 +241,17 @@ export default function PortalDocuments({
         }}
       />
 
-      <LuxSheet open={Boolean(preview)} onClose={() => setPreview(null)} kicker="Wysłany plik" title={preview?.label}>
+      <LuxSheet open={Boolean(preview)} onClose={() => setPreview(null)} kicker={t("Wysłany plik")} title={preview?.label ? t(preview.label) : undefined}>
         {preview?.fileUrl ? (
           <div className="space-y-3">
             <PortalFilePreview src={preview.fileUrl} name={preview.fileName || preview.label} mimeType={preview.mimeType} height={460} />
             <div className="flex items-center justify-between gap-3 text-[12px] text-[var(--lux-ink-3)]">
               <span className="truncate">
                 {preview.fileName}
-                {preview.uploadedAt ? ` · ${new Date(preview.uploadedAt).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
+                {preview.uploadedAt ? ` · ${new Date(preview.uploadedAt).toLocaleString(dateLocale, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
               </span>
               <a href={preview.fileUrl} target="_blank" rel="noreferrer" className="shrink-0 font-bold text-[var(--lux-accent)]">
-                {fileKind({ name: preview.fileName || "", type: preview.mimeType || "" }) === "other" ? "Pobierz" : "Otwórz w nowej karcie"}
+                {fileKind({ name: preview.fileName || "", type: preview.mimeType || "" }) === "other" ? t("Pobierz") : t("Otwórz w nowej karcie")}
               </a>
             </div>
           </div>

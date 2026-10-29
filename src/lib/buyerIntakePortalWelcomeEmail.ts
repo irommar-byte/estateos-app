@@ -1,105 +1,87 @@
-import { sendTransactionalEmail } from '@/lib/email/transactional';
-import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { prisma } from '@/lib/prisma';
-import { resolveSellerPersonName } from '@/lib/sellerDisplay';
-import { buildClientVoice } from '@/lib/crm/clientVoice';
+import { buildPortalUrl } from '@/lib/agencyClientNotify';
+import { buildClientMessageEmailHtml, type ClientEmailFact } from '@/lib/crm/clientMessageEmail';
+import { sendTransactionalEmail } from '@/lib/email/transactional';
+import { loadAppleClientEmailIdentity } from '@/lib/email/appleClientEmail';
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+const PROPERTY_LABEL: Record<string, string> = { FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal' };
+
+function formatPln(value: number | null | undefined): string | null {
+  if (!value || !Number.isFinite(value)) return null;
+  return `${Math.round(value).toLocaleString('pl-PL')} zł`;
 }
 
-function firstNameFrom(fullName: string): string {
-  return fullName.trim().split(/\s+/)[0] || '';
-}
-
-export function buildBuyerIntakePortalWelcomeEmailHtml(params: {
-  clientFirstName: string;
-  agentName: string;
-  agencyName: string;
-  portalUrl: string;
-  intelligenceStarted: boolean;
-}): string {
-  const voice = buildClientVoice({ firstName: firstNameFrom(params.clientFirstName), agentName: params.agentName });
-  const hello = escapeHtml(voice.greeting.replace(/,$/, ''));
-  const agentName = escapeHtml(params.agentName);
-  const agencyName = escapeHtml(params.agencyName);
-  const portalUrl = escapeHtml(params.portalUrl);
-  const intro = params.intelligenceStarted
-    ? 'Pierwsza propozycja czeka już w panelu.'
-    : 'Pierwsze propozycje pojawią się w panelu, gdy tylko znajdę coś wartego uwagi.';
-
-  return `
-<!DOCTYPE html>
-<html lang="pl">
-<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /></head>
-<body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:32px 16px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" style="max-width:560px;background:#fff;border-radius:20px;padding:32px 28px;border:1px solid rgba(0,0,0,0.06);">
-        <tr><td>
-          <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#10b981;">Panel wyszukiwania</p>
-          <h1 style="margin:0 0 14px;font-size:26px;font-weight:800;line-height:1.2;color:#0f172a;">${hello}</h1>
-          <p style="margin:0 0 16px;font-size:16px;line-height:1.55;color:#475569;">
-            Dziękuję za wypełnienie ankiety — mam wszystko, czego potrzebuję, żeby zacząć szukać. ${intro}
-          </p>
-          <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#334155;">
-            Przy każdej ofercie wystarczy kliknąć <strong>Chcę obejrzeć</strong>, <strong>Do przemyślenia</strong> albo <strong>Nie pasuje</strong>.
-            Po kilku takich odpowiedziach będę dokładnie wiedzieć, czego szukać — i nie będę zawracać głowy ofertami, które nie pasują.
-          </p>
-          <p style="margin:0 0 18px;text-align:center;">
-            <a href="${portalUrl}" style="display:inline-block;background:#10b981;color:#052e1c;text-decoration:none;padding:14px 22px;border-radius:999px;font-weight:800;font-size:13px;letter-spacing:0.06em;text-transform:uppercase;">Otwórz panel</a>
-          </p>
-          <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Pozdrawiam serdecznie,</p>
-          <p style="margin:0;font-size:16px;font-weight:800;color:#111827;">${agentName}</p>
-          <p style="margin:2px 0 18px;font-size:13px;color:#6b7280;">${agencyName}</p>
-          <p style="margin:0;font-size:12px;line-height:1.5;color:#94a3b8;text-align:center;">
-            Ten link to stałe wejście do panelu — warto go zachować. Dla kupujących usługa jest bezpłatna.
-          </p>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body>
-</html>`.trim();
-}
-
+/**
+ * Powitanie po formularzu /szukam — w tym samym szablonie co cała poczta do klientów:
+ * co zapisaliśmy, co będzie dalej i że cała współpraca dzieje się w panelu klienta.
+ */
 export async function sendBuyerIntakePortalWelcomeEmail(params: {
-  clientEmail: string;
-  clientFirstName: string;
-  agentUserId: number;
-  portalToken: string;
-  intelligenceStarted: boolean;
+  clientId: number;
+  firstOfferReady: boolean;
 }): Promise<boolean> {
-  const email = params.clientEmail.trim().toLowerCase();
-  if (!email) return false;
-
-  const agent = await prisma.user.findUnique({
-    where: { id: params.agentUserId },
+  const client = await prisma.agencyClient.findUnique({
+    where: { id: params.clientId },
     select: {
-      name: true,
-      companyName: true,
-      agencyMembership: { select: { company: { select: { name: true } } } },
+      id: true,
+      agencyUserId: true,
+      firstName: true,
+      salutation: true,
+      email: true,
+      portalToken: true,
+      agencyUser: { select: { email: true } },
+      buyerPreference: {
+        select: { city: true, districts: true, maxPrice: true, minArea: true, propertyType: true, transactionType: true },
+      },
     },
   });
+  const email = client?.email?.trim().toLowerCase();
+  if (!client || !email || !client.portalToken) return false;
 
-  const agentName = resolveSellerPersonName(agent) || agent?.name || 'Twój agent';
-  const agencyName =
-    agent?.agencyMembership?.company?.name?.trim() || agent?.companyName?.trim() || 'EstateOS';
-  const portalUrl = buildPortalUrl(params.portalToken);
+  const identity = await loadAppleClientEmailIdentity(client.agencyUserId);
+  const agentFirst = (identity.agentName || '').split(/\s+/)[0] || 'Twój agent';
+  const pref = client.buyerPreference;
+  const facts: ClientEmailFact[] = pref
+    ? [
+        { label: 'Szukasz', value: [PROPERTY_LABEL[String(pref.propertyType)] || null, pref.transactionType === 'RENT' ? 'wynajem' : 'kupno'].filter(Boolean).join(' · ') },
+        {
+          label: 'Lokalizacja',
+          value: [pref.city, Array.isArray(pref.districts) ? (pref.districts as unknown[]).map(String).slice(0, 3).join(', ') : null]
+            .filter(Boolean)
+            .join(' · '),
+        },
+        { label: pref.transactionType === 'RENT' ? 'Czynsz do' : 'Budżet do', value: formatPln(pref.maxPrice) || '' },
+        { label: 'Metraż od', value: pref.minArea ? `${pref.minArea} m²` : '' },
+      ].filter((fact) => fact.value)
+    : [];
+
+  const portalUrl = buildPortalUrl(client.portalToken);
+  const html = await buildClientMessageEmailHtml({
+    agencyUserId: client.agencyUserId,
+    client,
+    eyebrow: 'Twój panel klienta',
+    title: params.firstOfferReady ? 'Pierwsza propozycja już czeka' : 'Zaczynamy szukać',
+    paragraphs: [
+      `Dziękuję za wypełnienie formularza — mam wszystko, czego potrzebuję, żeby zacząć. ${
+        params.firstOfferReady
+          ? 'Pierwsza dopasowana oferta czeka już w Twoim panelu.'
+          : 'Przejrzę dopasowane oferty i wyślę Ci pierwsze propozycje do panelu.'
+      }`,
+      'Cała nasza współpraca odbywa się w Twoim panelu klienta:',
+    ],
+    bullets: [
+      'oferty dopasowane do Twoich kryteriów — oceniasz je jednym dotknięciem,',
+      'terminy oglądań, które potwierdzasz albo zmieniasz,',
+      'negocjacje, dokumenty i czat ze mną w jednym miejscu.',
+    ],
+    closing: 'Link do panelu jest stały — warto go zachować. Dla kupujących usługa jest bezpłatna.',
+    facts,
+    ctas: [{ label: 'Otwórz swój panel', href: portalUrl }],
+  });
 
   return sendTransactionalEmail({
     to: email,
-    subject: 'Dziękuję za ankietę — link do panelu',
-    html: buildBuyerIntakePortalWelcomeEmailHtml({
-      clientFirstName: params.clientFirstName,
-      agentName,
-      agencyName,
-      portalUrl,
-      intelligenceStarted: params.intelligenceStarted,
-    }),
+    subject: params.firstOfferReady ? 'Pierwsza propozycja czeka w Twoim panelu' : `${agentFirst} zaczyna szukać dla Ciebie — Twój panel klienta`,
+    html,
+    replyTo: client.agencyUser?.email || undefined,
   });
 }

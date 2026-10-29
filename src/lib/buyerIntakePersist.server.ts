@@ -15,6 +15,7 @@ import {
   type BuyerMissionRecord,
 } from '@/lib/buyerIntakeShared';
 import { bootstrapBuyerIntakePortal } from '@/lib/buyerIntakePortalBootstrap.server';
+import { notifyAgentAboutBuyerIntake } from '@/lib/buyerIntakeAgentNotify.server';
 
 export type PersistBuyerIntakeContactInput = {
   mission: BuyerMissionRecord;
@@ -22,6 +23,8 @@ export type PersistBuyerIntakeContactInput = {
   lastName: string;
   email: string | null;
   phone: string;
+  /** ogólny /szukam: pierwsza propozycja idzie od razu; z linku agenta — agent sam wybiera, co wysłać */
+  autoFirstOffer: boolean;
 };
 
 export type PersistBuyerIntakeContactResult = {
@@ -179,7 +182,15 @@ export async function persistBuyerIntakeContact(
 
   await refreshAgencyClientMatches(client.id);
 
-  const bootstrap = await bootstrapBuyerIntakePortal(client.id);
+  const bootstrap = await bootstrapBuyerIntakePortal(client.id, { autoFirstOffer: input.autoFirstOffer });
+  await notifyAgentAboutBuyerIntake({
+    agencyUserId,
+    clientId: client.id,
+    clientName: `${input.firstName} ${input.lastName}`.trim(),
+    mission,
+    reusedClient,
+    firstOfferSent: bootstrap.intelligenceSent,
+  }).catch((error) => console.error('[BUYER INTAKE] agent notify', error));
 
   if (bootstrap.intelligenceSent) {
     await prisma.deskCase.update({

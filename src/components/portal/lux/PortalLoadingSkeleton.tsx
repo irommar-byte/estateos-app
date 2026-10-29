@@ -3,7 +3,7 @@
 /** Szkielet panelu w kształcie prawdziwej strony — bez kręcącej się ikony. */
 export default function PortalLoadingSkeleton() {
   return (
-    <div className="portal-lux min-h-[100dvh]" aria-busy="true" aria-label="Ładowanie panelu">
+    <div className="portal-lux min-h-[100dvh]" aria-busy="true" aria-label="Ładowanie panelu · Loading">
       <div className="rounded-b-[32px] bg-black px-5 pb-6 pt-5 sm:px-8">
         <div className="mx-auto max-w-3xl">
           <div className="flex items-center justify-between">
@@ -32,7 +32,7 @@ export default function PortalLoadingSkeleton() {
           </div>
         ))}
       </div>
-      <p className="sr-only">Ładujemy Twój panel…</p>
+      <p className="sr-only">Ładujemy Twój panel… / Loading your panel…</p>
     </div>
   );
 }

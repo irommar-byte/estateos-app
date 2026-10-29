@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Eye, Pause, Radar, Sparkles } from "lucide-react";
 import type { AssistantPulse } from "@/lib/crm/clientPortalOfferBoard";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 const PREPARING_STEPS = [
   "Skanuję ogłoszenia…",
@@ -44,13 +45,12 @@ function PulseMark({ mode, reduceMotion }: { mode: AssistantPulse["mode"]; reduc
 
 export default function ClientPortalUpcomingOfferSlot({
   pulse,
-  live,
   onFocusNew,
 }: {
   pulse: AssistantPulse;
-  live?: boolean;
   onFocusNew?: () => void;
 }) {
+  const { t } = usePortalLocale();
   const reduceMotion = useReducedMotion();
   const [stepIndex, setStepIndex] = useState(0);
   const preparing = pulse.mode === "preparing";
@@ -63,7 +63,7 @@ export default function ClientPortalUpcomingOfferSlot({
     return () => window.clearInterval(timer);
   }, [reduceMotion, preparing]);
 
-  const stepLabel = useMemo(() => PREPARING_STEPS[stepIndex], [stepIndex]);
+  const stepLabel = useMemo(() => t(PREPARING_STEPS[stepIndex]), [stepIndex, t]);
   const activity = preparing ? stepLabel : pulse.activity;
 
   return (
@@ -84,14 +84,11 @@ export default function ClientPortalUpcomingOfferSlot({
               />
               {pulse.badge}
             </span>
-            {live ? (
-              <span className="text-[10px] font-semibold text-[var(--eos-muted)]">Panel na żywo</span>
-            ) : null}
           </div>
           <p className="mt-2 text-sm font-black leading-snug text-[var(--eos-text)] sm:text-base">{pulse.title}</p>
           <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)] sm:text-[13px]">{pulse.body}</p>
           {activity ? (
-            <p className="mt-2 text-[10px] font-semibold tracking-wide text-emerald-700/90">{activity}</p>
+            <p className="mt-2 text-[10px] font-semibold tracking-wide text-[var(--lux-good)]">{activity}</p>
           ) : null}
           {pulse.cta && onFocusNew ? (
             <button

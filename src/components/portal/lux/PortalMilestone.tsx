@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 type Stored = { stage: number; docs: boolean };
 
@@ -23,6 +24,7 @@ export default function PortalMilestone({
   docsComplete: boolean;
   agentFirst: string;
 }) {
+  const { t } = usePortalLocale();
   const reduce = useReducedMotion();
   const [moment, setMoment] = useState<{ title: string; body: string } | null>(null);
 
@@ -44,14 +46,14 @@ export default function PortalMilestone({
     if (!stored) return;
     let found: { title: string; body: string } | null = null;
     if (stageIndex > stored.stage) {
-      const finished = stageLabels[stageIndex - 1] || "Etap";
+      const finished = stageLabels[stageIndex - 1] || t("Etap");
       const now = stageLabels[stageIndex];
       found = {
-        title: `${finished} — zakończone`,
-        body: now ? `Przechodzimy dalej: ${now}. ${agentFirst} prowadzi Cię przez kolejny krok.` : "To był ostatni etap. Gratulacje!",
+        title: `${finished} — ${t("zakończone")}`,
+        body: now ? t("Przechodzimy dalej: {stage}. {agent} prowadzi Cię przez kolejny krok.", { stage: now, agent: agentFirst }) : t("To był ostatni etap. Gratulacje!"),
       };
     } else if (docsComplete && !stored.docs) {
-      found = { title: "Komplet dokumentów", body: `${agentFirst} ma wszystko, czego potrzebuje. Dziękujemy!` };
+      found = { title: t("Komplet dokumentów"), body: t("{agent} ma wszystko, czego potrzebuje. Dziękujemy!", { agent: agentFirst }) };
     }
     if (!found) return;
     const show = window.setTimeout(() => setMoment(found), 900);
@@ -97,7 +99,7 @@ export default function PortalMilestone({
             </span>
             <p className="lux-serif mt-5 text-[24px] font-medium leading-tight">{moment.title}</p>
             <p className="mt-2 text-[13.5px] leading-relaxed text-[#BDB6AA]">{moment.body}</p>
-            <p className="mt-5 text-[11px] text-[#8C877D]">Dotknij, aby zamknąć</p>
+            <p className="mt-5 text-[11px] text-[#8C877D]">{t("Dotknij, aby zamknąć")}</p>
           </motion.div>
         </motion.div>
       ) : null}

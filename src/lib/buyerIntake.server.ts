@@ -1,4 +1,6 @@
+import { cookies } from 'next/headers';
 import { prisma } from '@/lib/prisma';
+import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
 import { formatAgentTitle, pickAgentAvatar, resolveProfileMediaUrl } from '@/lib/agentProfile';
 import { ESTATEOS_SITE_URL } from '@/lib/estateOsPublicFacts';
 import { decryptSession, encryptSession } from '@/lib/sessionUtils';
@@ -73,23 +75,59 @@ async function loadBuyerIntakeAgentUser(where: { id: number } | { email: string 
   });
 }
 
-export async function resolveBuyerIntakeAgent(): Promise<{
+/** Ciasteczko z agentem z osobistego linku `/szukam/a/{id}` — formularz trafia wtedy do tego agenta. */
+export const BUYER_AGENT_COOKIE = 'eos_buyer_agent';
+export const BUYER_AGENT_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 30;
+
+/** Aktywny agent (rola agenta / biura i aktywne członkostwo), który może przyjmować kupujących z linku. */
+export async function loadLinkableBuyerAgent(userId: number) {
+  if (!Number.isFinite(userId) || userId <= 0) return null;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      companyName: true,
+      image: true,
+      companyLogoUrl: true,
+      role: true,
+      planType: true,
+      buyerType: true,
+      agencyMembership: { select: { status: true } },
+    },
+  });
+  if (!user || !isAgentOrAgencySeller(user)) return null;
+  if (user.agencyMembership && user.agencyMembership.status !== 'ACTIVE') return null;
+  return user;
+}
+
+export type BuyerIntakeAgent = {
   userId: number;
   displayName: string;
   companyName: string | null;
   agentTitle: string;
   image: string | null;
-} | null> {
+  /** klient przyszedł z osobistego linku agenta (a nie z ogólnego /szukam) */
+  viaLink: boolean;
+};
+
+export async function resolveBuyerIntakeAgent(): Promise<BuyerIntakeAgent | null> {
+  const linked = Number((await cookies()).get(BUYER_AGENT_COOKIE)?.value || 0);
+  if (linked > 0) {
+    const user = await loadLinkableBuyerAgent(linked);
+    if (user) return { ...(await mapBuyerIntakeAgent(user)), viaLink: true };
+  }
+
   const envId = Number(process.env.BUYER_INTAKE_AGENT_USER_ID);
   if (Number.isFinite(envId) && envId > 0) {
     const user = await loadBuyerIntakeAgentUser({ id: envId });
-    if (user) return mapBuyerIntakeAgent(user);
+    if (user) return { ...(await mapBuyerIntakeAgent(user)), viaLink: false };
   }
 
   const envEmail = String(process.env.BUYER_INTAKE_AGENT_EMAIL || '').trim().toLowerCase();
   if (envEmail) {
     const user = await loadBuyerIntakeAgentUser({ email: envEmail });
-    if (user) return mapBuyerIntakeAgent(user);
+    if (user) return { ...(await mapBuyerIntakeAgent(user)), viaLink: false };
   }
 
   return null;

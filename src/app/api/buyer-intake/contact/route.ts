@@ -58,6 +58,7 @@ export async function POST(req: Request) {
       lastName: contact.lastName,
       email: contact.email,
       phone,
+      autoFirstOffer: !agent.viaLink,
     });
 
     const nextMission = mergeBuyerMission(mission, agent.userId, {

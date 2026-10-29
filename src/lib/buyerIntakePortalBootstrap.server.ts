@@ -11,13 +11,18 @@ export type BootstrapBuyerIntakePortalResult = {
   welcomeEmailSent: boolean;
 };
 
-/** Po /szukam: token panelu, włączenie Intelligence i pierwsza propozycja na start. */
+/**
+ * Po /szukam: token panelu i mail powitalny. Z ogólnego formularza pierwsza propozycja idzie od razu
+ * (Intelligence włączone); z osobistego linku agenta decyzję zostawiamy agentowi — dostaje powiadomienie
+ * z gotowymi dopasowaniami i sam wysyła ofertę albo włącza automatyczne propozycje.
+ */
 export async function bootstrapBuyerIntakePortal(
   clientId: number,
+  options: { autoFirstOffer: boolean },
 ): Promise<BootstrapBuyerIntakePortalResult> {
   const client = await prisma.agencyClient.findUnique({
     where: { id: clientId },
-    select: { id: true, portalToken: true, agencyUserId: true, firstName: true, email: true },
+    select: { id: true, portalToken: true, agencyUserId: true, email: true },
   });
 
   if (!client) {
@@ -30,71 +35,52 @@ export async function bootstrapBuyerIntakePortal(
     };
   }
 
-  let portalToken = client.portalToken;
-  if (!portalToken) {
-    portalToken = generatePortalToken();
-  }
-
+  const portalToken = client.portalToken || generatePortalToken();
   await prisma.agencyClient.update({
     where: { id: clientId },
-    data: {
-      portalToken,
-      intelligenceEnabled: true,
-    },
+    data: { portalToken, ...(options.autoFirstOffer ? { intelligenceEnabled: true } : {}) },
   });
 
-  let welcomeEmailSent = false;
-  const clientEmail = client.email?.trim();
-  let intel = await sendIntelligenceOffer({
-    clientId,
-    force: true,
-    ignoreInterval: true,
-    channel: clientEmail ? 'manual' : 'email',
-  });
+  let intelligenceSent = false;
+  let firstOfferId: number | null = null;
+  let intelligenceSkipReason: string | null = options.autoFirstOffer ? null : 'Agent wybiera pierwszą ofertę.';
 
-  if (!intel.sent) {
-    const topMatch = await prisma.agencyClientMatch.findFirst({
-      where: {
-        clientId,
-        notifiedAt: null,
-        score: { gte: 70 },
-      },
-      orderBy: { score: 'desc' },
-      select: { offerId: true, score: true },
+  if (options.autoFirstOffer) {
+    const intel = await sendIntelligenceOffer({
+      clientId,
+      force: true,
+      ignoreInterval: true,
+      channel: client.email?.trim() ? 'manual' : 'email',
     });
-    if (topMatch) {
-      await notifyAgencyClientAboutOffer({
-        clientId,
-        offerId: topMatch.offerId,
-        agencyUserId: client.agencyUserId,
-        channel: 'manual',
-        customMessage: `Pierwsza propozycja pod Twoje kryteria — dopasowanie ${topMatch.score}%.`,
-        intelligence: {
-          reason: `EstateOS™ Intelligence · dopasowanie ${topMatch.score}%`,
-        },
+    intelligenceSent = intel.sent;
+    firstOfferId = intel.pick.offerId;
+    intelligenceSkipReason = intel.sent ? null : intel.pick.skipReason;
+
+    if (!intel.sent) {
+      const topMatch = await prisma.agencyClientMatch.findFirst({
+        where: { clientId, notifiedAt: null, score: { gte: 70 } },
+        orderBy: { score: 'desc' },
+        select: { offerId: true, score: true },
       });
-      intel = {
-        sent: true,
-        pick: { ...intel.pick, offerId: topMatch.offerId, ready: true, skipReason: null },
-      };
+      if (topMatch) {
+        await notifyAgencyClientAboutOffer({
+          clientId,
+          offerId: topMatch.offerId,
+          agencyUserId: client.agencyUserId,
+          channel: 'manual',
+          customMessage: `Pierwsza propozycja pod Twoje kryteria — dopasowanie ${topMatch.score}%.`,
+          intelligence: { reason: `EstateOS™ Intelligence · dopasowanie ${topMatch.score}%` },
+        });
+        intelligenceSent = true;
+        firstOfferId = topMatch.offerId;
+        intelligenceSkipReason = null;
+      }
     }
   }
 
-  if (clientEmail && portalToken) {
-    welcomeEmailSent = await sendBuyerIntakePortalWelcomeEmail({
-      clientEmail,
-      clientFirstName: client.firstName || 'Kliencie',
-      agentUserId: client.agencyUserId,
-      portalToken,
-      intelligenceStarted: intel.sent,
-    });
-  }
+  const welcomeEmailSent = client.email?.trim()
+    ? await sendBuyerIntakePortalWelcomeEmail({ clientId, firstOfferReady: intelligenceSent })
+    : false;
 
-  return {
-    portalToken,
-    intelligenceSent: intel.sent,
-    firstOfferId: intel.pick.offerId,
-    intelligenceSkipReason: intel.sent ? null : intel.pick.skipReason,
-    welcomeEmailSent,
-  };
+  return { portalToken, intelligenceSent, firstOfferId, intelligenceSkipReason, welcomeEmailSent };
 }

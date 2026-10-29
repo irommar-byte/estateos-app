@@ -23,6 +23,8 @@ export default async function SzukamPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
+  const agentParam = Number(Array.isArray(sp.agent) ? sp.agent[0] : sp.agent);
+  if (agentParam > 0) redirect(`/szukam/a/${agentParam}`);
   if (sp.agent != null || sp.ref != null || sp.invite != null) {
     redirect('/szukam');
   }

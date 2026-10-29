@@ -1,4 +1,5 @@
 import { Globe, Lock, Mail, MapPin, Phone } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 /**
  * Stopka panelu: podpis agenta i biura, dane kontaktowe oraz jasna informacja,
@@ -25,6 +26,7 @@ export default function PortalLuxFooter({
   agencyWebsite?: string | null;
   agencyAddress?: string | null;
 }) {
+  const { t } = usePortalLocale();
   const phone = agentPhone ? agentPhone.replace(/[^\d+]/g, "") : "";
   const agentFirst = (agentName || "").split(" ")[0] || "agent";
   const website = agencyWebsite ? (agencyWebsite.startsWith("http") ? agencyWebsite : `https://${agencyWebsite}`) : null;
@@ -43,7 +45,7 @@ export default function PortalLuxFooter({
           <div className="min-w-0">
             <p className="lux-serif text-[20px] leading-tight">{agentName}</p>
             <p className="mt-0.5 text-[12.5px] text-[#BDB6AA]">
-              {agentTitle || "Twój agent"}, {agencyName}
+              {agentTitle ? t(agentTitle) : t("Twój agent")}, {agencyName}
             </p>
           </div>
         </div>
@@ -81,15 +83,15 @@ export default function PortalLuxFooter({
       <div className="mt-6 flex items-start gap-2.5 rounded-[18px] border border-[#D8C3A0]/20 p-3.5 text-[12px] leading-relaxed text-[#BDB6AA]">
         <Lock className="mt-0.5 size-4 shrink-0 text-[#D8C3A0]" />
         <p>
-          Połączenie jest szyfrowane. Twoje dokumenty i rozmowę widzisz tylko Ty i {agentFirst}
-          {partner ? " — w dostępie dla drugiej osoby dokumenty są ukryte." : "."}
+          {t("Połączenie jest szyfrowane. Twoje dokumenty i rozmowę widzisz tylko Ty i {agent}", { agent: agentFirst })}
+          {partner ? ` — ${t("w dostępie dla drugiej osoby dokumenty są ukryte.")}` : "."}
         </p>
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/brand/estateos-wordmark.png" alt="EstateOS" className="h-[18px] w-auto opacity-80" />
-        <span className="text-[11px] text-[#8C877D]">{partner ? "Dostęp dla drugiej osoby" : "Panel prywatny"}</span>
+        <span className="text-[11px] text-[#8C877D]">{partner ? t("Dostęp dla drugiej osoby") : t("Panel prywatny")}</span>
       </div>
     </footer>
   );

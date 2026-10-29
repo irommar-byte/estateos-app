@@ -4,6 +4,7 @@ import { portalToast } from "@/lib/portalUi";
 import { useState } from "react";
 import { MessageCircleQuestion } from "lucide-react";
 import { formatPln, formatPpsm } from "@/lib/market/format";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type PortalPendingCheckback = {
   activityId: number;
@@ -33,6 +34,7 @@ export default function ClientPortalIntelligenceCheckback({
   checkback: PortalPendingCheckback;
   onDone: () => void;
 }) {
+  const { t } = usePortalLocale();
   const [busy, setBusy] = useState(false);
   const [picked, setPicked] = useState<string | null>(null);
   const snap = checkback.marketSnapshot;
@@ -51,11 +53,11 @@ export default function ClientPortalIntelligenceCheckback({
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
+      if (!res.ok) throw new Error(json.error || t("Nie udało się wysłać odpowiedzi."));
       onDone();
     } catch (e) {
       setPicked(null);
-      portalToast.error("Nie udało się wysłać odpowiedzi", e);
+      portalToast.error(t("Nie udało się wysłać odpowiedzi."), e);
     } finally {
       setBusy(false);
     }
@@ -80,15 +82,15 @@ export default function ClientPortalIntelligenceCheckback({
           </span>
           <span className="portal-checkback__badge inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em]">
             <span className="eos-live-dot eos-live-dot--amber shrink-0" aria-hidden />
-            Wymaga Twojej odpowiedzi
+            {t("Wymaga Twojej odpowiedzi")}
           </span>
         </div>
 
         <h2 id="portal-checkback-title" className="mt-3 text-xl font-black tracking-tight text-[var(--eos-text)] sm:text-2xl">
-          Pytanie od asystenta
+          {t("Pytanie od asystenta")}
         </h2>
         <p className="portal-checkback__hint mt-1 text-sm font-semibold leading-relaxed">
-          Wybierz jedną opcję poniżej — bez tego asystent nie wyśle kolejnej oferty.
+          {t("Wybierz jedną opcję — dopiero wtedy przyjdzie kolejna oferta.")}
         </p>
 
         <p className="mt-4 text-[15px] leading-relaxed text-[var(--eos-text)] sm:text-base">
@@ -98,17 +100,17 @@ export default function ClientPortalIntelligenceCheckback({
         {snap && snap.medianPpsm != null && snap.p25Ppsm != null ? (
           <div className="portal-checkback__proof mt-4 rounded-2xl p-4 text-sm">
             <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">
-              Dowód — transakcje notarialne (RCN)
+              {t("Dowód — transakcje notarialne (RCN)")}
             </p>
             <ul className="mt-3 space-y-1.5 text-[var(--eos-text)]">
               <li>
-                {snap.districtLabel} · {snap.txnCount} aktów · {snap.periodDays} dni
+                {snap.districtLabel} · {t("{n} aktów", { n: snap.txnCount })} · {t("{n} dni", { n: snap.periodDays })}
               </li>
-              <li>Mediana: {formatPpsm(snap.medianPpsm)}</li>
-              <li>Dolny kwartyl: {formatPpsm(snap.p25Ppsm)}</li>
+              <li>{t("Mediana:")} {formatPpsm(snap.medianPpsm)}</li>
+              <li>{t("Dolny kwartyl:")} {formatPpsm(snap.p25Ppsm)}</li>
               {snap.maxPrice && snap.area ? (
                 <li>
-                  Twój budżet {formatPln(snap.maxPrice)} przy {snap.area} m² ≈{" "}
+                  {t("Twój budżet {price} przy {area} m² ≈", { price: formatPln(snap.maxPrice), area: snap.area })}{" "}
                   {formatPpsm(snap.impliedPpsm || snap.maxPrice / snap.area)}
                 </li>
               ) : null}
@@ -117,7 +119,7 @@ export default function ClientPortalIntelligenceCheckback({
           </div>
         ) : null}
 
-        <p className="eos-portal-label mt-5 mb-2">Twoja decyzja</p>
+        <p className="eos-portal-label mt-5 mb-2">{t("Twoja decyzja")}</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {checkback.options.map((opt) => (
             <button
@@ -129,7 +131,7 @@ export default function ClientPortalIntelligenceCheckback({
                 picked === opt.id ? "portal-checkback__choice--on" : ""
               }`}
             >
-              {busy && picked === opt.id ? "Wysyłam…" : opt.label}
+              {busy && picked === opt.id ? t("Wysyłam…") : t(opt.label)}
             </button>
           ))}
         </div>

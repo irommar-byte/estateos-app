@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight, Bell, Check, MessageCircle, Phone } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type LuxStageBar = { done: number; total: number };
 
@@ -21,12 +22,15 @@ type Props = {
   bell?: React.ReactNode;
   /** jedna rzecz, którą klient ma teraz zrobić (albo informacja, że nic nie musi) */
   nextStep?: { title: string; body?: string | null; tone: "action" | "info" | "done"; cta?: string; onClick?: () => void } | null;
+  /** przełącznik języka panelu (PL / EN / UA) obok dzwonka */
+  languageSwitch?: React.ReactNode;
   children?: React.ReactNode;
 };
 
 /** Czarny nagłówek panelu: logo EstateOS, biuro, powitanie, postęp i karta agenta. */
 export default function PortalLuxHeader(props: Props) {
   const reduce = useReducedMotion();
+  const { t } = usePortalLocale();
   const phone = props.agentPhone ? props.agentPhone.replace(/[^\d+]/g, "") : "";
   const monogram = (props.agencyName || "E").trim().charAt(0).toUpperCase();
   return (
@@ -34,11 +38,14 @@ export default function PortalLuxHeader(props: Props) {
       <div className="mx-auto max-w-3xl">
         <div className="flex items-start justify-between">
           <img src="/brand/estateos-wordmark.png" alt="EstateOS" className="mt-2 h-[26px] w-auto" />
-          {props.bell ?? (
-            <span className="flex size-10 items-center justify-center rounded-full border border-[#D8C3A0]/35" aria-hidden>
-              <Bell className="size-[17px] text-[#D8C3A0]" />
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {props.languageSwitch}
+            {props.bell ?? (
+              <span className="flex size-10 items-center justify-center rounded-full border border-[#D8C3A0]/35" aria-hidden>
+                <Bell className="size-[17px] text-[#D8C3A0]" />
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="mt-5 flex items-center gap-2.5">
@@ -56,12 +63,12 @@ export default function PortalLuxHeader(props: Props) {
 
         <p className="mt-5 text-sm text-[#BDB6AA]">
           {props.greeting}
-          {props.partnerName ? " · dostęp dla drugiej osoby" : ""}
+          {props.partnerName ? ` · ${t("dostęp dla drugiej osoby")}` : ""}
         </p>
         <h1 className="lux-serif mt-1.5 text-[30px] font-medium leading-[1.1] sm:text-[36px]">{props.headline}</h1>
 
         {/* Pasek etapów: przy wejściu wypełnia się kolejno do bieżącego etapu */}
-        <div className="mt-5 flex items-center gap-2.5" aria-label={`Zakończone etapy: ${props.bar.done} z ${props.bar.total}`}>
+        <div className="mt-5 flex items-center gap-2.5" aria-label={t("Zakończone etapy: {n} z {total}", { n: props.bar.done, total: props.bar.total })}>
           <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${props.bar.total}, minmax(0, 1fr))` }}>
             {Array.from({ length: props.bar.total }).map((_, index) => {
               const done = index < props.bar.done;
@@ -110,7 +117,7 @@ export default function PortalLuxHeader(props: Props) {
           >
             <span className="min-w-0 flex-1">
               <span className={`block text-[12px] font-semibold ${props.nextStep.tone === "action" ? "text-black/60" : "text-[#BDB6AA]"}`}>
-                {props.nextStep.tone === "action" ? "Twój następny krok" : props.nextStep.tone === "done" ? "Wszystko na bieżąco" : "Teraz"}
+                {props.nextStep.tone === "action" ? t("Twój następny krok") : props.nextStep.tone === "done" ? t("Wszystko na bieżąco") : t("Teraz")}
               </span>
               <span className="mt-0.5 block text-[15.5px] font-bold leading-snug">{props.nextStep.title}</span>
               {props.nextStep.body ? (
@@ -143,12 +150,12 @@ export default function PortalLuxHeader(props: Props) {
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-bold">{props.agentName}</p>
-            <p className="truncate text-xs text-[#BDB6AA]">{props.agentTitle || "Twój agent"}</p>
+            <p className="truncate text-xs text-[#BDB6AA]">{props.agentTitle ? t(props.agentTitle) : t("Twój agent")}</p>
           </div>
           {phone ? (
             <a
               href={`tel:${phone}`}
-              aria-label="Zadzwoń do agenta"
+              aria-label={t("Zadzwoń do agenta")}
               className="flex size-[42px] items-center justify-center rounded-full border border-[#D8C3A0]/45"
             >
               <Phone className="size-[17px] text-[#F6F3EE]" />
@@ -157,7 +164,7 @@ export default function PortalLuxHeader(props: Props) {
           <button
             type="button"
             onClick={props.onChat}
-            aria-label="Napisz do agenta"
+            aria-label={t("Napisz do agenta")}
             className="flex size-[42px] items-center justify-center rounded-full bg-[#D8C3A0]"
           >
             <MessageCircle className="size-[17px] text-black" />

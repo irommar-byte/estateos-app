@@ -4,6 +4,7 @@ import { portalConfirm, portalToast } from "@/lib/portalUi";
 import { useMemo, useState } from "react";
 import LuxSheet from "./LuxSheet";
 import { formatPln, portalAction } from "./portalApi";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type SellerBuyerOfferView = {
   id: number;
@@ -52,18 +53,19 @@ export type SellerPortalV2 = {
 const FINANCING: Record<string, string> = { cash: "Gotówka", mortgage: "Kredyt", mixed: "Gotówka + kredyt" };
 
 export function SellerStatsTiles({ stats }: { stats: SellerPortalV2["stats"] }) {
+  const { p, dateLocale } = usePortalLocale();
   if (!stats) return null;
   const tiles: Array<[string, number, boolean]> = [
-    ["wyświetleń", stats.views, false],
-    ["dopasowań", stats.matches, false],
-    ["oglądań", stats.showings, false],
-    ["oferty", stats.buyerOffers, true],
+    [p(stats.views, "wyświetlenie|wyświetlenia|wyświetleń"), stats.views, false],
+    [p(stats.matches, "dopasowanie|dopasowania|dopasowań"), stats.matches, false],
+    [p(stats.showings, "oglądanie|oglądania|oglądań"), stats.showings, false],
+    [p(stats.buyerOffers, "oferta|oferty|ofert"), stats.buyerOffers, true],
   ];
   return (
     <div className="mt-3 grid grid-cols-4 gap-1.5">
       {tiles.map(([label, value, gold]) => (
         <div key={label} className={`rounded-[14px] px-1.5 py-2.5 text-center ${gold && value ? "bg-[#D8C3A0] text-black" : "bg-white/[0.07]"}`}>
-          <p className="text-[19px] font-extrabold">{value.toLocaleString("pl-PL")}</p>
+          <p className="text-[19px] font-extrabold">{value.toLocaleString(dateLocale)}</p>
           <p className={`mt-0.5 text-[10px] ${gold && value ? "font-bold" : "text-[#BDB6AA]"}`}>{label}</p>
         </div>
       ))}
@@ -84,6 +86,8 @@ function BuyerOfferCard({
   agentFirst: string;
   onChanged: () => void;
 }) {
+  const { t, dateLocale } = usePortalLocale();
+  const buyerLabel = offer.buyerLabel.replace(/^Kupujący/, t("Kupujący"));
   const [mode, setMode] = useState<"counter" | null>(null);
   const [counter, setCounter] = useState(String(offer.amount));
   const [comment, setComment] = useState("");
@@ -95,9 +99,9 @@ function BuyerOfferCard({
     if (
       response === "reject" &&
       !(await portalConfirm({
-        title: "Odrzucić tę ofertę?",
-        body: `Kupujący (${offer.buyerLabel}) dostanie odpowiedź od agenta. Tej decyzji nie da się cofnąć w panelu.`,
-        confirmLabel: "Odrzuć ofertę",
+        title: t("Odrzucić tę ofertę?"),
+        body: t("Kupujący ({buyer}) dostanie odpowiedź od agenta. Tej decyzji nie da się cofnąć w panelu.", { buyer: buyerLabel }),
+        confirmLabel: t("Odrzuć ofertę"),
         destructive: true,
       }))
     )
@@ -111,44 +115,44 @@ function BuyerOfferCard({
         comment,
       });
       portalToast.success(
-        response === "accept" ? "Oferta przyjęta" : response === "counter" ? "Kontroferta wysłana" : "Oferta odrzucona",
-        "Agent dostał Twoją decyzję i odezwie się z dalszymi krokami.",
+        response === "accept" ? t("Oferta przyjęta") : response === "counter" ? t("Kontroferta wysłana") : t("Oferta odrzucona"),
+        t("Agent dostał Twoją decyzję i odezwie się z dalszymi krokami."),
       );
       onChanged();
     } catch (e) {
-      portalToast.error("Nie udało się wysłać decyzji", e);
+      portalToast.error(t("Nie udało się wysłać decyzji"), e);
     } finally {
       setBusy(false);
     }
   };
 
   const facts: Array<[string, string]> = [
-    ["Finansowanie", FINANCING[offer.financing] || offer.financing],
-    ["Zadatek", offer.deposit ? formatPln(offer.deposit) : "—"],
-    ["Akt do", offer.deedWeeks ? `ok. ${offer.deedWeeks} tyg.` : "—"],
-    ["Wydanie mieszkania", offer.handoverDays ? `${offer.handoverDays} dni po akcie` : "—"],
+    [t("Finansowanie"), FINANCING[offer.financing] ? t(FINANCING[offer.financing]) : offer.financing],
+    [t("Zadatek"), offer.deposit ? formatPln(offer.deposit) : "—"],
+    [t("Akt do"), offer.deedWeeks ? t("ok. {n} tyg.", { n: offer.deedWeeks }) : "—"],
+    [t("Wydanie mieszkania"), offer.handoverDays ? t("{n} dni po akcie", { n: offer.handoverDays }) : "—"],
   ];
 
   return (
     <article className={`lux-card overflow-hidden ${open ? "shadow-[0_18px_40px_rgba(21,23,26,0.08)]" : "opacity-90"}`}>
       <div className="flex items-start justify-between p-4 pb-0">
         <div>
-          <p className="lux-kicker !text-[10px]">{offer.buyerLabel}</p>
+          <p className="lux-kicker !text-[10px]">{buyerLabel}</p>
           <p className="lux-serif mt-1.5 text-[28px]">{formatPln(offer.amount)}</p>
           {diffPct != null ? (
             <p className="text-[13px] text-[var(--lux-ink-2)]">
               {diffPct >= 0 ? "+" : "−"}
-              {Math.abs(diffPct).toFixed(1).replace(".", ",")}% od ceny w ogłoszeniu
+              {t("{pct}% od ceny w ogłoszeniu", { pct: Math.abs(diffPct).toLocaleString(dateLocale, { maximumFractionDigits: 1, minimumFractionDigits: 1 }) })}
             </p>
           ) : null}
         </div>
         {!open ? (
           <span className="rounded-full bg-black px-2.5 py-1 text-[11px] font-bold text-[#D8C3A0]">
-            {offer.status === "ACCEPTED" ? "Przyjęta" : offer.status === "COUNTERED" ? `Kontroferta ${formatPln(offer.counterAmount)}` : offer.status === "REJECTED" ? "Odrzucona" : "Zamknięta"}
+            {offer.status === "ACCEPTED" ? t("Przyjęta") : offer.status === "COUNTERED" ? `${t("Kontroferta")} ${formatPln(offer.counterAmount)}` : offer.status === "REJECTED" ? t("Odrzucona") : t("Zamknięta")}
           </span>
         ) : offer.respondBy ? (
           <span className="rounded-full bg-[#D8C3A0] px-2.5 py-1 text-[11px] font-extrabold text-black">
-            do {new Date(offer.respondBy).toLocaleDateString("pl-PL", { day: "numeric", month: "short" })}
+            {t("do {date}", { date: new Date(offer.respondBy).toLocaleDateString(dateLocale, { day: "numeric", month: "short" }) })}
           </span>
         ) : null}
       </div>
@@ -166,13 +170,13 @@ function BuyerOfferCard({
             <b>{agentFirst}:</b> {offer.recommendation}
           </p>
         ) : null}
-        {offer.clientComment && !open ? <p className="mt-2 text-[12px] text-[var(--lux-ink-2)]">Twój komentarz: „{offer.clientComment}”</p> : null}
+        {offer.clientComment && !open ? <p className="mt-2 text-[12px] text-[var(--lux-ink-2)]">{t("Twój komentarz")}: „{offer.clientComment}”</p> : null}
         {open ? (
           <>
             {mode === "counter" ? (
               <div className="mt-3 space-y-2">
                 <label htmlFor={`counter-${offer.id}`} className="text-[12px] font-bold">
-                  Twoja kwota
+                  {t("Twoja kwota")}
                 </label>
                 <input
                   id={`counter-${offer.id}`}
@@ -184,19 +188,19 @@ function BuyerOfferCard({
               </div>
             ) : null}
             <label htmlFor={`comment-${offer.id}`} className="sr-only">
-              Komentarz
+              {t("Komentarz")}
             </label>
             <textarea
               id={`comment-${offer.id}`}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               rows={2}
-              placeholder={`Komentarz dla ${agentFirst} (opcjonalnie)`}
+              placeholder={t("Komentarz dla: {agent} (opcjonalnie)", { agent: agentFirst })}
               className="mt-3 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] p-3 text-[14px]"
             />
             <div className="mt-3 grid grid-cols-3 gap-1.5">
               <button type="button" disabled={busy} onClick={() => void respond("accept")} className="min-h-[46px] rounded-xl bg-[var(--lux-accent)] text-[12px] font-bold text-[#F6F3EE]">
-                Przyjmuję
+                {t("Przyjmuję")}
               </button>
               <button
                 type="button"
@@ -204,10 +208,10 @@ function BuyerOfferCard({
                 onClick={() => (mode === "counter" ? void respond("counter") : setMode("counter"))}
                 className="min-h-[46px] rounded-xl bg-black text-[12px] font-bold text-[#D8C3A0]"
               >
-                {mode === "counter" ? "Wyślij kwotę" : "Kontroferta"}
+                {mode === "counter" ? t("Wyślij kwotę") : t("Kontroferta")}
               </button>
               <button type="button" disabled={busy} onClick={() => void respond("reject")} className="min-h-[46px] rounded-xl border border-[var(--lux-line)] bg-[var(--lux-card)] text-[12px] font-semibold">
-                Odrzucam
+                {t("Odrzucam")}
               </button>
             </div>
           </>
@@ -230,13 +234,14 @@ export function SellerBuyerOffers({
   agentFirst: string;
   onChanged: () => void;
 }) {
+  const { t, p } = usePortalLocale();
   if (!seller.buyerOffers.length) return null;
   const open = seller.buyerOffers.filter((o) => o.status === "OPEN");
   return (
     <section id="portal-buyer-offers" className="scroll-mt-24 space-y-3">
-      <p className="lux-kicker">Oferty kupujących</p>
+      <p className="lux-kicker">{t("Oferty kupujących")}</p>
       <h2 className="lux-serif text-[24px] font-medium leading-tight">
-        {open.length ? `${open.length === 1 ? "Oferta" : `${open.length} oferty`} na stole` : "Historia ofert"}
+        {open.length ? (open.length === 1 ? t("Oferta na stole") : t("{n} {offers} na stole", { n: open.length, offers: p(open.length, "oferta|oferty|ofert") })) : t("Historia ofert")}
       </h2>
       {seller.buyerOffers.map((offer) => (
         <BuyerOfferCard key={offer.id} offer={offer} listPrice={listPrice} token={token} agentFirst={agentFirst} onChanged={onChanged} />
@@ -246,19 +251,20 @@ export function SellerBuyerOffers({
 }
 
 export function SellerShowingFeedback({ seller, agentRecommendation, agentFirst }: { seller: SellerPortalV2; agentRecommendation?: string | null; agentFirst: string }) {
+  const { t, p } = usePortalLocale();
   const fb = seller.showingFeedback;
   if (!fb || !fb.items.length) return null;
   const max = Math.max(...fb.items.map((i) => i.count));
   return (
     <section className="lux-card p-4">
-      <p className="lux-serif text-[19px] font-medium">Co mówią kupujący</p>
+      <p className="lux-serif text-[19px] font-medium">{t("Co mówią kupujący")}</p>
       <p className="mt-0.5 text-[12px] text-[var(--lux-ink-2)]">
-        {fb.showings} {fb.showings === 1 ? "oglądanie" : fb.showings < 5 ? "oglądania" : "oglądań"} · uwagi anonimowe
+        {fb.showings} {p(fb.showings, "oglądanie|oglądania|oglądań")} · {t("uwagi anonimowe")}
       </p>
       <div className="mt-3.5 space-y-2.5">
         {fb.items.map((item) => (
           <div key={item.tag} className="flex items-center gap-2.5">
-            <span className="w-[120px] text-[12px] font-semibold">{item.tag}</span>
+            <span className="w-[120px] text-[12px] font-semibold">{t(item.tag)}</span>
             <div className="h-2 flex-1 rounded-full bg-[var(--lux-well)]">
               <div className="h-2 rounded-full" style={{ width: `${(item.count / max) * 100}%`, background: item.negative ? "#B07A3A" : "var(--lux-accent)" }} />
             </div>
@@ -268,7 +274,7 @@ export function SellerShowingFeedback({ seller, agentRecommendation, agentFirst 
       </div>
       {agentRecommendation ? (
         <div className="mt-3.5 rounded-[14px] bg-[var(--lux-well)] p-3">
-          <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">Rekomendacja {agentFirst}</p>
+          <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">{t("Rekomendacja: {agent}", { agent: agentFirst })}</p>
           <p className="mt-1 text-[13px] leading-relaxed">{agentRecommendation}</p>
         </div>
       ) : null}
@@ -277,19 +283,20 @@ export function SellerShowingFeedback({ seller, agentRecommendation, agentFirst 
 }
 
 export function SellerCompetition({ seller }: { seller: SellerPortalV2 }) {
+  const { t, p, dateLocale } = usePortalLocale();
   const c = seller.competition;
   if (!c || (!c.similarCount && !c.transactionPpsm)) return null;
   const rows: Array<[string, string, boolean]> = [
-    ["Twoje mieszkanie", `${c.ownPpsm ? `${c.ownPpsm.toLocaleString("pl-PL")} zł/m²` : "—"} · ${c.ownDays} dni`, true],
+    [t("Twoje mieszkanie"), `${c.ownPpsm ? `${c.ownPpsm.toLocaleString(dateLocale)} zł/m²` : "—"} · ${c.ownDays} ${p(c.ownDays, "dzień|dni|dni")}`, true],
   ];
   if (c.similarCount)
-    rows.push([`Podobne oferty (${c.similarCount})`, `${c.similarPpsm ? `${c.similarPpsm.toLocaleString("pl-PL")} zł/m²` : "—"}${c.similarDays != null ? ` · ${c.similarDays} dni` : ""}`, false]);
-  if (c.transactionPpsm) rows.push(["Transakcje u notariuszy", `${c.transactionPpsm.toLocaleString("pl-PL")} zł/m²`, false]);
+    rows.push([t("Podobne oferty ({n})", { n: c.similarCount }), `${c.similarPpsm ? `${c.similarPpsm.toLocaleString(dateLocale)} zł/m²` : "—"}${c.similarDays != null ? ` · ${c.similarDays} ${p(c.similarDays, "dzień|dni|dni")}` : ""}`, false]);
+  if (c.transactionPpsm) rows.push([t("Transakcje u notariuszy"), `${c.transactionPpsm.toLocaleString(dateLocale)} zł/m²`, false]);
   const better = c.ownPpsm && c.similarPpsm ? c.ownPpsm <= c.similarPpsm : null;
   return (
     <section>
-      <p className="lux-kicker">Rynek wokół Twojego mieszkania</p>
-      <h2 className="lux-serif mt-1.5 text-[24px] font-medium">Konkurencja w okolicy</h2>
+      <p className="lux-kicker">{t("Rynek wokół Twojego mieszkania")}</p>
+      <h2 className="lux-serif mt-1.5 text-[24px] font-medium">{t("Konkurencja w okolicy")}</h2>
       <div className="lux-card mt-3 px-4">
         {rows.map(([label, value, own], i) => (
           <div key={label} className={`flex justify-between gap-3 py-3 text-[13px] ${i ? "border-t border-[var(--lux-line)]" : ""}`}>
@@ -300,7 +307,7 @@ export function SellerCompetition({ seller }: { seller: SellerPortalV2 }) {
       </div>
       {better != null ? (
         <p className="mt-2 px-1 text-[12px] text-[var(--lux-ink-2)]">
-          {better ? "Twoja cena za metr jest konkurencyjna wobec podobnych ofert." : "Podobne oferty są tańsze za metr — warto o tym porozmawiać z agentem."}
+          {better ? t("Twoja cena za metr jest konkurencyjna wobec podobnych ofert.") : t("Podobne oferty są tańsze za metr — warto o tym porozmawiać z agentem.")}
         </p>
       ) : null}
     </section>
@@ -323,6 +330,7 @@ export function SellerNetSheet({
   token: string;
   onSaved: () => void;
 }) {
+  const { t } = usePortalLocale();
   const offersPrices = seller.buyerOffers.filter((o) => o.status === "OPEN").map((o) => o.amount);
   const [price, setPrice] = useState(offersPrices[0] || defaultPrice);
   const [mortgage, setMortgage] = useState(seller.finance.mortgageBalance ?? 0);
@@ -336,17 +344,17 @@ export function SellerNetSheet({
     const commission = seller.finance.commissionVat ? Math.round(commissionNet * 1.23) : commissionNet;
     const other = seller.finance.otherCosts ?? 300;
     let tax = 0;
-    let taxNote = "Podaj rok zakupu, żeby sprawdzić podatek.";
+    let taxNote = t("Podaj rok zakupu, żeby sprawdzić podatek.");
     if (year > 1900) {
       const free = year + 6;
-      if (new Date().getFullYear() >= free) taxNote = "Podatek 0 zł — minęło 5 lat od końca roku zakupu.";
+      if (new Date().getFullYear() >= free) taxNote = t("Podatek 0 zł — minęło 5 lat od końca roku zakupu.");
       else if (purchase > 0) {
         tax = Math.round(Math.max(0, price - purchase - commission - other) * 0.19);
-        taxNote = `19% od dochodu (sprzedaż przed ${free} r.). Ulga mieszkaniowa może go obniżyć do zera.`;
-      } else taxNote = `Sprzedaż przed ${free} r. — podaj cenę zakupu.`;
+        taxNote = t("19% od dochodu (sprzedaż przed {year} r.). Ulga mieszkaniowa może go obniżyć do zera.", { year: free });
+      } else taxNote = t("Sprzedaż przed {year} r. — podaj cenę zakupu.", { year: free });
     }
     return { pct, commission, other, tax, taxNote, net: price - mortgage - commission - tax - other };
-  }, [price, mortgage, year, purchase, seller.finance]);
+  }, [price, mortgage, year, purchase, seller.finance, t]);
 
   const save = async () => {
     setSaving(true);
@@ -370,29 +378,29 @@ export function SellerNetSheet({
   );
 
   return (
-    <LuxSheet open={open} onClose={onClose} kicker="Narzędzie" title="Ile zostanie na rękę">
+    <LuxSheet open={open} onClose={onClose} kicker={t("Narzędzie")} title={t("Ile zostanie na rękę")}>
       {offersPrices.length ? (
         <div className="mb-3 flex flex-wrap gap-2">
           {[defaultPrice, ...offersPrices].filter((v, i, a) => v > 0 && a.indexOf(v) === i).map((v) => (
             <button key={v} type="button" onClick={() => setPrice(v)} className={`lux-chip ${price === v ? "lux-chip--on" : ""}`}>
-              {v === defaultPrice ? "Cena z ogłoszenia" : `Oferta ${formatPln(v)}`}
+              {v === defaultPrice ? t("Cena z ogłoszenia") : `${t("Oferta")} ${formatPln(v)}`}
             </button>
           ))}
         </div>
       ) : null}
       <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2">{field("net-price", "Cena sprzedaży", price, setPrice, "zł")}</div>
-        <div className="col-span-2">{field("net-mortgage", "Kredyt do spłaty", mortgage, setMortgage, "zł")}</div>
-        {field("net-year", "Rok zakupu", year, setYear, "")}
-        {field("net-purchase", "Cena zakupu", purchase, setPurchase, "zł")}
+        <div className="col-span-2">{field("net-price", t("Cena sprzedaży"), price, setPrice, "zł")}</div>
+        <div className="col-span-2">{field("net-mortgage", t("Kredyt do spłaty"), mortgage, setMortgage, "zł")}</div>
+        {field("net-year", t("Rok zakupu"), year, setYear, "")}
+        {field("net-purchase", t("Cena zakupu"), purchase, setPurchase, "zł")}
       </div>
       <div className="mt-4 rounded-[22px] bg-black p-5 text-[#F6F3EE]">
         {[
-          ["Cena sprzedaży", price],
-          ["Spłata kredytu", -mortgage],
-          [`Wynagrodzenie biura (${calc.pct}%${seller.finance.commissionVat ? " + VAT" : ""})`, -calc.commission],
-          ["Podatek od sprzedaży", -calc.tax],
-          ["Zaświadczenia i opłaty", -calc.other],
+          [t("Cena sprzedaży"), price],
+          [t("Spłata kredytu"), -mortgage],
+          [`${t("Wynagrodzenie biura")} (${calc.pct}%${seller.finance.commissionVat ? " + VAT" : ""})`, -calc.commission],
+          [t("Podatek od sprzedaży"), -calc.tax],
+          [t("Zaświadczenia i opłaty"), -calc.other],
         ].map(([label, value]) => (
           <div key={String(label)} className="flex justify-between py-1.5 text-[14px]">
             <span className="text-[#BDB6AA]">{label}</span>
@@ -401,13 +409,13 @@ export function SellerNetSheet({
         ))}
         <div className="my-3 h-px bg-[#D8C3A0]/30" />
         <div className="flex items-baseline justify-between">
-          <span className="text-[14px] font-bold text-[#D8C3A0]">Na rękę</span>
+          <span className="text-[14px] font-bold text-[#D8C3A0]">{t("Na rękę")}</span>
           <span className="lux-serif text-[30px]">{formatPln(calc.net)}</span>
         </div>
       </div>
-      <p className="mt-3 text-[12px] leading-relaxed text-[var(--lux-ink-2)]">{calc.taxNote} Wyliczenie orientacyjne — przed aktem potwierdzi je notariusz.</p>
+      <p className="mt-3 text-[12px] leading-relaxed text-[var(--lux-ink-2)]">{calc.taxNote} {t("Wyliczenie orientacyjne — przed aktem potwierdzi je notariusz.")}</p>
       <button type="button" className="lux-btn lux-btn--ghost mt-3 w-full" disabled={saving} onClick={() => void save()}>
-        {saving ? "Zapisuję…" : "Zapamiętaj moje dane"}
+        {saving ? t("Zapisuję…") : t("Zapamiętaj moje dane")}
       </button>
     </LuxSheet>
   );

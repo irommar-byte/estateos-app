@@ -2,6 +2,7 @@
 
 import { FileText, ImageIcon } from "lucide-react";
 import { fileKind } from "@/lib/portalUpload";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 /** Podgląd pliku w panelu: zdjęcie, PDF (pierwsze strony w ramce) albo karta z nazwą. */
 export default function PortalFilePreview({
@@ -15,6 +16,7 @@ export default function PortalFilePreview({
   mimeType?: string | null;
   height?: number;
 }) {
+  const { t } = usePortalLocale();
   const kind = fileKind({ name, type: mimeType || "" });
   if (kind === "image") {
     return (
@@ -40,8 +42,8 @@ export default function PortalFilePreview({
       <p className="max-w-full truncate text-[14px] font-bold">{name}</p>
       <p className="text-[12px] text-[var(--lux-ink-3)]">
         {kind === "heic"
-          ? "Zdjęcie z iPhone'a (HEIC) — ta przeglądarka nie pokaże podglądu, ale agent zobaczy je normalnie."
-          : "Podgląd tego typu pliku nie jest dostępny w przeglądarce — agent otworzy go u siebie."}
+          ? t("Zdjęcie z iPhone'a (HEIC) — ta przeglądarka nie pokaże podglądu, ale agent zobaczy je normalnie.")
+          : t("Podgląd tego typu pliku nie jest dostępny w przeglądarce — agent otworzy go u siebie.")}
       </p>
     </div>
   );

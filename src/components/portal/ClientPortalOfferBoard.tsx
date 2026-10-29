@@ -34,6 +34,7 @@ import {
   type PortalSearchCriteria,
   type PortalTimelineItem,
 } from "@/lib/crm/clientPortalOfferBoard";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 type PortalMatch = {
   id: number;
@@ -105,13 +106,13 @@ function StatTile({
 }) {
   const toneClass =
     tone === "ok"
-      ? "text-emerald-700"
+      ? "text-[var(--lux-good)]"
       : tone === "warn"
-        ? "text-amber-700"
+        ? "text-[var(--lux-warn)]"
         : tone === "danger"
-          ? "text-rose-700"
+          ? "text-[var(--lux-danger)]"
           : tone === "new"
-            ? "text-sky-700"
+            ? "text-[var(--lux-gold-ink)]"
             : "text-[var(--eos-text)]";
   return (
     <div className="eos-inset-well rounded-2xl px-3.5 py-3">
@@ -135,6 +136,7 @@ function DistributionBar({
   dislike: number;
   pending: number;
 }) {
+  const { t } = usePortalLocale();
   if (!sent) return null;
   const parts = [
     { key: "like", n: like, className: "bg-emerald-500" },
@@ -156,10 +158,10 @@ function DistributionBar({
         )}
       </div>
       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-semibold text-[var(--eos-muted)]">
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-emerald-500" /> Chcę oglądać</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-amber-400" /> Do przemyślenia</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-rose-400" /> Nie pasuje</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-sky-400" /> Do oceny</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-emerald-500" /> {t("Chcę oglądać")}</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-amber-400" /> {t("Do przemyślenia")}</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-rose-400" /> {t("Nie pasuje")}</span>
+        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-sky-400" /> {t("Do oceny")}</span>
       </div>
     </div>
   );
@@ -232,10 +234,12 @@ export default function ClientPortalOfferBoard({
     phrase?: string | null;
   };
 }) {
+  const loc = usePortalLocale();
+  const { t } = loc;
   const stats = useMemo(() => computePortalOfferStats(matches), [matches]);
   const stacks = useMemo(() => groupPortalOfferStacks(matches), [matches]);
-  const direction = useMemo(() => buildSearchDirection(criteria, matches), [criteria, matches]);
-  const timeline = useMemo(() => buildPortalTimeline(matches, activities), [matches, activities]);
+  const direction = useMemo(() => buildSearchDirection(criteria, matches, loc), [criteria, matches, loc]);
+  const timeline = useMemo(() => buildPortalTimeline(matches, activities, loc), [matches, activities, loc]);
   const pulse = useMemo(
     () =>
       resolveAssistantPulse({
@@ -243,8 +247,8 @@ export default function ClientPortalOfferBoard({
         pendingNewCount: stats.pending,
         unscoredCount,
         pendingCheckback,
-      }),
-    [intelligenceEnabled, stats.pending, unscoredCount, pendingCheckback],
+      }, loc),
+    [intelligenceEnabled, stats.pending, unscoredCount, pendingCheckback, loc],
   );
   const pulseBeforeStacks = Boolean(pulse && pulse.mode !== "waiting_reaction");
   const pulseAfterStacks = pulse?.mode === "waiting_reaction";
@@ -299,7 +303,7 @@ export default function ClientPortalOfferBoard({
   };
 
   const pulseSlot = pulse ? (
-    <ClientPortalUpcomingOfferSlot pulse={pulse} live={live} onFocusNew={focusNewOffers} />
+    <ClientPortalUpcomingOfferSlot pulse={pulse} onFocusNew={focusNewOffers} />
   ) : null;
 
   const jumpToMatch = (matchId?: number) => {
@@ -320,15 +324,11 @@ export default function ClientPortalOfferBoard({
       <div className="eos-inset-frame rounded-[1.75rem] p-5 sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="eos-portal-label eos-portal-label--ok">Twój przegląd</p>
-            <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">Oferty od agenta</h2>
-            <p className="mt-1 max-w-xl text-sm leading-relaxed text-[var(--eos-muted)]">
-              Segregujemy propozycje tak, żebyś zawsze wiedział, co jest nowe, co chcesz zobaczyć i co już odłożyłeś.
-              Rozwiniętą kartę zostawiamy otwartą — nic samo się nie chowa.
-            </p>
+            <p className="eos-portal-label eos-portal-label--ok">{t("Twój przegląd")}</p>
+            <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">{t("Oferty od agenta")}</h2>
           </div>
           {live ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-600">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--lux-line)] px-2.5 py-1 text-[10px] font-semibold text-[var(--lux-good)]">
               <span className="eos-live-dot shrink-0" aria-hidden />
               Live
             </span>
@@ -336,38 +336,45 @@ export default function ClientPortalOfferBoard({
         </div>
 
         <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <StatTile label="Wysłane" value={stats.sent} hint={stats.lastSentAt ? `Ostatnia ${formatPortalWhen(stats.lastSentAt)}` : "Czekamy na pierwszą"} tone="muted" />
           <StatTile
-            label="Do oceny"
+            label={t("Wysłane")}
+            value={stats.sent}
+            hint={stats.lastSentAt ? t("ostatnia {date}", { date: formatPortalWhen(stats.lastSentAt, loc.dateLocale) }) : t("Czekamy na pierwszą")}
+            tone="muted"
+          />
+          <StatTile
+            label={t("Do oceny")}
             value={stats.pending}
-            hint={stats.pending ? "Tu zaczynasz" : "Wszystko ocenione"}
+            hint={stats.pending ? t("Tu zaczynasz") : t("Wszystko ocenione")}
             tone="new"
           />
-          <StatTile label="Chcę oglądać" value={stats.like} hint="Do prezentacji" tone="ok" />
-          <StatTile label="Nie pasuje" value={stats.dislike} hint={stats.maybe ? `+ ${stats.maybe} do przemyślenia` : "Odłożone"} tone="danger" />
+          <StatTile label={t("Chcę oglądać")} value={stats.like} hint={t("Do prezentacji")} tone="ok" />
+          <StatTile
+            label={t("Nie pasuje")}
+            value={stats.dislike}
+            hint={stats.maybe ? t("+ {n} do przemyślenia", { n: stats.maybe }) : t("Odłożone")}
+            tone="danger"
+          />
         </div>
         <DistributionBar sent={stats.sent} like={stats.like} maybe={stats.maybe} dislike={stats.dislike} pending={stats.pending} />
         {stats.sent ? (
           <p className="mt-3 text-[12px] text-[var(--eos-muted)]">
-            Odpowiedziałeś na <strong className="text-[var(--eos-text)]">{stats.responsePct}%</strong> propozycji
-            {stats.lastReactionAt ? ` · ostatnia reakcja ${formatPortalWhen(stats.lastReactionAt)}` : ""}.
+            {t("Odpowiedziałeś na {pct}% propozycji", { pct: stats.responsePct })}
+            {stats.lastReactionAt
+              ? ` · ${t("ostatnia reakcja {date}", { date: formatPortalWhen(stats.lastReactionAt, loc.dateLocale) })}`
+              : ""}
           </p>
         ) : null}
       </div>
 
       <div className="eos-inset-frame rounded-[1.75rem] p-5 sm:p-6">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600">
+          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-2xl bg-[var(--lux-gold-soft)] text-[var(--lux-gold-ink)]">
             <Sparkles className="size-4" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="eos-portal-label eos-portal-label--ok">{direction.headline}</p>
             <p className="mt-1 text-sm font-semibold leading-relaxed text-[var(--eos-text)]">{direction.summary}</p>
-            {intelligenceEnabled ? (
-              <p className="mt-1 text-[12px] text-[var(--eos-muted)]">
-                Propozycje przychodzą pojedynczo — tylko takie, które naprawdę pasują. Najwięcej mówią nam Twoje oceny przy ofertach.
-              </p>
-            ) : null}
           </div>
         </div>
         {direction.chips.length ? (
@@ -382,7 +389,7 @@ export default function ClientPortalOfferBoard({
         ) : null}
         {direction.phraseBars.length ? (
           <div className="mt-5 space-y-2">
-            <p className="eos-portal-label">Co powtarzasz najczęściej</p>
+            <p className="eos-portal-label">{t("Co powtarzasz najczęściej")}</p>
             {direction.phraseBars.map((bar) => (
               <div key={bar.phrase} className="flex items-center gap-3">
                 <p className="w-36 shrink-0 truncate text-[12px] font-semibold text-[var(--eos-text)] sm:w-48">
@@ -402,14 +409,14 @@ export default function ClientPortalOfferBoard({
           </div>
         ) : stats.sent ? (
           <p className="mt-4 text-[12px] leading-relaxed text-[var(--eos-muted)]">
-            Zaznacz plusy i minusy przy ofertach — tutaj pojawi się, w którą stronę idziemy.
+            {t("Zaznacz plusy i minusy przy ofertach — tutaj pojawi się, w którą stronę idziemy.")}
           </p>
         ) : null}
       </div>
 
       {freshBanner ? (
         <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-[var(--eos-text)]">
-          Nowa propozycja w stosie „Nowe do oceny”: {freshBanner}
+          {t("Nowa propozycja do oceny:")} {freshBanner}
         </div>
       ) : null}
 
@@ -423,7 +430,7 @@ export default function ClientPortalOfferBoard({
             }`}
           >
             <LayoutList className="size-3.5" />
-            Stosy
+            {t("Stosy")}
           </button>
           <button
             type="button"
@@ -433,22 +440,19 @@ export default function ClientPortalOfferBoard({
             }`}
           >
             <CalendarClock className="size-3.5" />
-            Oś czasu
+            {t("Oś czasu")}
           </button>
         </div>
-        <p className="text-[11px] text-[var(--eos-muted)]">
-          Kliknij wiersz oferty, żeby rozwinąć. Możesz mieć otwartych kilka naraz.
-        </p>
       </div>
 
       {matches.length === 0 ? (
         awaitingFirstOffer ? (
-          <ClientPortalOfferSearchPanel unscoredCount={unscoredCount} live={live} />
+          <ClientPortalOfferSearchPanel unscoredCount={unscoredCount} />
         ) : (
           <div className="eos-inset-well rounded-2xl border border-dashed border-[var(--eos-border)] p-8 text-center">
-            <p className="text-sm font-semibold text-[var(--eos-text)]">Brak ofert w stosach</p>
+            <p className="text-sm font-semibold text-[var(--eos-text)]">{t("Nie ma jeszcze ofert")}</p>
             <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
-              Gdy agent udostępni ofertę albo umówi prezentację, zobaczysz ją tutaj — w stosie „Nowe do oceny” lub jako umówione oglądanie powyżej.
+              {t("Gdy agent udostępni ofertę, zobaczysz ją tutaj.")}
             </p>
           </div>
         )
@@ -456,17 +460,14 @@ export default function ClientPortalOfferBoard({
         <div className="space-y-3">
           {pulseSlot}
           <div className="eos-inset-frame rounded-[1.6rem] p-5 sm:p-6">
-          <p className="eos-portal-label eos-portal-label--ok">Historia współpracy</p>
-          <p className="mt-1 text-sm text-[var(--eos-muted)]">
-            Kiedy poszła oferta, co odpowiedziałeś i o co pytał asystent.
-          </p>
+          <p className="eos-portal-label eos-portal-label--ok">{t("Historia współpracy")}</p>
           {timeline.length ? (
             <ol className="relative mt-5 ml-2 space-y-4 border-l border-[var(--eos-border)] pl-5">
               {timeline.map((item) => (
                 <li key={item.id} className="relative">
                   <TimelineDot tone={item.tone} />
                   <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--eos-muted)]">
-                    {formatPortalWhen(item.at)}
+                    {formatPortalWhen(item.at, loc.dateLocale)}
                   </p>
                   <p className="mt-0.5 text-sm font-bold text-[var(--eos-text)]">{item.title}</p>
                   {item.body ? (
@@ -476,16 +477,16 @@ export default function ClientPortalOfferBoard({
                     <button
                       type="button"
                       onClick={() => jumpToMatch(item.matchId)}
-                      className="mt-1 text-[11px] font-bold text-emerald-700 hover:underline"
+                      className="mt-1 text-[11px] font-bold text-[var(--lux-accent)] hover:underline"
                     >
-                      Pokaż ofertę
+                      {t("Pokaż ofertę")}
                     </button>
                   ) : null}
                 </li>
               ))}
             </ol>
           ) : (
-            <p className="mt-4 text-sm text-[var(--eos-muted)]">Historia pojawi się po pierwszej wysłanej ofercie.</p>
+            <p className="mt-4 text-sm text-[var(--eos-muted)]">{t("Historia pojawi się po pierwszej wysłanej ofercie.")}</p>
           )}
           </div>
         </div>
@@ -513,15 +514,15 @@ export default function ClientPortalOfferBoard({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-black text-[var(--eos-text)]">{stack.title}</span>
+                      <span className="text-sm font-black text-[var(--eos-text)]">{t(stack.title)}</span>
                       <span className="eos-lux-badge">{rows.length}</span>
                       {unreadCount ? (
-                        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-amber-800">
-                          {unreadCount} do przeczytania
+                        <span className="rounded-full bg-[var(--lux-gold-soft)] px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--lux-gold-ink)]">
+                          {t("{n} do przeczytania", { n: unreadCount })}
                         </span>
                       ) : null}
                     </span>
-                    <span className="mt-0.5 block text-[11px] leading-snug text-[var(--eos-muted)]">{stack.hint}</span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-[var(--eos-muted)]">{t(stack.hint)}</span>
                   </span>
                   <ChevronDown className={`size-4 shrink-0 text-[var(--eos-muted)] transition-transform ${open ? "rotate-180" : ""}`} />
                 </button>
@@ -553,7 +554,7 @@ export default function ClientPortalOfferBoard({
                         />
                       ))
                     ) : (
-                      <p className="px-1 py-3 text-center text-[12px] text-[var(--eos-muted)]">{stack.empty}</p>
+                      <p className="px-1 py-3 text-center text-[12px] text-[var(--eos-muted)]">{t(stack.empty)}</p>
                     )}
                   </div>
                 ) : null}

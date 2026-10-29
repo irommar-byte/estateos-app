@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 /** Arkusz od dołu (telefon) / okno (komputer) w stylu panelu. */
 export default function LuxSheet({
@@ -20,6 +21,7 @@ export default function LuxSheet({
   children: React.ReactNode;
   wide?: boolean;
 }) {
+  const { t } = usePortalLocale();
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -54,7 +56,7 @@ export default function LuxSheet({
             <button
               type="button"
               onClick={onClose}
-              aria-label="Zamknij"
+              aria-label={t("Zamknij")}
               className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[var(--lux-line)] bg-[var(--lux-card)]"
             >
               <X className="size-4" />

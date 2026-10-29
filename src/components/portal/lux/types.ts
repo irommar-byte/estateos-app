@@ -39,7 +39,7 @@ export type LuxMatch = {
 };
 
 export const SENTIMENT_LABEL: Record<string, string> = {
-  like: "Chcę obejrzeć",
+  like: "Chcę oglądać",
   maybe: "Do przemyślenia",
   dislike: "Nie pasuje",
 };

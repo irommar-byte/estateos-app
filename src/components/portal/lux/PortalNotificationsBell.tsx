@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, BellRing, CheckCheck, ChevronDown, Circle } from "lucide-react";
 import LuxSheet from "@/components/portal/lux/LuxSheet";
 import { NOTICE_GROUP_LABEL, type PortalNotice } from "@/lib/crm/portalNotices";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 /** Przeczytane powiadomienia — pamiętane w tej przeglądarce (id są stabilne). */
 export function useNoticeReadState(token: string | null) {
@@ -42,22 +43,20 @@ export function useNoticeReadState(token: string | null) {
   return { read, markRead };
 }
 
-function relTime(at: string | null) {
+/** „5 min temu”, „wczoraj” — w języku panelu. */
+function relTime(at: string | null, dateLocale: string) {
   if (!at) return "";
   const t = new Date(at).getTime();
   if (!Number.isFinite(t)) return "";
   const diff = Date.now() - t;
-  if (diff < 0) return new Date(at).toLocaleDateString("pl-PL", { day: "numeric", month: "short" });
+  if (diff < 0) return new Date(at).toLocaleDateString(dateLocale, { day: "numeric", month: "short" });
+  const rtf = new Intl.RelativeTimeFormat(dateLocale, { numeric: "auto" });
   const min = Math.round(diff / 60000);
-  if (min < 1) return "teraz";
-  if (min < 60) return `${min} min temu`;
+  if (min < 60) return rtf.format(-Math.max(min, 0), "minute");
   const h = Math.round(min / 60);
-  if (h < 24) return `${h} godz. temu`;
-  const d = Math.round(h / 24);
-  return d === 1 ? "wczoraj" : `${d} dni temu`;
+  if (h < 24) return rtf.format(-h, "hour");
+  return rtf.format(-Math.round(h / 24), "day");
 }
-
-const plNew = (n: number) => (n === 1 ? "nowa rzecz" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? "nowe rzeczy" : "nowych rzeczy");
 
 /**
  * Dzwonek w prawym górnym rogu: dzwoni, gdy jest coś nowego, i podpowiada „przewiń w dół”.
@@ -77,6 +76,8 @@ export default function PortalNotificationsBell({
   /** header — w czarnym nagłówku z podpowiedzią „zjedź niżej”; bar — mały, w przypiętym pasku */
   variant?: "header" | "bar";
 }) {
+  const { t, p, dateLocale } = usePortalLocale();
+  const plNew = (n: number) => p(n, "nowa rzecz|nowe rzeczy|nowych rzeczy");
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"new" | "read" | "all">("new");
   const fresh = useMemo(() => notices.filter((n) => !read.has(n.id)), [notices, read]);
@@ -99,7 +100,7 @@ export default function PortalNotificationsBell({
     <button
       type="button"
       onClick={openSheet}
-      aria-label={ringing ? `Powiadomienia: ${fresh.length} nowych` : "Powiadomienia"}
+      aria-label={ringing ? `${t("Powiadomienia")}: ${fresh.length} ${plNew(fresh.length)}` : t("Powiadomienia")}
       className={`relative flex items-center justify-center rounded-full border border-[#D8C3A0]/35 ${
         variant === "header" ? "size-10" : "size-9"
       } ${ringing ? "eos-bell-halo" : ""}`}
@@ -127,28 +128,28 @@ export default function PortalNotificationsBell({
             onClick={() => go(fresh[0])}
             className="flex items-center gap-1 rounded-full bg-[#D8C3A0] px-2.5 py-1 text-[11px] font-bold text-black"
           >
-            {fresh.length} {plNew(fresh.length)} — zjedź niżej
+            {fresh.length} {plNew(fresh.length)} — {t("zjedź niżej")}
             <ChevronDown className="eos-scroll-hint size-3.5" />
           </button>
         ) : null}
       </div>
 
 
-      <LuxSheet open={open} onClose={() => setOpen(false)} kicker="Powiadomienia" title={fresh.length ? `${fresh.length} ${plNew(fresh.length)}` : "Wszystko przeczytane"}>
+      <LuxSheet open={open} onClose={() => setOpen(false)} kicker={t("Powiadomienia")} title={fresh.length ? `${fresh.length} ${plNew(fresh.length)}` : t("Wszystko przeczytane")}>
         <div className="grid grid-cols-3 gap-2">
           {[
-            { k: "new" as const, label: "Nowe", n: fresh.length },
-            { k: "read" as const, label: "Przeczytane", n: seen.length },
-            { k: "all" as const, label: "Wszystkie", n: notices.length },
-          ].map((t) => (
+            { k: "new" as const, label: t("Nowe"), n: fresh.length },
+            { k: "read" as const, label: t("Przeczytane"), n: seen.length },
+            { k: "all" as const, label: t("Wszystkie"), n: notices.length },
+          ].map((tabItem) => (
             <button
-              key={t.k}
+              key={tabItem.k}
               type="button"
-              onClick={() => setTab(t.k)}
-              className={`rounded-[16px] border px-3 py-2.5 text-left ${tab === t.k ? "border-[var(--lux-solid)] bg-[var(--lux-solid)] text-[var(--lux-solid-ink)]" : "border-[var(--lux-line)] bg-[var(--lux-card)] text-[var(--lux-ink)]"}`}
+              onClick={() => setTab(tabItem.k)}
+              className={`rounded-[16px] border px-3 py-2.5 text-left ${tab === tabItem.k ? "border-[var(--lux-solid)] bg-[var(--lux-solid)] text-[var(--lux-solid-ink)]" : "border-[var(--lux-line)] bg-[var(--lux-card)] text-[var(--lux-ink)]"}`}
             >
-              <span className="lux-serif block text-[24px] leading-none">{t.n}</span>
-              <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.12em] opacity-80">{t.label}</span>
+              <span className="lux-serif block text-[24px] leading-none">{tabItem.n}</span>
+              <span className="mt-1 block text-[11px] font-bold uppercase tracking-[0.12em] opacity-80">{tabItem.label}</span>
             </button>
           ))}
         </div>
@@ -159,7 +160,7 @@ export default function PortalNotificationsBell({
             onClick={() => onMarkRead(fresh.map((n) => n.id))}
             className="mt-3 inline-flex items-center gap-1.5 text-[12px] font-bold text-[var(--lux-accent)]"
           >
-            <CheckCheck className="size-4" /> Oznacz wszystkie jako przeczytane
+            <CheckCheck className="size-4" /> {t("Oznacz wszystkie jako przeczytane")}
           </button>
         ) : null}
 
@@ -180,10 +181,10 @@ export default function PortalNotificationsBell({
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="rounded-full bg-[var(--lux-gold-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--lux-gold-ink)]">
-                          {NOTICE_GROUP_LABEL[n.group]}
+                          {t(NOTICE_GROUP_LABEL[n.group])}
                         </span>
-                        {n.tone === "action" ? <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--lux-danger)]">do zrobienia</span> : null}
-                        <span className="ml-auto shrink-0 text-[11px] text-[var(--lux-ink-3)]">{relTime(n.at)}</span>
+                        {n.tone === "action" ? <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--lux-danger)]">{t("do zrobienia")}</span> : null}
+                        <span className="ml-auto shrink-0 text-[11px] text-[var(--lux-ink-3)]">{relTime(n.at, dateLocale)}</span>
                       </span>
                       <span className={`mt-1 block text-[14px] ${isNew ? "font-bold" : "font-semibold text-[var(--lux-ink-2)]"}`}>{n.title}</span>
                       {n.body ? <span className="mt-0.5 line-clamp-2 block text-[12.5px] text-[var(--lux-ink-3)]">{n.body}</span> : null}
@@ -194,7 +195,7 @@ export default function PortalNotificationsBell({
             })
           ) : (
             <li className="rounded-[18px] bg-[var(--lux-card)] p-5 text-center text-[13px] text-[var(--lux-ink-3)]">
-              {tab === "new" ? "Nie ma nic nowego. Damy znać, gdy coś się pojawi." : "Brak powiadomień."}
+              {tab === "new" ? t("Nie ma nic nowego. Damy znać, gdy coś się pojawi.") : t("Brak powiadomień.")}
             </li>
           )}
         </ul>

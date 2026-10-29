@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowRight, CalendarCheck2, Clock3, MessageCircle, Phone, Sparkles, CheckCircle2 } from "lucide-react";
-import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
+import { PORTAL_TR_PL, type PortalTr } from "@/i18n/portal/translate";
 
 /**
  * Pierwsza karta panelu klienta: co się teraz dzieje i co (jeśli cokolwiek) klient ma zrobić.
@@ -50,151 +51,147 @@ function isUpcoming(slot: Slot | null): boolean {
   return Number.isFinite(at) && at > Date.now() - 2 * 60 * 60 * 1000;
 }
 
-function plural(n: number, one: string, few: string, many: string): string {
-  if (n === 1) return one;
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  return mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? few : many;
-}
-
-export function resolvePortalNow(input: PortalNowInput): NowState {
+export function resolvePortalNow(input: PortalNowInput, tr: PortalTr = PORTAL_TR_PL): NowState {
+  const { t, p, dateLocale } = tr;
   const agentFirst = input.agentName.split(" ")[0] || input.agentName;
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString(dateLocale, { timeZone: "Europe/Warsaw", weekday: "short", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 
   if (input.presentation && isUpcoming(input.presentation) && input.presentation.status === "pending" && input.presentation.proposedBy === "agent") {
     return {
       tone: "action",
-      eyebrow: "Do zrobienia",
-      title: "Wybierz termin oglądania",
-      body: `${agentFirst} proponuje termin. Potwierdź go jednym kliknięciem albo zaproponuj inny.`,
-      cta: { label: "Wybierz termin", target: "portal-presentation" },
+      eyebrow: t("Do zrobienia"),
+      title: t("Wybierz termin oglądania"),
+      body: t("{agent} proponuje termin. Potwierdź go jednym kliknięciem albo zaproponuj inny.", { agent: agentFirst }),
+      cta: { label: t("Wybierz termin"), target: "portal-presentation" },
     };
   }
   if (input.meeting && isUpcoming(input.meeting) && input.meeting.status === "pending" && input.meeting.proposedBy === "agent") {
     return {
       tone: "action",
-      eyebrow: "Do zrobienia",
-      title: "Potwierdź spotkanie",
-      body: `${formatMeetingWhenPl(input.meeting.startsAt)}${input.meeting.location ? ` · ${input.meeting.location}` : ""}`,
-      cta: { label: "Potwierdź termin", target: "portal-meeting" },
+      eyebrow: t("Do zrobienia"),
+      title: t("Potwierdź spotkanie"),
+      body: `${when(input.meeting.startsAt)}${input.meeting.location ? ` · ${input.meeting.location}` : ""}`,
+      cta: { label: t("Potwierdź termin"), target: "portal-meeting" },
     };
   }
   if (input.hasCheckback) {
     return {
       tone: "action",
-      eyebrow: "Do zrobienia",
-      title: `${agentFirst} ma do Ciebie pytanie`,
-      body: "Jedna odpowiedź pomoże lepiej dobrać kolejne propozycje.",
-      cta: { label: "Odpowiedz", target: "portal-checkback" },
+      eyebrow: t("Do zrobienia"),
+      title: t("{agent} ma do Ciebie pytanie", { agent: agentFirst }),
+      body: t("Jedna odpowiedź pomoże lepiej dobrać kolejne propozycje."),
+      cta: { label: t("Odpowiedz"), target: "portal-checkback" },
     };
   }
   if (input.pendingDecisionTitle) {
     return {
       tone: "action",
-      eyebrow: "Twoja decyzja",
+      eyebrow: t("Twoja decyzja"),
       title: input.pendingDecisionTitle,
-      body: `${agentFirst} czeka na Twoją decyzję, żeby przejść dalej.`,
-      cta: { label: "Zobacz i zdecyduj", target: "portal-decisions" },
+      body: t("{agent} czeka na Twoją decyzję, żeby przejść dalej.", { agent: agentFirst }),
+      cta: { label: t("Zobacz i zdecyduj"), target: "portal-decisions" },
     };
   }
   if (input.unreadAgentReplies > 0) {
     return {
       tone: "action",
-      eyebrow: "Nowa odpowiedź",
-      title: "Masz nową odpowiedź od agenta",
-      body: "Odpowiedź na Twoje pytanie o ofertę czeka poniżej.",
-      cta: { label: "Przeczytaj", target: "portal-replies" },
+      eyebrow: t("Nowa odpowiedź"),
+      title: t("Masz nową odpowiedź od agenta"),
+      body: t("Odpowiedź na Twoje pytanie o ofertę czeka poniżej."),
+      cta: { label: t("Przeczytaj"), target: "portal-replies" },
     };
   }
   if (input.type === "BUYER" && input.pendingOfferCount > 0) {
     const n = input.pendingOfferCount;
     return {
       tone: "action",
-      eyebrow: "Do zrobienia",
-      title: `Oceń ${n} ${plural(n, "nową propozycję", "nowe propozycje", "nowych propozycji")}`,
-      body: `Kliknij „Chcę obejrzeć”, „Do przemyślenia” albo „Nie pasuje”. Po każdej ocenie ${agentFirst} lepiej wie, czego szukasz.`,
-      cta: { label: "Zobacz propozycje", target: "portal-offers" },
+      eyebrow: t("Do zrobienia"),
+      title: t("Oceń {n} {items}", { n, items: p(n, "nową propozycję|nowe propozycje|nowych propozycji") }),
+      body: t("Kliknij „Chcę oglądać”, „Do przemyślenia” albo „Nie pasuje”. Po każdej ocenie {agent} lepiej wie, czego szukasz.", { agent: agentFirst }),
+      cta: { label: t("Zobacz propozycje"), target: "portal-offers" },
     };
   }
   if (input.presentation && isUpcoming(input.presentation)) {
     return {
       tone: "info",
-      eyebrow: input.presentation.status === "confirmed" ? "Oglądanie potwierdzone" : "Czekamy na agenta",
-      title: formatMeetingWhenPl(input.presentation.startsAt),
+      eyebrow: input.presentation.status === "confirmed" ? t("Oglądanie potwierdzone") : t("Czekamy na agenta"),
+      title: when(input.presentation.startsAt),
       body: input.presentation.status === "confirmed"
-        ? input.presentation.location || "Szczegóły i dojazd poniżej."
-        : `${agentFirst} potwierdzi zaproponowany przez Ciebie termin.`,
-      cta: { label: "Szczegóły", target: "portal-presentation" },
+        ? input.presentation.location || t("Szczegóły i dojazd poniżej.")
+        : t("{agent} potwierdzi zaproponowany przez Ciebie termin.", { agent: agentFirst }),
+      cta: { label: t("Szczegóły"), target: "portal-presentation" },
     };
   }
   if (input.meeting && isUpcoming(input.meeting)) {
     return {
       tone: "info",
-      eyebrow: input.meeting.status === "confirmed" ? "Spotkanie potwierdzone" : "Czekamy na agenta",
-      title: formatMeetingWhenPl(input.meeting.startsAt),
-      body: input.meeting.location || "Szczegóły spotkania poniżej.",
-      cta: { label: "Szczegóły", target: "portal-meeting" },
+      eyebrow: input.meeting.status === "confirmed" ? t("Spotkanie potwierdzone") : t("Czekamy na agenta"),
+      title: when(input.meeting.startsAt),
+      body: input.meeting.location || t("Szczegóły spotkania poniżej."),
+      cta: { label: t("Szczegóły"), target: "portal-meeting" },
     };
   }
   if (input.purchasePhase === "closed") {
     return {
       tone: "done",
-      eyebrow: "Gratulacje",
-      title: "Nieruchomość jest Twoja",
-      body: `${agentFirst} domyka formalności i przekazanie kluczy.`,
+      eyebrow: t("Gratulacje"),
+      title: t("Nieruchomość jest Twoja"),
+      body: t("{agent} domyka formalności i przekazanie kluczy.", { agent: agentFirst }),
     };
   }
   if (input.purchasePhase === "negotiating") {
     return {
       tone: "info",
-      eyebrow: "Transakcja",
-      title: "Trwają ustalenia warunków",
-      body: `${agentFirst} prowadzi rozmowy. Dostaniesz informację, gdy będzie potrzebny Twój podpis.`,
+      eyebrow: t("Transakcja"),
+      title: t("Trwają ustalenia warunków"),
+      body: t("{agent} prowadzi rozmowy. Dostaniesz informację, gdy będzie potrzebny Twój podpis.", { agent: agentFirst }),
     };
   }
   if (input.type === "BUYER") {
     if (input.firstOfferPendingAgent) {
       return {
         tone: "info",
-        eyebrow: "Pracujemy dla Ciebie",
-        title: "Pierwsza propozycja jest już u agenta",
-        body: `${agentFirst} ją sprawdza. Pojawi się tutaj, gdy ją zatwierdzi — dostaniesz też wiadomość.`,
+        eyebrow: t("Pracujemy dla Ciebie"),
+        title: t("Pierwsza propozycja jest już u agenta"),
+        body: t("{agent} ją sprawdza. Pojawi się tutaj, gdy ją zatwierdzi — dostaniesz też wiadomość.", { agent: agentFirst }),
       };
     }
     if (input.awaitingFirstOffer || input.totalOfferCount === 0) {
       return {
         tone: "info",
-        eyebrow: "Pracujemy dla Ciebie",
-        title: "Szukamy nieruchomości pod Twoje kryteria",
-        body: "Gdy znajdziemy coś wartego uwagi, zobaczysz to tutaj i dostaniesz wiadomość. Nic nie musisz robić.",
+        eyebrow: t("Pracujemy dla Ciebie"),
+        title: t("Szukamy nieruchomości pod Twoje kryteria"),
+        body: t("Gdy znajdziemy coś wartego uwagi, zobaczysz to tutaj i dostaniesz wiadomość. Nic nie musisz robić."),
       };
     }
     return {
       tone: "done",
-      eyebrow: "Wszystko ocenione",
-      title: "Dziękujemy za oceny",
-      body: `${agentFirst} szuka kolejnych dopasowań. Damy znać, gdy pojawi się coś nowego.`,
-      cta: { label: "Twoje propozycje", target: "portal-offers" },
+      eyebrow: t("Wszystko ocenione"),
+      title: t("Dziękujemy za oceny"),
+      body: t("{agent} szuka kolejnych dopasowań. Damy znać, gdy pojawi się coś nowego.", { agent: agentFirst }),
+      cta: { label: t("Twoje propozycje"), target: "portal-offers" },
     };
   }
   if (!input.agreementSigned) {
     return {
       tone: "info",
-      eyebrow: "Przygotowanie",
-      title: input.hasAgreement ? "Umowa jest gotowa do przejrzenia" : "Agent przygotowuje umowę",
+      eyebrow: t("Przygotowanie"),
+      title: input.hasAgreement ? t("Umowa jest gotowa do przejrzenia") : t("Agent przygotowuje umowę"),
       body: input.hasAgreement
-        ? "Zapoznaj się z warunkami współpracy przed podpisem."
-        : "Po spotkaniu zobaczysz tutaj warunki współpracy i dokument do podpisu.",
-      cta: input.hasAgreement ? { label: "Zobacz umowę", target: "portal-agreement" } : undefined,
+        ? t("Zapoznaj się z warunkami współpracy przed podpisem.")
+        : t("Po spotkaniu zobaczysz tutaj warunki współpracy i dokument do podpisu."),
+      cta: input.hasAgreement ? { label: t("Zobacz umowę"), target: "portal-agreement" } : undefined,
     };
   }
   return {
     tone: input.listingLive ? "done" : "info",
-    eyebrow: input.listingLive ? "Sprzedaż trwa" : "Przygotowanie ogłoszenia",
-    title: input.listingLive ? "Ogłoszenie jest aktywne" : "Agent przygotowuje ogłoszenie",
+    eyebrow: input.listingLive ? t("Sprzedaż trwa") : t("Przygotowanie ogłoszenia"),
+    title: input.listingLive ? t("Ogłoszenie jest aktywne") : t("Agent przygotowuje ogłoszenie"),
     body: input.listingLive
-      ? "Postępy promocji i zainteresowanie kupujących widzisz poniżej."
-      : "Ogłoszenie zobaczysz tutaj po aktywacji — dostaniesz powiadomienie.",
-    cta: input.listingLive ? { label: "Zobacz sprzedaż", target: "portal-listing" } : undefined,
+      ? t("Postępy promocji i zainteresowanie kupujących widzisz poniżej.")
+      : t("Ogłoszenie zobaczysz tutaj po aktywacji — dostaniesz powiadomienie."),
+    cta: input.listingLive ? { label: t("Zobacz sprzedaż"), target: "portal-listing" } : undefined,
   };
 }
 
@@ -205,7 +202,8 @@ function scrollToId(id: string) {
 }
 
 export default function ClientPortalNowCard({ input }: { input: PortalNowInput }) {
-  const now = resolvePortalNow(input);
+  const tr = usePortalLocale();
+  const now = resolvePortalNow(input, tr);
   const Icon = now.tone === "action" ? Sparkles : now.tone === "done" ? CheckCircle2 : input.presentation || input.meeting ? CalendarCheck2 : Clock3;
   const accent =
     now.tone === "action"
@@ -246,7 +244,7 @@ export default function ClientPortalNowCard({ input }: { input: PortalNowInput }
               className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 text-sm font-bold text-[var(--eos-text)] transition hover:border-emerald-500/40 sm:flex-none"
             >
               <Phone className="size-4 text-emerald-600" aria-hidden />
-              Zadzwoń
+              {tr.t("Zadzwoń")}
             </a>
           ) : null}
           <button
@@ -255,7 +253,7 @@ export default function ClientPortalNowCard({ input }: { input: PortalNowInput }
             className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-5 text-sm font-bold text-[var(--eos-text)] transition hover:border-emerald-500/40 sm:flex-none"
           >
             <MessageCircle className="size-4 text-emerald-600" aria-hidden />
-            Napisz
+            {tr.t("Napisz")}
           </button>
         </div>
       </div>

@@ -5,6 +5,7 @@ import {
   parseClientOfferFeedback,
   type ClientOfferSentiment,
 } from '@/lib/crm/clientPortalFeedback';
+import { PORTAL_TR_PL, type PortalTr } from '@/i18n/portal/translate';
 
 export type PortalBoardMatch = {
   id: number;
@@ -229,33 +230,35 @@ export function defaultOpenStacks(stats: PortalOfferStats): OfferStackId[] {
 export function buildSearchDirection(
   criteria: PortalSearchCriteria,
   matches: PortalBoardMatch[],
+  tr: PortalTr = PORTAL_TR_PL,
 ): SearchDirection {
+  const { t } = tr;
   const chips: SearchDirectionChip[] = [];
   if (criteria) {
-    if (criteria.location) chips.push({ key: 'location', label: 'Lokalizacja', value: criteria.location });
+    if (criteria.location) chips.push({ key: 'location', label: t('Lokalizacja'), value: criteria.location });
     if (criteria.maxBudget && criteria.maxBudget !== 'Bez limitu') {
-      chips.push({ key: 'budget', label: 'Budżet', value: criteria.maxBudget });
+      chips.push({ key: 'budget', label: t('Budżet'), value: criteria.maxBudget });
     }
     if (criteria.minRooms && criteria.minRooms > 0) {
       chips.push({
         key: 'rooms',
-        label: 'Pokoje',
-        value: `min. ${criteria.minRooms}`,
+        label: t('Pokoje'),
+        value: t('min. {n}', { n: criteria.minRooms }),
       });
     }
     if (criteria.minYear && criteria.minYear > 1900) {
-      chips.push({ key: 'year', label: 'Rok budowy', value: `od ${criteria.minYear}` });
+      chips.push({ key: 'year', label: t('Rok budowy'), value: t('od {date}', { date: criteria.minYear }) });
     }
     const area = criteria.areaLabel || criteria.minArea;
     if (area && area !== 'Dowolny metraż') {
-      chips.push({ key: 'area', label: 'Metraż', value: area });
+      chips.push({ key: 'area', label: t('Metraż'), value: t(area) });
     }
     if (criteria.propertyType && criteria.propertyType !== 'Wszystkie') {
-      const tx = criteria.transactionType && criteria.transactionType !== '—' ? `${criteria.transactionType} · ` : '';
-      chips.push({ key: 'type', label: 'Typ', value: `${tx}${criteria.propertyType}` });
+      const tx = criteria.transactionType && criteria.transactionType !== '—' ? `${t(criteria.transactionType)} · ` : '';
+      chips.push({ key: 'type', label: t('Typ'), value: `${tx}${t(criteria.propertyType)}` });
     }
     for (const amenity of criteria.amenities || []) {
-      chips.push({ key: `amenity-${amenity}`, label: 'Musi być', value: amenity });
+      chips.push({ key: `amenity-${amenity}`, label: t('Musi być'), value: t(amenity) });
     }
   }
 
@@ -263,25 +266,23 @@ export function buildSearchDirection(
   const summary = chips.map((chip) => chip.value).join(' · ');
 
   return {
-    headline: 'Asystent szuka teraz',
-    summary:
-      summary ||
-      'Oceń kilka ofert — tu pojawi się, czego szukamy coraz precyzyjniej.',
+    headline: t('Asystent szuka teraz'),
+    summary: summary || t('Oceń kilka ofert — tu pojawi się, czego szukamy coraz precyzyjniej.'),
     chips,
     phraseBars,
   };
 }
 
-function checkbackOptionLabel(optionId: string | null | undefined): string | null {
+function checkbackOptionLabel(optionId: string | null | undefined, tr: PortalTr): string | null {
   if (!optionId) return null;
-  return CHECKBACK_OPTION_LABELS[optionId] || optionId.replace(/_/g, ' ');
+  const label = CHECKBACK_OPTION_LABELS[optionId];
+  return label ? tr.t(label) : optionId.replace(/_/g, ' ');
 }
 
-function reactionTitle(sentiment: ClientOfferSentiment | null, offerTitle: string): string {
-  if (sentiment === 'like') return `Chcesz oglądać: ${offerTitle}`;
-  if (sentiment === 'maybe') return `Do przemyślenia: ${offerTitle}`;
-  if (sentiment === 'dislike') return `Nie pasuje: ${offerTitle}`;
-  return `Reakcja: ${offerTitle}`;
+function reactionTitle(sentiment: ClientOfferSentiment | null, offerTitle: string, tr: PortalTr): string {
+  const label =
+    sentiment === 'like' ? 'Chcesz oglądać' : sentiment === 'maybe' ? 'Do przemyślenia' : sentiment === 'dislike' ? 'Nie pasuje' : 'Reakcja';
+  return `${tr.t(label)}: ${offerTitle}`;
 }
 
 function reactionTone(sentiment: ClientOfferSentiment | null): PortalTimelineTone {
@@ -294,7 +295,9 @@ function reactionTone(sentiment: ClientOfferSentiment | null): PortalTimelineTon
 export function buildPortalTimeline(
   matches: PortalBoardMatch[],
   activities: PortalBoardActivity[],
+  tr: PortalTr = PORTAL_TR_PL,
 ): PortalTimelineItem[] {
+  const { t } = tr;
   const items: PortalTimelineItem[] = [];
   const matchByOfferId = new Map(matches.map((match) => [match.offer.id, match]));
 
@@ -304,7 +307,7 @@ export function buildPortalTimeline(
         id: `sent-${match.id}`,
         at: match.notifiedAt,
         kind: 'offer_sent',
-        title: match.intelligenceSent ? `Asystent wysłał: ${match.offer.title}` : `Agent wysłał: ${match.offer.title}`,
+        title: `${match.intelligenceSent ? t('Asystent wysłał') : t('Agent wysłał')}: ${match.offer.title}`,
         body: [match.offer.city, match.offer.district].filter(Boolean).join(' · ') || null,
         matchId: match.id,
         offerId: match.offer.id,
@@ -317,7 +320,7 @@ export function buildPortalTimeline(
         id: `react-${match.id}`,
         at: match.clientFeedbackAt,
         kind: 'reaction',
-        title: reactionTitle(feedback.sentiment, match.offer.title),
+        title: reactionTitle(feedback.sentiment, match.offer.title, tr),
         body: [feedback.phrases.slice(0, 3).join(' · '), feedback.note].filter(Boolean).join(' — ') || null,
         matchId: match.id,
         offerId: match.offer.id,
@@ -340,13 +343,13 @@ export function buildPortalTimeline(
 
     if (activity.kind === 'INTELLIGENCE_CHECKBACK') {
       const status = String(meta.status || '');
-      const option = checkbackOptionLabel(typeof meta.optionId === 'string' ? meta.optionId : null);
+      const option = checkbackOptionLabel(typeof meta.optionId === 'string' ? meta.optionId : null, tr);
       const pending = status === 'pending' || !status;
       items.push({
         id: `act-${activity.id}`,
         at: typeof meta.respondedAt === 'string' ? meta.respondedAt : activity.createdAt,
         kind: 'checkback',
-        title: pending ? 'Asystent zapytał o preferencje' : option ? `Odpowiedź: ${option}` : 'Potwierdziłeś preferencję',
+        title: pending ? t('Asystent zapytał o preferencje') : option ? `${t('Odpowiedź')}: ${option}` : t('Potwierdziłeś preferencję'),
         body: activity.body,
         tone: pending ? 'warn' : status === 'rejected' ? 'danger' : 'ok',
       });
@@ -358,7 +361,7 @@ export function buildPortalTimeline(
         id: `act-${activity.id}`,
         at: activity.createdAt,
         kind: 'planned',
-        title: activity.title || 'Asystent planuje kolejną propozycję',
+        title: activity.title || t('Asystent planuje kolejną propozycję'),
         body: activity.body,
         tone: 'info',
       });
@@ -370,7 +373,7 @@ export function buildPortalTimeline(
         id: `act-${activity.id}`,
         at: activity.createdAt,
         kind: 'handoff',
-        title: activity.title || 'Agent przejmuje temat',
+        title: activity.title || t('Agent przejmuje temat'),
         body: activity.body,
         tone: 'warn',
       });
@@ -382,7 +385,7 @@ export function buildPortalTimeline(
         id: `act-${activity.id}`,
         at: activity.createdAt,
         kind: 'reminder',
-        title: activity.title || 'Przypomnienie o ocenie oferty',
+        title: activity.title || t('Przypomnienie o ocenie oferty'),
         body: activity.body,
         matchId: match?.id,
         offerId,
@@ -394,11 +397,11 @@ export function buildPortalTimeline(
   return items.sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
 }
 
-export function formatPortalWhen(iso: string | null | undefined): string {
+export function formatPortalWhen(iso: string | null | undefined, dateLocale = 'pl-PL'): string {
   if (!iso) return '';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString('pl-PL', {
+  return date.toLocaleString(dateLocale, {
     day: 'numeric',
     month: 'short',
     hour: '2-digit',
@@ -440,60 +443,44 @@ export type AssistantPulse = {
   busy: boolean;
 };
 
-export function polishPlural(n: number, one: string, few: string, many: string): string {
-  const abs = Math.abs(Math.trunc(n));
-  const mod10 = abs % 10;
-  const mod100 = abs % 100;
-  if (abs === 1) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
-}
-
-export function resolveAssistantPulse(input: {
-  intelligenceEnabled: boolean;
-  pendingNewCount: number;
-  unscoredCount: number;
-  pendingCheckback: boolean;
-}): AssistantPulse | null {
+export function resolveAssistantPulse(
+  input: {
+    intelligenceEnabled: boolean;
+    pendingNewCount: number;
+    unscoredCount: number;
+    pendingCheckback: boolean;
+  },
+  tr: PortalTr = PORTAL_TR_PL,
+): AssistantPulse | null {
+  const { t, p } = tr;
   const pending = Math.max(0, input.pendingNewCount);
   const queued = Math.max(0, input.unscoredCount);
 
   if (input.pendingCheckback && input.intelligenceEnabled) {
     return {
       mode: 'waiting_checkback',
-      badge: 'Pytanie otwarte',
-      title: 'Asystent czeka na Twoją odpowiedź powyżej',
-      body: 'Dopóki nie wybierzesz, kolejna oferta nie pójdzie — asystent nie zgaduje za Ciebie.',
-      activity: 'Panel na żywo · nic nie umknie',
+      badge: t('Pytanie otwarte'),
+      title: t('Asystent czeka na Twoją odpowiedź powyżej'),
+      body: t('Wybierz jedną opcję — dopiero wtedy przyjdzie kolejna oferta.'),
+      activity: null,
       cta: null,
       busy: false,
     };
   }
 
   if (pending > 0) {
-    const pendingLabel = `${pending} ${polishPlural(pending, 'nową ofertę', 'nowe oferty', 'nowych ofert')}`;
-    if (!input.intelligenceEnabled) {
-      return {
-        mode: 'waiting_reaction',
-        badge: 'Od agenta',
-        title: pending === 1 ? 'Agent wysłał ofertę' : 'Agent wysłał oferty',
-        body: `Masz ${pendingLabel} do decyzji. Oceń propozycję — agent zobaczy Twoją reakcję w CRM.`,
-        activity: 'Panel na żywo',
-        cta: 'Przejdź do ofert',
-        busy: false,
-      };
-    }
-    const queuedLine =
-      queued > 0
-        ? ` W tle trzymamy jeszcze ${queued} ${polishPlural(queued, 'dopasowanie', 'dopasowania', 'dopasowań')} — nie pokażemy ich, zanim nie ocenisz tego, co już dostałeś.`
-        : ' Kolejną kartę wyśle, gdy będzie miał na czym oprzeć wybór.';
+    const pendingLabel = `${pending} ${p(pending, 'nową ofertę|nowe oferty|nowych ofert')}`;
     return {
       mode: 'waiting_reaction',
-      badge: 'Czeka na Ciebie',
-      title: 'Najpierw oceń to, co już dostałeś',
-      body: `Masz ${pendingLabel} do decyzji. Asystent jest włączony i uczy się z Twoich reakcji.${queuedLine}`,
-      activity: 'Czuwa · nie szuka na ślepo kolejnej karty',
-      cta: 'Przejdź do nowych ofert',
+      badge: input.intelligenceEnabled ? t('Czeka na Ciebie') : t('Od agenta'),
+      title: input.intelligenceEnabled
+        ? t('Najpierw oceń to, co już dostałeś')
+        : pending === 1
+          ? t('Agent wysłał ofertę')
+          : t('Agent wysłał oferty'),
+      body: t('Masz {offers} do decyzji. Agent zobaczy Twoją ocenę od razu.', { offers: pendingLabel }),
+      activity: null,
+      cta: t('Przejdź do ofert'),
       busy: false,
     };
   }
@@ -501,9 +488,12 @@ export function resolveAssistantPulse(input: {
   if (queued > 0 && input.intelligenceEnabled) {
     return {
       mode: 'preparing',
-      badge: 'Dobiera ofertę',
-      title: 'Szykujemy następną propozycję',
-      body: `W tle jest ${queued} ${polishPlural(queued, 'dopasowanie', 'dopasowania', 'dopasowań')}. Karta pojawi się tutaj, gdy asystent wybierze jedną pewną — nie losową.`,
+      badge: t('Dobiera ofertę'),
+      title: t('Szykujemy następną propozycję'),
+      body: t('W tle jest {n} {matches}. Pokażemy tę, która naprawdę pasuje.', {
+        n: queued,
+        matches: p(queued, 'dopasowanie|dopasowania|dopasowań'),
+      }),
       activity: null,
       cta: null,
       busy: true,
@@ -513,10 +503,10 @@ export function resolveAssistantPulse(input: {
   if (input.intelligenceEnabled) {
     return {
       mode: 'watching',
-      badge: 'Czuwa',
-      title: 'Rynek jest pod obserwacją',
-      body: 'Nie ma teraz nowej karty w kolejce. Asystent wróci, gdy pojawi się coś pewnego względem Twoich kryteriów.',
-      activity: 'Czuwa nad rynkiem · panel na żywo',
+      badge: t('Czuwa'),
+      title: t('Rynek jest pod obserwacją'),
+      body: t('Gdy pojawi się coś pewnego względem Twoich kryteriów, zobaczysz to tutaj.'),
+      activity: null,
       cta: null,
       busy: false,
     };

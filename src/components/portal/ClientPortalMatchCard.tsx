@@ -14,6 +14,7 @@ import {
   splitFeedbackPhrases,
   type ClientOfferSentiment,
 } from "@/lib/crm/clientPortalFeedback";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 type Match = {
   id: number;
@@ -42,10 +43,10 @@ type Match = {
 };
 
 function scoreTone(score: number) {
-  if (score >= 85) return { bar: "bg-emerald-500", text: "text-emerald-600", label: "Bardzo dobre dopasowanie" };
-  if (score >= 70) return { bar: "bg-lime-500", text: "text-lime-700", label: "Dobre dopasowanie" };
-  if (score >= 55) return { bar: "bg-amber-400", text: "text-amber-700", label: "Częściowe dopasowanie" };
-  return { bar: "bg-rose-500", text: "text-rose-600", label: "Słabe dopasowanie" };
+  if (score >= 85) return { bar: "bg-emerald-500", text: "text-[var(--lux-good)]", label: "Bardzo dobre dopasowanie" };
+  if (score >= 70) return { bar: "bg-lime-500", text: "text-[var(--lux-good)]", label: "Dobre dopasowanie" };
+  if (score >= 55) return { bar: "bg-amber-400", text: "text-[var(--lux-warn)]", label: "Częściowe dopasowanie" };
+  return { bar: "bg-rose-500", text: "text-[var(--lux-danger)]", label: "Słabe dopasowanie" };
 }
 
 function sentimentBadge(sentiment: ClientOfferSentiment | null, hasFeedback: boolean) {
@@ -87,6 +88,7 @@ export default function ClientPortalMatchCard({
   }) => Promise<void>;
   onAckReply?: (matchId: number) => Promise<void>;
 }) {
+  const { t, dateLocale } = usePortalLocale();
   const saved = useMemo(() => parseClientOfferFeedback(match.clientFeedback), [match.clientFeedback]);
   const initialPhrases = useMemo(() => splitFeedbackPhrases(saved.phrases), [saved.phrases]);
   const [sentiment, setSentiment] = useState<ClientOfferSentiment | null>(saved.sentiment);
@@ -154,21 +156,21 @@ export default function ClientPortalMatchCard({
         />
         <button type="button" onClick={onToggle} className="min-w-0 flex-1 text-left">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={badge.className}>{badge.label}</span>
+            <span className={badge.className}>{t(badge.label)}</span>
             {match.intelligenceSent ? (
               <span className="eos-intel-kicker text-[9px] font-black uppercase tracking-[0.14em]">
-                Wybrane dla Ciebie
+                {t("Wybrane dla Ciebie")}
               </span>
             ) : null}
             {saved.agentReply ? (
               <span
                 className={
                   hasUnreadAgentReply(saved)
-                    ? "inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-amber-800"
+                    ? "inline-flex items-center gap-1 rounded-full bg-[var(--lux-gold-soft)] px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--lux-gold-ink)]"
                     : "inline-flex items-center gap-1 rounded-full bg-[var(--eos-accent,#34C759)]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.1em] text-[var(--eos-accent,#34C759)]"
                 }
               >
-                {hasUnreadAgentReply(saved) ? "1 do przeczytania" : "Odpowiedź agenta"}
+                {hasUnreadAgentReply(saved) ? t("{n} do przeczytania", { n: 1 }) : t("Odpowiedź agenta")}
               </span>
             ) : null}
           </div>
@@ -176,9 +178,9 @@ export default function ClientPortalMatchCard({
             {match.offer.title}
           </p>
           <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
-            {Math.round(match.offer.price).toLocaleString("pl-PL")} {match.offer.priceCurrency || "PLN"}
+            {Math.round(match.offer.price).toLocaleString(dateLocale)} {match.offer.priceCurrency || "PLN"}
             {match.offer.area ? ` · ${match.offer.area} m²` : ""}
-            {match.offer.rooms ? ` · ${match.offer.rooms} pok.` : ""}
+            {match.offer.rooms ? ` · ${match.offer.rooms} ${t("pok.")}` : ""}
           </p>
           <p className="mt-0.5 line-clamp-1 text-xs text-[var(--eos-muted)]">{location}</p>
           {(match as { favoriteBadge?: string | null }).favoriteBadge ? (
@@ -195,7 +197,7 @@ export default function ClientPortalMatchCard({
           onClick={onToggle}
           className="eos-raised-chip mt-1 inline-flex size-9 shrink-0 items-center justify-center rounded-full"
           aria-expanded={expanded}
-          aria-label={expanded ? "Zwiń ofertę" : "Rozwiń ofertę"}
+          aria-label={expanded ? t("Zwiń ofertę") : t("Rozwiń ofertę")}
         >
           <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
         </button>
@@ -205,9 +207,9 @@ export default function ClientPortalMatchCard({
           <button
             type="button"
             onClick={onOpenSheet}
-            className="w-full rounded-full bg-black py-2.5 text-[12px] font-bold text-[#D8C3A0]"
+            className="w-full rounded-full bg-[var(--lux-solid)] py-2.5 text-[12px] font-bold text-[var(--lux-solid-ink)]"
           >
-            Zdjęcia, rzut i ocena — otwórz ofertę
+            {t("Zdjęcia, rzut i ocena — otwórz ofertę")}
           </button>
         </div>
       ) : null}
@@ -223,11 +225,12 @@ export default function ClientPortalMatchCard({
             <div className="mt-3">
               <div className="flex items-center justify-between gap-3 text-[11px] font-bold">
                 <span className={tone.text}>
-                  {match.score}% · {tone.label}
+                  {match.score}% · {t(tone.label)}
                 </span>
                 {match.notifiedAt ? (
                   <span className="text-[var(--eos-muted)]">
-                    Wysłane {new Date(match.notifiedAt).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {t("Wysłane")}{" "}
+                    {new Date(match.notifiedAt).toLocaleString(dateLocale, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
                   </span>
                 ) : null}
               </div>
@@ -235,17 +238,17 @@ export default function ClientPortalMatchCard({
                 <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${Math.max(8, Math.min(100, match.score))}%` }} />
               </div>
             </div>
-            <Link href={href} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-emerald-600 hover:underline">
-              Otwórz ogłoszenie <ExternalLink className="size-3" />
+            <Link href={href} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[var(--lux-accent)] hover:underline">
+              {t("Otwórz ogłoszenie")} <ExternalLink className="size-3" />
             </Link>
           </div>
 
           <div className="eos-portal-react mt-4 rounded-2xl p-4 sm:p-5">
             {emailConfirmPending ? (
               <div className="mb-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3">
-                <p className="text-sm font-black text-[var(--eos-text)]">Potwierdź wybór z maila</p>
+                <p className="text-sm font-black text-[var(--eos-text)]">{t("Potwierdź wybór z maila")}</p>
                 <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
-                  Nic jeszcze nie poszło do agenta — jeden tap i ta reakcja ląduje u niego.
+                  {t("Nic jeszcze nie poszło do agenta — jeden tap i ta reakcja ląduje u niego.")}
                 </p>
                 <SendPlaneButton
                   sending={saving}
@@ -253,7 +256,7 @@ export default function ClientPortalMatchCard({
                   onClick={() => void onSubmit(submitPayload)}
                   className="mt-3"
                 >
-                  Potwierdź i wyślij agentowi
+                  {t("Potwierdź i wyślij agentowi")}
                 </SendPlaneButton>
               </div>
             ) : null}
@@ -262,23 +265,23 @@ export default function ClientPortalMatchCard({
               <span className="eos-live-dot mt-1.5 shrink-0" aria-hidden />
               <div>
                 <p className="eos-portal-label eos-portal-label--ok">
-                  {match.clientFeedback ? "Twoja reakcja" : "Jak oceniasz tę ofertę?"}
+                  {match.clientFeedback ? t("Twoja reakcja") : t("Jak oceniasz tę ofertę?")}
                 </p>
-                <p className="mt-1 text-sm leading-snug text-[var(--eos-text)]">
-                  {match.clientFeedback
-                    ? "Możesz doprecyzować — agent nadal widzi tę samą nieruchomość."
-                    : "Krok 1: wybierz jedną decyzję. Krok 2 (opcjonalnie): plusy, minusy i krótka notatka."}
-                </p>
+                {match.clientFeedback ? null : (
+                  <p className="mt-1 text-sm leading-snug text-[var(--eos-text)]">
+                    {t("Wybierz decyzję — plusy, minusy i notatka są opcjonalne.")}
+                  </p>
+                )}
               </div>
             </div>
 
-            <p className="eos-portal-label mb-2">Decyzja</p>
+            <p className="eos-portal-label mb-2">{t("Decyzja")}</p>
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
                   { id: "like" as const, label: "Chcę oglądać", icon: ThumbsUp, on: "eos-choice-btn--on" },
                   { id: "maybe" as const, label: "Do przemyślenia", icon: HelpCircle, on: "eos-choice-btn--maybe" },
-                  { id: "dislike" as const, label: "Odłóż", icon: ThumbsDown, on: "eos-choice-btn--off" },
+                  { id: "dislike" as const, label: "Nie pasuje", icon: ThumbsDown, on: "eos-choice-btn--off" },
                 ] as const
               ).map((option) => (
                 <button
@@ -290,25 +293,18 @@ export default function ClientPortalMatchCard({
                   }`}
                 >
                   <option.icon className="mb-1 size-4" />
-                  {option.label}
+                  {t(option.label)}
                 </button>
               ))}
             </div>
 
-            {!sentiment ? (
-              <p className="mt-4 rounded-xl border border-dashed border-[var(--eos-border)] px-3 py-2.5 text-center text-[11px] text-[var(--eos-muted)]">
-                Po wyborze decyzji pokażemy sekcje „Pasuje mi” i „Nie pasuje”.
-              </p>
-            ) : (
+            {!sentiment ? null : (
               <div
                 className={`mt-4 grid gap-3 ${showLikePanel && showDislikePanel ? "lg:grid-cols-2" : "grid-cols-1"}`}
               >
                 {showLikePanel ? (
                   <section className="portal-feedback-panel portal-feedback-panel--yes rounded-2xl p-3.5 sm:p-4">
-                    <p className="eos-portal-label eos-portal-label--ok">Pasuje mi</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-[var(--eos-muted)]">
-                      Zaznacz plusy albo dopisz własne.
-                    </p>
+                    <p className="eos-portal-label eos-portal-label--ok">{t("Pasuje mi")}</p>
                     <div className="mt-2.5 flex flex-wrap gap-1.5">
                       {LIKE_PHRASES.map((phrase) => (
                         <button
@@ -319,7 +315,7 @@ export default function ClientPortalMatchCard({
                             likedPhrases.includes(phrase) ? "eos-raised-chip--on" : ""
                           }`}
                         >
-                          {phrase}
+                          {t(phrase)}
                         </button>
                       ))}
                     </div>
@@ -327,7 +323,7 @@ export default function ClientPortalMatchCard({
                       value={liked}
                       onChange={(event) => setLiked(event.target.value)}
                       rows={2}
-                      placeholder="Np. kuchnia od ogrodu, cisza…"
+                      placeholder={t("Np. kuchnia od ogrodu, cisza…")}
                       className="eos-field-inset mt-2.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[var(--eos-text)]"
                     />
                   </section>
@@ -335,10 +331,7 @@ export default function ClientPortalMatchCard({
 
                 {showDislikePanel ? (
                   <section className="portal-feedback-panel portal-feedback-panel--no rounded-2xl p-3.5 sm:p-4">
-                    <p className="eos-portal-label eos-portal-label--no">Nie pasuje</p>
-                    <p className="mt-1 text-[11px] leading-relaxed text-[var(--eos-muted)]">
-                      Zaznacz minusy albo dopisz własne.
-                    </p>
+                    <p className="eos-portal-label eos-portal-label--no">{t("Nie pasuje")}</p>
                     <div className="mt-2.5 flex flex-wrap gap-1.5">
                       {DISLIKE_PHRASES.map((phrase) => (
                         <button
@@ -349,7 +342,7 @@ export default function ClientPortalMatchCard({
                             dislikedPhrases.includes(phrase) ? "eos-raised-chip--no" : ""
                           }`}
                         >
-                          {phrase}
+                          {t(phrase)}
                         </button>
                       ))}
                     </div>
@@ -357,7 +350,7 @@ export default function ClientPortalMatchCard({
                       value={disliked}
                       onChange={(event) => setDisliked(event.target.value)}
                       rows={2}
-                      placeholder="Np. za mała kuchnia, hałas…"
+                      placeholder={t("Np. za mała kuchnia, hałas…")}
                       className="eos-field-inset mt-2.5 w-full rounded-xl px-3.5 py-2.5 text-sm text-[var(--eos-text)]"
                     />
                   </section>
@@ -365,12 +358,12 @@ export default function ClientPortalMatchCard({
               </div>
             )}
 
-            <label className="eos-portal-label mt-4 block">Wiadomość do agenta (opcjonalnie)</label>
+            <label className="eos-portal-label mt-4 block">{t("Wiadomość do agenta (opcjonalnie)")}</label>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}
               rows={2}
-              placeholder="Krótka notatka — np. kiedy możesz na oglądania"
+              placeholder={t("Krótka notatka — np. kiedy możesz na oglądania")}
               className="eos-field-inset mt-2 w-full rounded-xl px-4 py-3 text-sm text-[var(--eos-text)]"
             />
 
@@ -378,28 +371,28 @@ export default function ClientPortalMatchCard({
               <div
                 className={`mt-3 rounded-2xl border px-4 py-3 ${
                   hasUnreadAgentReply(saved)
-                    ? "border-amber-400/70 bg-amber-500/12"
+                    ? "border-[var(--lux-gold-line)] bg-[var(--lux-gold-soft)]"
                     : "border-[var(--eos-border)] bg-[rgba(15,23,42,0.03)]"
                 }`}
               >
-                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-amber-800">
-                  {hasUnreadAgentReply(saved) ? "Do przeczytania · odpowiedź agenta" : "Odpowiedź agenta"}
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-[var(--lux-gold-ink)]">
+                  {t("Odpowiedź agenta")}
                 </p>
                 <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--eos-text)]">
                   {String(saved.agentReply)}
                 </p>
                 {saved.agentReplyAt ? (
                   <p className="mt-1 text-[10px] text-[var(--eos-muted)]">
-                    {new Date(String(saved.agentReplyAt)).toLocaleString("pl-PL")}
+                    {new Date(String(saved.agentReplyAt)).toLocaleString(dateLocale)}
                   </p>
                 ) : null}
                 {hasUnreadAgentReply(saved) && onAckReply ? (
                   <button
                     type="button"
                     onClick={() => void onAckReply(match.id)}
-                    className="mt-3 inline-flex min-h-9 items-center rounded-full bg-amber-500 px-3 text-[11px] font-black text-black"
+                    className="lux-btn lux-btn--ink mt-3"
                   >
-                    Przeczytałem
+                    {t("Przeczytałem")}
                   </button>
                 ) : null}
               </div>
@@ -411,16 +404,11 @@ export default function ClientPortalMatchCard({
               onClick={() => void onSubmit(submitPayload)}
               className="mt-4"
             >
-              {match.clientFeedback ? "Zaktualizuj reakcję" : "Wyślij reakcję do agenta"}
+              {match.clientFeedback ? t("Zaktualizuj reakcję") : t("Wyślij reakcję do agenta")}
             </SendPlaneButton>
-            {!canSend ? (
-              <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
-                Wybierz decyzję albo uzupełnij sekcję plusów / minusów.
-              </p>
-            ) : null}
             {match.clientFeedbackAt ? (
               <p className="mt-2 text-center text-[11px] text-[var(--eos-muted)]">
-                Ostatnia reakcja: {new Date(match.clientFeedbackAt).toLocaleString("pl-PL")}
+                {t("Ostatnia reakcja:")} {new Date(match.clientFeedbackAt).toLocaleString(dateLocale)}
               </p>
             ) : null}
           </div>

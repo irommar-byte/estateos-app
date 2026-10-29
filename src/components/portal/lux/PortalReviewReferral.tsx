@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Star } from "lucide-react";
 import { portalAction } from "./portalApi";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export function PortalReview({
   token,
@@ -17,17 +18,18 @@ export function PortalReview({
   reviewLink?: string;
   onChanged: () => void;
 }) {
+  const { t } = usePortalLocale();
   const [rating, setRating] = useState(review?.rating || 0);
   const [comment, setComment] = useState("");
   const [sent, setSent] = useState(Boolean(review));
   const [busy, setBusy] = useState(false);
   return (
     <section className="lux-card p-5">
-      <p className="lux-kicker">Twoja opinia</p>
-      <h2 className="lux-serif mt-1.5 text-[22px] font-medium">{sent ? "Dziękujemy za ocenę" : `Jak oceniasz współpracę z ${agentFirst}?`}</h2>
+      <p className="lux-kicker">{t("Twoja opinia")}</p>
+      <h2 className="lux-serif mt-1.5 text-[22px] font-medium">{sent ? t("Dziękujemy za ocenę") : t("Jak oceniasz współpracę z {agent}?", { agent: agentFirst })}</h2>
       <div className="mt-3 flex gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
-          <button key={n} type="button" disabled={sent} onClick={() => setRating(n)} aria-label={`${n} na 5`}>
+          <button key={n} type="button" disabled={sent} onClick={() => setRating(n)} aria-label={t("{n} na 5", { n })}>
             <Star className={`size-8 ${n <= rating ? "fill-[#D8A93B] text-[#D8A93B]" : "text-[var(--lux-ink-3)]"}`} />
           </button>
         ))}
@@ -37,7 +39,7 @@ export function PortalReview({
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Kilka słów (opcjonalnie)"
+            placeholder={t("Kilka słów (opcjonalnie)")}
             className="mt-3 min-h-[72px] w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] p-3 text-[15px] outline-none"
           />
           <button
@@ -55,12 +57,12 @@ export function PortalReview({
             }}
             className="lux-btn lux-btn--ink mt-3 w-full disabled:opacity-50"
           >
-            Wyślij ocenę
+            {t("Wyślij ocenę")}
           </button>
         </>
       ) : rating >= 4 && reviewLink ? (
         <a href={reviewLink} target="_blank" rel="noreferrer" className="lux-btn lux-btn--ghost mt-4 w-full">
-          Zostaw też opinię w Google
+          {t("Zostaw też opinię w Google")}
         </a>
       ) : null}
     </section>
@@ -68,6 +70,7 @@ export function PortalReview({
 }
 
 export function PortalReferral({ token, agentFirst }: { token: string; agentFirst: string }) {
+  const { t } = usePortalLocale();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -79,19 +82,19 @@ export function PortalReferral({ token, agentFirst }: { token: string; agentFirs
   const field = "mt-2 h-12 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] px-3 text-[15px] outline-none";
   return (
     <section className="lux-card p-5">
-      <p className="lux-kicker">Polecenie</p>
-      <h2 className="lux-serif mt-1.5 text-[22px] font-medium">Znasz kogoś, kto kupuje albo sprzedaje?</h2>
+      <p className="lux-kicker">{t("Polecenie")}</p>
+      <h2 className="lux-serif mt-1.5 text-[22px] font-medium">{t("Znasz kogoś, kto kupuje albo sprzedaje?")}</h2>
       <p className="mt-1 text-[14px] text-[var(--lux-ink-2)]">
-        {sent ? `Dziękujemy! ${agentFirst} odezwie się do tej osoby.` : `Podaj kontakt — ${agentFirst} zadzwoni i powie, że to od Ciebie.`}
+        {sent ? t("Dziękujemy! {agent} odezwie się do tej osoby.", { agent: agentFirst }) : t("Podaj kontakt — {agent} zadzwoni i powie, że to od Ciebie.", { agent: agentFirst })}
       </p>
       {!open ? (
         <button type="button" onClick={() => { setOpen(true); setSent(false); }} className="lux-btn lux-btn--ghost mt-3 w-full">
-          {sent ? "Poleć kolejną osobę" : "Poleć znajomego"}
+          {sent ? t("Poleć kolejną osobę") : t("Poleć znajomego")}
         </button>
       ) : (
         <div className="mt-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Imię" className={field} />
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Telefon" inputMode="tel" className={field} />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("Imię")} className={field} />
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("Telefon")} inputMode="tel" className={field} />
           <div className="mt-3 flex flex-wrap gap-2">
             {(
               [
@@ -101,11 +104,11 @@ export function PortalReferral({ token, agentFirst }: { token: string; agentFirs
               ] as const
             ).map(([id, label]) => (
               <button key={id} type="button" onClick={() => setNeed(id)} className={`lux-chip ${need === id ? "lux-chip--on" : ""}`}>
-                {label}
+                {t(label)}
               </button>
             ))}
           </div>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Coś, co warto wiedzieć (opcjonalnie)" className={field} />
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("Coś, co warto wiedzieć (opcjonalnie)")} className={field} />
           {error ? <p className="mt-2 text-[13px] font-semibold text-[var(--lux-danger)]">{error}</p> : null}
           <button
             type="button"
@@ -121,14 +124,14 @@ export function PortalReferral({ token, agentFirst }: { token: string; agentFirs
                 setPhone("");
                 setNote("");
               } catch (e) {
-                setError(e instanceof Error ? e.message : "Błąd");
+                setError(e instanceof Error ? e.message : t("Błąd"));
               } finally {
                 setBusy(false);
               }
             }}
             className="lux-btn lux-btn--ink mt-3 w-full disabled:opacity-50"
           >
-            Wyślij polecenie
+            {t("Wyślij polecenie")}
           </button>
         </div>
       )}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { MessageCircle } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type StickyChip = { id: string; label: string; badge?: number; blink?: boolean };
 
@@ -33,6 +34,7 @@ export default function PortalStickyBar({
   bell: React.ReactNode;
   onChat: () => void;
 }) {
+  const { t } = usePortalLocale();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -81,14 +83,14 @@ export default function PortalStickyBar({
               <button
                 type="button"
                 onClick={onChat}
-                aria-label="Napisz do agenta"
+                aria-label={t("Napisz do agenta")}
                 className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#D8C3A0] text-black"
               >
                 <MessageCircle className="size-4" />
               </button>
               {bell}
             </div>
-            <nav aria-label="Sekcje panelu" className="eos-chips -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-2.5 sm:mx-0 sm:px-0">
+            <nav aria-label={t("Sekcje panelu")} className="eos-chips -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-2.5 sm:mx-0 sm:px-0">
               {chips.map((chip) => {
                 const active = chip.id === activeChip;
                 return (

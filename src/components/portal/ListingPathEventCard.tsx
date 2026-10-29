@@ -10,6 +10,7 @@ import {
   promotionGroupLabel,
   resolveMarketingChannel,
 } from "@/lib/crm/marketingChannel";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type ListingPathEvent = {
   id: number;
@@ -29,11 +30,11 @@ export type ListingPathEvent = {
   reportId?: number | null;
 };
 
-function whenLabel(item: ListingPathEvent) {
+function whenLabel(item: ListingPathEvent, dateLocale: string) {
   const raw = item.startsAt || item.createdAt;
   const date = new Date(raw);
   if (!Number.isFinite(date.getTime())) return "";
-  return date.toLocaleString("pl-PL", {
+  return date.toLocaleString(dateLocale, {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -51,6 +52,7 @@ export default function ListingPathEventCard({
   fallbackImage?: string | null;
   token?: string;
 }) {
+  const { t, dateLocale } = usePortalLocale();
   const channel = resolveMarketingChannel({
     kind: item.kind,
     portal: item.portal,
@@ -60,7 +62,8 @@ export default function ListingPathEventCard({
     groupUrl: item.groupUrl,
     title: item.title,
   });
-  const status = formatPublicationStatus(item.status);
+  const rawStatus = formatPublicationStatus(item.status);
+  const status = rawStatus ? t(rawStatus) : null;
   const image = listingThumbnailFallback({
     image: item.image,
     channelId: channel.id,
@@ -77,10 +80,10 @@ export default function ListingPathEventCard({
       ? facebookClientOpenHref({ url: item.url, groupUrl: item.groupUrl })
       : item.url || item.groupUrl || null;
   const linkLabel = isReport
-    ? "Otwórz raport"
+    ? t("Otwórz raport")
     : channel.id === "facebook"
-      ? facebookOpenLabel({ href: linkHref, groupName: item.groupName })
-      : `Zobacz publikację · ${channel.label}`;
+      ? t(facebookOpenLabel({ href: linkHref, groupName: null }))
+      : `${t("Zobacz publikację")} · ${channel.label}`;
 
   return (
     <article className={`listing-path-card listing-path-card--${channel.id}`}>
@@ -90,18 +93,17 @@ export default function ListingPathEventCard({
           <div className="listing-path-card__brand-row">
             <MarketingChannelBrand
               id={channel.id}
-              label={promotionGroupLabel(channel.id === "system" ? "portal" : channel.id)}
+              label={t(promotionGroupLabel(channel.id === "system" ? "portal" : channel.id))}
             />
-            <p className="listing-path-card__when">{whenLabel(item)}</p>
+            <p className="listing-path-card__when">{whenLabel(item, dateLocale)}</p>
           </div>
-          <p className="listing-path-card__badge">{channel.badge}</p>
+          <p className="listing-path-card__badge">{t(channel.badge)}</p>
           <h3 className="listing-path-card__title">{headline}</h3>
           {item.body ? <p className="listing-path-card__body">{item.body}</p> : null}
           {status ? <p className="listing-path-card__status">{status}</p> : null}
           {item.promotedUntil ? (
             <p className="listing-path-card__goldline">
-              Wyróżnienie do{" "}
-              {new Date(item.promotedUntil).toLocaleDateString("pl-PL")}
+              {t("Wyróżnienie do {date}", { date: new Date(item.promotedUntil).toLocaleDateString(dateLocale) })}
             </p>
           ) : null}
         </div>

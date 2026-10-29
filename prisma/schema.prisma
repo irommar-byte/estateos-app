@@ -1190,6 +1190,7 @@ model AgencyClient {
   /// Rodzaje wiadomości, które agent pozwolił wysyłać temu klientowi bez akceptacji (np. ["reminder","schedule"]).
   autoSendCategories        Json?
   portalPermissions         Json?
+  portalLocale              String?                        @db.VarChar(5)
   sellerFinance             Json?
   /// PAN / PANI — forma grzecznościowa w wiadomościach; null = zwrot po imieniu.
   salutation                String?            @db.VarChar(8)

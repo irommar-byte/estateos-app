@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import LuxSheet from "./LuxSheet";
 import { formatPln } from "./portalApi";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 /** Taksa notarialna (max stawki) dla umowy sprzedaży — wartość netto. */
 function notaryFee(value: number): number {
@@ -35,6 +36,7 @@ function Field({ id, label, value, onChange, suffix }: { id: string; label: stri
 
 /** Rata kredytu i koszty zakupu — wyliczenie orientacyjne. */
 export default function PortalCostCalculator({ open, onClose, initialPrice }: { open: boolean; onClose: () => void; initialPrice: number }) {
+  const { t } = usePortalLocale();
   const [price, setPrice] = useState(initialPrice || 800000);
   const [ownPct, setOwnPct] = useState(20);
   const [rate, setRate] = useState(7.2);
@@ -56,32 +58,32 @@ export default function PortalCostCalculator({ open, onClose, initialPrice }: { 
   }, [price, ownPct, rate, years, commission, primary]);
 
   return (
-    <LuxSheet open={open} onClose={onClose} kicker="Narzędzie" title="Rata i koszty zakupu">
+    <LuxSheet open={open} onClose={onClose} kicker={t("Narzędzie")} title={t("Rata i koszty zakupu")}>
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <Field id="calc-price" label="Cena nieruchomości" value={price} onChange={setPrice} suffix="zł" />
+          <Field id="calc-price" label={t("Cena nieruchomości")} value={price} onChange={setPrice} suffix="zł" />
         </div>
-        <Field id="calc-own" label="Wkład własny" value={ownPct} onChange={setOwnPct} suffix="%" />
-        <Field id="calc-rate" label="Oprocentowanie" value={rate} onChange={setRate} suffix="%" />
-        <Field id="calc-years" label="Okres kredytu" value={years} onChange={setYears} suffix="lat" />
-        <Field id="calc-comm" label="Prowizja biura" value={commission} onChange={setCommission} suffix="%" />
+        <Field id="calc-own" label={t("Wkład własny")} value={ownPct} onChange={setOwnPct} suffix="%" />
+        <Field id="calc-rate" label={t("Oprocentowanie")} value={rate} onChange={setRate} suffix="%" />
+        <Field id="calc-years" label={t("Okres kredytu")} value={years} onChange={setYears} suffix={t("lat")} />
+        <Field id="calc-comm" label={t("Prowizja biura")} value={commission} onChange={setCommission} suffix="%" />
       </div>
       <label className="mt-3 flex items-center justify-between rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] px-4 py-3 text-[14px]">
-        Rynek pierwotny (bez podatku PCC)
+        {t("Rynek pierwotny (bez podatku PCC)")}
         <input type="checkbox" checked={primary} onChange={(e) => setPrimary(e.target.checked)} className="size-5 accent-[#0E4D3F]" />
       </label>
 
-      <div className="mt-4 rounded-[22px] bg-black p-5 text-[#F6F3EE]">
-        <p className="text-[13px] font-bold text-[#D8C3A0]">Rata miesięczna</p>
+      <div className="mt-4 rounded-[22px] border border-[#D8C3A0]/15 bg-black p-5 text-[#F6F3EE]">
+        <p className="text-[13px] font-bold text-[#D8C3A0]">{t("Rata miesięczna")}</p>
         <p className="lux-serif mt-1 text-[34px]">{formatPln(calc.monthly)}</p>
-        <p className="text-[12px] text-[#BDB6AA]">Kredyt: {formatPln(calc.loan)} · {years} lat · {rate}%</p>
+        <p className="text-[12px] text-[#BDB6AA]">{t("Kredyt:")} {formatPln(calc.loan)} · {years} {t("lat")} · {rate}%</p>
         <div className="my-4 h-px bg-[#D8C3A0]/30" />
         {[
-          ["Podatek PCC (2%)", calc.pcc],
-          ["Notariusz (z VAT, z hipoteką)", calc.notary],
-          ["Wpisy do księgi wieczystej", calc.court],
-          [`Wynagrodzenie biura (${commission}% + VAT)`, calc.agency],
-          ["Wypisy i opłaty drobne", 300],
+          [t("Podatek PCC (2%)"), calc.pcc],
+          [t("Notariusz (z VAT, z hipoteką)"), calc.notary],
+          [t("Wpisy do księgi wieczystej"), calc.court],
+          [t("Wynagrodzenie biura ({pct}% + VAT)", { pct: commission }), calc.agency],
+          [t("Wypisy i opłaty drobne"), 300],
         ].map(([label, value]) => (
           <div key={String(label)} className="flex justify-between py-1 text-[14px]">
             <span className="text-[#BDB6AA]">{label}</span>
@@ -90,13 +92,13 @@ export default function PortalCostCalculator({ open, onClose, initialPrice }: { 
         ))}
         <div className="my-3 h-px bg-[#D8C3A0]/30" />
         <div className="flex items-baseline justify-between">
-          <span className="text-[14px] font-bold text-[#D8C3A0]">Potrzebna gotówka</span>
+          <span className="text-[14px] font-bold text-[#D8C3A0]">{t("Potrzebna gotówka")}</span>
           <span className="lux-serif text-[24px]">{formatPln(calc.cash)}</span>
         </div>
-        <p className="mt-1 text-[12px] text-[#BDB6AA]">Wkład własny + koszty transakcji.</p>
+        <p className="mt-1 text-[12px] text-[#BDB6AA]">{t("Wkład własny + koszty transakcji.")}</p>
       </div>
       <p className="mt-3 text-[12px] leading-relaxed text-[var(--lux-ink-2)]">
-        Wyliczenie orientacyjne (maksymalna taksa notarialna, rata równa). Dokładne koszty potwierdzi notariusz i bank.
+        {t("Wyliczenie orientacyjne (maksymalna taksa notarialna, rata równa). Dokładne koszty potwierdzi notariusz i bank.")}
       </p>
     </LuxSheet>
   );

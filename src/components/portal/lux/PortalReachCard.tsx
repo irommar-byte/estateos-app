@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { animate, useInView, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, Eye, MessageSquareText, MousePointerClick, Users } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type PortalReach = {
   items: Array<{
@@ -28,7 +29,7 @@ export type PortalReach = {
   };
 };
 
-function CountUp({ value }: { value: number }) {
+function CountUp({ value, dateLocale }: { value: number; dateLocale: string }) {
   const ref = useRef<HTMLSpanElement | null>(null);
   const inView = useInView(ref, { once: true, margin: "-40px" });
   const reduce = useReducedMotion();
@@ -38,41 +39,53 @@ function CountUp({ value }: { value: number }) {
     const controls = animate(0, value, { duration: 1.1, ease: [0.2, 0.8, 0.2, 1], onUpdate: (v) => setShown(Math.round(v)) });
     return () => controls.stop();
   }, [inView, value, reduce]);
-  return <span ref={ref}>{(reduce ? value : shown).toLocaleString("pl-PL")}</span>;
+  return <span ref={ref}>{(reduce ? value : shown).toLocaleString(dateLocale)}</span>;
 }
-
-const shortDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString("pl-PL", { day: "numeric", month: "short" }) : "";
 
 /**
  * Zasięg promocji dla właściciela: tylko liczby z publikacji EstateOS i z linków śledzących.
  * Każda liczba ma podpis, co dokładnie znaczy (np. członkowie grup ≠ wyświetlenia).
  */
 export default function PortalReachCard({ reach, agentFirst }: { reach: PortalReach | null | undefined; agentFirst: string }) {
+  const { t, p, dateLocale } = usePortalLocale();
   if (!reach || !reach.items.length) return null;
-  const t = reach.totals;
+  const totals = reach.totals;
+  const num = (n: number) => n.toLocaleString(dateLocale);
+  const shortDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(dateLocale, { day: "numeric", month: "short" }) : "");
+  const groups = totals.groups ? `${totals.groups} ${p(totals.groups, "grupa|grupy|grup")}` : "";
   const tiles = [
-    t.pageViews != null && t.pagePosts
-      ? { key: "views", icon: Eye, value: t.pageViews, label: "wyświetleń posta na stronie biura", hint: "dane z Facebooka" }
+    totals.pageViews != null && totals.pagePosts
+      ? { key: "views", icon: Eye, value: totals.pageViews, label: t("wyświetleń posta na stronie biura"), hint: t("dane z Facebooka") }
       : null,
-    t.groups ? { key: "members", icon: Users, value: t.groupMembers, label: `osób w ${t.groups} ${t.groups === 1 ? "grupie" : "grupach"}, gdzie jest ogłoszenie`, hint: "liczba członków grup" } : null,
-    { key: "visits", icon: MousePointerClick, value: t.visits, label: "wejść na ogłoszenie z promocji", hint: "jedna osoba liczona raz dziennie" },
-    { key: "inq", icon: MessageSquareText, value: t.inquiries, label: t.inquiries === 1 ? "zapytanie od kupującego" : "zapytań od kupujących", hint: "wysłane z ogłoszenia" },
+    totals.groups
+      ? { key: "members", icon: Users, value: totals.groupMembers, label: t("osób w grupach z ogłoszeniem ({groups})", { groups }), hint: t("liczba członków grup") }
+      : null,
+    { key: "visits", icon: MousePointerClick, value: totals.visits, label: t("wejść na ogłoszenie z promocji"), hint: t("jedna osoba liczona raz dziennie") },
+    { key: "inq", icon: MessageSquareText, value: totals.inquiries, label: p(totals.inquiries, "zapytanie od kupującego|zapytania od kupujących|zapytań od kupujących"), hint: t("wysłane z ogłoszenia") },
   ].filter(Boolean) as Array<{ key: string; icon: typeof Eye; value: number; label: string; hint: string }>;
+  const where = totals.pagePosts
+    ? totals.groups
+      ? t("na stronie biura i w: {groups}", { groups })
+      : t("na stronie biura")
+    : groups;
 
   return (
-    <section className="reach-card" aria-label="Zasięg promocji">
-      <p className="reach-card__title">Zasięg promocji</p>
+    <section className="reach-card" aria-label={t("Zasięg promocji")}>
+      <p className="reach-card__title">{t("Zasięg promocji")}</p>
       <p className="reach-card__sub">
-        {agentFirst} opublikował ogłoszenie {t.publications} {t.publications === 1 ? "raz" : "razy"}
-        {t.pagePosts ? ` — na stronie biura${t.groups ? ` i w ${t.groups} ${t.groups === 1 ? "grupie" : "grupach"}` : ""}` : t.groups ? ` — w ${t.groups} ${t.groups === 1 ? "grupie" : "grupach"}` : ""}.
+        {t("{agent} opublikował ogłoszenie {n} {times}", {
+          agent: agentFirst,
+          n: totals.publications,
+          times: p(totals.publications, "raz|razy|razy"),
+        })}
+        {where ? ` — ${where}` : ""}.
       </p>
       <div className="reach-card__tiles">
         {tiles.map(({ key, icon: Icon, value, label, hint }) => (
           <div key={key} className="reach-tile">
             <Icon className="reach-tile__icon" aria-hidden />
             <span className="reach-tile__value">
-              <CountUp value={value} />
+              <CountUp value={value} dateLocale={dateLocale} />
             </span>
             <span className="reach-tile__label">{label}</span>
             <span className="reach-tile__hint">{hint}</span>
@@ -90,8 +103,8 @@ export default function PortalReachCard({ reach, agentFirst }: { reach: PortalRe
                 <span className="reach-list__name">{item.name}</span>
                 <span className="reach-list__meta">
                   {[
-                    item.channel === "fb_page" ? "strona biura" : "grupa",
-                    item.members ? `${item.members.toLocaleString("pl-PL")} ${item.channel === "fb_page" ? "obserwujących" : "członków"}` : null,
+                    item.channel === "fb_page" ? t("strona biura") : t("grupa"),
+                    item.members ? `${num(item.members)} ${item.channel === "fb_page" ? t("obserwujących") : t("członków")}` : null,
                     shortDate(item.publishedAt),
                   ]
                     .filter(Boolean)
@@ -99,8 +112,8 @@ export default function PortalReachCard({ reach, agentFirst }: { reach: PortalRe
                 </span>
               </span>
               <span className="reach-list__nums">
-                {item.stats?.views != null ? <span>{item.stats.views.toLocaleString("pl-PL")} wyśw.</span> : null}
-                <span>{item.visits.toLocaleString("pl-PL")} wejść</span>
+                {item.stats?.views != null ? <span>{num(item.stats.views)} {t("wyśw.")}</span> : null}
+                <span>{num(item.visits)} {t("wejść")}</span>
               </span>
               {item.postUrl ? <ArrowUpRight className="reach-list__go" aria-hidden /> : null}
             </>

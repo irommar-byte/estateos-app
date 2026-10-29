@@ -3,6 +3,7 @@ import {
   promotionGroupId,
   promotionGroupLabel,
 } from "@/lib/crm/marketingChannel";
+import { PORTAL_TR_PL, type PortalTr } from "@/i18n/portal/translate";
 
 export type PortalStackKind = "reports" | "promotions" | "presentations" | "path";
 
@@ -95,14 +96,10 @@ export function marketReportPortalHref(
   return `${origin.replace(/\/+$/, "")}${marketReportPortalPath(token, activityId)}`;
 }
 
-function formatWhen(iso: string) {
+function formatWhen(iso: string, tr: PortalTr) {
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return "";
-  return date.toLocaleDateString("pl-PL", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return date.toLocaleDateString(tr.dateLocale, { day: "numeric", month: "short", year: "numeric" });
 }
 
 function uniqueNames(values: Array<string | null | undefined>, limit = 5): string[] {
@@ -124,58 +121,36 @@ function channelName(item: PortalStackable): string {
   return promotionGroupLabel(promotionGroupId(item));
 }
 
-export function promotionChannelFoldSummary(params: {
-  count: number;
-  latestAt?: string;
-  activeCount: number;
-}): string {
-  const countLabel = params.count === 1 ? "1 publikacja" : `${params.count} publikacji`;
-  const live =
-    params.activeCount > 0
-      ? params.activeCount === 1
-        ? " · 1 aktywna"
-        : ` · ${params.activeCount} aktywne`
-      : "";
-  const when = params.latestAt ? ` · ost. ${formatWhen(params.latestAt)}` : "";
-  return `${countLabel}${live}${when}`;
+export function promotionChannelFoldSummary(
+  params: { count: number; latestAt?: string; activeCount: number },
+  tr: PortalTr = PORTAL_TR_PL,
+): string {
+  const parts = [`${params.count} ${tr.p(params.count, "publikacja|publikacje|publikacji")}`];
+  if (params.activeCount > 0) parts.push(tr.t("{n} aktywne", { n: params.activeCount }));
+  if (params.latestAt) parts.push(tr.t("ost. {date}", { date: formatWhen(params.latestAt, tr) }));
+  return parts.join(" · ");
 }
 
+/** Jedna krótka linia pod nagłówkiem stosu — szczegóły są po rozwinięciu. */
 export function summarizePortalStack(
   kind: PortalStackKind,
   items: PortalStackable[],
   options?: { activePortals?: string[] },
+  tr: PortalTr = PORTAL_TR_PL,
 ): string {
-  const latest = items[0];
-  const when = latest ? formatWhen(latest.createdAt) : "";
-  if (kind === "reports") {
-    if (items.length === 1) {
-      return `Wysłano ${when}. Otwórz dokument, żeby ponownie odczytać analizę z aktów notarialnych.`;
-    }
-    return `${items.length} raporty w archiwum. Ostatni: ${when}. Każdy dokument można otworzyć ponownie.`;
-  }
   if (kind === "promotions") {
     const live = uniqueNames((options?.activePortals || []).map((name) => friendlyPromotionName(name)));
-    const names = uniqueNames(items.map(channelName));
-    const liveLine = live.length ? `Teraz aktywne: ${live.join(", ")}. ` : "";
-    const countLabel =
-      items.length === 1 ? "1 publikacja w historii" : `${items.length} publikacji w historii`;
-    return `${liveLine}${countLabel}: ${names.join(", ")}. Ostatnia aktywność: ${when}.`;
+    const names = live.length ? live : uniqueNames(items.map(channelName));
+    return live.length ? tr.t("Teraz aktywne: {names}", { names: names.join(", ") }) : names.join(", ");
   }
-  if (kind === "presentations") {
-    if (items.length === 1) {
-      return `${latest?.title || "Prezentacja"} · ${when}`;
-    }
-    return `${items.length} wpisy o prezentacjach. Ostatnia: ${when}.`;
-  }
-  if (items.length === 1) {
-    return `${latest?.title || "Aktualizacja"} · ${when}`;
-  }
-  return `${items.length} kolejne kroki współpracy. Ostatni: ${when}.`;
+  if (items.length === 1 && kind !== "reports") return items[0]?.title || "";
+  return "";
 }
 
 export function groupPortalPath(
   items: PortalStackable[],
   options?: { activePortals?: string[] },
+  tr: PortalTr = PORTAL_TR_PL,
 ): PortalStack[] {
   const buckets = new Map<PortalStackKind, PortalStackable[]>();
   for (const item of items) {
@@ -190,9 +165,9 @@ export function groupPortalPath(
     return [
       {
         kind,
-        label: STACK_LABEL[kind],
-        kicker: STACK_KICKER[kind],
-        summary: summarizePortalStack(kind, list, options),
+        label: tr.t(STACK_LABEL[kind]),
+        kicker: tr.t(STACK_KICKER[kind]),
+        summary: summarizePortalStack(kind, list, options, tr),
         latestAt: list[0].createdAt,
         items: list,
       },

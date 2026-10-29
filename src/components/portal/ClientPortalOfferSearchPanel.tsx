@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { MapPin, Radar, Sparkles } from 'lucide-react';
+import { usePortalLocale } from '@/components/portal/PortalLocale';
 
 const STEPS = [
   'Przeglądamy aktywne ogłoszenia…',
@@ -14,10 +15,10 @@ const STEPS = [
 type Props = {
   unscoredCount?: number;
   compact?: boolean;
-  live?: boolean;
 };
 
-export default function ClientPortalOfferSearchPanel({ unscoredCount = 0, compact, live }: Props) {
+export default function ClientPortalOfferSearchPanel({ unscoredCount = 0, compact }: Props) {
+  const { t } = usePortalLocale();
   const reduceMotion = useReducedMotion();
   const [stepIndex, setStepIndex] = useState(0);
 
@@ -29,7 +30,7 @@ export default function ClientPortalOfferSearchPanel({ unscoredCount = 0, compac
     return () => window.clearInterval(timer);
   }, [reduceMotion]);
 
-  const stepLabel = useMemo(() => STEPS[stepIndex], [stepIndex]);
+  const stepLabel = useMemo(() => t(STEPS[stepIndex]), [stepIndex, t]);
 
   return (
     <div
@@ -64,23 +65,22 @@ export default function ClientPortalOfferSearchPanel({ unscoredCount = 0, compac
       </div>
 
       <p className="relative mt-5 text-sm font-semibold text-[var(--eos-text)]">
-        Szukamy ofert pod Twoje kryteria
+        {t('Szukamy ofert pod Twoje kryteria')}
       </p>
       <p className="relative mt-2 min-h-[2.5rem] text-sm leading-relaxed text-[var(--eos-muted)]">
         {unscoredCount > 0
-          ? `Mamy już ${unscoredCount} dopasowań w tle — pierwsza propozycja pojawi się tutaj automatycznie.`
-          : 'Pierwsza propozycja pojawi się tutaj bez odświeżania strony.'}
-        {live ? ' Zostaw panel otwarty — odświeżamy go co kilka sekund.' : ''}
+          ? t('Mamy już {n} dopasowań w tle — pierwsza propozycja pojawi się tutaj automatycznie.', { n: unscoredCount })
+          : t('Pierwsza propozycja pojawi się tutaj bez odświeżania strony.')}
       </p>
 
       <div className="relative mt-4 flex flex-wrap items-center justify-center gap-2">
         <span className="portal-offer-search__chip inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold">
           <MapPin className="size-3 text-emerald-500" aria-hidden />
-          Lokalizacja
+          {t('Lokalizacja')}
         </span>
         <span className="portal-offer-search__chip inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold">
           <Sparkles className="size-3 text-emerald-500" aria-hidden />
-          Metraż · budżet
+          {t('Metraż · budżet')}
         </span>
       </div>
 

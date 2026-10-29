@@ -44,6 +44,7 @@ export async function resolvePortalAccess(token: string): Promise<PortalAccess |
 
 /** Akcje, które może wykonać druga osoba (reszta zostaje dla właściciela panelu). */
 export const PARTNER_ALLOWED_ACTIONS = new Set([
+  'set_locale',
   'partner_feedback',
   'list_messages',
   'mark_messages_read',

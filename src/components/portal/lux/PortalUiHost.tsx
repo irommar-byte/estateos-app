@@ -5,11 +5,13 @@ import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertTriangle, Check, Info, X } from "lucide-react";
 import { usePortalUi } from "@/lib/portalUi";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 const ICON = { success: Check, error: AlertTriangle, info: Info } as const;
 
 /** Komunikaty (dół ekranu) i okno potwierdzenia panelu klienta. Montowane raz na stronie. */
 export default function PortalUiHost() {
+  const { t: tr } = usePortalLocale();
   const toasts = usePortalUi((s) => s.toasts);
   const dismiss = usePortalUi((s) => s.dismiss);
   const confirm = usePortalUi((s) => s.confirm);
@@ -56,7 +58,7 @@ export default function PortalUiHost() {
                   <span className="block text-[14px] font-bold">{t.title}</span>
                   {t.body ? <span className="mt-0.5 block text-[12.5px] leading-snug text-[#BDB6AA]">{t.body}</span> : null}
                 </span>
-                <button type="button" onClick={() => dismiss(t.id)} aria-label="Zamknij" className="mt-0.5 rounded-full p-1 text-[#8C877D] hover:text-white">
+                <button type="button" onClick={() => dismiss(t.id)} aria-label={tr("Zamknij")} className="mt-0.5 rounded-full p-1 text-[#8C877D] hover:text-white">
                   <X className="size-4" />
                 </button>
               </motion.div>
@@ -90,7 +92,7 @@ export default function PortalUiHost() {
               {confirm.body ? <p className="mt-2 text-[14px] leading-relaxed text-[var(--lux-ink-2)]">{confirm.body}</p> : null}
               <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button type="button" onClick={() => confirm.resolve(false)} className="lux-btn lux-btn--ghost">
-                  {confirm.cancelLabel || "Anuluj"}
+                  {confirm.cancelLabel || tr("Anuluj")}
                 </button>
                 <button
                   type="button"

@@ -17,16 +17,7 @@ import {
   promotionChannelFoldSummary,
   type PortalStackKind,
 } from "@/lib/crm/portalActivityStacks";
-
-function formatWhen(iso: string) {
-  const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return "";
-  return date.toLocaleDateString("pl-PL", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 function PromotionChannelSection({
   group,
@@ -37,13 +28,14 @@ function PromotionChannelSection({
   listingImage?: string | null;
   token: string;
 }) {
+  const loc = usePortalLocale();
   const [open, setOpen] = useState(false);
   const activeCount = group.items.filter((item) => isActivePublicationStatus(item.status)).length;
   const summary = promotionChannelFoldSummary({
     count: group.items.length,
     latestAt: group.latestAt,
     activeCount,
-  });
+  }, loc);
 
   return (
     <section className={`listing-path-channel ${open ? "listing-path-channel--open" : ""}`}>
@@ -53,7 +45,7 @@ function PromotionChannelSection({
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
       >
-        <MarketingChannelBrand id={group.id} label={group.label} />
+        <MarketingChannelBrand id={group.id} label={loc.t(group.label)} />
         <span className="listing-path-channel__summary">{summary}</span>
         <ChevronDown
           className={`listing-path-channel__chevron ${open ? "listing-path-channel__chevron--open" : ""}`}
@@ -85,9 +77,10 @@ export default function PortalPathStacks({
   listingImage?: string | null;
   activePortals?: string[];
 }) {
+  const loc = usePortalLocale();
   const stacks = useMemo(
-    () => groupPortalPath(listingPath, { activePortals }),
-    [listingPath, activePortals],
+    () => groupPortalPath(listingPath, { activePortals }, loc),
+    [listingPath, activePortals, loc],
   );
   const [open, setOpen] = useState<Partial<Record<PortalStackKind, boolean>>>({});
 
@@ -97,8 +90,8 @@ export default function PortalPathStacks({
     <div className="space-y-3">
       {stacks.map((stack) => {
         const expanded = open[stack.kind] === true;
-        const countLabel =
-          stack.items.length === 1 ? "1 wpis" : `${stack.items.length} wpisy`;
+        const countLabel = `${stack.items.length} ${loc.p(stack.items.length, "wpis|wpisy|wpisów")}`;
+        const latest = stack.latestAt ? new Date(stack.latestAt) : null;
         return (
           <article key={stack.kind} className={`listing-path-stack listing-path-stack--${stack.kind}`}>
             <button
@@ -112,10 +105,12 @@ export default function PortalPathStacks({
               <div className="min-w-0 flex-1 text-left">
                 <p className="listing-path-stack__kicker">{stack.kicker}</p>
                 <h3 className="listing-path-stack__title">{stack.label}</h3>
-                <p className="listing-path-stack__summary">{stack.summary}</p>
+                {stack.summary ? <p className="listing-path-stack__summary">{stack.summary}</p> : null}
                 <p className="listing-path-stack__meta">
                   {countLabel}
-                  {stack.latestAt ? ` · ost. ${formatWhen(stack.latestAt)}` : ""}
+                  {latest && Number.isFinite(latest.getTime())
+                    ? ` · ${loc.t("ost. {date}", { date: latest.toLocaleDateString(loc.dateLocale, { day: "numeric", month: "short", year: "numeric" }) })}`
+                    : ""}
                 </p>
               </div>
               <ChevronDown
@@ -128,7 +123,7 @@ export default function PortalPathStacks({
                 href={marketReportPortalPath(token, stack.items[0].id)}
                 className="listing-path-stack__open"
               >
-                Otwórz {stack.items.length === 1 ? "raport" : "ostatni raport"}
+                {stack.items.length === 1 ? loc.t("Otwórz raport") : loc.t("Otwórz ostatni raport")}
               </a>
             ) : null}
             {expanded ? (

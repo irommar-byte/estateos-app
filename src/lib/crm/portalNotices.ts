@@ -18,6 +18,8 @@ export type PortalNotice = {
   matchId?: number;
 };
 
+import { PORTAL_TR_PL, type PortalTr } from '@/i18n/portal/translate';
+
 export const NOTICE_GROUP_LABEL: Record<PortalNoticeGroup, string> = {
   journey: 'Twoja droga',
   offers: 'Propozycje',
@@ -54,9 +56,10 @@ type NoticeInput = {
 };
 
 const RECENT_MS = 30 * 86_400_000;
-const pln = (n: number) => `${Math.round(n).toLocaleString('pl-PL')} zł`;
-
-export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
+export function buildPortalNotices(input: NoticeInput, tr: PortalTr = PORTAL_TR_PL): PortalNotice[] {
+  const { t, p, dateLocale } = tr;
+  const pln = (n: number) => `${Math.round(n).toLocaleString(dateLocale)} zł`;
+  const agent = input.agentFirst;
   const out: PortalNotice[] = [];
   const now = Date.now();
 
@@ -65,7 +68,7 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
       id: `chat:${input.chat.latestAgentId || input.chat.unread}`,
       group: 'chat',
       anchor: 'portal-chat',
-      title: `${input.chat.unread === 1 ? 'Nowa wiadomość' : `${input.chat.unread} nowe wiadomości`} od ${input.agentFirst}`,
+      title: input.chat.unread === 1 ? t('Nowa wiadomość od: {agent}', { agent }) : t('{n} {messages} od: {agent}', { n: input.chat.unread, messages: p(input.chat.unread, 'nowa wiadomość|nowe wiadomości|nowych wiadomości'), agent }),
       body: input.chat.preview,
       at: input.chat.latestAt,
       tone: 'action',
@@ -77,7 +80,7 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
       id: `checkback:${input.checkback.activityId}`,
       group: 'journey',
       anchor: 'portal-journey',
-      title: `${input.agentFirst} prosi o krótką odpowiedź`,
+      title: t('{agent} prosi o krótką odpowiedź', { agent }),
       body: input.checkback.body,
       at: input.checkback.createdAt || null,
       tone: 'action',
@@ -85,8 +88,8 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
   }
 
   for (const slot of [
-    { s: input.presentation, label: input.type === 'BUYER' ? 'oglądania' : 'prezentacji', anchor: 'portal-presentation' },
-    { s: input.meeting, label: 'spotkania', anchor: 'portal-meeting' },
+    { s: input.presentation, kind: input.type === 'BUYER' ? 'viewing' : 'presentation', anchor: 'portal-presentation' },
+    { s: input.meeting, kind: 'meeting', anchor: 'portal-meeting' },
   ]) {
     if (!slot.s || slot.s.status === 'confirmed') continue;
     if (new Date(slot.s.startsAt).getTime() < now) continue;
@@ -94,8 +97,11 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
       id: `slot:${slot.anchor}:${slot.s.startsAt}`,
       group: input.type === 'BUYER' ? 'journey' : 'sale',
       anchor: slot.anchor,
-      title: slot.s.proposedBy === 'client' ? `Czekamy, aż ${input.agentFirst} potwierdzi termin ${slot.label}` : `Potwierdź termin ${slot.label}`,
-      body: new Date(slot.s.startsAt).toLocaleString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
+      title:
+        slot.s.proposedBy === 'client'
+          ? t(slot.kind === 'meeting' ? 'Czekamy, aż {agent} potwierdzi termin spotkania' : slot.kind === 'viewing' ? 'Czekamy, aż {agent} potwierdzi termin oglądania' : 'Czekamy, aż {agent} potwierdzi termin prezentacji', { agent })
+          : t(slot.kind === 'meeting' ? 'Potwierdź termin spotkania' : slot.kind === 'viewing' ? 'Potwierdź termin oglądania' : 'Potwierdź termin prezentacji'),
+      body: new Date(slot.s.startsAt).toLocaleString(dateLocale, { timeZone: 'Europe/Warsaw', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }),
       at: null,
       tone: slot.s.proposedBy === 'client' ? 'info' : 'action',
     });
@@ -108,8 +114,8 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
         id: `match:${m.id}`,
         group: 'offers',
         anchor: `portal-match-${m.id}`,
-        title: `Nowa propozycja: ${m.offer.title}`,
-        body: [m.offer.district, m.offer.city].filter(Boolean).join(', ') || 'Oceń ją jednym dotknięciem.',
+        title: `${t('Nowa propozycja')}: ${m.offer.title}`,
+        body: [m.offer.district, m.offer.city].filter(Boolean).join(', ') || t('Oceń ją jednym dotknięciem.'),
         at: m.notifiedAt,
         tone: 'action',
         matchId: m.id,
@@ -121,7 +127,7 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
         id: `reply:${r.matchId}:${r.agentReplyAt || ''}`,
         group: 'offers',
         anchor: 'portal-replies',
-        title: `${input.agentFirst} odpowiedział: ${r.offerTitle}`,
+        title: `${t('{agent} odpowiada', { agent })}: ${r.offerTitle}`,
         body: r.agentReply,
         at: r.agentReplyAt,
         tone: 'action',
@@ -137,8 +143,8 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
         id: `boffer:${o.id}`,
         group: 'sale',
         anchor: 'portal-buyer-offers',
-        title: `Oferta kupującego: ${pln(o.amount)}`,
-        body: `${o.buyerLabel} — zobacz rekomendację ${input.agentFirst} i odpowiedz.`,
+        title: `${t('Oferta kupującego')}: ${pln(o.amount)}`,
+        body: t('{buyer} — zobacz rekomendację agenta ({agent}) i odpowiedz.', { buyer: o.buyerLabel.replace(/^Kupujący/, t('Kupujący')), agent }),
         at: null,
         tone: 'action',
       });
@@ -160,8 +166,8 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
         id: `agreement:${input.agreement.updatedAt || ''}`,
         group: 'agreement',
         anchor: 'portal-agreement',
-        title: 'Umowa czeka na Twój podpis',
-        body: 'Przeczytaj warunki współpracy w panelu.',
+        title: t('Umowa czeka na Twój podpis'),
+        body: t('Przeczytaj warunki współpracy w panelu.'),
         at: input.agreement.updatedAt,
         tone: 'action',
       });
@@ -175,8 +181,8 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
           id: `doc-rej:${d.key}:${d.reviewedAt || ''}`,
           group: 'documents',
           anchor: `portal-doc-${d.key}`,
-          title: `Dokument do poprawy: ${d.label}`,
-          body: d.note || `${input.agentFirst} prosi o nowy plik.`,
+          title: `${t('Dokument do poprawy')}: ${t(d.label)}`,
+          body: d.note || t('{agent} prosi o nowy plik.', { agent }),
           at: d.reviewedAt || null,
           tone: 'action',
         });
@@ -185,8 +191,8 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
           id: `doc-ok:${d.key}:${d.reviewedAt}`,
           group: 'documents',
           anchor: `portal-doc-${d.key}`,
-          title: `Zaakceptowano: ${d.label}`,
-          body: `${input.agentFirst} sprawdził dokument — nic więcej nie trzeba.`,
+          title: `${t('Zaakceptowano')}: ${t(d.label)}`,
+          body: t('{agent} sprawdził(a) dokument — nic więcej nie trzeba.', { agent }),
           at: d.reviewedAt,
           tone: 'info',
         });
@@ -195,8 +201,8 @@ export function buildPortalNotices(input: NoticeInput): PortalNotice[] {
           id: `doc-new:${d.key}`,
           group: 'documents',
           anchor: `portal-doc-${d.key}`,
-          title: `${input.agentFirst} dodał do listy: ${d.label}`,
-          body: d.hint || 'Nowy dokument do przesłania.',
+          title: `${t('{agent} dodaje do listy', { agent })}: ${t(d.label)}`,
+          body: (d.hint && t(d.hint)) || t('Nowy dokument do przesłania.'),
           at: d.createdAt,
           tone: 'action',
         });

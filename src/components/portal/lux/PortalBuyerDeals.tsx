@@ -1,6 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type PortalBuyerDeal = {
   offerId: number;
@@ -15,11 +16,6 @@ export type PortalBuyerDeal = {
   reservedUntil: string | null;
 };
 
-const pln = (value: number) => `${Math.round(value).toLocaleString("pl-PL")} zł`;
-const when = (iso: string) =>
-  new Date(iso).toLocaleString("pl-PL", { timeZone: "Europe/Warsaw", weekday: "short", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-const day = (iso: string) => new Date(iso).toLocaleDateString("pl-PL", { timeZone: "Europe/Warsaw", day: "numeric", month: "long" });
-
 const OFFER_STATUS: Record<NonNullable<PortalBuyerDeal["yourOffer"]>["status"], string> = {
   open: "czeka na odpowiedź sprzedającego",
   accepted: "przyjęta",
@@ -30,6 +26,11 @@ const OFFER_STATUS: Record<NonNullable<PortalBuyerDeal["yourOffer"]>["status"], 
 
 /** Ścieżka kupującego przy każdej nieruchomości: etapy, terminy, propozycja ceny. */
 export default function PortalBuyerDeals({ deals }: { deals: PortalBuyerDeal[] }) {
+  const { t, dateLocale } = usePortalLocale();
+  const pln = (value: number) => `${Math.round(value).toLocaleString(dateLocale)} zł`;
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString(dateLocale, { timeZone: "Europe/Warsaw", weekday: "short", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
+  const day = (iso: string) => new Date(iso).toLocaleDateString(dateLocale, { timeZone: "Europe/Warsaw", day: "numeric", month: "long" });
   return (
     <div className="space-y-4">
       {deals.map((deal) => (
@@ -42,7 +43,7 @@ export default function PortalBuyerDeals({ deals }: { deals: PortalBuyerDeal[] }
             <div className="min-w-0">
               <p className="truncate text-[15px] font-semibold text-[var(--lux-ink)]">{deal.title}</p>
               {deal.address ? <p className="truncate text-[13px] text-[var(--lux-ink-3)]">{deal.address}</p> : null}
-              <p className="mt-1 text-[13px] font-semibold text-[var(--lux-good)]">{deal.status}</p>
+              <p className="mt-1 text-[13px] font-semibold text-[var(--lux-good)]">{t(deal.status)}</p>
             </div>
           </div>
 
@@ -65,8 +66,8 @@ export default function PortalBuyerDeals({ deals }: { deals: PortalBuyerDeal[] }
                   <span className={`h-[2px] flex-1 ${index === deal.phases.length - 1 ? "opacity-0" : phase.done ? "bg-[var(--lux-good)]" : "bg-[var(--lux-line)]"}`} />
                 </div>
                 <span className={`mt-1.5 text-[11px] ${phase.current ? "font-semibold text-[var(--lux-ink)]" : "text-[var(--lux-ink-3)]"}`}>
-                  {phase.label}
-                  {phase.skipped ? <span className="block text-[10px]">pominięte</span> : null}
+                  {t(phase.label)}
+                  {phase.skipped ? <span className="block text-[10px]">{t("pominięte")}</span> : null}
                 </span>
               </li>
             ))}
@@ -76,14 +77,14 @@ export default function PortalBuyerDeals({ deals }: { deals: PortalBuyerDeal[] }
             <div className="mt-4 space-y-1 rounded-xl bg-[var(--lux-well)] p-3 text-[13px] text-[var(--lux-ink-2)]">
               {deal.agreedPrice ? (
                 <p>
-                  Uzgodniona cena: <b className="text-[var(--lux-ink)]">{pln(deal.agreedPrice)}</b>
+                  {t("Uzgodniona cena")}: <b className="text-[var(--lux-ink)]">{pln(deal.agreedPrice)}</b>
                 </p>
               ) : deal.yourOffer ? (
                 <p>
-                  Twoja propozycja: <b className="text-[var(--lux-ink)]">{pln(deal.yourOffer.amount)}</b> — {OFFER_STATUS[deal.yourOffer.status]}
+                  {t("Twoja propozycja")}: <b className="text-[var(--lux-ink)]">{pln(deal.yourOffer.amount)}</b> — {t(OFFER_STATUS[deal.yourOffer.status])}
                 </p>
               ) : null}
-              {deal.reservedUntil ? <p>Zarezerwowane dla Ciebie do {day(deal.reservedUntil)}</p> : null}
+              {deal.reservedUntil ? <p>{t("Zarezerwowane dla Ciebie do {date}", { date: day(deal.reservedUntil) })}</p> : null}
             </div>
           ) : null}
 
@@ -91,7 +92,7 @@ export default function PortalBuyerDeals({ deals }: { deals: PortalBuyerDeal[] }
             <ul className="mt-3 divide-y divide-[var(--lux-line)]">
               {deal.dates.map((item) => (
                 <li key={item.label} className="flex items-center justify-between gap-3 py-2 text-[13px]">
-                  <span className="text-[var(--lux-ink-3)]">{item.label}</span>
+                  <span className="text-[var(--lux-ink-3)]">{t(item.label)}</span>
                   <span className={item.done ? "font-semibold text-[var(--lux-good)]" : "font-semibold text-[var(--lux-ink)]"}>
                     {item.done ? "✓ " : ""}
                     {when(item.at)}

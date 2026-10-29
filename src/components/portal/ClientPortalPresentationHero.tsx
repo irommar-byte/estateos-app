@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck2, CalendarPlus, CheckCircle2, Clock3, MapPin } from "lucide-react";
 import ClientPortalScheduleActions from "@/components/portal/ClientPortalScheduleActions";
-import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 import { buildCalendarIcs, downloadIcsFile, googleCalendarUrl } from "@/lib/crm/calendarLinks";
 import { eventCountdownState, splitCountdown } from "@/lib/crm/upcomingScheduleShared";
 
@@ -60,6 +60,7 @@ export default function ClientPortalPresentationHero({
   agentName: string;
   onDone: () => Promise<void> | void;
 }) {
+  const { t, dateLocale } = usePortalLocale();
   const [now, setNow] = useState(() => Date.now());
   const confirmed = slot.status === "confirmed";
   const offer = slot.offer || null;
@@ -80,8 +81,7 @@ export default function ClientPortalPresentationHero({
     return { state, parts: splitCountdown(Math.max(0, startsAt.getTime() - now)) };
   }, [now, slot.startsAt, startsAt]);
 
-  const calendarTitle =
-    clientType === "SELLER" ? "Pokaz mieszkania kupującemu" : "Prezentacja nieruchomości";
+  const calendarTitle = clientType === "SELLER" ? t("Pokaz mieszkania kupującemu") : t("Prezentacja nieruchomości");
   const calendarDescription = [offer?.title, agentName, "EstateOS"].filter(Boolean).join(" · ");
 
   const addToDevice = () => {
@@ -101,8 +101,8 @@ export default function ClientPortalPresentationHero({
     <section
       className={`rounded-[1.75rem] border p-5 sm:p-6 ${
         confirmed
-          ? "border-emerald-400/55 bg-gradient-to-br from-emerald-500/14 via-[var(--eos-card)] to-[var(--eos-card)] shadow-[0_18px_50px_rgba(16,185,129,0.18)]"
-          : "border-amber-400/55 bg-gradient-to-br from-amber-400/16 via-[var(--eos-card)] to-[var(--eos-card)] shadow-[0_18px_50px_rgba(245,158,11,0.16)]"
+          ? "border-[var(--lux-good)]/40 bg-[var(--lux-card)] shadow-[var(--lux-shadow)]"
+          : "border-[var(--lux-gold-line)] bg-[var(--lux-card)] shadow-[var(--lux-shadow)]"
       }`}
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -112,26 +112,31 @@ export default function ClientPortalPresentationHero({
           }`}
         >
           {confirmed ? <CheckCircle2 className="size-3.5" /> : <Clock3 className="size-3.5" />}
-          {slot.heldAt ? "Prezentacja odbyta" : confirmed ? "Prezentacja potwierdzona" : "Prezentacja przyszła"}
+          {slot.heldAt ? t("Prezentacja odbyta") : confirmed ? t("Prezentacja potwierdzona") : t("Prezentacja do potwierdzenia")}
         </span>
         <span className="text-[11px] font-semibold text-[var(--eos-muted)]">
-          {slot.heldAt
-            ? "Ten pokaz już się odbył"
-            : confirmed
-              ? "Termin jest przypieczętowany"
-              : slot.showingKind === "other_agent" || slot.showingKind === "external_import"
-                ? "Prosimy o termin u agenta wystawiającego — wybierz godzinę poniżej"
-                : "Potwierdź albo zaproponuj inną godzinę"}
+          {slot.heldAt || confirmed
+            ? null
+            : slot.showingKind === "other_agent" || slot.showingKind === "external_import"
+                ? t("Wybierz godzinę — agent ustali ją z biurem wystawiającym")
+                : t("Potwierdź albo zaproponuj inną godzinę")}
         </span>
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
         <div className="min-w-0">
           <p className="eos-portal-label eos-portal-label--ok">
-            {clientType === "SELLER" ? "Pokaz mieszkania kupującemu" : "Twoja prezentacja"}
+            {clientType === "SELLER" ? t("Pokaz mieszkania kupującemu") : t("Twoja prezentacja")}
           </p>
           <h2 className="mt-1 text-2xl font-black leading-tight text-[var(--eos-text)] sm:text-3xl">
-            {formatMeetingWhenPl(slot.startsAt)}
+            {startsAt.toLocaleString(dateLocale, {
+              timeZone: "Europe/Warsaw",
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </h2>
           {location ? (
             <p className="mt-2 inline-flex items-center gap-1.5 text-sm text-[var(--eos-muted)]">
@@ -141,31 +146,31 @@ export default function ClientPortalPresentationHero({
           ) : null}
           {clientType === "SELLER" ? (
             <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
-              To oglądanie z kupującym — nie spotkanie z agentem. Potwierdzenie idzie też do drugiej strony.
+              {t("To oglądanie z kupującym — potwierdzenie trafia też do drugiej strony.")}
             </p>
           ) : (
             <p className="mt-2 text-sm leading-relaxed text-[var(--eos-muted)]">
               {confirmed
-                ? "Nic więcej nie musisz teraz robić. Termin jest u Ciebie, u agenta w CRM i w e-mailu z plikiem kalendarza."
-                : "To Twój następny krok. Najpierw potwierdź ten termin albo zaproponuj inną godzinę."}
+                ? t("Nic więcej nie musisz robić — termin masz też w e-mailu z plikiem kalendarza.")
+                : t("Potwierdź termin albo zaproponuj inną godzinę.")}
             </p>
           )}
         </div>
 
         {confirmed ? (
-          <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/8 px-4 py-3">
+          <div className="rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-well)] px-4 py-3">
             {countdown.state === "live" ? (
-              <p className="text-center text-sm font-black uppercase tracking-[0.14em] text-emerald-700">Trwa teraz</p>
+              <p className="text-center text-sm font-black uppercase tracking-[0.14em] text-[var(--lux-good)]">{t("Trwa teraz")}</p>
             ) : countdown.state === "ended" ? (
               <p className="text-center text-sm font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">
-                Termin minął
+                {t("Termin minął")}
               </p>
             ) : (
               <div className="flex items-end justify-center gap-2">
-                {countdown.parts.days > 0 ? <CountdownUnit value={countdown.parts.days} label="Dni" /> : null}
-                <CountdownUnit value={countdown.parts.hours} label="Godz" />
-                <CountdownUnit value={countdown.parts.minutes} label="Min" />
-                <CountdownUnit value={countdown.parts.seconds} label="Sek" />
+                {countdown.parts.days > 0 ? <CountdownUnit value={countdown.parts.days} label={t("Dni")} /> : null}
+                <CountdownUnit value={countdown.parts.hours} label={t("Godz")} />
+                <CountdownUnit value={countdown.parts.minutes} label={t("Min")} />
+                <CountdownUnit value={countdown.parts.seconds} label={t("Sek")} />
               </div>
             )}
           </div>
@@ -177,12 +182,12 @@ export default function ClientPortalPresentationHero({
           href={`/oferta/${offer.id}`}
           target="_blank"
           rel="noreferrer"
-          className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/70 p-3 text-left transition hover:border-emerald-500/40"
+          className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-bg)]/70 p-3 text-left transition hover:border-[var(--lux-gold-line)]"
         >
           {photos[0] ? (
             <img src={photos[0]} alt="" className="size-16 shrink-0 rounded-xl object-cover" />
           ) : (
-            <div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-700">
+            <div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-[var(--lux-well)] text-[var(--lux-gold-ink)]">
               <CalendarCheck2 className="size-6" />
             </div>
           )}
@@ -193,15 +198,15 @@ export default function ClientPortalPresentationHero({
               {offer.city ? ` · ${offer.city}` : ""}
               {offer.area ? ` · ${offer.area} m²` : ""}
             </p>
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-              Otwórz ofertę
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--lux-accent)]">
+              {t("Otwórz ofertę")}
             </p>
           </div>
         </a>
       ) : null}
 
       {slot.status === "pending" && slot.reason ? (
-        <p className="mt-3 text-sm text-amber-700">Prośba o zmianę: {slot.reason}</p>
+        <p className="mt-3 text-sm text-[var(--lux-warn)]">{t("Prośba o zmianę:")} {slot.reason}</p>
       ) : null}
 
       {confirmed ? (
@@ -212,10 +217,10 @@ export default function ClientPortalPresentationHero({
             className="eos-engraved-cta eos-engraved-cta--home inline-flex w-full items-center justify-center gap-2"
           >
             <CalendarPlus className="size-4" />
-            Dodaj do kalendarza
+            {t("Dodaj do kalendarza")}
           </button>
           <p className="text-center text-[11px] text-[var(--eos-muted)]">
-            Plik .ics · działa w Apple, Google i Outlook ·{" "}
+            {t("Apple, Outlook")} ·{" "}
             <a
               href={googleCalendarUrl({
                 title: calendarTitle,
@@ -225,7 +230,7 @@ export default function ClientPortalPresentationHero({
               })}
               target="_blank"
               rel="noreferrer"
-              className="font-semibold text-emerald-700 underline-offset-2 hover:underline"
+              className="font-semibold text-[var(--lux-accent)] underline-offset-2 hover:underline"
             >
               Google Calendar
             </a>

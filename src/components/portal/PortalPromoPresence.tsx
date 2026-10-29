@@ -11,6 +11,7 @@ import {
   type MarketingChannelId,
 } from "@/lib/crm/marketingChannel";
 import type { ListingPathEvent } from "@/components/portal/ListingPathEventCard";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 function AgenciesGlyph() {
   return (
@@ -20,14 +21,11 @@ function AgenciesGlyph() {
   );
 }
 
-const shortDate = (iso: string | null) => {
+const shortDate = (iso: string | null, dateLocale: string) => {
   if (!iso) return null;
   const d = new Date(iso);
-  return Number.isFinite(d.getTime()) ? d.toLocaleDateString("pl-PL", { day: "numeric", month: "short" }) : null;
+  return Number.isFinite(d.getTime()) ? d.toLocaleDateString(dateLocale, { day: "numeric", month: "short" }) : null;
 };
-
-const plGroups = (n: number) =>
-  n === 1 ? "1 grupa" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? `${n} grupy` : `${n} grup`;
 
 type Tile = {
   id: MarketingChannelId;
@@ -57,6 +55,7 @@ export default function PortalPromoPresence({
   activeChannels?: Array<{ portal?: string | null; status?: string | null; externalUrl?: string | null }>;
   otherAgencies?: { live?: boolean; body?: string | null } | null;
 }) {
+  const { t, p, dateLocale } = usePortalLocale();
   const tiles = useMemo<Tile[]>(() => {
     const live = livePromotionChannelIds({ listing, listingPath, activeChannels });
     const firstSeen = new Map<MarketingChannelId, string>();
@@ -89,28 +88,31 @@ export default function PortalPromoPresence({
     }).sort((a, b) => Number(b.on) - Number(a.on));
   }, [listing, listingPath, activeChannels]);
 
-  const activeCount = tiles.filter((t) => t.on).length;
+  const activeCount = tiles.filter((tile) => tile.on).length;
   const agenciesOn = Boolean(otherAgencies?.live);
   const agenciesBody = String(otherAgencies?.body || "").trim();
 
   return (
-    <section className="promo-board" aria-label="Gdzie ogłoszenie jest widoczne">
+    <section className="promo-board" aria-label={t("Gdzie ogłoszenie jest widoczne")}>
       <div className="promo-board__head">
         <p className="promo-board__title">
           {activeCount
-            ? `Ogłoszenie widać na ${activeCount} z ${tiles.length} portali`
-            : "Ogłoszenie jeszcze nie jest opublikowane na portalach"}
+            ? t("Ogłoszenie widać na {n} z {total} portali", { n: activeCount, total: tiles.length })
+            : t("Ogłoszenie jeszcze nie jest opublikowane na portalach")}
         </p>
-        <p className="promo-board__sub">Pokazujemy tylko publikacje zapisane przez agenta. Dotknij portalu, aby zobaczyć ogłoszenie.</p>
+        <p className="promo-board__sub">{t("Dotknij portalu, aby zobaczyć ogłoszenie.")}</p>
       </div>
       <ul className="promo-board__grid">
         {tiles.map((tile) => {
-          const since = shortDate(tile.since);
+          const since = shortDate(tile.since, dateLocale);
           const detail = tile.on
-            ? [since ? `od ${since}` : "aktywne", tile.id === "facebook" && tile.count > 1 ? plGroups(tile.count) : null]
+            ? [
+                since ? t("od {date}", { date: since }) : t("aktywne"),
+                tile.id === "facebook" && tile.count > 1 ? `${tile.count} ${p(tile.count, "grupa|grupy|grup")}` : null,
+              ]
                 .filter(Boolean)
                 .join(", ")
-            : "jeszcze nie";
+            : t("jeszcze nie");
           const inner = (
             <>
               <MarketingChannelBrand id={tile.id} inactive={!tile.on} />
@@ -129,7 +131,7 @@ export default function PortalPromoPresence({
                   target={tile.href.startsWith("/") ? undefined : "_blank"}
                   rel="noreferrer"
                   className={`promo-tile promo-tile--${tile.id} promo-tile--on`}
-                  aria-label={`${promotionGroupLabel(tile.id)}: ${detail}. Otwórz ogłoszenie`}
+                  aria-label={`${t(promotionGroupLabel(tile.id))}: ${detail}. ${t("Otwórz ogłoszenie")}`}
                 >
                   {inner}
                 </a>
@@ -146,11 +148,11 @@ export default function PortalPromoPresence({
                 <span className="marketing-channel-brand__mark promo-tile__agencies-mark" aria-hidden>
                   <AgenciesGlyph />
                 </span>
-                <span className="marketing-channel-brand__word">Inne biura</span>
+                <span className="marketing-channel-brand__word">{t("Inne biura")}</span>
               </span>
               <span className="promo-tile__status">
                 <span className="promo-tile__dot" aria-hidden />
-                współpraca
+                {t("współpraca")}
               </span>
             </div>
           </li>

@@ -8,7 +8,6 @@ import {
   ExternalLink,
   CalendarCheck2,
   BriefcaseBusiness,
-  ShieldCheck,
   Calculator,
   Columns2,
   Handshake,
@@ -32,7 +31,6 @@ import PortalStickyBar from "@/components/portal/lux/PortalStickyBar";
 import PortalMilestone from "@/components/portal/lux/PortalMilestone";
 import PortalLoadingSkeleton from "@/components/portal/lux/PortalLoadingSkeleton";
 import PortalToolsGrid, { type LuxTool } from "@/components/portal/lux/PortalToolsGrid";
-import PortalAppInvite from "@/components/portal/lux/PortalAppInvite";
 import PortalOfferSheet from "@/components/portal/lux/PortalOfferSheet";
 import PortalCompare from "@/components/portal/lux/PortalCompare";
 import PortalPartnerSheet, { type PortalCompanion } from "@/components/portal/lux/PortalPartnerSheet";
@@ -56,7 +54,6 @@ import { buildPortalNotices, type PortalNotice, type PortalNoticeGroup } from "@
 import { PortalReferral, PortalReview } from "@/components/portal/lux/PortalReviewReferral";
 import { matchSentiment, type LuxMatch, type LuxPartnerFeedback } from "@/components/portal/lux/types";
 import { type AcquisitionFormData } from "@/lib/acquisitionWorkflow";
-import ClientPortalJourney from "@/components/portal/ClientPortalJourney";
 import ClientPortalOfferBoard from "@/components/portal/ClientPortalOfferBoard";
 import ClientPortalIntelligenceCheckback, {
   type PortalPendingCheckback,
@@ -75,12 +72,12 @@ import PortalPromoPresence from "@/components/portal/PortalPromoPresence";
 import PortalReachCard, { type PortalReach } from "@/components/portal/lux/PortalReachCard";
 import { rememberClientPortalToken } from "@/lib/crm/portalSession";
 import { buyerOnboardingStorageKey, isBuyerOnboardingDismissed } from "@/lib/clientPortalPath";
-import { formatMeetingWhenPl } from "@/lib/datetime/warsaw";
+import { PortalLanguageSwitch, PortalLocaleProvider, usePortalLocaleState } from "@/components/portal/PortalLocale";
+import type { Locale } from "@/i18n/config";
 import { collectAgentOfferReplies, type ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
 import { initialOpenMatchIds } from "@/lib/crm/clientPortalOfferBoard";
 import ClientPortalAgentReplyInbox from "@/components/portal/ClientPortalAgentReplyInbox";
 import ClientPortalNowCard, { resolvePortalNow, type PortalNowInput } from "@/components/portal/ClientPortalNowCard";
-import { Mail, Phone } from "lucide-react";
 
 type SearchCriteria = {
   location: string;
@@ -125,6 +122,7 @@ type PortalData = {
   viewer?: { role: "owner" } | { role: "partner"; companionId: number; name: string };
   greeting?: string;
   clientFirstName?: string;
+  locale?: Locale;
   permissions?: {
     selfBooking: boolean;
     criteriaEdit: boolean;
@@ -345,8 +343,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const [phrasePrefill, setPhrasePrefill] = useState<string | null>(null);
   const [fromSzukam, setFromSzukam] = useState(false);
   const [welcomeEmailSent, setWelcomeEmailSent] = useState(false);
-  const [fromInvite, setFromInvite] = useState(false);
-  const [installRequested, setInstallRequested] = useState(false);
   const [releaseAttempted, setReleaseAttempted] = useState(false);
   const [firstOfferPendingAgent, setFirstOfferPendingAgent] = useState(false);
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
@@ -375,6 +371,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const groups = usePortalGroups(token, groupDefaults);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const portalLoaded = Boolean(portal);
+  const portalLocale = usePortalLocaleState(token, portal?.locale, portal?.viewer?.role === "partner");
+  const { t, p, dateLocale } = portalLocale;
+  /** Termin w języku panelu, zawsze w czasie warszawskim. */
+  const fmtWhen = (iso: string) =>
+    new Date(iso).toLocaleString(dateLocale, { timeZone: "Europe/Warsaw", weekday: "short", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
   useEffect(() => {
     if (!portalLoaded || typeof IntersectionObserver === "undefined") return;
     const sections = Array.from(document.querySelectorAll<HTMLElement>("[data-group]"));
@@ -403,7 +404,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     setPhrasePrefill(query.get("phrase"));
     setFromSzukam(query.get("from") === "szukam");
     setWelcomeEmailSent(query.get("mail") === "1");
-    setFromInvite(query.get("witaj") === "1");
   }, []);
 
   useEffect(() => {
@@ -580,7 +580,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) {
-      portalToast.error("Nie udało się potwierdzić odczytu", String(json?.error || ""));
+      portalToast.error(t("Nie udało się potwierdzić odczytu."), String(json?.error || ""));
       return;
     }
     await load({ silent: true });
@@ -599,17 +599,17 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         body: JSON.stringify({ action: "submit_feedback", matchId, ...payload }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Nie udało się wysłać");
+      if (!res.ok) throw new Error(json.error || t("Nie udało się wysłać"));
       await load({ silent: true });
       if (json.intelligenceReply?.action === "error" && json.intelligenceReply?.message) {
-        portalToast.info("Wiadomość od asystenta", String(json.intelligenceReply.message));
+        portalToast.info(t("Wiadomość od asystenta"), String(json.intelligenceReply.message));
       } else {
         const sentimentLabel =
-          payload.sentiment === "like" ? "Chcesz obejrzeć" : payload.sentiment === "dislike" ? "Nie pasuje" : payload.sentiment === "maybe" ? "Do przemyślenia" : null;
-        portalToast.success("Ocena zapisana", sentimentLabel ? `${sentimentLabel} — agent zobaczy to od razu.` : "Agent zobaczy ją od razu.");
+          payload.sentiment === "like" ? "Chcę oglądać" : payload.sentiment === "dislike" ? "Nie pasuje" : payload.sentiment === "maybe" ? "Do przemyślenia" : null;
+        portalToast.success(t("Ocena zapisana"), sentimentLabel ? `${t(sentimentLabel)} — ${t("agent zobaczy to od razu.")}` : t("Agent zobaczy ją od razu."));
       }
     } catch (e) {
-      portalToast.error("Nie udało się wysłać oceny", e);
+      portalToast.error(t("Nie udało się wysłać oceny"), e);
     } finally {
       setSavingId(null);
     }
@@ -652,10 +652,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     if (!token) return;
     try {
       await portalAction(token, "toggle_favorite", { matchId, favorite });
-      portalToast.success(favorite ? "Dodano do ulubionych" : "Usunięto z ulubionych", favorite ? "Damy znać, gdy zmieni się cena." : undefined);
+      portalToast.success(favorite ? t("Dodano do ulubionych") : t("Usunięto z ulubionych"), favorite ? t("Damy znać, gdy zmieni się cena.") : undefined);
       await load({ silent: true });
     } catch (e) {
-      portalToast.error("Nie udało się zapisać ulubionej", e);
+      portalToast.error(t("Nie udało się zapisać ulubionej"), e);
     }
   };
 
@@ -690,7 +690,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         ) : null}
         {fromSzukam && welcomeEmailSent ? (
           <p className="mt-4 text-center text-xs leading-relaxed text-[var(--eos-muted)]">
-            Link do panelu leci też na Twój e-mail.
+            {t("Link do panelu leci też na Twój e-mail.")}
           </p>
         ) : null}
       </div>
@@ -700,10 +700,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   if (error || !portal) {
     return (
       <div className="mx-auto max-w-lg px-4 py-20 text-center">
-        <p className="text-lg font-semibold text-[var(--eos-text)]">Panel niedostępny</p>
-        <p className="mt-2 text-sm text-[var(--eos-muted)]">{error || "Link wygasł lub jest nieprawidłowy."}</p>
+        <p className="text-lg font-semibold text-[var(--eos-text)]">{t("Panel niedostępny")}</p>
+        <p className="mt-2 text-sm text-[var(--eos-muted)]">{error || t("Link wygasł lub jest nieprawidłowy.")}</p>
         <Link href="/" className="mt-6 inline-block text-emerald-600 underline">
-          Wróć na EstateOS
+          {t("Wróć na EstateOS")}
         </Link>
       </div>
     );
@@ -784,7 +784,9 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         pendingDecisionTitle:
           portal.type === "SELLER"
             ? openBuyerOffers.length
-              ? `${openBuyerOffers.length === 1 ? "Oferta kupującego" : `${openBuyerOffers.length} oferty kupujących`} czeka na odpowiedź`
+              ? openBuyerOffers.length === 1
+                ? t("Oferta kupującego czeka na odpowiedź")
+                : t("{n} {offers} czeka na odpowiedź", { n: openBuyerOffers.length, offers: p(openBuyerOffers.length, "oferta kupującego|oferty kupujących|ofert kupujących") })
               : pendingDecision
                 ? pendingDecision.title
                 : null
@@ -826,48 +828,48 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const buyerStages: LuxAxisStage[] = [
     {
       id: "criteria",
-      label: "Kryteria",
+      label: t("Kryteria"),
       state: stateFor(0, buyerStageIndex),
       summary: criteria ? (
         <>
-          {[criteria.location, criteria.maxBudget ? `do ${criteria.maxBudget}` : null, criteria.minRooms ? `od ${criteria.minRooms} pok.` : null]
+          {[criteria.location, criteria.maxBudget ? t("do {v}", { v: criteria.maxBudget }) : null, criteria.minRooms ? t("od {n} pok.", { n: criteria.minRooms }) : null]
             .filter(Boolean)
             .join(" · ")}
           {!isPartner ? (
             <>
               {" · "}
               <button type="button" onClick={() => setAreaOpen(true)} className="font-bold text-[var(--lux-accent)]">
-                {portal.searchPolygon ? "obszar na mapie ✓" : "narysuj obszar"}
+                {portal.searchPolygon ? t("obszar na mapie ✓") : t("narysuj obszar")}
               </button>
             </>
           ) : null}
         </>
       ) : (
-        `${agentFirst} ustala z Tobą, czego szukamy.`
+        t("{agent} ustala z Tobą, czego szukamy.", { agent: agentFirst })
       ),
       content: nowCard,
     },
     {
       id: "proposals",
-      label: luxMatches.length ? `Propozycje · ${ratedCount} ${ratedCount === 1 ? "oceniona" : "ocenionych"}` : "Propozycje",
+      label: luxMatches.length ? `${t("Propozycje")} · ${ratedCount} ${p(ratedCount, "oceniona|ocenione|ocenionych")}` : t("Propozycje"),
       state: stateFor(1, buyerStageIndex),
       summary: luxMatches.length ? (
         <>
-          {favoriteCount ? `${favoriteCount} ulubionych · ` : ""}
+          {favoriteCount ? `${favoriteCount} ${p(favoriteCount, "ulubiona|ulubione|ulubionych")} · ` : ""}
           <button type="button" onClick={() => scrollTo("portal-offers")} className="font-bold text-[var(--lux-accent)]">
-            zobacz wszystkie
+            {t("zobacz wszystkie")}
           </button>
           {compareIds.length >= 2 ? (
             <>
               {" · "}
               <button type="button" onClick={() => setCompareOpen(true)} className="font-bold text-[var(--lux-accent)]">
-                porównaj
+                {t("porównaj")}
               </button>
             </>
           ) : null}
         </>
       ) : (
-        "Pierwsze propozycje pojawią się tutaj."
+        t("Pierwsze propozycje pojawią się tutaj.")
       ),
       content: (
         <>
@@ -880,18 +882,18 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     },
     {
       id: "viewings",
-      label: "Oglądania",
+      label: t("Oglądania"),
       state: stateFor(2, buyerStageIndex),
       summary: portal.presentation
-        ? `${new Date(portal.presentation.startsAt).getTime() < Date.now() ? "Ostatnie" : "Najbliższe"}: ${formatMeetingWhenPl(portal.presentation.startsAt)}`
-        : "Gdy coś się spodoba — umówimy oglądanie.",
+        ? `${new Date(portal.presentation.startsAt).getTime() < Date.now() ? t("Ostatnie") : t("Najbliższe")}: ${fmtWhen(portal.presentation.startsAt)}`
+        : t("Gdy coś się spodoba — umówimy oglądanie."),
       content: (
         <>
           {nowCard}
           {presentationBlock}
           {canSelfBook ? (
             <button type="button" onClick={() => { setBookingOfferId(null); setBookingOpen(true); }} className="lux-btn lux-btn--ink w-full">
-              Wybierz termin oglądania z kalendarza {agentFirst}
+              {t("Wybierz termin oglądania z kalendarza {agent}", { agent: agentFirst })}
             </button>
           ) : null}
         </>
@@ -899,11 +901,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     },
     {
       id: "offer",
-      label: "Oferta i negocjacje",
+      label: t("Oferta i negocjacje"),
       state: stateFor(3, buyerStageIndex),
       summary: portal.purchase && portal.purchase.phase !== "viewed"
         ? `${portal.purchase.title} · ${portal.purchase.statusLabel}`
-        : "Propozycja ceny, odpowiedź sprzedającego, warunki.",
+        : t("Propozycja ceny, odpowiedź sprzedającego, warunki."),
       content: (
         <>
           {nowCard}
@@ -912,7 +914,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               <p className="text-[15px] font-bold">{portal.purchase.title}</p>
               <p className="text-[13px] text-[var(--lux-ink-2)]">{portal.purchase.address}</p>
               <p className="lux-serif mt-2 text-[22px]">
-                {portal.purchase.price ? `${Number(portal.purchase.price).toLocaleString("pl-PL")} zł` : "Cena do uzgodnienia"}
+                {portal.purchase.price ? `${Number(portal.purchase.price).toLocaleString(dateLocale)} zł` : t("Cena do uzgodnienia")}
               </p>
               <p className="mt-1 text-[12px] font-bold text-[var(--lux-accent)]">{portal.purchase.statusLabel}</p>
             </section>
@@ -922,15 +924,15 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     },
     {
       id: "contract",
-      label: "Umowa, kredyt, notariusz",
+      label: t("Umowa, kredyt, notariusz"),
       state: stateFor(4, buyerStageIndex),
-      summary: "Lista dokumentów i terminy w jednym miejscu.",
+      summary: t("Lista dokumentów i terminy w jednym miejscu."),
     },
     {
       id: "keys",
-      label: "Klucze",
+      label: t("Klucze"),
       state: portal.purchase?.phase === "closed" ? "done" : stateFor(5, buyerStageIndex),
-      summary: portal.purchase?.phase === "closed" ? "Gratulacje — nieruchomość jest Twoja." : "Protokół przekazania i stany liczników.",
+      summary: portal.purchase?.phase === "closed" ? t("Gratulacje — nieruchomość jest Twoja.") : t("Protokół przekazania i stany liczników."),
     },
   ];
 
@@ -944,38 +946,40 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const sellerStages: LuxAxisStage[] = [
     {
       id: "agreement",
-      label: "Umowa i wycena",
+      label: t("Umowa i wycena"),
       state: stateFor(0, sellerCurrentIndex),
       summary: signed
-        ? `Podpisana${portal.acquisition?.signedAt ? ` ${new Date(portal.acquisition.signedAt).toLocaleDateString("pl-PL")}` : ""}`
+        ? `${t("Podpisana")}${portal.acquisition?.signedAt ? ` ${new Date(portal.acquisition.signedAt).toLocaleDateString(dateLocale)}` : ""}`
         : portal.meeting
-          ? `Spotkanie: ${formatMeetingWhenPl(portal.meeting.startsAt)}`
-          : `${agentFirst} przygotowuje umowę.`,
+          ? `${t("Spotkanie")}: ${fmtWhen(portal.meeting.startsAt)}`
+          : t("{agent} przygotowuje umowę.", { agent: agentFirst }),
       content: nowCard,
     },
     {
       id: "prep",
-      label: "Przygotowanie",
+      label: t("Przygotowanie"),
       state: stateFor(1, sellerCurrentIndex),
-      summary: portal.listing ? "Zdjęcia, rzut i opis gotowe." : "Sesja zdjęciowa, rzut i opis.",
+      summary: portal.listing ? t("Zdjęcia, rzut i opis gotowe.") : t("Sesja zdjęciowa, rzut i opis."),
       content: nowCard,
     },
     {
       id: "publish",
-      label: "Publikacja",
+      label: t("Publikacja"),
       state: stateFor(2, sellerCurrentIndex),
       summary: listingLive
-        ? `Aktywne${portal.activeChannels?.length ? ` na ${portal.activeChannels.length + 1} portalach` : ""}`
-        : "Ogłoszenie zobaczysz tutaj po aktywacji — dostaniesz powiadomienie.",
+        ? portal.activeChannels?.length
+          ? t("Aktywne na {n} portalach", { n: portal.activeChannels.length + 1 })
+          : t("Aktywne")
+        : t("Ogłoszenie zobaczysz tutaj po aktywacji — dostaniesz powiadomienie."),
       content: nowCard,
     },
     {
       id: "viewings",
-      label: "Oglądania i oferty",
+      label: t("Oglądania i oferty"),
       state: stateFor(3, sellerCurrentIndex),
       summary: seller?.stats
-        ? `${seller.stats.showings} ${seller.stats.showings === 1 ? "oglądanie" : "oglądań"} · ${openBuyerOffers.length} ${openBuyerOffers.length === 1 ? "oferta" : "ofert"} do decyzji`
-        : "Pokazy i oferty kupujących.",
+        ? `${seller.stats.showings} ${p(seller.stats.showings, "oglądanie|oglądania|oglądań")} · ${t("{n} {offers} do decyzji", { n: openBuyerOffers.length, offers: p(openBuyerOffers.length, "oferta|oferty|ofert") })}`
+        : t("Pokazy i oferty kupujących."),
       content: (
         <>
           {nowCard}
@@ -992,13 +996,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     },
     {
       id: "preliminary",
-      label: "Umowa przedwstępna",
+      label: t("Umowa przedwstępna"),
       state: stateFor(4, sellerCurrentIndex),
-      summary: acceptedOffer ? `Przyjęta oferta: ${acceptedOffer.buyerLabel} · ${acceptedOffer.amount.toLocaleString("pl-PL")} zł` : "Zadatek, terminy, warunki kredytu kupującego.",
+      summary: acceptedOffer ? `${t("Przyjęta oferta")}: ${acceptedOffer.buyerLabel.replace(/^Kupujący/, t("Kupujący"))} · ${acceptedOffer.amount.toLocaleString(dateLocale)} zł` : t("Zadatek, terminy, warunki kredytu kupującego."),
       content: nowCard,
     },
-    { id: "deed", label: "Akt notarialny", state: stateFor(5, sellerCurrentIndex), summary: "Lista dokumentów do sprzedaży i termin u notariusza." },
-    { id: "handover", label: "Przekazanie mieszkania", state: stateFor(6, sellerCurrentIndex), summary: "Protokół, liczniki, klucze." },
+    { id: "deed", label: t("Akt notarialny"), state: stateFor(5, sellerCurrentIndex), summary: t("Lista dokumentów do sprzedaży i termin u notariusza.") },
+    { id: "handover", label: t("Przekazanie mieszkania"), state: stateFor(6, sellerCurrentIndex), summary: t("Protokół, liczniki, klucze.") },
   ];
 
   const stages = portal.type === "BUYER" ? buyerStages : sellerStages;
@@ -1008,44 +1012,47 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     portal.type === "BUYER"
       ? (
           {
-            criteria: "Ustalamy, czego szukamy.",
-            proposals: luxMatches.length ? "Wybieramy najlepsze propozycje." : "Szukamy dla Ciebie.",
-            viewings: "Jesteśmy na etapie oglądań.",
-            offer: "Negocjujemy warunki.",
-            contract: "Dopinamy formalności.",
-            keys: "Klucze są Twoje.",
+            criteria: t("Ustalamy, czego szukamy."),
+            proposals: luxMatches.length ? t("Wybieramy najlepsze propozycje.") : t("Szukamy dla Ciebie."),
+            viewings: t("Jesteśmy na etapie oglądań."),
+            offer: t("Negocjujemy warunki."),
+            contract: t("Dopinamy formalności."),
+            keys: t("Klucze są Twoje."),
           } as Record<string, string>
         )[currentStage?.id || "keys"]
       : (
           {
-            agreement: "Zaczynamy współpracę.",
-            prep: "Przygotowujemy ogłoszenie.",
-            publish: "Ogłoszenie trafia na rynek.",
+            agreement: t("Zaczynamy współpracę."),
+            prep: t("Przygotowujemy ogłoszenie."),
+            publish: t("Ogłoszenie trafia na rynek."),
             viewings: portal.listing?.createdAt
-              ? `Sprzedaż trwa — ${Math.max(1, Math.round((Date.now() - new Date(portal.listing.createdAt).getTime()) / 86_400_000))} dni na rynku.`
-              : "Sprzedaż trwa.",
-            preliminary: "Mamy kupującego.",
-            deed: "Przed aktem notarialnym.",
-            handover: "Przekazanie mieszkania.",
+              ? t("Sprzedaż trwa — {n} {days} na rynku.", {
+                  n: Math.max(1, Math.round((Date.now() - new Date(portal.listing.createdAt).getTime()) / 86_400_000)),
+                  days: p(Math.max(1, Math.round((Date.now() - new Date(portal.listing.createdAt).getTime()) / 86_400_000)), "dzień|dni|dni"),
+                })
+              : t("Sprzedaż trwa."),
+            preliminary: t("Mamy kupującego."),
+            deed: t("Przed aktem notarialnym."),
+            handover: t("Przekazanie mieszkania."),
           } as Record<string, string>
-        )[currentStage?.id || "handover"] || "Sprzedane.";
+        )[currentStage?.id || "handover"] || t("Sprzedane.");
 
   const buyerTools: LuxTool[] = [
     ...(compareIds.length
-      ? [{ key: "compare", title: "Porównanie", description: `${compareIds.length} ${compareIds.length === 1 ? "oferta" : "oferty"} obok siebie`, icon: Columns2, onClick: () => setCompareOpen(true), badge: String(compareIds.length) }]
-      : [{ key: "compare", title: "Porównanie", description: "Zaznacz oferty „Do porównania”", icon: Columns2, onClick: () => scrollTo("portal-offers") }]),
-    ...(!isPartner && criteria ? [{ key: "area", title: "Moje kryteria", description: portal.searchPolygon ? "Obszar na mapie zapisany" : "Narysuj obszar na mapie", icon: MapPinned, onClick: () => setAreaOpen(true) }] : []),
-    ...(canSelfBook ? [{ key: "booking", title: "Umów oglądanie", description: `Wolne terminy ${agentFirst}`, icon: CalendarCheck2, onClick: () => { setBookingOfferId(null); setBookingOpen(true); } }] : []),
-    { key: "calc", title: "Rata i koszty", description: "Kredyt, podatek, notariusz, prowizja", icon: Calculator, onClick: () => setCalcOpen(true) },
-    ...(!isPartner && permissions.partnerAccess ? [{ key: "partner", title: "Druga osoba", description: portal.companions?.length ? `${portal.companions.map((c) => c.name).join(", ")} ma dostęp` : "Wybierajcie razem", icon: Users, onClick: () => setPartnerOpen(true) }] : []),
-    { key: "chat", title: "Rozmowa", description: `Napisz do ${agentFirst}`, icon: MessageCircle, onClick: () => scrollTo("portal-chat") },
+      ? [{ key: "compare", title: t("Porównanie"), description: t("{n} {offers} obok siebie", { n: compareIds.length, offers: p(compareIds.length, "oferta|oferty|ofert") }), icon: Columns2, onClick: () => setCompareOpen(true), badge: String(compareIds.length) }]
+      : [{ key: "compare", title: t("Porównanie"), description: t("Zaznacz oferty „Do porównania”"), icon: Columns2, onClick: () => scrollTo("portal-offers") }]),
+    ...(!isPartner && criteria ? [{ key: "area", title: t("Moje kryteria"), description: portal.searchPolygon ? t("Obszar na mapie zapisany") : t("Narysuj obszar na mapie"), icon: MapPinned, onClick: () => setAreaOpen(true) }] : []),
+    ...(canSelfBook ? [{ key: "booking", title: t("Umów oglądanie"), description: t("Wolne terminy: {agent}", { agent: agentFirst }), icon: CalendarCheck2, onClick: () => { setBookingOfferId(null); setBookingOpen(true); } }] : []),
+    { key: "calc", title: t("Rata i koszty"), description: t("Kredyt, podatek, notariusz, prowizja"), icon: Calculator, onClick: () => setCalcOpen(true) },
+    ...(!isPartner && permissions.partnerAccess ? [{ key: "partner", title: t("Druga osoba"), description: portal.companions?.length ? t("{names} ma dostęp", { names: portal.companions.map((c) => c.name).join(", ") }) : t("Wybierajcie razem"), icon: Users, onClick: () => setPartnerOpen(true) }] : []),
+    { key: "chat", title: t("Rozmowa"), description: t("Napisz do: {agent}", { agent: agentFirst }), icon: MessageCircle, onClick: () => scrollTo("portal-chat") },
   ];
   const sellerTools: LuxTool[] = [
-    ...(seller ? [{ key: "net", title: "Ile zostanie na rękę", description: "Po prowizji, podatku i spłacie kredytu", icon: Calculator, onClick: () => setNetOpen(true) }] : []),
-    ...(openBuyerOffers.length ? [{ key: "offers", title: "Oferty kupujących", description: `${openBuyerOffers.length} do decyzji`, icon: Handshake, onClick: () => scrollTo("portal-buyer-offers"), badge: String(openBuyerOffers.length) }] : []),
-    ...(portal.listing?.id && listingLive ? [{ key: "listing", title: "Ogłoszenie", description: "Zobacz, co widzą kupujący", icon: ExternalLink, onClick: () => window.open(`/oferta/${portal.listing?.id}`, "_blank") }] : []),
-    ...(portal.acquisition?.agreementSnapshot && token ? [{ key: "doc", title: "Umowa", description: "Dokument w przeglądarce", icon: BriefcaseBusiness, onClick: () => window.open(`/klient/${token}/dokument`, "_blank") }] : []),
-    { key: "chat", title: "Rozmowa", description: `Napisz do ${agentFirst}`, icon: MessageCircle, onClick: () => scrollTo("portal-chat") },
+    ...(seller ? [{ key: "net", title: t("Ile zostanie na rękę"), description: t("Po prowizji, podatku i spłacie kredytu"), icon: Calculator, onClick: () => setNetOpen(true) }] : []),
+    ...(openBuyerOffers.length ? [{ key: "offers", title: t("Oferty kupujących"), description: t("{n} do decyzji", { n: openBuyerOffers.length }), icon: Handshake, onClick: () => scrollTo("portal-buyer-offers"), badge: String(openBuyerOffers.length) }] : []),
+    ...(portal.listing?.id && listingLive ? [{ key: "listing", title: t("Ogłoszenie"), description: t("Zobacz, co widzą kupujący"), icon: ExternalLink, onClick: () => window.open(`/oferta/${portal.listing?.id}`, "_blank") }] : []),
+    ...(portal.acquisition?.agreementSnapshot && token ? [{ key: "doc", title: t("Umowa"), description: t("Dokument w przeglądarce"), icon: BriefcaseBusiness, onClick: () => window.open(`/klient/${token}/dokument`, "_blank") }] : []),
+    { key: "chat", title: t("Rozmowa"), description: t("Napisz do: {agent}", { agent: agentFirst }), icon: MessageCircle, onClick: () => scrollTo("portal-chat") },
   ];
 
   // ── Powiadomienia (dzwonek) i plakietki grup ──
@@ -1073,7 +1080,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         ? { pending: true, updatedAt: portal.acquisition.updatedAt }
         : null,
     chat: chatInfo,
-  });
+  }, portalLocale);
   const NOTICE_TO_GROUP: Record<PortalNoticeGroup, string> = {
     journey: "journey",
     offers: "offers",
@@ -1098,13 +1105,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   };
 
   // Jedna rzecz do zrobienia teraz: najpierw to, co prowadzi etap, potem najnowsze powiadomienie z akcją.
-  const now = resolvePortalNow(nowInput);
+  const now = resolvePortalNow(nowInput, portalLocale);
   const topAction = notices.find((n) => n.tone === "action" && !readNotices.has(n.id)) || notices.find((n) => n.tone === "action") || null;
   const nextStep =
     now.tone === "action" && now.cta
       ? { title: now.title, body: now.body, tone: "action" as const, cta: now.cta.label, onClick: () => focusAnchor(now.cta!.target, "journey") }
       : topAction
-        ? { title: topAction.title, body: topAction.body || null, tone: "action" as const, cta: "Przejdź", onClick: () => navigateNotice(topAction) }
+        ? { title: topAction.title, body: topAction.body || null, tone: "action" as const, cta: t("Przejdź"), onClick: () => navigateNotice(topAction) }
         : {
             title: now.title,
             body: now.body,
@@ -1112,16 +1119,16 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             onClick: now.cta ? () => focusAnchor(now.cta!.target, "journey") : () => focusAnchor("portal-journey", "journey"),
           };
   const GROUP_LABEL: Record<string, string> = {
-    journey: "Etapy",
-    deals: "Transakcje",
-    offers: "Propozycje",
-    sale: "Sprzedaż",
-    listing: "Ogłoszenie",
-    agreement: "Umowa",
-    documents: "Dokumenty",
-    chat: "Rozmowa",
-    tools: "Narzędzia",
-    more: "Więcej",
+    journey: t("Etapy"),
+    deals: t("Transakcje"),
+    offers: t("Propozycje"),
+    sale: t("Sprzedaż"),
+    listing: t("Ogłoszenie"),
+    agreement: t("Umowa"),
+    documents: t("Dokumenty"),
+    chat: t("Rozmowa"),
+    tools: t("Narzędzia"),
+    more: t("Więcej"),
   };
   const groupAvailable: Record<string, boolean> = {
     journey: true,
@@ -1140,9 +1147,10 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     .map((id) => ({ id, label: GROUP_LABEL[id] || id, badge: groupBadge(id), blink: groupBlink(id) }));
 
   return (
+    <PortalLocaleProvider value={portalLocale}>
     <main className="client-portal-page pb-24 text-[var(--eos-text)] sm:pb-28">
       <PortalLuxHeader
-        greeting={portal.greeting || `Dzień dobry, ${greetingName}`}
+        greeting={portalLocale.locale === "pl" && portal.greeting ? portal.greeting : t("Dzień dobry, {name}", { name: greetingName.split(" ")[0] || greetingName })}
         headline={headline}
         bar={{ done: doneCount, total: stages.length }}
         agencyName={portal.agencyName}
@@ -1157,6 +1165,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           <PortalNotificationsBell notices={notices} read={readNotices} onMarkRead={markNoticesRead} onNavigate={navigateNotice} />
         }
         nextStep={nextStep}
+        languageSwitch={<PortalLanguageSwitch />}
       >
         {portal.type === "SELLER" && seller ? (
           <>
@@ -1167,8 +1176,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                 ) : null}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-bold">{portal.listing.title}</p>
-                  <p className="lux-serif mt-0.5 text-[20px]">{portal.listing.price ? `${portal.listing.price.toLocaleString("pl-PL")} zł` : "Cena na zapytanie"}</p>
-                  <p className="mt-0.5 text-[12px] text-[#BDB6AA]">{portal.listing.statusLabel || ""}</p>
+                  <p className="lux-serif mt-0.5 text-[20px]">{portal.listing.price ? `${portal.listing.price.toLocaleString(dateLocale)} zł` : t("Cena na zapytanie")}</p>
+                  <p className="mt-0.5 text-[12px] text-[#BDB6AA]">{listingLive ? t("Aktywne") : t("Pokażemy je po aktywacji")}</p>
                 </div>
               </div>
             ) : null}
@@ -1179,25 +1188,17 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
       <div className="mx-auto max-w-3xl space-y-4 px-4 pt-6 sm:px-6">
         <div className="flex items-center justify-between gap-3">
-          <p className="eos-group-divider flex-1">Na teraz</p>
+          <p className="eos-group-divider flex-1">{t("Na teraz")}</p>
           <div className="flex shrink-0 gap-3 text-[12px] font-bold text-[var(--lux-accent)]">
-            <button type="button" onClick={() => groups.setAll(groupIds, false)}>Zwiń wszystko</button>
-            <button type="button" onClick={() => groups.setAll(groupIds, true)}>Rozwiń</button>
+            <button type="button" onClick={() => groups.setAll(groupIds, false)}>{t("Zwiń wszystko")}</button>
+            <button type="button" onClick={() => groups.setAll(groupIds, true)}>{t("Rozwiń")}</button>
           </div>
         </div>
 
-        {token && !isPartner ? (
-          <ClientPortalSetupPrompt
-            token={token}
-            deferUntilReady={fromSzukam && !onboardingDismissed}
-            forceShow={fromInvite || installRequested}
-          />
-        ) : null}
-
         <PortalGroup
           id="journey"
-          title={portal.type === "BUYER" ? "Droga do kluczy" : "Droga do aktu"}
-          summary={currentStage ? `Etap ${stages.indexOf(currentStage) + 1} z ${stages.length} · ${currentStage.label}` : "Wszystkie etapy zakończone"}
+          title={portal.type === "BUYER" ? t("Droga do kluczy") : t("Droga do aktu")}
+          summary={currentStage ? `${t("Etap {n} z {total}", { n: stages.indexOf(currentStage) + 1, total: stages.length })} · ${currentStage.label}` : t("Wszystkie etapy zakończone")}
           icon={Route}
           tone="ink"
           open={groups.isOpen("journey")}
@@ -1206,17 +1207,17 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           blink={groupBlink("journey")}
         >
           <div id="portal-journey" className="scroll-mt-24">
-            <PortalJourneyAxis title={portal.type === "BUYER" ? "Droga do kluczy" : "Droga do aktu"} stages={stages} hideTitle />
+            <PortalJourneyAxis title={portal.type === "BUYER" ? t("Droga do kluczy") : t("Droga do aktu")} stages={stages} hideTitle />
           </div>
         </PortalGroup>
 
-        <p className="eos-group-divider pt-3">Twoje sprawy</p>
+        <p className="eos-group-divider pt-3">{t("Twoje sprawy")}</p>
 
         {portal.type === "BUYER" && portal.buyerDeals?.length ? (
           <PortalGroup
             id="deals"
-            title={portal.buyerDeals.length === 1 ? "Twoja nieruchomość" : "Twoje nieruchomości"}
-            summary={portal.buyerDeals.map((deal) => deal.status).slice(0, 2).join(" · ")}
+            title={portal.buyerDeals.length === 1 ? t("Twoja nieruchomość") : t("Twoje nieruchomości")}
+            summary={portal.buyerDeals.map((deal) => t(deal.status)).slice(0, 2).join(" · ")}
             icon={Handshake}
             tone="green"
             open={groups.isOpen("deals")}
@@ -1231,11 +1232,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         {portal.type === "BUYER" ? (
           <PortalGroup
             id="offers"
-            title="Propozycje ofert"
+            title={t("Propozycje ofert")}
             summary={
               luxMatches.length
-                ? `${luxMatches.length} ${luxMatches.length === 1 ? "propozycja" : "propozycji"}${pendingMatches.length ? ` · ${pendingMatches.length} czeka na Twoją ocenę` : " · wszystkie ocenione"}`
-                : "Pierwsze propozycje pojawią się tutaj"
+                ? `${luxMatches.length} ${p(luxMatches.length, "propozycja|propozycje|propozycji")} · ${pendingMatches.length ? t("{n} czeka na Twoją ocenę", { n: pendingMatches.length }) : t("wszystkie ocenione")}`
+                : t("Pierwsze propozycje pojawią się tutaj.")
             }
             icon={Sparkles}
             tone="gold"
@@ -1299,13 +1300,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           <>
             <PortalGroup
               id="sale"
-              title="Sprzedaż i decyzje"
+              title={t("Sprzedaż i decyzje")}
               summary={
                 openBuyerOffers.length
-                  ? `${openBuyerOffers.length} ${openBuyerOffers.length === 1 ? "oferta kupującego czeka" : "oferty kupujących czekają"} na decyzję`
+                  ? t("{n} {offers} czeka na decyzję", { n: openBuyerOffers.length, offers: p(openBuyerOffers.length, "oferta kupującego|oferty kupujących|ofert kupujących") })
                   : pendingDecision
                     ? pendingDecision.title
-                    : "Oferty kupujących, spotkania i decyzje"
+                    : t("Oferty kupujących, spotkania i decyzje")
               }
               icon={Handshake}
               tone="gold"
@@ -1316,15 +1317,15 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             >
               {portal.meeting && !collapseAgentMeeting && portal.type === "SELLER" ? (
                 <section id="portal-meeting" className="lux-card scroll-mt-24 p-5">
-                  <p className="lux-kicker">Spotkanie z agentem</p>
-                  <h2 className="lux-serif mt-1.5 text-[24px] font-medium">{formatMeetingWhenPl(portal.meeting.startsAt)}</h2>
+                  <p className="lux-kicker">{t("Spotkanie z agentem")}</p>
+                  <h2 className="lux-serif mt-1.5 text-[24px] font-medium">{fmtWhen(portal.meeting.startsAt)}</h2>
                   {portal.meeting.location ? <p className="mt-1 text-sm text-[var(--lux-ink-2)]">{portal.meeting.location}</p> : null}
                   {portal.meeting.prepLabels?.length ? (
                     <ul className="mt-4 space-y-2 text-sm">
                       {portal.meeting.prepLabels.map((label) => (
                         <li key={label} className="flex gap-2">
                           <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[var(--lux-accent)]" />
-                          {label}
+                          {t(label)}
                         </li>
                       ))}
                     </ul>
@@ -1360,13 +1361,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             {portal.listing || seller ? (
               <PortalGroup
                 id="listing"
-                title="Ogłoszenie i rynek"
+                title={t("Ogłoszenie i rynek")}
                 summary={
                   listingLive
                     ? [portal.listing?.statusLabel, portal.activeChannels?.length ? `${portal.activeChannels.length + 1} portale` : null].filter(Boolean).join(" · ")
                     : portal.listing
-                      ? "Pokażemy je po aktywacji"
-                      : "Promocja, portale i konkurencja"
+                      ? t("Pokażemy je po aktywacji")
+                      : t("Promocja, portale i konkurencja")
                 }
                 icon={Megaphone}
                 tone="blue"
@@ -1398,8 +1399,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             {portal.acquisition?.agreementSnapshot ? (
               <PortalGroup
                 id="agreement"
-                title="Umowa"
-                summary={signed ? `Podpisana${portal.acquisition?.signedAt ? ` ${new Date(portal.acquisition.signedAt).toLocaleDateString("pl-PL")}` : ""}` : "Czeka na Twój podpis"}
+                title={t("Umowa")}
+                summary={signed ? `${t("Podpisana")}${portal.acquisition?.signedAt ? ` ${new Date(portal.acquisition.signedAt).toLocaleDateString(dateLocale)}` : ""}` : t("Czeka na Twój podpis")}
                 icon={FileSignature}
                 tone="slate"
                 open={groups.isOpen("agreement")}
@@ -1411,11 +1412,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                   <section id="portal-agreement" className="lux-card scroll-mt-24 p-5">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <p className="lux-kicker">Umowa</p>
-                        <h2 className="lux-serif mt-1.5 text-[22px] font-medium">Warunki współpracy</h2>
+                        <p className="lux-kicker">{t("Umowa")}</p>
+                        <h2 className="lux-serif mt-1.5 text-[22px] font-medium">{t("Warunki współpracy")}</h2>
                       </div>
                       <span className="rounded-full bg-black px-3 py-1 text-[11px] font-bold text-[#D8C3A0]">
-                        {signed ? "Podpisana" : "Do podpisu"}
+                        {signed ? t("Podpisana") : t("Do podpisu")}
                       </span>
                     </div>
                     <pre className="mt-3 max-h-[18rem] overflow-y-auto whitespace-pre-wrap rounded-2xl bg-[var(--lux-well)] p-4 text-xs leading-relaxed text-[var(--lux-ink)]">
@@ -1423,7 +1424,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                     </pre>
                     {token ? (
                       <a href={`/klient/${token}/dokument`} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[var(--lux-accent)]">
-                        Otwórz dokument <ExternalLink className="size-3.5" />
+                        {t("Otwórz dokument")} <ExternalLink className="size-3.5" />
                       </a>
                     ) : null}
                     {(portal.acquisition.formData.paperContracts || []).map((file) => (
@@ -1449,8 +1450,8 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         {token && portal.documents?.length && (portal.permissions?.documents ?? true) ? (
           <PortalGroup
             id="documents"
-            title="Dokumenty"
-            summary={docSummary.missing ? `Brakuje ${docSummary.missing} z ${docSummary.total}` : `Komplet — ${docSummary.total} z ${docSummary.total}`}
+            title={t("Dokumenty")}
+            summary={docSummary.missing ? t("Brakuje {n} z {total}", { n: docSummary.missing, total: docSummary.total }) : t("Komplet — {n} z {total}", { n: docSummary.total, total: docSummary.total })}
             icon={FolderOpen}
             tone="green"
             open={groups.isOpen("documents")}
@@ -1469,13 +1470,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           </PortalGroup>
         ) : null}
 
-        <p className="eos-group-divider pt-3">Kontakt i narzędzia</p>
+        <p className="eos-group-divider pt-3">{t("Kontakt i narzędzia")}</p>
 
         {token ? (
           <PortalGroup
             id="chat"
             title={`Rozmowa z ${agentFirst}`}
-            summary={chatInfo.unread ? `${chatInfo.unread} ${chatInfo.unread === 1 ? "nowa wiadomość" : "nowe wiadomości"}` : "Masz pytanie? Napisz tutaj"}
+            summary={chatInfo.unread ? `${chatInfo.unread} ${p(chatInfo.unread, "nowa wiadomość|nowe wiadomości|nowych wiadomości")}` : t("Masz pytanie? Napisz tutaj")}
             icon={MessagesSquare}
             tone="rose"
             open={groups.isOpen("chat")}
@@ -1484,7 +1485,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             blink={groupBlink("chat")}
           >
             <div id="portal-chat" className="scroll-mt-24">
-              <p className="text-sm text-[var(--lux-ink-2)]">{agentFirst} odpowie w tym oknie — dostaniesz też powiadomienie.</p>
+              <p className="text-sm text-[var(--lux-ink-2)]">{t("{agent} odpowie w tym oknie — dostaniesz też powiadomienie.", { agent: agentFirst })}</p>
               <div className="mt-4">
                 <ClientPortalLiveChat token={token} agentName={portal.agentName} onUnreadChange={onChatUnread} />
               </div>
@@ -1494,7 +1495,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
 
         <PortalGroup
           id="tools"
-          title={portal.type === "BUYER" ? "Narzędzia — żeby wybrać pewnie" : "Narzędzia — wszystko o sprzedaży"}
+          title={portal.type === "BUYER" ? t("Narzędzia — żeby wybrać pewnie") : t("Narzędzia — wszystko o sprzedaży")}
           summary={(portal.type === "BUYER" ? buyerTools : sellerTools).map((t) => t.title).join(" · ")}
           icon={LayoutGrid}
           tone="slate"
@@ -1502,31 +1503,24 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           onToggle={() => groups.setOpen("tools", !groups.isOpen("tools"))}
         >
           <PortalToolsGrid
-            kicker="Narzędzia"
-            title={portal.type === "BUYER" ? "Żeby wybrać pewnie" : "Wszystko o sprzedaży"}
+            kicker={t("Narzędzia")}
+            title={portal.type === "BUYER" ? t("Żeby wybrać pewnie") : t("Wszystko o sprzedaży")}
             tools={portal.type === "BUYER" ? buyerTools : sellerTools}
           />
         </PortalGroup>
 
         <PortalGroup
           id="more"
-          title="Więcej"
-          summary="Aplikacja na telefon, opinia i polecenie"
+          title={t("Więcej")}
+          summary={t("Aplikacja na telefon, opinia i polecenie")}
           icon={Gift}
           tone="slate"
           open={groups.isOpen("more")}
           onToggle={() => groups.setOpen("more", !groups.isOpen("more"))}
         >
-          {portal.appInvite ? (
-          <PortalAppInvite invite={portal.appInvite} token={token || undefined} onShowInstall={
-            isPartner
-              ? undefined
-              : () => {
-                  setInstallRequested(true);
-                  window.setTimeout(() => focusAnchor("portal-install"), 900);
-                }
-          } />
-        ) : null}
+          {token && !isPartner ? (
+            <ClientPortalSetupPrompt token={token} invite={portal.appInvite} allowPush />
+          ) : null}
 
           {token && !isPartner && (portal.type === "BUYER" ? portal.purchase?.phase === "closed" : listingSold) ? (
             <PortalReview
@@ -1582,7 +1576,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       <PortalStickyBar
         agencyName={portal.agencyName}
         agencyLogo={portal.agencyLogo}
-        stageLabel={currentStage ? currentStage.label : portal.type === "BUYER" ? "Klucze są Twoje" : "Sprzedane"}
+        stageLabel={currentStage ? currentStage.label : portal.type === "BUYER" ? t("Klucze są Twoje.") : t("Sprzedane.")}
         done={doneCount}
         total={stages.length}
         chips={stickyChips}
@@ -1618,7 +1612,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             className="flex items-center gap-3 rounded-full bg-black px-5 py-3 text-[14px] font-bold text-[#D8C3A0] shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
           >
             <Columns2 className="size-4" />
-            {compareIds.length >= 2 ? `Porównaj ${compareIds.length} oferty` : "Wybierz jeszcze jedną ofertę do porównania"}
+            {compareIds.length >= 2 ? t("Porównaj ({n})", { n: compareIds.length }) : t("Wybierz jeszcze jedną ofertę do porównania")}
           </button>
         </div>
       ) : null}
@@ -1651,7 +1645,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               setSheetMatchId(m.id);
             }}
             onRemove={(id) => toggleCompare(id)}
-            agentName={portal.agentName}
           />
           <PortalPartnerSheet
             open={partnerOpen}
@@ -1692,6 +1685,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         </>
       ) : null}
     </main>
+    </PortalLocaleProvider>
   );
 }
 

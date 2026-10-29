@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, type LucideIcon } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type GroupTone = "ink" | "gold" | "green" | "blue" | "rose" | "slate";
 
@@ -80,6 +81,7 @@ export default function PortalGroup({
   blink?: boolean;
   children: React.ReactNode;
 }) {
+  const { t } = usePortalLocale();
   const attention = Boolean(blink && badge);
   return (
     <section id={`grp-${id}`} data-group={id} className={`eos-group ${attention ? "eos-group--attention" : ""}`}>
@@ -91,7 +93,7 @@ export default function PortalGroup({
               className={`absolute -right-1.5 -top-1.5 flex h-[20px] min-w-[20px] items-center justify-center rounded-full px-1 text-[11px] font-extrabold text-white ${
                 blink ? "eos-badge-blink bg-[#C2412D]" : "bg-[#8C877D]"
               }`}
-              aria-label={`${badge} do sprawdzenia`}
+              aria-label={t("{n} do sprawdzenia", { n: badge })}
             >
               {badge > 9 ? "9+" : badge}
             </span>

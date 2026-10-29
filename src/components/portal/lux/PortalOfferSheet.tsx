@@ -5,6 +5,7 @@ import { CalendarCheck2, Columns2, Heart, Maximize2, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { formatPln } from "./portalApi";
 import { SENTIMENT_LABEL, matchSentiment, offerPpsm, type LuxMatch } from "./types";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 type Rate = "like" | "maybe" | "dislike";
 
@@ -32,6 +33,7 @@ export default function PortalOfferSheet({
   onBook: () => void;
   canBook: boolean;
 }) {
+  const { t, p, dateLocale } = usePortalLocale();
   const [index, setIndex] = useState(0);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState<Rate | null>(null);
@@ -62,16 +64,16 @@ export default function PortalOfferSheet({
     : matchSentiment(match.clientFeedback);
   const ppsm = offerPpsm(offer);
   const specs = [
-    offer.rooms ? `${offer.rooms} ${offer.rooms === 1 ? "pokój" : offer.rooms < 5 ? "pokoje" : "pokoi"}` : null,
+    offer.rooms ? `${offer.rooms} ${p(offer.rooms, "pokój|pokoje|pokoi")}` : null,
     offer.area ? `${offer.area} m²` : null,
-    offer.floor != null ? `piętro ${offer.floor}${offer.totalFloors ? ` / ${offer.totalFloors}` : ""}` : null,
-    offer.yearBuilt ? `${offer.yearBuilt} r.` : null,
+    offer.floor != null ? `${t("piętro")} ${offer.floor}${offer.totalFloors ? ` / ${offer.totalFloors}` : ""}` : null,
+    offer.yearBuilt ? t("{year} r.", { year: offer.yearBuilt }) : null,
   ].filter(Boolean);
   const amenities = [
-    offer.hasBalcony ? "Balkon" : null,
-    offer.hasParking ? "Parking" : null,
-    offer.hasElevator ? "Winda" : null,
-    offer.hasGarden ? "Ogród" : null,
+    offer.hasBalcony ? t("Balkon") : null,
+    offer.hasParking ? t("Parking") : null,
+    offer.hasElevator ? t("Winda") : null,
+    offer.hasGarden ? t("Ogród") : null,
   ].filter(Boolean) as string[];
 
   const rate = async (s: Rate) => {
@@ -95,13 +97,13 @@ export default function PortalOfferSheet({
           }}
         >
           {photos.map((url, i) => (
-            <img key={`${url}-${i}`} src={url} alt={`${offer.title} — zdjęcie ${i + 1}`} className="h-full w-full object-contain" loading={i < 2 ? "eager" : "lazy"} />
+            <img key={`${url}-${i}`} src={url} alt={`${offer.title} — ${t("zdjęcie")} ${i + 1}`} className="h-full w-full object-contain" loading={i < 2 ? "eager" : "lazy"} />
           ))}
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Zamknij"
+          aria-label={t("Zamknij")}
           className="absolute left-4 top-4 flex size-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur"
         >
           <X className="size-5" />
@@ -111,7 +113,7 @@ export default function PortalOfferSheet({
             type="button"
             onClick={onToggleFavorite}
             aria-pressed={Boolean(match.favorite)}
-            aria-label={match.favorite ? "Usuń z ulubionych" : "Dodaj do ulubionych"}
+            aria-label={match.favorite ? t("Usuń z ulubionych") : t("Dodaj do ulubionych")}
             className="absolute right-4 top-4 flex size-11 items-center justify-center rounded-full bg-black/60 backdrop-blur"
           >
             <Heart className={`size-5 ${match.favorite ? "fill-[#D8C3A0] text-[#D8C3A0]" : "text-white"}`} />
@@ -133,7 +135,7 @@ export default function PortalOfferSheet({
           <h2 className="lux-serif mt-1.5 text-[26px] font-medium leading-tight">{offer.title}</h2>
           <p className="lux-serif mt-2 text-[28px]">{formatPln(offer.price)}</p>
           <p className="text-[13px] text-[var(--lux-ink-2)]">
-            {[ppsm ? `${ppsm.toLocaleString("pl-PL")} zł/m²` : null, ...specs].filter(Boolean).join(" · ")}
+            {[ppsm ? `${ppsm.toLocaleString(dateLocale)} zł/m²` : null, ...specs].filter(Boolean).join(" · ")}
           </p>
           {amenities.length ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
@@ -148,7 +150,7 @@ export default function PortalOfferSheet({
 
         {match.clientWhy ? (
           <section className="lux-card p-4">
-            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">Dlaczego ta oferta</p>
+            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">{t("Dlaczego ta oferta")}</p>
             <p className="mt-1 whitespace-pre-line text-[14px] leading-relaxed text-[var(--lux-ink)]">{match.clientWhy}</p>
           </section>
         ) : null}
@@ -156,10 +158,10 @@ export default function PortalOfferSheet({
         {offer.floorPlanUrl ? (
           <section className="lux-card overflow-hidden">
             <button type="button" onClick={() => setPlanOpen(true)} className="flex w-full items-center gap-4 p-4 text-left">
-              <img src={offer.floorPlanUrl} alt="Rzut mieszkania" className="size-20 rounded-xl bg-white object-contain" />
+              <img src={offer.floorPlanUrl} alt={t("Rzut mieszkania")} className="size-20 rounded-xl bg-white object-contain" />
               <span className="flex-1">
-                <span className="block text-[15px] font-bold">Rzut mieszkania</span>
-                <span className="text-[12px] text-[var(--lux-ink-2)]">Stuknij, żeby powiększyć</span>
+                <span className="block text-[15px] font-bold">{t("Rzut mieszkania")}</span>
+                <span className="text-[12px] text-[var(--lux-ink-2)]">{t("Stuknij, żeby powiększyć")}</span>
               </span>
               <Maximize2 className="size-5 text-[var(--lux-gold-ink)]" />
             </button>
@@ -168,10 +170,10 @@ export default function PortalOfferSheet({
 
         {match.partnerFeedback?.length && !isPartner ? (
           <section className="lux-card p-4">
-            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">Oceny osób, które wybierają z Tobą</p>
+            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">{t("Oceny osób, które wybierają z Tobą")}</p>
             {match.partnerFeedback.map((f) => (
               <p key={f.companionId} className="mt-1.5 text-[14px]">
-                <b>{f.name}:</b> {SENTIMENT_LABEL[f.sentiment]}
+                <b>{f.name}:</b> {t(SENTIMENT_LABEL[f.sentiment])}
                 {f.note ? <span className="text-[var(--lux-ink-2)]"> — „{f.note}”</span> : null}
               </p>
             ))}
@@ -179,7 +181,7 @@ export default function PortalOfferSheet({
         ) : null}
 
         <section className="lux-card lux-card--gold p-4">
-          <p className="text-[15px] font-bold">{isPartner ? `${partnerName || "Twoja"} ocena` : "Twoja ocena"}</p>
+          <p className="text-[15px] font-bold">{isPartner && partnerName ? t("Ocena: {name}", { name: partnerName }) : t("Twoja ocena")}</p>
           <div className="mt-3 grid grid-cols-3 gap-2">
             {(["like", "maybe", "dislike"] as Rate[]).map((s) => (
               <button
@@ -196,49 +198,49 @@ export default function PortalOfferSheet({
                     : "border border-[var(--lux-line)] bg-[var(--lux-card)] text-[var(--lux-ink)]"
                 }`}
               >
-                {busy === s ? "…" : SENTIMENT_LABEL[s]}
+                {busy === s ? "…" : t(SENTIMENT_LABEL[s])}
               </button>
             ))}
           </div>
           <label htmlFor="offer-note" className="sr-only">
-            Co dokładnie?
+            {t("Co dokładnie?")}
           </label>
           <textarea
             id="offer-note"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            placeholder="Co dokładnie się podoba albo przeszkadza? (opcjonalnie)"
+            placeholder={t("Co dokładnie się podoba albo przeszkadza? (opcjonalnie)")}
             className="mt-3 w-full rounded-2xl border border-[var(--lux-line)] bg-[var(--lux-card)] p-3 text-[14px]"
           />
         </section>
 
         <div className="grid grid-cols-2 gap-2">
           <button type="button" onClick={onToggleCompare} className={`lux-btn ${inCompare ? "lux-btn--ink" : "lux-btn--ghost"}`}>
-            <Columns2 className="size-4" /> {inCompare ? "W porównaniu" : "Do porównania"}
+            <Columns2 className="size-4" /> {inCompare ? t("W porównaniu") : t("Do porównania")}
           </button>
           {canBook && !isPartner ? (
             <button type="button" onClick={onBook} className="lux-btn lux-btn--primary">
-              <CalendarCheck2 className="size-4" /> Umów oglądanie
+              <CalendarCheck2 className="size-4" /> {t("Umów oglądanie")}
             </button>
           ) : (
             <a href={`/oferta/${offer.id}`} target="_blank" rel="noreferrer" className="lux-btn lux-btn--ghost">
-              Pełne ogłoszenie
+              {t("Pełne ogłoszenie")}
             </a>
           )}
         </div>
 
         {offer.description ? (
           <section className="lux-card p-4">
-            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">Opis</p>
+            <p className="text-[12px] font-extrabold text-[var(--lux-gold-ink)]">{t("Opis")}</p>
             <p className="mt-1 whitespace-pre-line text-[14px] leading-relaxed text-[var(--lux-ink)]">{offer.description}</p>
           </section>
         ) : null}
       </div>
 
       {planOpen && offer.floorPlanUrl ? (
-        <button type="button" onClick={() => setPlanOpen(false)} className="fixed inset-0 z-[95] flex items-center justify-center bg-black/90 p-4" aria-label="Zamknij rzut">
-          <img src={offer.floorPlanUrl} alt="Rzut mieszkania" className="max-h-full max-w-full rounded-xl bg-white object-contain" />
+        <button type="button" onClick={() => setPlanOpen(false)} className="fixed inset-0 z-[95] flex items-center justify-center bg-black/90 p-4" aria-label={t("Zamknij rzut")}>
+          <img src={offer.floorPlanUrl} alt={t("Rzut mieszkania")} className="max-h-full max-w-full rounded-xl bg-white object-contain" />
         </button>
       ) : null}
     </div>,

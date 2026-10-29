@@ -5,6 +5,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import LuxSheet from "./LuxSheet";
 import { portalAction } from "./portalApi";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 type LngLat = [number, number];
 
@@ -47,6 +48,7 @@ export default function PortalAreaSheet({
   agentName: string;
   onSaved: () => void;
 }) {
+  const { t } = usePortalLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [points, setPoints] = useState<LngLat[]>(initial || []);
@@ -75,7 +77,7 @@ export default function PortalAreaSheet({
     const start = initial?.length ? initial[0] : WARSAW;
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
+      style: document.documentElement.classList.contains("dark") ? "mapbox://styles/mapbox/dark-v11" : "mapbox://styles/mapbox/light-v11",
       center: start,
       zoom: initial?.length ? 12 : 11,
       attributionControl: false,
@@ -117,7 +119,7 @@ export default function PortalAreaSheet({
       setMessage(
         json.applied
           ? "Zapisane — kolejne propozycje będą tylko z tego obszaru."
-          : `Wysłane do ${agentName}. Po akceptacji propozycje będą z tego obszaru.`,
+          : "Wysłane do {agent}. Po akceptacji propozycje będą z tego obszaru.",
       );
       onSaved();
     } catch (e) {
@@ -128,33 +130,33 @@ export default function PortalAreaSheet({
   };
 
   return (
-    <LuxSheet open={open} onClose={onClose} kicker="Moje kryteria" title="Gdzie chcesz mieszkać?" wide>
+    <LuxSheet open={open} onClose={onClose} kicker={t("Moje kryteria")} title={t("Gdzie chcesz mieszkać?")} wide>
       <p className="text-[14px] leading-relaxed text-[var(--lux-ink-2)]">
-        Stukaj w mapę, żeby zaznaczyć granice obszaru — wystarczą 3–4 punkty.
-        {criteriaEditAllowed ? "" : ` Zmianę zatwierdzi ${agentName}.`}
+        {t("Stukaj w mapę, żeby zaznaczyć granice obszaru — wystarczą 3–4 punkty.")}
+        {criteriaEditAllowed ? "" : ` ${t("Zmianę zatwierdzi {agent}.", { agent: agentName })}`}
       </p>
       <div ref={containerRef} className="mt-3 h-[420px] w-full overflow-hidden rounded-[22px] bg-[var(--lux-well)]" />
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" className="lux-chip" disabled={!points.length} onClick={() => update(points.slice(0, -1))}>
-          Cofnij punkt
+          {t("Cofnij punkt")}
         </button>
         <button type="button" className="lux-chip" disabled={!points.length} onClick={() => update([])}>
-          Wyczyść
+          {t("Wyczyść")}
         </button>
         {initial?.length ? (
           <button type="button" className="lux-chip" disabled={busy} onClick={() => void save(null)}>
-            Usuń obszar
+            {t("Usuń obszar")}
           </button>
         ) : null}
       </div>
-      {message ? <p className="mt-3 text-[13px] font-semibold text-[var(--lux-accent)]">{message}</p> : null}
+      {message ? <p className="mt-3 text-[13px] font-semibold text-[var(--lux-accent)]">{t(message, { agent: agentName })}</p> : null}
       <button
         type="button"
         className="lux-btn lux-btn--primary mt-4 w-full"
         disabled={points.length < 3 || busy}
         onClick={() => void save(points)}
       >
-        {busy ? "Zapisuję…" : points.length < 3 ? `Zaznacz jeszcze ${3 - points.length}` : "Zapisz obszar"}
+        {busy ? t("Zapisuję…") : points.length < 3 ? t("Zaznacz jeszcze {n}", { n: 3 - points.length }) : t("Zapisz obszar")}
       </button>
     </LuxSheet>
   );

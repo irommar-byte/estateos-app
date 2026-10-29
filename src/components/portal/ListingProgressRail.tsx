@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { Check } from "lucide-react";
+import { usePortalLocale } from "@/components/portal/PortalLocale";
 
 export type ProgressStage = {
   id: string;
@@ -26,6 +27,7 @@ export function contiguousDone(stages: Array<{ done: boolean }>): number {
 }
 
 export default function ListingProgressRail({ stages }: { stages: ProgressStage[] }) {
+  const { t } = usePortalLocale();
   const reduce = useReducedMotion();
   if (!stages.length) return null;
   const segments = Math.max(1, stages.length - 1);
@@ -40,7 +42,7 @@ export default function ListingProgressRail({ stages }: { stages: ProgressStage[
   const track = `(100% - ${inset} - ${inset})`;
 
   return (
-    <div className="relative mt-5" aria-label={`Spełnione kroki: ${doneRun} z ${stages.length}`}>
+    <div className="relative mt-5" aria-label={t("Spełnione kroki: {n} z {total}", { n: doneRun, total: stages.length })}>
       <div
         className="absolute top-[11px] h-[3px] rounded-full bg-[var(--lux-line)]"
         style={{ left: inset, right: inset }}
@@ -94,7 +96,7 @@ export default function ListingProgressRail({ stages }: { stages: ProgressStage[
               >
                 {stage.label}
               </span>
-              {current ? <span className="mt-0.5 text-[10.5px] font-semibold text-[var(--lux-ink-3)]">w trakcie</span> : null}
+              {current ? <span className="mt-0.5 text-[10.5px] font-semibold text-[var(--lux-ink-3)]">{t("w trakcie")}</span> : null}
             </li>
           );
         })}

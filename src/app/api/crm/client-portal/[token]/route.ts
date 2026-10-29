@@ -100,6 +100,7 @@ import { qrSvg } from '@/lib/qrSvg';
 import { ensureClientInvite, inviteLink } from '@/lib/crm/clientInviteCode';
 import { offerReach } from '@/lib/crm/facebookPromotion';
 import { loadBuyerPortalDeals } from '@/lib/crm/offerBuyerDealSteps';
+import { isLocale, resolveLocale } from '@/i18n/config';
 
 type RouteCtx = { params: Promise<{ token: string }> };
 
@@ -696,6 +697,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       greeting: voice.greeting.replace(/,$/, ''),
       clientFirstName: client.firstName,
       salutation: client.salutation,
+      locale: resolveLocale(client.portalLocale),
       permissions,
       companions,
       appInvite: appInvite
@@ -933,6 +935,14 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
   const clientName =
     viewer.role === 'partner' ? viewer.name : `${client.firstName} ${client.lastName}`.trim();
+
+  if (action === 'set_locale') {
+    const locale = String(body.locale || '');
+    if (!isLocale(locale)) return NextResponse.json({ error: 'Nieznany język.' }, { status: 400 });
+    // Język zapisujemy przy kliencie; osoba towarzysząca zmienia go tylko u siebie (pamięć przeglądarki).
+    if (viewer.role !== 'partner') await prisma.agencyClient.update({ where: { id: client.id }, data: { portalLocale: locale } });
+    return NextResponse.json({ success: true, locale });
+  }
 
   const v2 = await handlePortalV2Action({ action, body: body as Record<string, unknown>, client, viewer, clientName });
   if (v2) return v2;
