@@ -966,7 +966,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       state: stateFor(2, sellerCurrentIndex),
       summary: listingLive
         ? `Aktywne${portal.activeChannels?.length ? ` na ${portal.activeChannels.length + 1} portalach` : ""}`
-        : portal.listing?.statusLabel || "Ogłoszenie trafi na portale po akceptacji.",
+        : "Ogłoszenie zobaczysz tutaj po aktywacji — dostaniesz powiadomienie.",
       content: nowCard,
     },
     {
@@ -1043,7 +1043,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
   const sellerTools: LuxTool[] = [
     ...(seller ? [{ key: "net", title: "Ile zostanie na rękę", description: "Po prowizji, podatku i spłacie kredytu", icon: Calculator, onClick: () => setNetOpen(true) }] : []),
     ...(openBuyerOffers.length ? [{ key: "offers", title: "Oferty kupujących", description: `${openBuyerOffers.length} do decyzji`, icon: Handshake, onClick: () => scrollTo("portal-buyer-offers"), badge: String(openBuyerOffers.length) }] : []),
-    ...(portal.listing?.id ? [{ key: "listing", title: "Ogłoszenie", description: "Zobacz, co widzą kupujący", icon: ExternalLink, onClick: () => window.open(`/oferta/${portal.listing?.id}`, "_blank") }] : []),
+    ...(portal.listing?.id && listingLive ? [{ key: "listing", title: "Ogłoszenie", description: "Zobacz, co widzą kupujący", icon: ExternalLink, onClick: () => window.open(`/oferta/${portal.listing?.id}`, "_blank") }] : []),
     ...(portal.acquisition?.agreementSnapshot && token ? [{ key: "doc", title: "Umowa", description: "Dokument w przeglądarce", icon: BriefcaseBusiness, onClick: () => window.open(`/klient/${token}/dokument`, "_blank") }] : []),
     { key: "chat", title: "Rozmowa", description: `Napisz do ${agentFirst}`, icon: MessageCircle, onClick: () => scrollTo("portal-chat") },
   ];
@@ -1361,7 +1361,13 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
               <PortalGroup
                 id="listing"
                 title="Ogłoszenie i rynek"
-                summary={[portal.listing?.statusLabel, listingLive && portal.activeChannels?.length ? `${portal.activeChannels.length + 1} portale` : null].filter(Boolean).join(" · ") || "Promocja, portale i konkurencja"}
+                summary={
+                  listingLive
+                    ? [portal.listing?.statusLabel, portal.activeChannels?.length ? `${portal.activeChannels.length + 1} portale` : null].filter(Boolean).join(" · ")
+                    : portal.listing
+                      ? "Pokażemy je po aktywacji"
+                      : "Promocja, portale i konkurencja"
+                }
                 icon={Megaphone}
                 tone="blue"
                 open={groups.isOpen("listing")}

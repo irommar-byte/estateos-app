@@ -13,6 +13,7 @@ import { listOfferImportSourceMeta } from '@/lib/offerPrivateNotes';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { loadPendingEditChangesByOfferIds } from '@/lib/offerEditReview';
 import { ensureOfferLegalColumns } from '@/lib/services/offer.service';
+import { notifySellerListingLive } from '@/lib/crm/listingLiveNotify';
 
 type AdminUser = { id: number; role: string } | null;
 
@@ -421,6 +422,7 @@ export async function PUT(req: Request) {
         approved: true,
         offerTitle: existing.title,
       });
+      await notifySellerListingLive(offerId).catch(() => {});
 
       return NextResponse.json({ success: true, offer: updated });
     }

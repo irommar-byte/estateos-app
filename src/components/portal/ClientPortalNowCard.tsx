@@ -193,8 +193,8 @@ export function resolvePortalNow(input: PortalNowInput): NowState {
     title: input.listingLive ? "Ogłoszenie jest aktywne" : "Agent przygotowuje ogłoszenie",
     body: input.listingLive
       ? "Postępy promocji i zainteresowanie kupujących widzisz poniżej."
-      : "Zdjęcia, opis i publikację zobaczysz tutaj, gdy będą gotowe.",
-    cta: { label: "Zobacz sprzedaż", target: "portal-listing" },
+      : "Ogłoszenie zobaczysz tutaj po aktywacji — dostaniesz powiadomienie.",
+    cta: input.listingLive ? { label: "Zobacz sprzedaż", target: "portal-listing" } : undefined,
   };
 }
 

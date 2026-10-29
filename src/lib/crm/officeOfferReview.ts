@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { getUserAgencyMembership } from '@/lib/agencyCompany';
 import { sendNotification } from '@/lib/core/notification.core';
 import { submitOfferActivation } from '@/lib/offerPublication';
+import { notifySellerListingLive } from '@/lib/crm/listingLiveNotify';
 
 export type OfficeReviewStatus =
   | 'NONE'
@@ -120,6 +121,7 @@ export async function submitOfferForOfficeActivation(params: {
           officeSubmittedAt: new Date(),
         },
       });
+      await notifySellerListingLive(offer.id).catch(() => {});
       return { ok: true, status: 'OFFICE_APPROVED' };
     }
     await prisma.offer.update({
@@ -132,6 +134,7 @@ export async function submitOfferForOfficeActivation(params: {
         officeReviewNote: 'Aktywacja bezpośrednia przez kierownika biura.',
       },
     });
+    await notifySellerListingLive(offer.id).catch(() => {});
     return { ok: true, status: 'OFFICE_APPROVED' };
   }
 
@@ -254,6 +257,7 @@ export async function decideOfficeOfferReview(params: {
     data: { type: 'office_offer_approved', offerId: String(offer.id) },
   }).catch(() => {});
 
+  await notifySellerListingLive(offer.id).catch(() => {});
   return { ok: true, status: 'OFFICE_APPROVED' };
 }
 
