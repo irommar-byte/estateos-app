@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -80,14 +80,14 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		569AEEC72FACEF3D0019F923 /* Exceptions for "EstateOSRadarWidgetExtension" folder in "EstateOSRadarWidgetExtensionExtension" target */ = {
+		569AEEC72FACEF3D0019F923 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
 			target = 569AEEB12FACEF3B0019F923 /* EstateOSRadarWidgetExtensionExtension */;
 		};
-		E05A071F01FACEF30001A006 /* Exceptions for "EstateOSNotificationService" folder in "EstateOSNotificationService" target */ = {
+		E05A071F01FACEF30001A006 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -97,30 +97,8 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		569AEEB72FACEF3B0019F923 /* EstateOSRadarWidgetExtension */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				569AEEC72FACEF3D0019F923 /* Exceptions for "EstateOSRadarWidgetExtension" folder in "EstateOSRadarWidgetExtensionExtension" target */,
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = EstateOSRadarWidgetExtension;
-			sourceTree = "<group>";
-		};
-		E05A071F01FACEF30001A005 /* EstateOSNotificationService */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				E05A071F01FACEF30001A006 /* Exceptions for "EstateOSNotificationService" folder in "EstateOSNotificationService" target */,
-			);
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
-			path = EstateOSNotificationService;
-			sourceTree = "<group>";
-		};
+		569AEEB72FACEF3B0019F923 /* EstateOSRadarWidgetExtension */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (569AEEC72FACEF3D0019F923 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = EstateOSRadarWidgetExtension; sourceTree = "<group>"; };
+		E05A071F01FACEF30001A005 /* EstateOSNotificationService */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (E05A071F01FACEF30001A006 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = EstateOSNotificationService; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
