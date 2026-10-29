@@ -1,9 +1,14 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { useState } from "react";
+import { Check, Clock } from "lucide-react";
 import { usePortalLocale } from "@/components/portal/PortalLocale";
+import { portalConfirm, portalToast } from "@/lib/portalUi";
+import { portalAction } from "./portalApi";
 
 export type PortalBuyerDeal = {
+  dealId: number;
+  pendingOffer: { id: string; amount: number; deadline: string; answered: boolean } | null;
   offerId: number;
   title: string;
   address: string;
@@ -25,7 +30,70 @@ const OFFER_STATUS: Record<NonNullable<PortalBuyerDeal["yourOffer"]>["status"], 
 };
 
 /** Ścieżka kupującego przy każdej nieruchomości: etapy, terminy, propozycja ceny. */
-export default function PortalBuyerDeals({ deals }: { deals: PortalBuyerDeal[] }) {
+function hoursLeft(deadline: string): number {
+  return Math.max(0, Math.round((new Date(deadline).getTime() - Date.now()) / 3_600_000));
+}
+
+/** Kontroferta sprzedającego: przyjmij / zaproponuj swoją kwotę / zrezygnuj — trafia do agenta. */
+function PendingOffer({ deal, token, onChanged }: { deal: PortalBuyerDeal; token: string; onChanged: () => void }) {
+  const { t, dateLocale } = usePortalLocale();
+  const [counter, setCounter] = useState("");
+  const [busy, setBusy] = useState(false);
+  const offer = deal.pendingOffer!;
+  const pln = (value: number) => `${Math.round(value).toLocaleString(dateLocale)} zł`;
+  const respond = async (kind: "accept" | "counter" | "reject") => {
+    if (kind === "counter" && !(Number(counter.replace(/\D/g, "")) > 0)) {
+      portalToast.error(t("Wpisz swoją kwotę"));
+      return;
+    }
+    if (kind === "reject" && !(await portalConfirm({ title: t("Zrezygnować z tej nieruchomości?"), body: t("Agent dostanie Twoją decyzję."), confirmLabel: t("Rezygnuję"), destructive: true }))) return;
+    setBusy(true);
+    try {
+      await portalAction(token, "respond_deal_offer", { dealId: deal.dealId, offerId: offer.id, kind, amount: kind === "counter" ? Number(counter.replace(/\D/g, "")) : null });
+      portalToast.success(t("Odpowiedź wysłana"), t("Agent przekaże ją sprzedającemu."));
+      onChanged();
+    } catch (e) {
+      portalToast.error(t("Nie udało się wysłać odpowiedzi"), e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (offer.answered) {
+    return <p className="mt-4 rounded-xl bg-[var(--lux-well)] p-3 text-[13px] text-[var(--lux-ink-2)]">{t("Twoja odpowiedź jest u agenta.")}</p>;
+  }
+  return (
+    <div className="mt-4 rounded-xl border border-[var(--lux-warn)] bg-[var(--lux-well)] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[13px] text-[var(--lux-ink-2)]">
+          {t("Sprzedający proponuje")} <b className="text-[var(--lux-ink)]">{pln(offer.amount)}</b>
+        </p>
+        <span className="flex items-center gap-1 text-[12px] font-semibold text-[var(--lux-warn)]">
+          <Clock size={13} /> {t("{hours} h na odpowiedź", { hours: String(hoursLeft(offer.deadline)) })}
+        </span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button disabled={busy} onClick={() => respond("accept")} className="rounded-full bg-[var(--lux-ink)] px-4 py-2 text-[13px] font-semibold text-[var(--lux-card)] disabled:opacity-50">
+          {t("Przyjmuję")}
+        </button>
+        <input
+          value={counter}
+          onChange={(e) => setCounter(e.target.value)}
+          inputMode="numeric"
+          placeholder={t("Twoja kwota")}
+          className="w-32 rounded-full border border-[var(--lux-line)] bg-[var(--lux-card)] px-3 py-2 text-[13px] text-[var(--lux-ink)]"
+        />
+        <button disabled={busy} onClick={() => respond("counter")} className="rounded-full border border-[var(--lux-ink)] px-4 py-2 text-[13px] font-semibold text-[var(--lux-ink)] disabled:opacity-50">
+          {t("Proponuję")}
+        </button>
+        <button disabled={busy} onClick={() => respond("reject")} className="px-2 py-2 text-[13px] text-[var(--lux-ink-3)] underline disabled:opacity-50">
+          {t("Rezygnuję")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function PortalBuyerDeals({ deals, token, onChanged }: { deals: PortalBuyerDeal[]; token: string; onChanged: () => void }) {
   const { t, dateLocale } = usePortalLocale();
   const pln = (value: number) => `${Math.round(value).toLocaleString(dateLocale)} zł`;
   const when = (iso: string) =>
@@ -72,6 +140,8 @@ export default function PortalBuyerDeals({ deals }: { deals: PortalBuyerDeal[] }
               </li>
             ))}
           </ol>
+
+          {deal.pendingOffer && !deal.agreedPrice ? <PendingOffer deal={deal} token={token} onChanged={onChanged} /> : null}
 
           {deal.yourOffer || deal.agreedPrice || deal.reservedUntil ? (
             <div className="mt-4 space-y-1 rounded-xl bg-[var(--lux-well)] p-3 text-[13px] text-[var(--lux-ink-2)]">

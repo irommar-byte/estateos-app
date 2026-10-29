@@ -99,7 +99,7 @@ import { buildPortalUrl } from '@/lib/agencyClientNotify';
 import { qrSvg } from '@/lib/qrSvg';
 import { ensureClientInvite, inviteLink } from '@/lib/crm/clientInviteCode';
 import { offerReach } from '@/lib/crm/facebookPromotion';
-import { loadBuyerPortalDeals } from '@/lib/crm/offerBuyerDealSteps';
+import { loadBuyerPortalDeals, respondToDealOfferFromPortal } from '@/lib/crm/offerBuyerDealSteps';
 import { isLocale, resolveLocale } from '@/i18n/config';
 
 type RouteCtx = { params: Promise<{ token: string }> };
@@ -1760,6 +1760,25 @@ async function handlePortalV2Action(params: {
       data: { kind: 'PORTAL_CRITERIA_REQUEST' },
     });
     return NextResponse.json({ success: true, applied: permissions.criteriaEdit });
+  }
+
+  if (action === 'respond_deal_offer') {
+    if (client.type !== 'BUYER') return fail('Panel niedostępny.', 404);
+    try {
+      const kind = String(body.kind || '');
+      if (!['accept', 'counter', 'reject'].includes(kind)) return fail('Wybierz odpowiedź.');
+      await respondToDealOfferFromPortal({
+        buyerClientId: client.id,
+        dealId: Number(body.dealId),
+        offerId: String(body.offerId || ''),
+        kind: kind as 'accept' | 'counter' | 'reject',
+        amount: body.amount,
+        comment: body.comment ? String(body.comment) : null,
+      });
+      return NextResponse.json({ success: true, buyerDeals: await loadBuyerPortalDeals(client.id).catch(() => []) });
+    } catch (e) {
+      return fail(e);
+    }
   }
 
   if (action === 'respond_buyer_offer') {

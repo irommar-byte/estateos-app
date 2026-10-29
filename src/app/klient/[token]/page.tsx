@@ -1225,7 +1225,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
             badge={groupBadge("deals")}
             blink={groupBlink("deals")}
           >
-            <PortalBuyerDeals deals={portal.buyerDeals} />
+            <PortalBuyerDeals deals={portal.buyerDeals} token={token || ""} onChanged={() => void load({ silent: true })} />
           </PortalGroup>
         ) : null}
 

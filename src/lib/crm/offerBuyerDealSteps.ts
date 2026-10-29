@@ -11,6 +11,8 @@ import {
   type DealView,
   type Negotiation,
   type NegotiationOffer,
+  type OfferResponse,
+  OFFER_RESPONSE_HOURS,
   type OfferSide,
   type TransactionStep,
   type TransactionStepId,
@@ -18,7 +20,8 @@ import {
 
 /**
  * Negocjacje i transakcja na ścieżce kupujący ↔ nieruchomość.
- * Wszystko, co wychodzi do sprzedającego albo kupującego, idzie przez kolejkę z akceptacją agenta.
+ * Ping-pong: propozycja jednej strony → agent zatwierdza → druga strona dostaje ją od razu (push, e-mail, panel)
+ * z czasem na odpowiedź 48 h. Zatwierdzenie agenta jest akceptacją wysyłki — bez drugiego kroku w kolejce.
  */
 
 type Deal = Awaited<ReturnType<typeof ownedDeal>>;
@@ -152,6 +155,7 @@ export async function sendOfferToSeller(params: {
       note: offer.note,
       recommendation,
       recommendationKind: params.recommendationKind || null,
+      respondBy: new Date(Date.now() + OFFER_RESPONSE_HOURS * 3600 * 1000),
     },
     select: { id: true },
   });
@@ -177,7 +181,7 @@ export async function sendOfferToSeller(params: {
         title: `${pln(offer.amount)} za Twoją nieruchomość`,
         paragraphs: [
           `${buyerLabel} złożył ofertę zakupu. Poniżej najważniejsze warunki${recommendation ? ' i moja rekomendacja' : ''}.`,
-          'Decyzję podejmiesz jednym kliknięciem w panelu: przyjmij, odrzuć albo zaproponuj swoją kwotę.',
+          `Decyzję podejmiesz jednym kliknięciem w panelu: przyjmij, odrzuć albo zaproponuj swoją kwotę. Na odpowiedź masz ${OFFER_RESPONSE_HOURS} godziny.`,
         ],
         property: { title: view.offer.title, address: view.offer.address || null },
         facts: [
@@ -192,7 +196,7 @@ export async function sendOfferToSeller(params: {
       });
       steps.push(emailStep({ to: seller.email, subject: `Oferta kupującego: ${pln(offer.amount)}`, replyTo: seller.agencyUser?.email || undefined, html }));
     }
-    const result = await deliverToClient({ agencyUserId: params.agencyUserId, clientId: seller.id, category: 'decision', source: 'buyer_deal_offer', steps });
+    const result = await deliverToClient({ agencyUserId: params.agencyUserId, clientId: seller.id, category: 'decision', source: 'buyer_deal_offer', steps, approved: true });
     queued = result.queued;
   }
   const at = new Date().toISOString();
@@ -268,6 +272,222 @@ export async function messageBuyer(params: { agencyUserId: number; dealId: numbe
         : data,
   );
   return { queued: result.queued };
+}
+
+/* ───────────────────────── ping-pong ofert ───────────────────────── */
+
+type Notice = { pushTitle: string; text: string; eyebrow: string; title: string; paragraphs: string[]; facts?: Array<{ label: string; value: string }> };
+
+/** Push + e-mail do klienta z CRM (sprzedający albo kupujący) — wysyłane od razu, bo agent już zatwierdził. */
+async function notifyClient(agencyUserId: number, clientId: number, deal: Deal, notice: Notice) {
+  const client = await prisma.agencyClient.findFirst({
+    where: { id: clientId, agencyUserId },
+    select: { id: true, firstName: true, salutation: true, email: true, portalToken: true, agencyUser: { select: { name: true, email: true } } },
+  });
+  if (!client) return;
+  const { deliverToClient, emailStep } = await import('@/lib/crm/clientOutbox');
+  const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
+  const { buildClientMessageEmailHtml } = await import('@/lib/crm/clientMessageEmail');
+  const view = await getDeal(agencyUserId, deal.id);
+  const portalUrl = client.portalToken ? buildPortalUrl(client.portalToken) : null;
+  const steps: Parameters<typeof deliverToClient>[0]['steps'] = [];
+  if (portalUrl) steps.push({ kind: 'push', clientId: client.id, payload: { title: notice.pushTitle, body: notice.text.slice(0, 170), tag: `deal-${deal.id}`, url: portalUrl } });
+  if (client.email) {
+    const html = await buildClientMessageEmailHtml({
+      agencyUserId,
+      client,
+      eyebrow: notice.eyebrow,
+      title: notice.title,
+      paragraphs: notice.paragraphs,
+      property: view ? { title: view.offer.title, address: view.offer.address || null } : null,
+      facts: notice.facts,
+      ctas: portalUrl ? [{ label: 'Otwórz panel', href: portalUrl }] : [],
+    });
+    steps.push(emailStep({ to: client.email, subject: notice.title, replyTo: client.agencyUser?.email || undefined, html }));
+  }
+  await deliverToClient({ agencyUserId, clientId: client.id, category: 'decision', source: 'buyer_deal_negotiation', steps, approved: true });
+}
+
+/** Kontroferta sprzedającego do panelu kupującego (karta z przyciskami) + powiadomienie. */
+async function sendOfferToBuyer(deal: Deal, offer: NegotiationOffer) {
+  const at = new Date().toISOString();
+  if (deal.buyerClientId) {
+    await notifyClient(deal.agencyUserId, deal.buyerClientId, deal, {
+      pushTitle: 'Odpowiedź sprzedającego',
+      text: `Sprzedający proponuje ${pln(offer.amount)}. Odpowiedz w panelu.`,
+      eyebrow: 'Negocjacje',
+      title: `Sprzedający proponuje ${pln(offer.amount)}`,
+      paragraphs: [
+        'Sprzedający odpowiedział na Twoją propozycję.',
+        `W panelu możesz przyjąć tę kwotę, zaproponować swoją albo zrezygnować. Na odpowiedź masz ${OFFER_RESPONSE_HOURS} godziny.`,
+      ],
+      facts: [{ label: 'Kwota sprzedającego', value: pln(offer.amount) }],
+    });
+  }
+  await save(
+    deal,
+    deal.buyerClientId ? `Wysłano kupującemu propozycję ${pln(offer.amount)}` : `Przekazano kupującemu propozycję ${pln(offer.amount)} (poza systemem)`,
+    (data) => patchNegotiation(data, (neg) => ({ ...neg, offers: upsert(neg.offers || [], { ...offer, sentToBuyerAt: at }) })),
+  );
+}
+
+function upsert(offers: NegotiationOffer[], offer: NegotiationOffer): NegotiationOffer[] {
+  return offers.some((row) => row.id === offer.id) ? offers.map((row) => (row.id === offer.id ? offer : row)) : [...offers, offer];
+}
+
+/** „Zatwierdź i wyślij” — propozycja trafia do drugiej strony z zegarem 48 h. */
+export async function sendOffer(params: { agencyUserId: number; dealId: number; offerId: string; recommendation?: string | null }) {
+  const deal = await ownedDeal(params.agencyUserId, params.dealId);
+  const view = await getDeal(params.agencyUserId, deal.id);
+  const offer = view?.negotiation.offers.find((row) => row.id === params.offerId && row.status === 'open');
+  if (!offer) throw new Error('Ta propozycja jest już rozstrzygnięta.');
+  if (offer.by === 'buyer') {
+    if (deal.sellerClientId) {
+      await sendOfferToSeller({ agencyUserId: params.agencyUserId, dealId: deal.id, offerId: offer.id, recommendation: params.recommendation });
+    } else {
+      await save(deal, `Przekazano sprzedającemu propozycję ${pln(offer.amount)} (poza systemem)`, (data) =>
+        patchNegotiation(data, (neg) => ({ ...neg, offers: upsert(neg.offers || [], { ...offer, sentToSellerAt: new Date().toISOString() }) })),
+      );
+    }
+  } else {
+    await sendOfferToBuyer(deal, offer);
+  }
+}
+
+/** Odpowiedź strony zapisana przez agenta (np. przez telefon). Rozstrzyga ją potem „Zatwierdź”. */
+export async function recordOfferResponse(params: {
+  agencyUserId: number;
+  dealId: number;
+  offerId: string;
+  kind: OfferResponse['kind'];
+  amount?: unknown;
+  comment?: string | null;
+}) {
+  const deal = await ownedDeal(params.agencyUserId, params.dealId);
+  const view = await getDeal(params.agencyUserId, deal.id);
+  const offer = view?.negotiation.offers.find((row) => row.id === params.offerId && row.status === 'open');
+  if (!offer) throw new Error('Ta propozycja jest już rozstrzygnięta.');
+  const amount = params.kind === 'counter' ? money(params.amount) : null;
+  if (params.kind === 'counter' && !amount) throw new Error('Podaj kwotę kontroferty.');
+  const response: OfferResponse = { kind: params.kind, amount, comment: String(params.comment || '').trim().slice(0, 1000) || null, at: new Date().toISOString(), via: 'agent' };
+  const side = offer.by === 'buyer' ? 'Sprzedający' : 'Kupujący';
+  await save(deal, `${side}: ${params.kind === 'accept' ? 'przyjmuje' : params.kind === 'reject' ? 'odrzuca' : `proponuje ${pln(amount!)}`}`, (data) =>
+    patchNegotiation(data, (neg) => ({ ...neg, offers: upsert(neg.offers || [], { ...offer, response }) })),
+  );
+  return approveOfferResponse({ agencyUserId: params.agencyUserId, dealId: deal.id, offerId: offer.id });
+}
+
+/** Agent zatwierdza odpowiedź strony: przyjęcie = cena uzgodniona, kontra = nowa propozycja do drugiej strony, odmowa = koniec tej propozycji. */
+export async function approveOfferResponse(params: { agencyUserId: number; dealId: number; offerId: string }) {
+  let deal = await ownedDeal(params.agencyUserId, params.dealId);
+  const view = await getDeal(params.agencyUserId, deal.id);
+  const offer = view?.negotiation.offers.find((row) => row.id === params.offerId && row.status === 'open');
+  const response = offer?.response;
+  if (!offer || !response) throw new Error('Brak odpowiedzi do zatwierdzenia.');
+  const at = new Date().toISOString();
+  const responder: OfferSide = offer.by === 'buyer' ? 'seller' : 'buyer';
+  const parties = [deal.sellerClientId, deal.buyerClientId].filter((id): id is number => Boolean(id));
+
+  if (response.kind === 'accept') {
+    await save(deal, `Cena uzgodniona: ${pln(offer.amount)}`, (data) =>
+      patchNegotiation(data, (neg) => ({
+        ...neg,
+        agreedPrice: offer.amount,
+        offers: upsert(neg.offers || [], { ...offer, status: 'accepted', handledAt: at }),
+      })),
+    );
+    for (const clientId of parties) {
+      await notifyClient(params.agencyUserId, clientId, deal, {
+        pushTitle: 'Cena uzgodniona',
+        text: `Uzgodniliśmy cenę ${pln(offer.amount)}. Kolejny krok: rezerwacja i terminy.`,
+        eyebrow: 'Negocjacje zakończone',
+        title: `Cena uzgodniona: ${pln(offer.amount)}`,
+        paragraphs: ['Obie strony zaakceptowały tę samą kwotę.', 'Skontaktuję się w sprawie rezerwacji, zadatku i terminów umowy.'],
+        facts: [{ label: 'Uzgodniona cena', value: pln(offer.amount) }],
+      });
+    }
+    return;
+  }
+
+  if (response.kind === 'reject') {
+    await save(deal, `${responder === 'seller' ? 'Sprzedający' : 'Kupujący'} odrzuca ${pln(offer.amount)}`, (data) =>
+      patchNegotiation(data, (neg) => ({ ...neg, offers: upsert(neg.offers || [], { ...offer, status: 'rejected', handledAt: at }) })),
+    );
+    const proposer = offer.by === 'buyer' ? deal.buyerClientId : deal.sellerClientId;
+    if (proposer) {
+      await notifyClient(params.agencyUserId, proposer, deal, {
+        pushTitle: 'Odpowiedź na Twoją propozycję',
+        text: `Propozycja ${pln(offer.amount)} nie została przyjęta. Możesz zaproponować inną kwotę.`,
+        eyebrow: 'Negocjacje',
+        title: `Propozycja ${pln(offer.amount)} nie została przyjęta`,
+        paragraphs: ['Druga strona nie przyjęła tej kwoty.', 'Jeśli chcesz, zaproponuj inną — przekażę ją dalej.'],
+      });
+    }
+    return;
+  }
+
+  // Kontroferta: zamykamy propozycję i wysyłamy nową od strony odpowiadającej.
+  const counter: NegotiationOffer = {
+    id: `${Date.now().toString(36)}c`,
+    at,
+    by: responder,
+    amount: Number(response.amount),
+    note: response.comment || null,
+    status: 'open',
+  };
+  await save(deal, `${responder === 'seller' ? 'Sprzedający' : 'Kupujący'} proponuje ${pln(counter.amount)}`, (data) =>
+    patchNegotiation(data, (neg) => ({
+      ...neg,
+      offers: [...upsert(neg.offers || [], { ...offer, status: 'countered', handledAt: at }), counter],
+    })),
+  );
+  // Druga strona w systemie dostaje kontrę od razu; spoza systemu — agent przekazuje ją telefonicznie.
+  const target = responder === 'seller' ? deal.buyerClientId : deal.sellerClientId;
+  if (target) {
+    deal = await ownedDeal(params.agencyUserId, params.dealId);
+    await sendOffer({ agencyUserId: params.agencyUserId, dealId: deal.id, offerId: counter.id });
+  }
+}
+
+/** Kupujący odpowiada w swoim panelu na kontrofertę sprzedającego. Trafia do agenta do zatwierdzenia. */
+export async function respondToDealOfferFromPortal(params: {
+  buyerClientId: number;
+  dealId: number;
+  offerId: string;
+  kind: OfferResponse['kind'];
+  amount?: unknown;
+  comment?: string | null;
+}) {
+  const row = await prisma.offerBuyerDeal.findFirst({ where: { id: params.dealId, buyerClientId: params.buyerClientId } });
+  if (!row) throw new Error('Nie znaleziono tej nieruchomości.');
+  const deal = await ownedDeal(row.agencyUserId, row.id);
+  const offer = (parseData(deal.data).negotiation?.offers || []).find((item) => item.id === params.offerId);
+  if (!offer || offer.status !== 'open' || offer.by !== 'seller' || !offer.sentToBuyerAt) throw new Error('Ta propozycja jest już nieaktualna.');
+  if (offer.response) throw new Error('Twoja odpowiedź jest już u agenta.');
+  const amount = params.kind === 'counter' ? money(params.amount) : null;
+  if (params.kind === 'counter' && !amount) throw new Error('Podaj swoją kwotę.');
+  const response: OfferResponse = { kind: params.kind, amount, comment: String(params.comment || '').trim().slice(0, 1000) || null, at: new Date().toISOString(), via: 'panel' };
+  const text = params.kind === 'accept' ? `Przyjmuje ${pln(offer.amount)}` : params.kind === 'reject' ? `Odrzuca ${pln(offer.amount)}` : `Proponuje ${pln(amount!)}`;
+  await prisma.offerBuyerDeal.update({
+    where: { id: deal.id },
+    data: { data: withEvent(deal.data, { actor: 'buyer', text }, new Date(), (data) => patchNegotiation(data, (neg) => ({ ...neg, offers: upsert(neg.offers || [], { ...offer, response }) }))) },
+  });
+  const { sendNotification } = await import('@/lib/core/notification.core');
+  const { crmAgentPushData } = await import('@/lib/crm/agentPush');
+  await sendNotification({
+    userId: deal.agencyUserId,
+    type: 'CRM_EVENT',
+    title: 'Kupujący odpowiedział na ofertę',
+    body: `${text} — zatwierdź, żeby przekazać dalej.`,
+    data: crmAgentPushData(params.buyerClientId, { notificationType: 'crm_buyer_deal', dealId: deal.id, offerId: deal.offerId }),
+    idempotencyKey: `deal-response-${deal.id}-${offer.id}`,
+  }).catch(() => {});
+}
+
+/** Rezerwacja pominięta — agent przechodzi od razu do umowy przedwstępnej. */
+export async function skipReservation(params: { agencyUserId: number; dealId: number }) {
+  const deal = await ownedDeal(params.agencyUserId, params.dealId);
+  await save(deal, 'Bez rezerwacji — przechodzimy do umowy', (data) => patchNegotiation(data, (neg) => ({ ...neg, reservationSkipped: true })));
 }
 
 export async function setNegotiationDetails(params: {
@@ -438,7 +658,10 @@ export type BuyerPortalDeal = {
   phases: DealView['phases'];
   status: string;
   dates: Array<{ label: string; at: string; done: boolean }>;
+  dealId: number;
   yourOffer: { amount: number; status: NegotiationOffer['status'] } | null;
+  /** Kontroferta sprzedającego czekająca na odpowiedź kupującego. */
+  pendingOffer: { id: string; amount: number; deadline: string; answered: boolean } | null;
   agreedPrice: number | null;
   reservedUntil: string | null;
 };
@@ -464,7 +687,17 @@ export async function loadBuyerPortalDeals(clientId: number): Promise<BuyerPorta
     const keys = tx.handover?.date || terms.handoverAt;
     if (keys) dates.push({ label: 'Przekazanie kluczy', at: keys, done: Boolean(tx.handover?.done) });
     const lastBuyerOffer = [...view.negotiation.offers].reverse().find((offer) => offer.by === 'buyer') || null;
+    const sellerOpen = [...view.negotiation.offers].reverse().find((offer) => offer.status === 'open' && offer.by === 'seller' && offer.sentToBuyerAt) || null;
     result.push({
+      dealId: view.id,
+      pendingOffer: sellerOpen
+        ? {
+            id: sellerOpen.id,
+            amount: sellerOpen.amount,
+            deadline: new Date(new Date(sellerOpen.sentToBuyerAt!).getTime() + OFFER_RESPONSE_HOURS * 3600 * 1000).toISOString(),
+            answered: Boolean(sellerOpen.response),
+          }
+        : null,
       offerId: view.offerId,
       title: view.offer.title,
       address: view.offer.address,

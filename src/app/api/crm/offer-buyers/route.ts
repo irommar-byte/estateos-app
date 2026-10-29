@@ -30,6 +30,10 @@ import {
   sendOfferToSeller,
   setNegotiationDetails,
   setOfferStatus,
+  sendOffer,
+  recordOfferResponse,
+  approveOfferResponse,
+  skipReservation,
   setReservation,
   setTransactionStep,
   startDealDocuments,
@@ -197,6 +201,16 @@ export async function POST(req: Request) {
             done: typeof body.done === 'boolean' ? body.done : undefined,
           })
         ).otherActive;
+      } else if (action === 'send_offer') {
+        await sendOffer({ agencyUserId, dealId, offerId: String(body.offerId || ''), recommendation: body.recommendation ? String(body.recommendation) : null });
+      } else if (action === 'record_response') {
+        const kind = String(body.kind || '');
+        if (!['accept', 'counter', 'reject'].includes(kind)) return fail('Wybierz odpowiedź.');
+        await recordOfferResponse({ agencyUserId, dealId, offerId: String(body.offerId || ''), kind: kind as 'accept' | 'counter' | 'reject', amount: body.amount, comment: body.comment ? String(body.comment) : null });
+      } else if (action === 'approve_response') {
+        await approveOfferResponse({ agencyUserId, dealId, offerId: String(body.offerId || '') });
+      } else if (action === 'skip_reservation') {
+        await skipReservation({ agencyUserId, dealId });
       } else if (action === 'start_documents') {
         await startDealDocuments({ agencyUserId, dealId });
       } else {

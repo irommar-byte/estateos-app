@@ -32,6 +32,7 @@ export type DealStage =
   | 'interested'
   | 'scheduling'
   | 'scheduled'
+  | 'live'
   | 'viewed'
   | 'feedback'
   | 'negotiation'
@@ -57,7 +58,28 @@ export type NegotiationOffer = {
   sellerBuyerOfferId?: number | null;
   sentToSellerAt?: string | null;
   sentToBuyerAt?: string | null;
+  /** Odpowiedź drugiej strony (panel albo wpis agenta) — czeka na zatwierdzenie agenta. */
+  response?: OfferResponse | null;
+  /** Agent zatwierdził odpowiedź i przekazał ją dalej. */
+  handledAt?: string | null;
 };
+export type OfferResponse = {
+  kind: 'accept' | 'counter' | 'reject';
+  amount?: number | null;
+  comment?: string | null;
+  at: string;
+  via: 'panel' | 'agent';
+};
+/** Czas drugiej strony na odpowiedź na ofertę. */
+export const OFFER_RESPONSE_HOURS = 48;
+export type DealTurn = {
+  side: 'agent' | 'buyer' | 'seller' | null;
+  label: string;
+  /** Do kiedy strona ma odpowiedzieć (zegar 48 h). */
+  deadline: string | null;
+  offerId: string | null;
+};
+export type PhaseId = 'presentation' | 'feedback' | 'negotiation' | 'reservation' | 'transaction';
 export type Negotiation = {
   startedAt?: string | null;
   skippedPresentation?: boolean;
@@ -65,6 +87,8 @@ export type Negotiation = {
   financing?: { kind: 'cash' | 'mortgage' | 'mixed'; bank?: string | null; decision?: 'none' | 'pending' | 'approved' | 'rejected' } | null;
   terms?: { deposit?: number | null; preliminaryAt?: string | null; deedAt?: string | null; handoverAt?: string | null; note?: string | null } | null;
   reservation?: { until: string; at: string } | null;
+  /** Agent przeszedł do umowy bez rezerwacji. */
+  reservationSkipped?: boolean;
   agreedPrice?: number | null;
   othersDecision?: 'paused' | 'backup' | null;
 };
@@ -102,12 +126,16 @@ export type DealView = {
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
   stage: DealStage;
   phases: Array<{
-    id: 'presentation' | 'feedback' | 'negotiation' | 'transaction';
+    id: PhaseId;
     label: string;
     done: boolean;
     current: boolean;
     skipped: boolean;
+    /** Jedna linia z wynikiem zakończonego etapu, np. „12 lis ✓ · podoba się”. */
+    summary: string | null;
   }>;
+  /** Kto ma teraz ruch w negocjacjach i do kiedy. */
+  turn: DealTurn;
   presentation: {
     startsAt: string;
     status: 'pending' | 'confirmed';
@@ -129,6 +157,14 @@ export type DealView = {
   timeline: DealEvent[];
   updatedAt: string;
 };
+
+/** Prezentacja „w toku” przez godzinę od rozpoczęcia. */
+const PRESENTATION_LIVE_MS = 60 * 60 * 1000;
+
+function attendanceSigned(deal: { attendanceUrl: string | null }, rows: ActivityLike[]): boolean {
+  if (deal.attendanceUrl) return true;
+  return rows.some((row) => row.kind === JOURNEY_ACTIVITY.PRESENTATION_HELD && Boolean(asMeta(asMeta(row.metadata).attendanceSlip).documentId));
+}
 
 const SOURCE_LABELS: Record<string, string> = {
   radar: 'Wysłana z radaru',
@@ -404,37 +440,49 @@ type Context = {
   sellerOffers: Map<number, { status: string; clientResponse: string | null; counterAmount: number | null; clientComment: string | null; updatedAt: Date }>;
 };
 
-/** Propozycje cen z odpowiedziami sprzedającego z panelu (przyjmuje / kontroferta / odrzuca). */
+/** Odpowiedzi sprzedającego z panelu (przyjmuje / kontroferta / odrzuca) dopinamy do propozycji — rozstrzyga agent. */
 function mergeSellerResponses(offers: NegotiationOffer[], ctx: Context): { offers: NegotiationOffer[]; events: DealEvent[] } {
-  const merged: NegotiationOffer[] = [];
   const events: DealEvent[] = [];
-  const storedIds = new Set(offers.map((offer) => offer.id));
-  for (const offer of offers) {
+  const merged = offers.map((offer) => {
     const row = offer.sellerBuyerOfferId ? ctx.sellerOffers.get(offer.sellerBuyerOfferId) : null;
-    if (!row?.clientResponse) {
-      merged.push(offer);
-      continue;
-    }
+    if (!row?.clientResponse || !['accept', 'counter', 'reject'].includes(row.clientResponse)) return offer;
     const at = row.updatedAt.toISOString();
     const comment = row.clientComment ? ` — „${row.clientComment}”` : '';
-    const open = offer.status === 'open';
-    if (row.clientResponse === 'accept') {
-      merged.push(open ? { ...offer, status: 'accepted' } : offer);
-      events.push({ at, actor: 'seller', text: `Przyjmuje ${pln(offer.amount)}${comment}` });
-    } else if (row.clientResponse === 'reject') {
-      merged.push(open ? { ...offer, status: 'rejected' } : offer);
-      events.push({ at, actor: 'seller', text: `Odrzuca ${pln(offer.amount)}${comment}` });
-    } else if (row.clientResponse === 'counter' && row.counterAmount) {
-      merged.push(open ? { ...offer, status: 'countered' } : offer);
-      const counterId = `seller-${offer.sellerBuyerOfferId}`;
-      // Kontroferta z panelu: pokazujemy ją, dopóki agent nie zapisze decyzji (wtedy jest już w historii).
-      if (!storedIds.has(counterId)) {
-        merged.push({ id: counterId, at, by: 'seller', amount: row.counterAmount, note: row.clientComment, status: open ? 'open' : 'countered' });
-      }
-      events.push({ at, actor: 'seller', text: `Kontroferta: ${pln(row.counterAmount)}${comment}` });
-    } else merged.push(offer);
-  }
+    const kind = row.clientResponse as OfferResponse['kind'];
+    events.push({
+      at,
+      actor: 'seller',
+      text: kind === 'accept' ? `Przyjmuje ${pln(offer.amount)}${comment}` : kind === 'reject' ? `Odrzuca ${pln(offer.amount)}${comment}` : `Kontroferta: ${pln(Number(row.counterAmount))}${comment}`,
+    });
+    if (offer.response) return offer;
+    return { ...offer, response: { kind, amount: row.counterAmount, comment: row.clientComment, at, via: 'panel' as const } };
+  });
   return { offers: merged.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime()), events };
+}
+
+/** Komu przypada ruch: propozycja czeka na wysłanie, na odpowiedź strony albo na decyzję agenta. */
+export function negotiationTurn(offers: NegotiationOffer[], agreed: boolean, hasSeller: boolean, hasBuyerPortal: boolean): DealTurn {
+  if (agreed) return { side: null, label: 'Cena uzgodniona', deadline: null, offerId: null };
+  const open = [...offers].reverse().find((offer) => offer.status === 'open') || null;
+  if (!open) return { side: 'agent', label: 'Zapisz propozycję ceny', deadline: null, offerId: null };
+  const other = open.by === 'buyer' ? 'seller' : 'buyer';
+  const otherName = other === 'seller' ? 'sprzedającego' : 'kupującego';
+  if (open.response) {
+    const verb = open.response.kind === 'accept' ? 'przyjmuje' : open.response.kind === 'reject' ? 'odrzuca' : `proponuje ${pln(Number(open.response.amount))}`;
+    return { side: 'agent', label: `${other === 'seller' ? 'Sprzedający' : 'Kupujący'} ${verb} — zatwierdź`, deadline: null, offerId: open.id };
+  }
+  const sentAt = open.by === 'buyer' ? open.sentToSellerAt : open.sentToBuyerAt;
+  if (!sentAt) {
+    const reachable = other === 'seller' ? hasSeller : hasBuyerPortal;
+    return {
+      side: 'agent',
+      label: reachable ? `Zatwierdź i wyślij do ${otherName}` : `Przekaż ${other === 'seller' ? 'sprzedającemu' : 'kupującemu'} telefonicznie i zapisz odpowiedź`,
+      deadline: null,
+      offerId: open.id,
+    };
+  }
+  const deadline = new Date(new Date(sentAt).getTime() + OFFER_RESPONSE_HOURS * 3600 * 1000).toISOString();
+  return { side: other, label: `Czekamy na ${otherName} (${pln(open.amount)})`, deadline, offerId: open.id };
 }
 
 function shapeDeal(deal: DealRow, ctx: Context): DealView {
@@ -519,12 +567,15 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
                   : heldAt
                     ? 'viewed'
                     : presentation?.status === 'confirmed'
-                      ? 'scheduled'
+                      ? now >= new Date(presentation.startsAt).getTime() && now < new Date(presentation.startsAt).getTime() + PRESENTATION_LIVE_MS
+                        ? 'live'
+                        : 'scheduled'
                       : presentation
                         ? 'scheduling'
                         : 'interested';
 
   const negotiationDone = Boolean(agreedPrice || reservationActive || tx.preliminary?.done || tx.deed?.done);
+  const reservationDone = Boolean(tx.preliminary?.done || tx.deed?.done || (negotiationDone && neg.reservationSkipped));
   const transactionDone = Boolean(tx.handover?.done);
   const presentationSkipped = negotiationStarted && !heldAt;
   const feedbackSkipped = negotiationStarted && !feedback;
@@ -532,18 +583,28 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     Boolean(heldAt) || presentationSkipped,
     Boolean(feedback) || feedbackSkipped,
     negotiationDone,
+    reservationDone,
     transactionDone,
   ];
   const firstOpen = phaseDone.findIndex((done) => !done);
-  const labels = ['Prezentacja', 'Opinia', 'Negocjacje', 'Transakcja'] as const;
-  const ids = ['presentation', 'feedback', 'negotiation', 'transaction'] as const;
+  const labels = ['Prezentacja', 'Opinia', 'Negocjacje', 'Rezerwacja', 'Transakcja'] as const;
+  const ids = ['presentation', 'feedback', 'negotiation', 'reservation', 'transaction'] as const;
+  const summaries: Array<string | null> = [
+    heldAt ? `${day(heldAt)} ✓${attendanceSigned(deal, rows) ? ' · podpisane' : ''}` : presentationSkipped ? 'pominięta' : null,
+    feedback ? `${SENTIMENT_LABEL[feedback.sentiment]}${feedback.note ? ` · ${feedback.note.slice(0, 60)}` : ''}` : feedbackSkipped ? 'pominięta' : null,
+    agreedPrice ? `uzgodniono ${pln(agreedPrice)}` : null,
+    neg.reservation ? `do ${day(neg.reservation.until)}` : neg.reservationSkipped ? 'bez rezerwacji' : null,
+    transactionDone ? `klucze ${day(tx.handover?.doneAt || tx.handover?.date || new Date().toISOString())} ✓` : null,
+  ];
   const phases = ids.map((id, index) => ({
     id,
     label: labels[index],
     done: phaseDone[index],
     current: status !== 'LOST' && index === firstOpen,
     skipped: (index === 0 && presentationSkipped) || (index === 1 && feedbackSkipped),
+    summary: phaseDone[index] ? summaries[index] : null,
   }));
+  const turn = negotiationTurn(offers, Boolean(agreedPrice), Boolean(deal.sellerClientId), Boolean(deal.buyerClientId));
 
   const lastOpen = [...offers].reverse().find((offer) => offer.status === 'open') || null;
   const nextAction = (() => {
@@ -560,14 +621,10 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
       return prelimAt ? `Umowa przedwstępna ${when(prelimAt)}` : `Rezerwacja do ${day(neg.reservation!.until)} — umów umowę przedwstępną`;
     }
     if (stage === 'negotiation') {
-      if (agreedPrice) return `Cena uzgodniona: ${pln(agreedPrice)} — ustal zadatek, terminy i rezerwację`;
-      if (!lastOpen) return 'Zapisz propozycję ceny kupującego';
-      if (lastOpen.by === 'buyer') {
-        if (!deal.sellerClientId) return `Kupujący proponuje ${pln(lastOpen.amount)} — przekaż sprzedającemu`;
-        return lastOpen.sentToSellerAt ? `Czekamy na odpowiedź sprzedającego (${pln(lastOpen.amount)})` : `Przekaż sprzedającemu propozycję ${pln(lastOpen.amount)}`;
-      }
-      return lastOpen.sentToBuyerAt ? `Czekamy na odpowiedź kupującego (${pln(lastOpen.amount)})` : `Sprzedający chce ${pln(lastOpen.amount)} — przekaż kupującemu`;
+      if (agreedPrice) return `Cena uzgodniona: ${pln(agreedPrice)} — ustal rezerwację albo przejdź do umowy`;
+      return turn.label;
     }
+    if (stage === 'live') return 'Prezentacja trwa — po wizycie oznacz ją jako odbytą';
     if (stage === 'interested') return 'Umów prezentację';
     if (stage === 'scheduling') {
       return presentation?.proposedBy === 'client' ? 'Kupujący proponuje termin — potwierdź' : 'Czekamy, aż kupujący wybierze termin';
@@ -627,6 +684,7 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     sellerInformedAt: iso(deal.sellerInformedAt),
     searchOther: data.searchOther ?? null,
     negotiation: { ...neg, offers, agreedPrice },
+    turn,
     transaction: tx,
     documentsVisible: Boolean(agreedPrice || reservationActive || tx.documentsStartedAt || stage === 'preliminary' || stage === 'deed' || stage === 'closed'),
     nextAction,
@@ -696,6 +754,7 @@ function shapeAll(deals: DealRow[], ctx: Context): DealView[] {
 }
 
 const STAGE_ORDER: Record<DealStage, number> = {
+  live: -1,
   deed: 0,
   preliminary: 1,
   reserved: 2,
@@ -1129,6 +1188,10 @@ export async function scanBuyerDealReminders(): Promise<{ sent: number }> {
       key = `pre:${view.presentation!.startsAt}`;
       title = 'Jutro prezentacja';
       body = `${who} · ${view.offer.title} · ${when(view.presentation!.startsAt)}`;
+    } else if (view.stage === 'scheduled' && startsAt - now > 0 && startsAt - now <= 2 * H) {
+      key = `pre2:${view.presentation!.startsAt}`;
+      title = 'Za 2 godziny prezentacja';
+      body = `${who} · ${view.offer.title} · ${when(view.presentation!.startsAt)}`;
     } else if (view.stage === 'scheduled' && now - startsAt > 3 * H && now - startsAt < 7 * 24 * H) {
       key = `held:${view.presentation!.startsAt}`;
       title = 'Czy prezentacja się odbyła?';
@@ -1139,6 +1202,37 @@ export async function scanBuyerDealReminders(): Promise<{ sent: number }> {
         key = `feedback:${view.presentation.heldAt}`;
         title = 'Brak opinii po prezentacji';
         body = `${who} · ${view.offer.title} — zapytaj o wrażenia.`;
+      }
+    }
+    if (!key && view.turn.deadline && view.turn.offerId && (view.turn.side === 'buyer' || view.turn.side === 'seller')) {
+      // Zegar odpowiedzi na ofertę: po 24 h przypomnienie stronie, po 48 h sygnał dla agenta.
+      const deadline = new Date(view.turn.deadline).getTime();
+      const partyId = view.turn.side === 'buyer' ? (view.buyer.kind === 'client' ? view.buyer.clientId : null) : view.seller?.clientId ?? null;
+      const nudgeKey = `nudge:${view.turn.offerId}`;
+      if (partyId && !reminders[nudgeKey] && deadline - now <= 24 * H && deadline > now) {
+        const { deliverToClient } = await import('@/lib/crm/clientOutbox');
+        const client = await prisma.agencyClient.findUnique({ where: { id: partyId }, select: { portalToken: true } });
+        if (client?.portalToken) {
+          const { buildPortalUrl } = await import('@/lib/agencyClientNotify');
+          await deliverToClient({
+            agencyUserId: deal.agencyUserId,
+            clientId: partyId,
+            category: 'reminder',
+            source: 'buyer_deal_nudge',
+            approved: true,
+            steps: [{ kind: 'push', clientId: partyId, payload: { title: 'Czekamy na Twoją odpowiedź', body: `Oferta do ${when(view.turn.deadline)} — odpowiedz w panelu.`, tag: `deal-${deal.id}`, url: buildPortalUrl(client.portalToken) } }],
+          }).catch(() => null);
+        }
+        await prisma.offerBuyerDeal.update({
+          where: { id: deal.id },
+          data: { data: { ...parseData(deal.data), reminders: { ...reminders, [nudgeKey]: new Date().toISOString() } } as Prisma.InputJsonValue },
+        });
+        continue;
+      }
+      if (deadline <= now) {
+        key = `expired:${view.turn.offerId}`;
+        title = 'Minął czas na odpowiedź';
+        body = `${who} · ${view.offer.title} — ${view.turn.label}. Zadzwoń albo zapisz odpowiedź.`;
       }
     }
     if (!key) {
