@@ -53,14 +53,6 @@ function localToIso(formatted: string): string | null {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
 }
 
-function sellerMessageDraft(deal: BuyerDeal) {
-  const when = deal.presentation?.heldAt ? formatDealWhen(deal.presentation.heldAt) : null;
-  const verdict = deal.feedback ? SENTIMENT_UI[deal.feedback.sentiment].label.toLowerCase() : 'kupujący jeszcze się zastanawia';
-  return [`po oglądaniu${when ? ` (${when})` : ''}: ${verdict}.`, deal.feedback?.note ? `Uwagi: ${deal.feedback.note}.` : null]
-    .filter(Boolean)
-    .join(' ');
-}
-
 export default function BuyerDealScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -542,7 +534,7 @@ export default function BuyerDealScreen() {
                 DO SPRZEDAJĄCEGO {deal.sellerInformedAt ? `· PRZEKAZANO ${formatDealWhen(deal.sellerInformedAt).toUpperCase()}` : ''}
               </Text>
               {sellerDraft === null ? (
-                <Pressable onPress={() => setSellerDraft(sellerMessageDraft(deal))} style={[styles.btn, { borderColor: colors.border, alignSelf: 'flex-start', marginTop: 8 }]}>
+                <Pressable onPress={() => setSellerDraft('')} style={[styles.btn, { borderColor: colors.border, alignSelf: 'flex-start', marginTop: 8 }]}>
                   <Ionicons name="arrow-redo-outline" size={16} color={colors.text} />
                   <Text style={[styles.btnText, appleType, { color: colors.text }]}>
                     {deal.sellerInformedAt ? 'Wyślij aktualizację' : 'Przekaż wynik sprzedającemu'}
@@ -551,14 +543,23 @@ export default function BuyerDealScreen() {
               ) : (
                 <>
                   <Text style={[styles.small, appleType, { color: colors.secondary, marginTop: 6 }]}>
-                    Bez danych kupującego. Przed wysłaniem zobaczysz podgląd do akceptacji.
+                    Wynik, termin i uwagi kupującego ułożymy w wiadomość sami — bez danych kupującego. Możesz dopisać coś od siebie.
                   </Text>
-                  <TextInput value={sellerDraft} onChangeText={setSellerDraft} multiline style={[styles.input, { color: colors.text, backgroundColor: colors.input }]} />
+                  <TextInput
+                    value={sellerDraft}
+                    onChangeText={setSellerDraft}
+                    multiline
+                    placeholder="Kilka słów od siebie (opcjonalnie)"
+                    placeholderTextColor={colors.secondary}
+                    style={[styles.input, { color: colors.text, backgroundColor: colors.input }]}
+                  />
                   <View style={[styles.actions, { marginTop: 8 }]}>
                     <Pressable
-                      disabled={busy === 'seller' || !sellerDraft.trim()}
+                      disabled={busy === 'seller'}
                       onPress={() =>
-                        void act('seller', { action: 'inform_seller', dealId: deal.id, message: sellerDraft.trim() }).then(({ ok }) => ok && setSellerDraft(null))
+                        void act('seller', { action: 'inform_seller', dealId: deal.id, message: sellerDraft.trim() || undefined }).then(
+                          ({ ok }) => ok && setSellerDraft(null),
+                        )
                       }
                       style={[styles.btn, styles.btnPrimary]}
                     >
