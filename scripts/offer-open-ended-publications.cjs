@@ -54,6 +54,7 @@ async function main() {
       SELECT COUNT(*) AS total FROM \`Offer\` o
       WHERE o.status = 'ACTIVE'
         AND NOT EXISTS (SELECT 1 FROM OfferPublication p WHERE p.offerId = o.id AND p.status = 'ACTIVE')
+        AND NOT EXISTS (SELECT 1 FROM OfferPublication p WHERE p.offerId = o.id AND p.endReason = 'SOURCE_GONE')
     `,
   );
 

@@ -3,6 +3,7 @@ import { verifyPortalListingActive } from '@/lib/keiAmerPortalVerify';
 import { extractOwnerContact } from '@/lib/crm/ownerContact';
 import { lookupKeiOwnerPhone } from '@/lib/crm/ownerContactLookup';
 import { getOfferPrivateNote } from '@/lib/offerPrivateNotes';
+import { endOfferPublication, hideImportedOfferFromMarket, restoreImportedOfferToMarket } from '@/lib/offerPublication';
 
 /**
  * Cykl życia ofert z importu KEI: raz na dobę sprawdzamy, czy ogłoszenie źródłowe nadal wisi.
@@ -50,7 +51,7 @@ export async function runImportSourceLifecycle(options?: { limit?: number; dryRu
     streak: Number(row.streak || 0),
   }));
 
-  const summary = { checked: 0, active: 0, inactive: 0, unknown: 0, archived: 0, archivedOfferIds: [] as number[], phonesSecured: 0 };
+  const summary = { checked: 0, active: 0, inactive: 0, unknown: 0, archived: 0, archivedOfferIds: [] as number[], phonesSecured: 0, hidden: 0, restored: 0 };
   let phoneLookups = 0;
   let cursor = 0;
   const worker = async () => {
@@ -92,11 +93,24 @@ export async function runImportSourceLifecycle(options?: { limit?: number; dryRu
         phoneLookups += 1;
         if (await secureOwnerPhone(item.offerId, item.userId)) summary.phonesSecured += 1;
       }
+      if (verdict.active) {
+        // Ogłoszenie wróciło na portal — wraca też na publiczny rynek.
+        if (Number(await restoreImportedOfferToMarket(item.offerId)) > 0) summary.restored += 1;
+      }
       if (!verdict.active && streak >= ARCHIVE_AFTER_STREAK) {
-        const updated = await prisma.offer.updateMany({
-          where: { id: item.offerId, status: { in: ['ACTIVE', 'PENDING'] } },
-          data: { status: 'ARCHIVED', updatedAt: new Date() },
-        });
+        // Z numerem właściciela: znika z rynku publicznego, zostaje w CRM agenta (dalej sprawdzamy źródło).
+        const contact = extractOwnerContact(await getOfferPrivateNote(item.offerId, item.userId).catch(() => null));
+        if (contact?.phone) {
+          if (Number(await hideImportedOfferFromMarket(item.offerId)) > 0) summary.hidden += 1;
+          continue;
+        }
+        // Bez numeru: archiwum (widzi je tylko admin), razem z zamknięciem publikacji.
+        const current = await prisma.offer.findUnique({ where: { id: item.offerId }, select: { status: true } });
+        const updated = { count: 0 };
+        if (current && ['ACTIVE', 'PENDING'].includes(String(current.status))) {
+          await endOfferPublication({ offerId: item.offerId, endReason: 'SOURCE_GONE', offerStatus: 'ARCHIVED' });
+          updated.count = 1;
+        }
         if (updated.count > 0) {
           await prisma.$executeRawUnsafe(
             `UPDATE OfferPrivateNote SET sourceArchivedAt = NOW(3) WHERE offerId = ? AND userId = ?`,

@@ -1,3 +1,4 @@
+import { publicMarketOfferIdsForUser } from '@/lib/offerPublication';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
@@ -17,7 +18,7 @@ export async function GET(req: Request, context: any) {
     if (!user) return NextResponse.json({ error: 'Nie znaleziono' }, { status: 404 });
 
     const offers = await prisma.offer.findMany({
-      where: { userId: userId, status: 'ACTIVE' },
+      where: { id: { in: await publicMarketOfferIdsForUser(Number(userId)) } },
       orderBy: { createdAt: 'desc' }
     });
 

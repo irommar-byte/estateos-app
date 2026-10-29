@@ -1,3 +1,4 @@
+import { publicMarketOfferIdsForUser } from '@/lib/offerPublication';
 import { prisma } from '@/lib/prisma';
 import { shapePublicReviewForApi } from '@/lib/shapePublicReviews';
 import { formatAgentTitle, pickAgentAvatar, resolveProfileMediaUrl } from '@/lib/agentProfile';
@@ -53,10 +54,11 @@ export async function loadAgentPublicProfile(userId: number) {
   });
   const reviews = reviewsRaw.map((row) => shapePublicReviewForApi(row));
 
-  const activeOffersWhere = { userId, status: 'ACTIVE' as const };
+  const publicIds = await publicMarketOfferIdsForUser(userId);
+  const activeOffersWhere = { id: { in: publicIds } };
 
   const [activeOffersCount, offers] = await Promise.all([
-    prisma.offer.count({ where: activeOffersWhere }),
+    Promise.resolve(publicIds.length),
     prisma.offer.findMany({
       where: activeOffersWhere,
       orderBy: { createdAt: 'desc' },

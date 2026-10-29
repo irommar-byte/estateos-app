@@ -1,3 +1,4 @@
+import { publicMarketOfferIdsForUser } from '@/lib/offerPublication';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { resolveEliteBadges } from '@/lib/eliteStatus';
@@ -40,7 +41,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
         // 2. Pobieranie ofert (Offer.userId to Int)
         const offers = await prisma.offer.findMany({
-            where: { userId: user.id, status: 'ACTIVE' },
+            where: { id: { in: await publicMarketOfferIdsForUser(Number(user.id)) } },
             orderBy: { createdAt: 'desc' },
             select: { id: true, title: true, price: true, pricePln: true, status: true, images: true, district: true, city: true, street: true, buildingNumber: true, transactionType: true, propertyType: true, area: true, rooms: true }
         });

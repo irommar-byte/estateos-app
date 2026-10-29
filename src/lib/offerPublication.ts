@@ -20,7 +20,7 @@ const PAKIET_PLUS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
 const PUBLICATION_TX_OPTIONS = { timeout: 15_000 } as const;
 
 export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID' | 'PLUS_CREDIT';
-export type PublicationEndReason = 'MANUAL_ARCHIVE' | 'SOLD' | 'ADMIN';
+export type PublicationEndReason = 'MANUAL_ARCHIVE' | 'SOLD' | 'ADMIN' | 'SOURCE_GONE';
 export type PublicationQuoteReason =
   | 'NOT_FIRST_OFFER'
   | 'FREE_ALREADY_USED'
@@ -782,6 +782,46 @@ export async function endOfferPublicationInTx(
     params.offerId
   )) as OfferPublicationRow[];
   return rows[0] ?? null;
+}
+
+/**
+ * Import zniknął z portalu, ale mamy numer właściciela: oferta schodzi z publicznego rynku
+ * (koniec publikacji z powodem SOURCE_GONE), a status ACTIVE zostaje — agent dalej ma ją w CRM.
+ */
+export async function hideImportedOfferFromMarket(offerId: number) {
+  await ensureOfferPublicationSchema();
+  return prisma.$executeRawUnsafe(
+    `UPDATE OfferPublication SET status = 'ENDED', endedAt = NOW(3), endReason = 'SOURCE_GONE'
+     WHERE offerId = ? AND status = 'ACTIVE'`,
+    offerId,
+  );
+}
+
+/** Ogłoszenie wróciło na portal: przywracamy publikację zdjętą z powodu SOURCE_GONE. */
+export async function restoreImportedOfferToMarket(offerId: number) {
+  await ensureOfferPublicationSchema();
+  return prisma.$executeRawUnsafe(
+    `UPDATE OfferPublication p
+     JOIN (SELECT MAX(id) AS lastId FROM OfferPublication WHERE offerId = ?) l ON l.lastId = p.id
+     JOIN \`Offer\` o ON o.id = p.offerId
+     SET p.status = 'ACTIVE', p.endsAt = ?, p.endedAt = NULL, p.endReason = NULL
+     WHERE o.status = 'ACTIVE' AND p.status = 'ENDED' AND p.endReason = 'SOURCE_GONE'`,
+    offerId,
+    OPEN_ENDED_PUBLICATION_ENDS_AT,
+  );
+}
+
+/** Oferty użytkownika widoczne publicznie (status ACTIVE + aktywna publikacja), najnowsze pierwsze. */
+export async function publicMarketOfferIdsForUser(userId: number): Promise<number[]> {
+  await ensureOfferPublicationSchema();
+  const rows = await prisma.$queryRawUnsafe<Array<{ id: number }>>(
+    `SELECT o.id FROM \`Offer\` o
+     WHERE o.userId = ? AND o.status = 'ACTIVE'
+       AND EXISTS (SELECT 1 FROM OfferPublication p WHERE p.offerId = o.id AND p.status = 'ACTIVE' AND p.endsAt > NOW(3))
+     ORDER BY o.createdAt DESC`,
+    userId,
+  );
+  return rows.map((r) => Number(r.id)).filter((id) => Number.isFinite(id));
 }
 
 export async function allActivePublicationOfferIds() {
