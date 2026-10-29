@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,7 +24,7 @@ import {
   type DealSentiment,
   type TransactionStepId,
 } from '../services/offerBuyerService';
-import { DocumentsSection, NegotiationSection, TransactionSection } from '../components/agency/BuyerDealSteps';
+import { DocumentsSection, NegotiationSection, PhaseCard, ReservationSection, TransactionSection, TurnBanner } from '../components/agency/BuyerDealSteps';
 import { previewVisitPrepPacket, sendVisitPrepPacket } from '../services/agencyClientService';
 import { resolveMediaUrl } from '../utils/userAvatar';
 import { formatCurrencyPLN } from '../utils/crmFormatters';
@@ -77,6 +77,10 @@ export default function BuyerDealScreen() {
   const [sellerDraft, setSellerDraft] = useState<string | null>(null);
   const [datePick, setDatePick] = useState<{ title: string; initial: string; onSelect: (iso: string) => void } | null>(null);
   const [prepPreview, setPrepPreview] = useState<ClientOutboundPreview | null>(null);
+  /** Ręcznie rozwinięte / zwinięte etapy; domyślnie otwarty jest tylko bieżący. */
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [showHistory, setShowHistory] = useState(false);
+  useEffect(() => setToggled({}), [deal?.stage]);
 
   const load = useCallback(async () => {
     if (!token || !dealId) return;
@@ -217,6 +221,12 @@ export default function BuyerDealScreen() {
   };
 
   const card = [styles.card, { backgroundColor: colors.card, borderColor: colors.border }];
+  const phaseProps = (id: BuyerDeal['phases'][number]['id']) => {
+    const index = deal.phases.findIndex((phase) => phase.id === id);
+    const phase = deal.phases[index];
+    const open = toggled[id] ?? phase.current;
+    return { phase, index, open, colors, onToggle: () => setToggled((prev) => ({ ...prev, [id]: !open })) };
+  };
 
   return (
     <View style={[styles.root, { backgroundColor: colors.bg }]}>
@@ -301,38 +311,12 @@ export default function BuyerDealScreen() {
 
         {/* Etapy i następny krok */}
         <View style={card}>
-          <View style={styles.phases}>
-            {deal.phases.map((phase, index) => (
-              <React.Fragment key={phase.id}>
-                {index > 0 ? <View style={[styles.phaseRail, { backgroundColor: deal.phases[index - 1].done ? '#34C759' : colors.border }]} /> : null}
-                <View style={styles.phase}>
-                  <View
-                    style={[
-                      styles.phaseDot,
-                      phase.done
-                        ? { backgroundColor: '#34C759', borderColor: '#34C759' }
-                        : phase.current
-                          ? { backgroundColor: '#FF9500', borderColor: '#FF9500' }
-                          : { borderColor: colors.border, backgroundColor: colors.card },
-                    ]}
-                  >
-                    {phase.done ? <Ionicons name="checkmark" size={12} color="#fff" /> : null}
-                  </View>
-                  <Text
-                    style={[styles.phaseLabel, appleType, { color: phase.done ? '#34C759' : phase.current ? colors.text : colors.secondary, fontWeight: phase.current || phase.done ? '700' : '500' }]}
-                  >
-                    {phase.label}
-                    {phase.skipped ? '\npominięte' : ''}
-                  </Text>
-                </View>
-              </React.Fragment>
-            ))}
-          </View>
           <View style={[styles.nowBox, { backgroundColor: colors.input }]}>
             <View style={[styles.stagePill, { backgroundColor: `${stage.color}22` }]}>
               <Text style={[styles.stageText, appleType, { color: stage.color }]}>{deal.status === 'PAUSED' ? 'Wstrzymane' : stage.label}</Text>
             </View>
             <Text style={[styles.nowText, appleType, { color: colors.text }]}>{deal.nextAction}</Text>
+            {deal.turn?.deadline ? <TurnBanner deal={deal} colors={colors} /> : null}
             {!closed && ['interested', 'scheduling', 'scheduled', 'viewed', 'feedback'].includes(deal.stage) ? (
               <Pressable
                 onPress={() =>
@@ -351,8 +335,7 @@ export default function BuyerDealScreen() {
         </View>
 
         {/* 1. Prezentacja */}
-        <View style={card}>
-          <Text style={[styles.sectionTitle, appleType, { color: colors.text }]}>1 · Prezentacja</Text>
+        <PhaseCard {...phaseProps('presentation')}>
           <View style={styles.factRow}>
             <Text style={[styles.factLabel, appleType, { color: colors.secondary }]}>Termin</Text>
             <Text style={[styles.factValue, appleType, { color: colors.text }]}>
@@ -431,11 +414,10 @@ export default function BuyerDealScreen() {
               ) : null}
             </View>
           ) : null}
-        </View>
+        </PhaseCard>
 
         {/* 2. Opinia */}
-        <View style={card}>
-          <Text style={[styles.sectionTitle, appleType, { color: colors.text }]}>2 · Opinia</Text>
+        <PhaseCard {...phaseProps('feedback')}>
           {deal.feedback ? (
             <View style={[styles.feedbackBox, { backgroundColor: `${SENTIMENT_UI[deal.feedback.sentiment].color}14` }]}>
               <Ionicons name={SENTIMENT_UI[deal.feedback.sentiment].icon} size={20} color={SENTIMENT_UI[deal.feedback.sentiment].color} />
@@ -573,16 +555,26 @@ export default function BuyerDealScreen() {
               )}
             </View>
           ) : null}
-        </View>
+        </PhaseCard>
 
-        <NegotiationSection deal={deal} colors={colors} act={act} pickDate={pickDate} askAboutOthers={askAboutOthers} />
-        <TransactionSection deal={deal} colors={colors} act={act} pickDate={pickDate} pickFile={pickFile} askAboutOthers={askAboutOthers} />
-        {token ? <DocumentsSection deal={deal} token={token} colors={colors} act={act} /> : null}
+        <PhaseCard {...phaseProps('negotiation')}>
+          <NegotiationSection deal={deal} colors={colors} act={act} />
+        </PhaseCard>
+        <PhaseCard {...phaseProps('reservation')}>
+          <ReservationSection deal={deal} colors={colors} act={act} pickDate={pickDate} askAboutOthers={askAboutOthers} />
+        </PhaseCard>
+        <PhaseCard {...phaseProps('transaction')}>
+          <TransactionSection deal={deal} colors={colors} act={act} pickDate={pickDate} pickFile={pickFile} askAboutOthers={askAboutOthers} />
+          {token ? <DocumentsSection deal={deal} token={token} colors={colors} act={act} /> : null}
+        </PhaseCard>
 
         {/* Historia */}
         <View style={card}>
-          <Text style={[styles.sectionTitle, appleType, { color: colors.text }]}>Historia</Text>
-          {deal.timeline.length ? (
+          <Pressable onPress={() => setShowHistory(!showHistory)} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={[styles.sectionTitle, appleType, { color: colors.text, flex: 1, marginBottom: 0 }]}>Historia · {deal.timeline.length}</Text>
+            <Ionicons name={showHistory ? 'chevron-up' : 'chevron-down'} size={18} color={colors.secondary} />
+          </Pressable>
+          {!showHistory ? null : deal.timeline.length ? (
             [...deal.timeline].reverse().map((event, index) => (
               <View key={`${event.at}-${index}`} style={styles.event}>
                 <Text style={[styles.eventActor, appleType, { color: event.actor === 'agent' ? '#007AFF' : event.actor === 'buyer' ? '#C25E00' : '#5856D6' }]}>

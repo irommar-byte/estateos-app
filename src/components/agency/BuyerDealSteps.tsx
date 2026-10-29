@@ -85,7 +85,314 @@ function DateField({ label, value, onPress, colors }: { label: string; value: st
 
 /* ───────────────────────── 3 · Negocjacje ───────────────────────── */
 
-export function NegotiationSection({
+/* ───────────────────────── etap jako akordeon ───────────────────────── */
+
+export function PhaseCard({
+  phase,
+  index,
+  open,
+  onToggle,
+  colors,
+  children,
+}: {
+  phase: BuyerDeal['phases'][number];
+  index: number;
+  open: boolean;
+  onToggle: () => void;
+  colors: StepColors;
+  children: React.ReactNode;
+}) {
+  const tint = phase.done ? '#34C759' : phase.current ? '#FF9500' : colors.secondary;
+  return (
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: phase.current ? 'rgba(255,149,0,0.55)' : colors.border, opacity: !phase.done && !phase.current && !open ? 0.6 : 1 }]}>
+      <Pressable onPress={onToggle} style={styles.phaseHead} hitSlop={6}>
+        <View style={[styles.phaseNum, { backgroundColor: phase.done ? '#34C759' : phase.current ? '#FF9500' : colors.input }]}>
+          {phase.done ? <Ionicons name="checkmark" size={14} color="#fff" /> : <Text style={[styles.phaseNumText, { color: phase.current ? '#fff' : colors.secondary }]}>{index + 1}</Text>}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.title, appleType, { color: colors.text, marginBottom: 0 }]}>{phase.label}</Text>
+          {phase.summary || phase.current ? (
+            <Text style={[styles.small, appleType, { color: tint }]} numberOfLines={1}>
+              {phase.current ? 'Teraz' : phase.summary}
+            </Text>
+          ) : null}
+        </View>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.secondary} />
+      </Pressable>
+      {open ? <View style={{ marginTop: 6 }}>{children}</View> : null}
+    </View>
+  );
+}
+
+function hoursLeft(deadline: string): string {
+  const hours = Math.round((new Date(deadline).getTime() - Date.now()) / 3_600_000);
+  return hours > 0 ? `zostało ${hours} h` : 'czas minął';
+}
+
+const SIDE_LABEL = { agent: 'Ty', buyer: 'kupujący', seller: 'sprzedający' } as const;
+
+/** Pasek „kto ma ruch” z zegarem 48 h — na górze ekranu i w negocjacjach. */
+export function TurnBanner({ deal, colors }: { deal: BuyerDeal; colors: StepColors }) {
+  const turn = deal.turn;
+  if (!turn?.side || !['negotiation'].includes(deal.stage)) return null;
+  const mine = turn.side === 'agent';
+  return (
+    <View style={[styles.banner, { backgroundColor: mine ? 'rgba(255,149,0,0.14)' : 'rgba(0,122,255,0.10)' }]}>
+      <Ionicons name={mine ? 'hand-left-outline' : 'time-outline'} size={18} color={mine ? '#FF9500' : '#007AFF'} />
+      <View style={{ flex: 1 }}>
+        <Text style={[styles.bannerText, appleType, { color: colors.text, fontSize: 14 }]}>Ruch: {SIDE_LABEL[turn.side]}</Text>
+        <Text style={[styles.small, appleType, { color: colors.secondary }]}>{turn.label}</Text>
+      </View>
+      {turn.deadline ? <Text style={[styles.offerStatus, appleType, { color: '#007AFF' }]}>{hoursLeft(turn.deadline)}</Text> : null}
+    </View>
+  );
+}
+
+/* ───────────────────────── Negocjacje: ping-pong ───────────────────────── */
+
+const RESPONSE_LABEL = { accept: 'przyjmuje', reject: 'odrzuca', counter: 'proponuje' } as const;
+
+export function NegotiationSection({ deal, colors, act }: { deal: BuyerDeal; colors: StepColors; act: Act }) {
+  const neg = deal.negotiation;
+  const started = Boolean(neg.startedAt || neg.offers.length || neg.financing);
+  const closed = deal.status === 'LOST';
+  const open = deal.turn?.offerId ? neg.offers.find((offer) => offer.id === deal.turn.offerId) || null : null;
+  const [by, setBy] = useState<'buyer' | 'seller'>(open?.by === 'buyer' ? 'seller' : 'buyer');
+  const [amount, setAmount] = useState('');
+  const [recommendation, setRecommendation] = useState('');
+  const [phoneReply, setPhoneReply] = useState<'counter' | null>(null);
+  const [counter, setCounter] = useState('');
+  const [financing, setFinancing] = useState(neg.financing || { kind: 'cash' as const, bank: '', decision: 'none' as const });
+
+  useEffect(() => {
+    setFinancing(neg.financing || { kind: 'cash', bank: '', decision: 'none' });
+    setPhoneReply(null);
+    setCounter('');
+  }, [deal.updatedAt]);
+
+  if (!started) {
+    return (
+      <>
+        <Text style={[styles.small, appleType, { color: colors.secondary }]}>Kupujący chce kupić? Zapiszemy jego propozycję ceny i zaczniemy wymianę ofert ze sprzedającym.</Text>
+        {!closed ? (
+          <View style={styles.row}>
+            <Btn
+              label="Klient kupuje — negocjacje"
+              icon="cash-outline"
+              primary
+              colors={colors}
+              onPress={() =>
+                Alert.alert('Przejść do negocjacji?', deal.presentation?.heldAt ? 'Zapiszesz propozycję ceny kupującego.' : 'Prezentację i opinię oznaczymy jako pominięte.', [
+                  { text: 'Anuluj', style: 'cancel' },
+                  { text: 'Przejdź', onPress: () => void act('neg', { action: 'start_negotiation', dealId: deal.id }) },
+                ])
+              }
+            />
+          </View>
+        ) : null}
+      </>
+    );
+  }
+
+  const other = open ? (open.by === 'buyer' ? 'seller' : 'buyer') : null;
+  const otherReachable = other === 'seller' ? Boolean(deal.seller) : deal.buyer.kind === 'client';
+  const sent = open ? Boolean(open.by === 'buyer' ? open.sentToSellerAt : open.sentToBuyerAt) : false;
+
+  const saveOffer = async () => {
+    const value = parseAmount(amount);
+    if (!value) return Alert.alert('Propozycja', 'Podaj kwotę.');
+    const res = await act('offer', { action: 'add_offer', dealId: deal.id, by, amount: value });
+    if (res.ok) setAmount('');
+  };
+  const record = (kind: 'accept' | 'reject' | 'counter') => {
+    if (!open) return;
+    const value = kind === 'counter' ? parseAmount(counter) : null;
+    if (kind === 'counter' && !value) return Alert.alert('Kontroferta', 'Podaj kwotę.');
+    void act(`resp-${open.id}`, { action: 'record_response', dealId: deal.id, offerId: open.id, kind, amount: value });
+  };
+
+  return (
+    <>
+      {neg.skippedPresentation ? <Text style={[styles.small, appleType, { color: colors.secondary }]}>Bez prezentacji — klient od razu kupuje.</Text> : null}
+      {neg.agreedPrice ? (
+        <View style={[styles.banner, { backgroundColor: 'rgba(52,199,89,0.12)' }]}>
+          <Ionicons name="checkmark-circle" size={18} color="#34C759" />
+          <Text style={[styles.bannerText, appleType, { color: colors.text }]}>Cena uzgodniona: {formatPln(neg.agreedPrice)}</Text>
+        </View>
+      ) : (
+        <TurnBanner deal={deal} colors={colors} />
+      )}
+
+      {/* Bieżąca propozycja i jedna właściwa akcja */}
+      {open && !closed && !neg.agreedPrice ? (
+        <View style={[styles.offer, { borderColor: colors.border }]}>
+          <View style={styles.offerHead}>
+            <Text style={[styles.offerWho, appleType, { color: open.by === 'buyer' ? '#C25E00' : '#1F8A44' }]}>{open.by === 'buyer' ? 'Kupujący' : 'Sprzedający'}</Text>
+            <Text style={[styles.offerAmount, appleType, { color: colors.text }]}>{formatPln(open.amount)}</Text>
+          </View>
+          {open.note ? <Text style={[styles.small, appleType, { color: colors.text }]}>{open.note}</Text> : null}
+
+          {open.response ? (
+            <>
+              <Text style={[styles.small, appleType, { color: colors.text, marginTop: 6 }]}>
+                {other === 'seller' ? 'Sprzedający' : 'Kupujący'} {RESPONSE_LABEL[open.response.kind]}
+                {open.response.kind === 'counter' && open.response.amount ? ` ${formatPln(open.response.amount)}` : ` ${formatPln(open.amount)}`}
+                {open.response.comment ? ` — „${open.response.comment}”` : ''}
+              </Text>
+              <View style={styles.row}>
+                <Btn
+                  label={open.response.kind === 'accept' ? 'Potwierdź uzgodnienie' : open.response.kind === 'counter' ? `Zatwierdź i wyślij do ${open.by === 'buyer' ? 'kupującego' : 'sprzedającego'}` : 'Zatwierdź odmowę'}
+                  icon="checkmark"
+                  primary
+                  colors={colors}
+                  onPress={() => void act(`ok-${open.id}`, { action: 'approve_response', dealId: deal.id, offerId: open.id })}
+                />
+              </View>
+            </>
+          ) : !sent ? (
+            <>
+              {otherReachable && open.by === 'buyer' ? (
+                <TextInput
+                  value={recommendation}
+                  onChangeText={setRecommendation}
+                  placeholder="Twoja rekomendacja dla sprzedającego (opcjonalnie)"
+                  placeholderTextColor={colors.secondary}
+                  style={[styles.input, styles.inputSingle, { color: colors.text, backgroundColor: colors.input }]}
+                />
+              ) : null}
+              <View style={styles.row}>
+                <Btn
+                  label={otherReachable ? `Zatwierdź i wyślij do ${other === 'seller' ? 'sprzedającego' : 'kupującego'}` : 'Przekazane telefonicznie'}
+                  icon="paper-plane-outline"
+                  primary
+                  colors={colors}
+                  onPress={() => void act(`send-${open.id}`, { action: 'send_offer', dealId: deal.id, offerId: open.id, recommendation: recommendation.trim() || undefined })}
+                />
+              </View>
+              {otherReachable ? (
+                <Text style={[styles.tiny, appleType, { color: colors.secondary }]}>
+                  {other === 'seller' ? 'Sprzedający zobaczy ją jako „Kupujący N”, bez danych kupującego.' : 'Kupujący dostanie ją w panelu z przyciskami odpowiedzi.'} Czas na odpowiedź: 48 h.
+                </Text>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Text style={[styles.tiny, appleType, { color: colors.secondary }]}>
+                Wysłano {formatDealWhen((open.by === 'buyer' ? open.sentToSellerAt : open.sentToBuyerAt) || open.at)}. Odpowiedź przyszła telefonicznie? Zapisz ją:
+              </Text>
+              <View style={styles.row}>
+                <Chip label="Przyjmuje" active={false} colors={colors} onPress={() => record('accept')} />
+                <Chip label="Kontroferta" active={phoneReply === 'counter'} colors={colors} onPress={() => setPhoneReply(phoneReply ? null : 'counter')} />
+                <Chip label="Odrzuca" active={false} colors={colors} onPress={() => record('reject')} />
+              </View>
+              {phoneReply === 'counter' ? (
+                <View style={styles.row}>
+                  <TextInput
+                    value={counter}
+                    onChangeText={setCounter}
+                    placeholder="Kwota"
+                    placeholderTextColor={colors.secondary}
+                    keyboardType="number-pad"
+                    style={[styles.input, styles.inputSingle, { flex: 1, marginTop: 0, color: colors.text, backgroundColor: colors.input }]}
+                  />
+                  <Btn label="Zapisz i wyślij" primary colors={colors} onPress={() => record('counter')} />
+                </View>
+              ) : null}
+            </>
+          )}
+        </View>
+      ) : null}
+
+      {/* Nowa propozycja — gdy nic nie czeka */}
+      {!open && !closed && !neg.agreedPrice ? (
+        <View style={[styles.box, { backgroundColor: colors.input }]}>
+          <View style={styles.row}>
+            <Chip label="Kupujący proponuje" active={by === 'buyer'} colors={colors} onPress={() => setBy('buyer')} />
+            <Chip label="Sprzedający chce" active={by === 'seller'} colors={colors} onPress={() => setBy('seller')} />
+          </View>
+          <View style={styles.row}>
+            <TextInput
+              value={amount}
+              onChangeText={setAmount}
+              placeholder="Kwota, np. 520 000"
+              placeholderTextColor={colors.secondary}
+              keyboardType="number-pad"
+              style={[styles.input, styles.inputSingle, { flex: 1, marginTop: 0, color: colors.text, backgroundColor: colors.card }]}
+            />
+            <Btn label="Zapisz" icon="add" primary colors={colors} disabled={!amount.trim()} onPress={() => void saveOffer()} />
+          </View>
+        </View>
+      ) : null}
+
+      {/* Historia ofert w jednej kolumnie */}
+      {neg.offers.length ? (
+        <>
+          <Text style={[styles.kicker, appleType, { color: colors.secondary }]}>HISTORIA CEN</Text>
+          {[...neg.offers].reverse().map((offer) => {
+            const st = OFFER_STATUS[offer.status];
+            return (
+              <View key={offer.id} style={styles.histRow}>
+                <Text style={[styles.offerWho, appleType, { color: offer.by === 'buyer' ? '#C25E00' : '#1F8A44' }]}>{offer.by === 'buyer' ? 'Kupujący' : 'Sprzedający'}</Text>
+                <Text style={[styles.histAmount, appleType, { color: colors.text }]}>{formatPln(offer.amount)}</Text>
+                <Text style={[styles.offerStatus, appleType, { color: st.color }]}>{st.label}</Text>
+              </View>
+            );
+          })}
+        </>
+      ) : null}
+
+      <Text style={[styles.kicker, appleType, { color: colors.secondary }]}>FINANSOWANIE KUPUJĄCEGO</Text>
+      <View style={styles.row}>
+        {(
+          [
+            ['cash', 'Gotówka'],
+            ['mortgage', 'Kredyt'],
+            ['mixed', 'Gotówka + kredyt'],
+          ] as const
+        ).map(([key, label]) => (
+          <Chip
+            key={key}
+            label={label}
+            active={financing.kind === key}
+            colors={colors}
+            onPress={() => {
+              const next = { ...financing, kind: key };
+              setFinancing(next);
+              void act('fin', { action: 'set_negotiation', dealId: deal.id, financing: { kind: next.kind, bank: next.bank || undefined, decision: next.decision || 'none' } });
+            }}
+          />
+        ))}
+      </View>
+      {financing.kind !== 'cash' ? (
+        <View style={styles.row}>
+          {(
+            [
+              ['pending', 'Decyzja w toku'],
+              ['approved', 'Pozytywna'],
+              ['rejected', 'Odmowa'],
+            ] as const
+          ).map(([key, label]) => (
+            <Chip
+              key={key}
+              label={label}
+              active={financing.decision === key}
+              colors={colors}
+              onPress={() => {
+                const next = { ...financing, decision: key };
+                setFinancing(next);
+                void act('fin', { action: 'set_negotiation', dealId: deal.id, financing: { kind: next.kind, bank: next.bank || undefined, decision: key } });
+              }}
+            />
+          ))}
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+/* ───────────────────────── Rezerwacja (po uzgodnieniu ceny) ───────────────────────── */
+
+export function ReservationSection({
   deal,
   colors,
   act,
@@ -99,264 +406,40 @@ export function NegotiationSection({
   askAboutOthers: (count: number) => void;
 }) {
   const neg = deal.negotiation;
-  const started = Boolean(neg.startedAt || neg.offers.length || neg.financing);
   const closed = deal.status === 'LOST';
-  const [by, setBy] = useState<'buyer' | 'seller'>('buyer');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [sendingId, setSendingId] = useState<string | null>(null);
-  const [recommendation, setRecommendation] = useState('');
-  const [recommendationKind, setRecommendationKind] = useState<'accept' | 'counter' | 'reject' | null>(null);
-  const [financing, setFinancing] = useState(neg.financing || { kind: 'cash' as const, bank: '', decision: 'none' as const });
   const [deposit, setDeposit] = useState(neg.terms?.deposit ? String(neg.terms.deposit) : '');
-  const [terms, setTerms] = useState({
-    preliminaryAt: neg.terms?.preliminaryAt || null,
-    deedAt: neg.terms?.deedAt || null,
-    handoverAt: neg.terms?.handoverAt || null,
-  });
-
+  const [terms, setTerms] = useState({ preliminaryAt: neg.terms?.preliminaryAt || null, deedAt: neg.terms?.deedAt || null, handoverAt: neg.terms?.handoverAt || null });
   useEffect(() => {
-    setFinancing(neg.financing || { kind: 'cash', bank: '', decision: 'none' });
     setDeposit(neg.terms?.deposit ? String(neg.terms.deposit) : '');
     setTerms({ preliminaryAt: neg.terms?.preliminaryAt || null, deedAt: neg.terms?.deedAt || null, handoverAt: neg.terms?.handoverAt || null });
   }, [deal.updatedAt]);
 
-  if (!started) {
-    return (
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.title, appleType, { color: colors.text }]}>3 · Negocjacje</Text>
-        <Text style={[styles.small, appleType, { color: colors.secondary }]}>
-          Propozycje ceny i kontroferty, finansowanie, zadatek, terminy i rezerwacja.
-        </Text>
-        {!closed ? (
-          <View style={styles.row}>
-            <Btn
-              label="Klient kupuje — przejdź do negocjacji"
-              icon="cash-outline"
-              primary
-              colors={colors}
-              onPress={() =>
-                Alert.alert(
-                  'Przejść do negocjacji?',
-                  deal.presentation?.heldAt ? 'Kupujący chce kupić — zapiszemy propozycję ceny i warunki.' : 'Prezentację i opinię oznaczymy jako pominięte.',
-                  [
-                    { text: 'Anuluj', style: 'cancel' },
-                    { text: 'Przejdź', onPress: () => void act('neg', { action: 'start_negotiation', dealId: deal.id }) },
-                  ],
-                )
-              }
-            />
-          </View>
-        ) : null}
-      </View>
-    );
+  if (!neg.agreedPrice && !neg.reservation) {
+    return <Text style={[styles.small, appleType, { color: colors.secondary }]}>Otworzy się po uzgodnieniu ceny.</Text>;
   }
-
-  const saveOffer = async () => {
-    const value = parseAmount(amount);
-    if (!value) {
-      Alert.alert('Propozycja', 'Podaj kwotę.');
-      return;
-    }
-    const res = await act('offer', { action: 'add_offer', dealId: deal.id, by, amount: value, note: note.trim() || undefined });
-    if (res.ok) {
-      setAmount('');
-      setNote('');
-    }
-  };
-
-  const decide = (offer: NegotiationOffer, status: 'accepted' | 'rejected') =>
-    Alert.alert(status === 'accepted' ? 'Cena uzgodniona?' : 'Odrzucić propozycję?', formatPln(offer.amount), [
-      { text: 'Anuluj', style: 'cancel' },
-      {
-        text: status === 'accepted' ? 'Uzgodnione' : 'Odrzuć',
-        style: status === 'accepted' ? 'default' : 'destructive',
-        onPress: () => void act(`st-${offer.id}`, { action: 'set_offer_status', dealId: deal.id, offerId: offer.id, status }),
-      },
-    ]);
-
-  const forwardToBuyer = (offer: NegotiationOffer) => {
-    const draft = `sprzedający proponuje ${formatPln(offer.amount)}${offer.note ? ` (${offer.note})` : ''}. Daj znać, czy to dla Ciebie do przyjęcia — porozmawiamy o szczegółach.`;
-    if (Platform.OS === 'ios') {
-      Alert.prompt(
-        'Wiadomość do kupującego',
-        'Przed wysłaniem zobaczysz podgląd do akceptacji.',
-        (text) => text?.trim() && void act(`buyer-${offer.id}`, { action: 'message_buyer', dealId: deal.id, message: text.trim(), offerId: offer.id }),
-        'plain-text',
-        draft,
-      );
-    } else {
-      void act(`buyer-${offer.id}`, { action: 'message_buyer', dealId: deal.id, message: draft, offerId: offer.id });
-    }
-  };
-
-  const setReservation = () =>
+  const reserve = () =>
     pickDate('Rezerwacja do', neg.reservation?.until, async (iso) => {
       const res = await act('res', { action: 'set_reservation', dealId: deal.id, until: iso });
       if (res.ok && res.otherActive) askAboutOthers(res.otherActive);
     });
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[styles.title, appleType, { color: colors.text }]}>3 · Negocjacje</Text>
-      {neg.skippedPresentation ? (
-        <Text style={[styles.small, appleType, { color: colors.secondary }]}>Bez prezentacji — klient od razu kupuje.</Text>
-      ) : null}
-      {neg.agreedPrice ? (
-        <View style={[styles.banner, { backgroundColor: 'rgba(52,199,89,0.12)' }]}>
-          <Ionicons name="checkmark-circle" size={18} color="#34C759" />
-          <Text style={[styles.bannerText, appleType, { color: colors.text }]}>Cena uzgodniona: {formatPln(neg.agreedPrice)}</Text>
+    <>
+      {neg.reservation ? (
+        <View style={[styles.banner, { backgroundColor: 'rgba(175,82,222,0.12)' }]}>
+          <Ionicons name="lock-closed" size={16} color="#AF52DE" />
+          <Text style={[styles.small, appleType, { color: colors.text, flex: 1 }]}>
+            Zarezerwowane do {formatDealWhen(neg.reservation.until)}
+            {neg.othersDecision === 'paused' ? ' · pozostali wstrzymani' : neg.othersDecision === 'backup' ? ' · pozostali rezerwowi' : ''}
+          </Text>
         </View>
       ) : null}
-
-      <Text style={[styles.kicker, appleType, { color: colors.secondary }]}>PROPOZYCJE CENY</Text>
-      {neg.offers.length ? (
-        neg.offers.map((offer) => {
-          const st = OFFER_STATUS[offer.status];
-          const open = offer.status === 'open' && !closed;
-          return (
-            <View key={offer.id} style={[styles.offer, { borderColor: colors.border }]}>
-              <View style={styles.offerHead}>
-                <Text style={[styles.offerWho, appleType, { color: offer.by === 'buyer' ? '#C25E00' : '#1F8A44' }]}>
-                  {offer.by === 'buyer' ? 'Kupujący' : 'Sprzedający'}
-                </Text>
-                <Text style={[styles.offerAmount, appleType, { color: colors.text }]}>{formatPln(offer.amount)}</Text>
-                <Text style={[styles.offerStatus, appleType, { color: st.color }]}>{st.label}</Text>
-              </View>
-              {offer.note ? <Text style={[styles.small, appleType, { color: colors.text }]}>{offer.note}</Text> : null}
-              <Text style={[styles.tiny, appleType, { color: colors.secondary }]}>
-                {formatDealWhen(offer.at)}
-                {offer.sentToSellerAt ? ` · przekazano sprzedającemu ${formatDealWhen(offer.sentToSellerAt)}` : ''}
-                {offer.sentToBuyerAt ? ` · przekazano kupującemu ${formatDealWhen(offer.sentToBuyerAt)}` : ''}
-              </Text>
-              {open ? (
-                <View style={styles.row}>
-                  {offer.by === 'buyer' && deal.seller && !offer.sentToSellerAt ? (
-                    <Btn label="Przekaż sprzedającemu" icon="arrow-redo-outline" colors={colors} onPress={() => setSendingId(offer.id)} />
-                  ) : null}
-                  {offer.by === 'seller' && deal.buyer.kind === 'client' && !offer.sentToBuyerAt ? (
-                    <Btn label="Przekaż kupującemu" icon="arrow-redo-outline" colors={colors} onPress={() => forwardToBuyer(offer)} />
-                  ) : null}
-                  <Btn label="Uzgodnione" icon="checkmark" colors={colors} onPress={() => decide(offer, 'accepted')} />
-                  <Btn label="Odrzuć" danger colors={colors} onPress={() => decide(offer, 'rejected')} />
-                </View>
-              ) : null}
-              {sendingId === offer.id ? (
-                <View style={{ marginTop: 8 }}>
-                  <Text style={[styles.small, appleType, { color: colors.secondary }]}>
-                    Sprzedający zobaczy ją w panelu jako „Kupujący N” — bez danych kupującego. Twoja rekomendacja (opcjonalnie):
-                  </Text>
-                  <View style={styles.row}>
-                    {(
-                      [
-                        ['accept', 'Przyjąć'],
-                        ['counter', 'Kontroferta'],
-                        ['reject', 'Odrzucić'],
-                      ] as const
-                    ).map(([key, label]) => (
-                      <Chip key={key} label={label} active={recommendationKind === key} colors={colors} onPress={() => setRecommendationKind(recommendationKind === key ? null : key)} />
-                    ))}
-                  </View>
-                  <TextInput
-                    value={recommendation}
-                    onChangeText={setRecommendation}
-                    placeholder="Dlaczego tak radzisz (opcjonalnie)"
-                    placeholderTextColor={colors.secondary}
-                    multiline
-                    style={[styles.input, { color: colors.text, backgroundColor: colors.input }]}
-                  />
-                  <View style={styles.row}>
-                    <Btn
-                      label="Dalej do podglądu"
-                      primary
-                      colors={colors}
-                      onPress={async () => {
-                        const res = await act(`send-${offer.id}`, {
-                          action: 'send_offer_to_seller',
-                          dealId: deal.id,
-                          offerId: offer.id,
-                          recommendation: recommendation.trim() || undefined,
-                          recommendationKind: recommendationKind || undefined,
-                        });
-                        if (res.ok) {
-                          setSendingId(null);
-                          setRecommendation('');
-                          setRecommendationKind(null);
-                        }
-                      }}
-                    />
-                    <Btn label="Anuluj" colors={colors} onPress={() => setSendingId(null)} />
-                  </View>
-                </View>
-              ) : null}
-            </View>
-          );
-        })
-      ) : (
-        <Text style={[styles.small, appleType, { color: colors.secondary }]}>Brak propozycji — zapisz pierwszą poniżej.</Text>
-      )}
-
       {!closed ? (
-        <View style={[styles.box, { backgroundColor: colors.input }]}>
-          <View style={styles.row}>
-            <Chip label="Kupujący proponuje" active={by === 'buyer'} colors={colors} onPress={() => setBy('buyer')} />
-            <Chip label="Sprzedający chce" active={by === 'seller'} colors={colors} onPress={() => setBy('seller')} />
-          </View>
-          <TextInput
-            value={amount}
-            onChangeText={setAmount}
-            placeholder="Kwota, np. 520 000"
-            placeholderTextColor={colors.secondary}
-            keyboardType="number-pad"
-            style={[styles.input, styles.inputSingle, { color: colors.text, backgroundColor: colors.card }]}
-          />
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="Uwagi (opcjonalnie): warunki, termin wydania…"
-            placeholderTextColor={colors.secondary}
-            style={[styles.input, styles.inputSingle, { color: colors.text, backgroundColor: colors.card }]}
-          />
-          <View style={styles.row}>
-            <Btn label="Zapisz propozycję" icon="add" primary colors={colors} disabled={!amount.trim()} onPress={() => void saveOffer()} />
-          </View>
+        <View style={styles.row}>
+          <Btn label={neg.reservation ? 'Zmień datę rezerwacji' : 'Zarezerwuj'} icon="lock-closed-outline" primary={!neg.reservation} colors={colors} onPress={reserve} />
+          {!neg.reservation && !neg.reservationSkipped ? <Btn label="Bez rezerwacji" colors={colors} onPress={() => void act('skip', { action: 'skip_reservation', dealId: deal.id })} /> : null}
+          {neg.reservation ? <Btn label="Zdejmij" danger colors={colors} onPress={() => void act('res', { action: 'set_reservation', dealId: deal.id, until: null })} /> : null}
         </View>
-      ) : null}
-
-      <Text style={[styles.kicker, appleType, { color: colors.secondary }]}>FINANSOWANIE</Text>
-      <View style={styles.row}>
-        {(
-          [
-            ['cash', 'Gotówka'],
-            ['mortgage', 'Kredyt'],
-            ['mixed', 'Gotówka + kredyt'],
-          ] as const
-        ).map(([key, label]) => (
-          <Chip key={key} label={label} active={financing.kind === key} colors={colors} onPress={() => setFinancing({ ...financing, kind: key })} />
-        ))}
-      </View>
-      {financing.kind !== 'cash' ? (
-        <>
-          <TextInput
-            value={financing.bank || ''}
-            onChangeText={(bank) => setFinancing({ ...financing, bank })}
-            placeholder="Bank (opcjonalnie)"
-            placeholderTextColor={colors.secondary}
-            style={[styles.input, styles.inputSingle, { color: colors.text, backgroundColor: colors.input }]}
-          />
-          <View style={styles.row}>
-            {(
-              [
-                ['none', 'Brak wniosku'],
-                ['pending', 'Decyzja w toku'],
-                ['approved', 'Pozytywna'],
-                ['rejected', 'Odmowa'],
-              ] as const
-            ).map(([key, label]) => (
-              <Chip key={key} label={label} active={(financing.decision || 'none') === key} colors={colors} onPress={() => setFinancing({ ...financing, decision: key })} />
-            ))}
-          </View>
-        </>
       ) : null}
 
       <Text style={[styles.kicker, appleType, { color: colors.secondary }]}>ZADATEK I TERMINY</Text>
@@ -375,38 +458,10 @@ export function NegotiationSection({
       </View>
       {!closed ? (
         <View style={styles.row}>
-          <Btn
-            label="Zapisz finansowanie i terminy"
-            primary
-            colors={colors}
-            onPress={() =>
-              void act('terms', {
-                action: 'set_negotiation',
-                dealId: deal.id,
-                financing: { kind: financing.kind, bank: financing.bank || undefined, decision: financing.decision || 'none' },
-                terms: { deposit: parseAmount(deposit), ...terms },
-              })
-            }
-          />
+          <Btn label="Zapisz terminy" primary colors={colors} onPress={() => void act('terms', { action: 'set_negotiation', dealId: deal.id, terms: { deposit: parseAmount(deposit), ...terms } })} />
         </View>
       ) : null}
-
-      <Text style={[styles.kicker, appleType, { color: colors.secondary }]}>REZERWACJA</Text>
-      {neg.reservation ? (
-        <Text style={[styles.small, appleType, { color: colors.text }]}>
-          Zarezerwowane do {formatDealWhen(neg.reservation.until)}
-          {neg.othersDecision === 'paused' ? ' · pozostali kupujący wstrzymani' : neg.othersDecision === 'backup' ? ' · pozostali jako rezerwowi' : ''}
-        </Text>
-      ) : (
-        <Text style={[styles.small, appleType, { color: colors.secondary }]}>Brak rezerwacji.</Text>
-      )}
-      {!closed ? (
-        <View style={styles.row}>
-          <Btn label={neg.reservation ? 'Zmień datę' : 'Zarezerwuj dla tego kupującego'} icon="lock-closed-outline" colors={colors} onPress={setReservation} />
-          {neg.reservation ? <Btn label="Zdejmij rezerwację" danger colors={colors} onPress={() => void act('res', { action: 'set_reservation', dealId: deal.id, until: null })} /> : null}
-        </View>
-      ) : null}
-    </View>
+    </>
   );
 }
 
@@ -565,19 +620,12 @@ export function TransactionSection(props: {
   askAboutOthers: (count: number) => void;
 }) {
   const { deal, colors } = props;
-  const reached = Boolean(deal.negotiation.agreedPrice || deal.negotiation.reservation || Object.values(deal.transaction).some((v) => typeof v === 'object' && v));
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[styles.title, appleType, { color: colors.text }]}>4 · Transakcja</Text>
-      {!reached ? (
-        <Text style={[styles.small, appleType, { color: colors.secondary, marginBottom: 6 }]}>
-          Zwykle po uzgodnieniu ceny — ale możesz zacząć od dowolnego kroku.
-        </Text>
-      ) : null}
+    <>
       {STEPS.map((step) => (
         <StepCard key={step.id} step={step} {...props} />
       ))}
-    </View>
+    </>
   );
 }
 
@@ -731,8 +779,8 @@ function DocumentsPanel({ token, clientId, title, colors }: { token: string; cli
 
 export function DocumentsSection({ deal, token, colors, act }: { deal: BuyerDeal; token: string; colors: StepColors; act: Act }) {
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[styles.title, appleType, { color: colors.text }]}>Dokumenty do transakcji</Text>
+    <View>
+      <Text style={[styles.kicker, appleType, { color: colors.secondary }]}>DOKUMENTY</Text>
       {!deal.documentsVisible ? (
         <>
           <Text style={[styles.small, appleType, { color: colors.secondary }]}>
@@ -787,5 +835,10 @@ const styles = StyleSheet.create({
   step: { borderWidth: 1, borderRadius: 14, padding: 12, marginTop: 10 },
   stepIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   stepTitle: { fontSize: 15, fontWeight: '700' },
+  phaseHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  phaseNum: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  phaseNumText: { fontSize: 13, fontWeight: '700' },
+  histRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  histAmount: { flex: 1, fontSize: 15, fontWeight: '600', fontVariant: ['tabular-nums'] },
   docRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, borderTopWidth: StyleSheet.hairlineWidth, marginTop: 6 },
 });

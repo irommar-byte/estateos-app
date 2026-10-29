@@ -5,6 +5,7 @@ export type DealStage =
   | 'interested'
   | 'scheduling'
   | 'scheduled'
+  | 'live'
   | 'viewed'
   | 'feedback'
   | 'negotiation'
@@ -34,7 +35,11 @@ export type NegotiationOffer = {
   sellerBuyerOfferId?: number | null;
   sentToSellerAt?: string | null;
   sentToBuyerAt?: string | null;
+  response?: { kind: 'accept' | 'counter' | 'reject'; amount?: number | null; comment?: string | null; at: string; via: 'panel' | 'agent' } | null;
+  handledAt?: string | null;
 };
+export type PhaseId = 'presentation' | 'feedback' | 'negotiation' | 'reservation' | 'transaction';
+export type DealTurn = { side: 'agent' | 'buyer' | 'seller' | null; label: string; deadline: string | null; offerId: string | null };
 export type DealSentiment = 'like' | 'maybe' | 'dislike';
 export type DealActor = 'agent' | 'buyer' | 'seller' | 'other_agent';
 
@@ -50,7 +55,8 @@ export type BuyerDeal = {
     | { kind: 'client'; clientId: number; name: string; phone: string | null; email: string | null }
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
   stage: DealStage;
-  phases: Array<{ id: 'presentation' | 'feedback' | 'negotiation' | 'transaction'; label: string; done: boolean; current: boolean; skipped: boolean }>;
+  phases: Array<{ id: PhaseId; label: string; done: boolean; current: boolean; skipped: boolean; summary: string | null }>;
+  turn: DealTurn;
   presentation: {
     startsAt: string;
     status: 'pending' | 'confirmed';
@@ -71,6 +77,7 @@ export type BuyerDeal = {
     financing?: { kind: 'cash' | 'mortgage' | 'mixed'; bank?: string | null; decision?: 'none' | 'pending' | 'approved' | 'rejected' } | null;
     terms?: { deposit?: number | null; preliminaryAt?: string | null; deedAt?: string | null; handoverAt?: string | null; note?: string | null } | null;
     reservation?: { until: string; at: string } | null;
+    reservationSkipped?: boolean;
     agreedPrice?: number | null;
     othersDecision?: 'paused' | 'backup' | null;
   };
@@ -104,7 +111,11 @@ export type DealAction =
   | { action: 'set_reservation'; dealId: number; until: string | null }
   | { action: 'decide_others'; dealId: number; decision: 'paused' | 'backup' }
   | { action: 'set_step'; dealId: number; step: TransactionStepId; date?: string | null; place?: string; amount?: number | null; note?: string; done?: boolean }
-  | { action: 'start_documents'; dealId: number };
+  | { action: 'start_documents'; dealId: number }
+  | { action: 'send_offer'; dealId: number; offerId: string; recommendation?: string }
+  | { action: 'record_response'; dealId: number; offerId: string; kind: 'accept' | 'counter' | 'reject'; amount?: number | null; comment?: string }
+  | { action: 'approve_response'; dealId: number; offerId: string }
+  | { action: 'skip_reservation'; dealId: number };
 
 async function parse(res: Response) {
   const json = await res.json().catch(() => ({}));
@@ -171,6 +182,7 @@ export const STAGE_UI: Record<DealStage, { label: string; color: string }> = {
   interested: { label: 'Zainteresowany', color: '#8E8E93' },
   scheduling: { label: 'Ustalanie terminu', color: '#FF9500' },
   scheduled: { label: 'Prezentacja umówiona', color: '#007AFF' },
+  live: { label: 'Prezentacja trwa', color: '#FF3B30' },
   viewed: { label: 'Obejrzał', color: '#5856D6' },
   feedback: { label: 'Ma opinię', color: '#34C759' },
   negotiation: { label: 'Negocjacje', color: '#FF9500' },

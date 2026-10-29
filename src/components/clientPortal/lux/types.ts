@@ -99,6 +99,8 @@ export type LuxCompanion = { id: number; name: string; url: string; lastSeenAt: 
 
 /** Ścieżka kupującego przy nieruchomości: etapy i terminy (bez danych sprzedającego). */
 export type LuxBuyerDeal = {
+  dealId: number;
+  pendingOffer: { id: string; amount: number; deadline: string; answered: boolean } | null;
   offerId: number;
   title: string;
   address: string;

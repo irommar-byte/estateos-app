@@ -957,7 +957,7 @@ export default function ClientPortalScreen() {
 
           {lux.type === 'BUYER' && buyerStageIndex !== 1 ? checkbackCard : null}
 
-          {lux.type === 'BUYER' && lux.buyerDeals?.length ? <LuxBuyerDeals deals={lux.buyerDeals} palette={lp} /> : null}
+          {lux.type === 'BUYER' && lux.buyerDeals?.length ? <LuxBuyerDeals deals={lux.buyerDeals} palette={lp} token={portalToken} onChanged={silentReload} /> : null}
 
           {lux.type === 'SELLER' && seller ? (
             <View onLayout={onSection('buyerOffers')}>

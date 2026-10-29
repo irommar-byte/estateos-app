@@ -1,9 +1,10 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LUX_SERIF, plnFormat, type LuxPalette } from './luxTheme';
-import { LuxCard, LuxKicker } from './LuxUI';
+import { LuxButton, LuxCard, LuxField, LuxKicker } from './LuxUI';
+import { luxAction } from './luxApi';
 import type { LuxBuyerDeal } from './types';
 import { resolveMediaUrl } from '../../../utils/userAvatar';
 
@@ -18,8 +19,65 @@ const OFFER_STATUS: Record<NonNullable<LuxBuyerDeal['yourOffer']>['status'], str
 const when = (iso: string) =>
   new Date(iso).toLocaleString('pl-PL', { weekday: 'short', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
 
+/** Kontroferta sprzedającego z zegarem 48 h: przyjmij / zaproponuj / zrezygnuj — trafia do agenta. */
+function PendingOffer({ deal, token, palette, onChanged }: { deal: LuxBuyerDeal; token: string; palette: LuxPalette; onChanged: () => void }) {
+  const offer = deal.pendingOffer!;
+  const [counter, setCounter] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const hours = Math.max(0, Math.round((new Date(offer.deadline).getTime() - Date.now()) / 3_600_000));
+  const send = async (kind: 'accept' | 'counter' | 'reject') => {
+    const amount = kind === 'counter' ? Number(counter.replace(/\D/g, '')) : null;
+    if (kind === 'counter' && !amount) return Alert.alert('Twoja kwota', 'Wpisz kwotę.');
+    setBusy(kind);
+    try {
+      await luxAction(token, 'respond_deal_offer', { dealId: deal.dealId, offerId: offer.id, kind, amount });
+      Alert.alert('Odpowiedź wysłana', 'Agent przekaże ją sprzedającemu.');
+      onChanged();
+    } catch (e) {
+      Alert.alert('Nie udało się wysłać', e instanceof Error ? e.message : 'Spróbuj ponownie.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  if (offer.answered) {
+    return <Text style={{ fontSize: 13, color: palette.muted, marginTop: 12 }}>Twoja odpowiedź jest u agenta.</Text>;
+  }
+  return (
+    <View style={[styles.box, { backgroundColor: palette.cardAlt, borderWidth: 1, borderColor: palette.warn }]}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Text style={{ fontSize: 14, color: palette.ink }}>
+          Sprzedający proponuje <Text style={{ fontWeight: '700' }}>{plnFormat(offer.amount)}</Text>
+        </Text>
+        <Text style={{ fontSize: 12, fontWeight: '700', color: palette.warn }}>{hours} h</Text>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+        <LuxButton palette={palette} label="Przyjmuję" busy={busy === 'accept'} onPress={() => void send('accept')} style={{ flex: 1 }} />
+        <LuxButton
+          palette={palette}
+          label="Rezygnuję"
+          variant="ghost"
+          busy={busy === 'reject'}
+          onPress={() =>
+            Alert.alert('Zrezygnować?', 'Agent dostanie Twoją decyzję.', [
+              { text: 'Anuluj', style: 'cancel' },
+              { text: 'Rezygnuję', style: 'destructive', onPress: () => void send('reject') },
+            ])
+          }
+          style={{ flex: 1 }}
+        />
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, alignItems: 'flex-end' }}>
+        <View style={{ flex: 1 }}>
+          <LuxField palette={palette} value={counter} onChangeText={setCounter} keyboardType="number-pad" placeholder="Twoja kwota" suffix="zł" />
+        </View>
+        <LuxButton palette={palette} label="Proponuję" variant="ghost" busy={busy === 'counter'} onPress={() => void send('counter')} />
+      </View>
+    </View>
+  );
+}
+
 /** Panel kupującego: nieruchomości, przy których jest w procesie — etapy, cena, terminy. */
-export default function LuxBuyerDeals({ deals, palette }: { deals: LuxBuyerDeal[]; palette: LuxPalette }) {
+export default function LuxBuyerDeals({ deals, palette, token, onChanged }: { deals: LuxBuyerDeal[]; palette: LuxPalette; token: string; onChanged: () => void }) {
   if (!deals.length) return null;
   return (
     <View style={{ marginTop: 8 }}>
@@ -64,6 +122,7 @@ export default function LuxBuyerDeals({ deals, palette }: { deals: LuxBuyerDeal[
                 </View>
               ))}
             </View>
+            {deal.pendingOffer && !deal.agreedPrice ? <PendingOffer deal={deal} token={token} palette={palette} onChanged={onChanged} /> : null}
             {deal.agreedPrice || deal.yourOffer || deal.reservedUntil ? (
               <View style={[styles.box, { backgroundColor: palette.cardAlt }]}>
                 {deal.agreedPrice ? (
