@@ -83,7 +83,7 @@ export function BuyerSuggestInput({
         disabled={disabled}
       />
       {loading ? (
-        <Loader2 className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-emerald-500" />
+        <Loader2 className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin bi-accent-ink" />
       ) : null}
       {showList ? (
         <ul

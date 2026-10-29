@@ -6,14 +6,14 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   ArrowLeft,
   ArrowRight,
+  Building2,
   Check,
   ChevronDown,
-  Clock3,
+  Home,
   Loader2,
   MapPin,
-  ShieldCheck,
-  Sparkles,
-  UserRound,
+  Store,
+  Trees,
 } from 'lucide-react';
 import { resolveProfileMediaUrl } from '@/lib/agentProfile';
 import { canonicalizeCity, getDistrictsForCity, normalizeText } from '@/lib/location/locationCatalog';
@@ -25,7 +25,6 @@ import {
   BUYER_SUGGEST_MIN_CHARS,
   BUYER_TIMELINE_OPTIONS,
   BUYER_TRANSACTION_OPTIONS,
-  buyerIntakeFreeServiceLine,
   buyerIntakeProgressPercent,
   buyerIntakeStepCaption,
   buyerIntakeBudgetHeading,
@@ -74,11 +73,12 @@ import { normalizePhoneE164 } from '@/lib/phoneE164';
 
 const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
-const TRUST_POINTS = [
-  { icon: ShieldCheck, labelKey: 'free' as const },
-  { icon: Clock3, label: '1 minuta' },
-  { icon: UserRound, label: 'Agent w pakiecie' },
-] as const;
+const PROPERTY_ICON: Record<BuyerPropertyType, typeof Home> = {
+  apartment: Building2,
+  house: Home,
+  plot: Trees,
+  commercial: Store,
+};
 
 type AgentPreview = {
   displayName: string;
@@ -94,13 +94,6 @@ type Props = {
 
 function stepProgress(step: 1 | 2 | 3 | 4, intakeComplete: boolean): string {
   return buyerIntakeProgressPercent(step, intakeComplete);
-}
-
-function trustPointLabel(item: (typeof TRUST_POINTS)[number], isRent: boolean): string {
-  if ('labelKey' in item) {
-    return isRent ? 'Bezpłatnie dla najemcy' : 'Bezpłatnie dla Ciebie';
-  }
-  return item.label;
 }
 
 function orderDistrictsForPicker(city: string, all: string[]): string[] {
@@ -122,7 +115,7 @@ function AgentAvatar({ src, initial, compact }: { src: string | null; initial: s
   if (!url || broken) {
     return (
       <div
-        className={`bi-agent-card__avatar flex shrink-0 items-center justify-center bg-emerald-500/15 font-bold text-emerald-400 ${size} ${compact ? 'text-sm' : 'text-base'}`}
+        className={`bi-agent-card__avatar flex shrink-0 items-center justify-center bi-agent-card__initial font-bold ${size} ${compact ? 'text-sm' : 'text-base'}`}
       >
         {initial}
       </div>
@@ -251,6 +244,7 @@ function PropertyTypeCard({
   onSelect: () => void;
 }) {
   const reduceMotion = useReducedMotion();
+  const Icon = PROPERTY_ICON[option.id];
 
   return (
     <motion.button
@@ -268,7 +262,9 @@ function PropertyTypeCard({
     >
       <span className="bi-type-card__glow" aria-hidden />
       <div className="bi-type-card__top mb-1">
-        <span className="bi-type-card__emoji text-base sm:text-lg">{option.emoji}</span>
+        <span className="bi-type-card__icon" aria-hidden>
+          <Icon className="size-[18px]" strokeWidth={1.8} />
+        </span>
         <AnimatePresence mode="popLayout">
           {active ? (
             <motion.span
@@ -450,15 +446,6 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
       value: item,
     }));
   }, [resolvedCity, catalogDistricts.length, districtFilter]);
-
-  const customDistrictSuggestions = useMemo(() => {
-    if (!resolvedCity || !catalogDistricts.length) return [];
-    return searchBuyerDistrictSuggestions(resolvedCity, customDistrict, 8).map((item) => ({
-      id: `custom-${item}`,
-      label: item,
-      value: item,
-    }));
-  }, [resolvedCity, catalogDistricts.length, customDistrict]);
 
   useEffect(() => {
     const query = customCity.trim();
@@ -965,8 +952,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
   return (
     <main className="bi-page relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-24 top-8 h-48 w-48 rounded-full bg-emerald-400/10 blur-3xl sm:h-56 sm:w-56" />
-        <div className="absolute -right-16 bottom-16 h-48 w-48 rounded-full bg-sky-400/10 blur-3xl sm:h-64 sm:w-64" />
+        <div className="bi-page__halo absolute -left-24 top-8 h-48 w-48 rounded-full blur-3xl sm:h-56 sm:w-56" />
       </div>
 
       <div className="bi-page__body relative mx-auto flex w-full max-w-xl min-h-0 flex-1 flex-col px-4 pt-[max(0.65rem,env(safe-area-inset-top,0px)+0.5rem)] sm:px-6 sm:pt-5">
@@ -981,14 +967,10 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
           </div>
 
           <div className="flex items-center gap-2.5">
-            <div className="bi-brand-mark flex size-9 items-center justify-center rounded-xl border border-white/60 bg-white/70 shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/5 sm:size-10 sm:rounded-2xl">
-              <Sparkles className="size-4 text-emerald-500 sm:size-[18px]" />
-            </div>
+            <AgentAvatar src={agent.image} initial={firstName.slice(0, 1)} compact />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[9px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-400 sm:text-[10px]">
-                Bezpłatnie dla kupujących
-              </p>
-              <p className="text-[12px] font-medium text-slate-500 dark:text-slate-400 sm:text-[13px]">
+              <p className="bi-kicker truncate text-[10px] font-bold uppercase tracking-[0.18em]">{agent.displayName}</p>
+              <p className="text-[12px] font-medium bi-ink-3 sm:text-[13px]">
                 {buyerIntakeStepCaption(uiStep, intakeComplete)}
               </p>
             </div>
@@ -996,7 +978,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
               <button
                 type="button"
                 onClick={() => setUiStep(1)}
-                className="bi-back-btn inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+                className="bi-back-btn inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold bi-ink-3"
               >
                 <ArrowLeft className="size-3.5" />
                 Wstecz
@@ -1010,7 +992,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                   setStep4Saved(false);
                   setError('');
                 }}
-                className="bi-back-btn inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+                className="bi-back-btn inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold bi-ink-3"
               >
                 <ArrowLeft className="size-3.5" />
                 Wstecz
@@ -1024,7 +1006,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                   setStep2Saved(false);
                   setError('');
                 }}
-                className="bi-back-btn inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400"
+                className="bi-back-btn inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold bi-ink-3"
               >
                 <ArrowLeft className="size-3.5" />
                 Wstecz
@@ -1043,40 +1025,15 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
               className="flex min-h-0 flex-1 flex-col"
             >
                 <section className="bi-page__intro shrink-0">
-                  <h1 className="bi-page__headline text-[1.35rem] font-semibold leading-[1.08] tracking-[-0.03em] text-slate-900 dark:text-white sm:text-[1.85rem]">
-                    {isRent ? (
-                      <>
-                        Wynajmiemy{' '}
-                        <span className="bg-gradient-to-r from-emerald-600 to-emerald-400 bg-clip-text text-transparent dark:from-emerald-300 dark:to-emerald-500">
-                          za Ciebie
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        Znajdziemy to{' '}
-                        <span className="bg-gradient-to-r from-emerald-600 to-emerald-400 bg-clip-text text-transparent dark:from-emerald-300 dark:to-emerald-500">
-                          za Ciebie
-                        </span>
-                      </>
-                    )}
+                  <h1 className="bi-page__headline text-[1.45rem] font-semibold leading-[1.1] tracking-[-0.03em] sm:text-[1.9rem]">
+                    {isRent ? 'Opisz, czego szukasz —' : 'Opisz, czego szukasz —'}{' '}
+                    <span className="bi-accent">{firstName} znajdzie to za Ciebie</span>
                   </h1>
-                  <p className="bi-page__lede mt-1.5 max-w-md text-[13px] leading-snug text-slate-600 dark:text-slate-300 sm:text-[14px]">
-                    <span className="font-semibold text-slate-900 dark:text-white">{firstName}</span>{' '}
-                    {isRent
-                      ? 'poprowadzi wyszukiwanie najmu w pakiecie — bezpłatnie dla Ciebie. Bez kontaktu z właścicielami.'
-                      : 'poprowadzi wyszukiwanie w pakiecie — bezpłatnie dla kupujących. Bez rozmów ze sprzedającymi.'}
+                  <p className="bi-page__lede mt-2 max-w-md text-[13px] leading-relaxed sm:text-[14px]">
+                    Minuta na kryteria. Potem wszystko dzieje się w Twoim panelu klienta: propozycje ofert, oglądania,
+                    negocjacje i dokumenty.{' '}
+                    <span className="font-semibold">{isRent ? 'Bezpłatnie dla najemcy.' : 'Bezpłatnie dla kupującego.'}</span>
                   </p>
-                  <p className="mt-1 max-w-md text-[11px] leading-snug text-slate-500 dark:text-slate-400">
-                    {buyerIntakeFreeServiceLine(transactionType)}
-                  </p>
-                  <ul className="bi-trust-row mt-2 flex flex-wrap gap-1.5">
-                    {TRUST_POINTS.map(({ icon: Icon, ...item }) => (
-                      <li key={'label' in item ? item.label : item.labelKey} className="bi-trust-chip inline-flex items-center gap-1 rounded-full px-2 py-1">
-                        <Icon className="size-3 shrink-0 text-emerald-500" aria-hidden />
-                        <span>{trustPointLabel({ icon: Icon, ...item }, isRent)}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </section>
 
                 <section className="bi-form-block mt-2 shrink-0 sm:mt-2.5" aria-labelledby="bi-transaction-heading">
@@ -1084,7 +1041,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                     <h2 id="bi-transaction-heading" className="bi-form-block__title">
                       Kupno czy wynajem?
                     </h2>
-                    <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                    <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug bi-ink-3">
                       Od tego zależy budżet i dopasowanie ofert
                     </p>
                   </div>
@@ -1095,29 +1052,16 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                   />
                 </section>
 
-                <section
-                  className="bi-agent-card bi-agent-card--compact mt-2 flex shrink-0 items-center gap-2.5 rounded-[1rem] border p-2 sm:mt-2.5 sm:rounded-[1.15rem] sm:p-2.5"
-                  aria-label={`Twój agent: ${agent.displayName}`}
-                >
-                  <AgentAvatar src={agent.image} initial={firstName.slice(0, 1)} compact />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold text-slate-900 dark:text-white">{agent.displayName}</p>
-                    <p className="truncate text-[10px] text-slate-500 dark:text-slate-400 sm:text-[11px]">
-                      {agent.agentTitle} · {agent.companyName || 'EstateOS™'}
-                    </p>
-                  </div>
-                </section>
-
                 <section className="mt-2 flex min-h-0 flex-1 flex-col justify-end sm:mt-2.5" aria-labelledby="bi-type-heading">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <h2
                       id="bi-type-heading"
-                      className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400 sm:text-xs"
+                      className="text-[10px] font-black uppercase tracking-[0.14em] bi-ink-3 sm:text-xs"
                     >
-                      Co szukasz?
+                      Czego szukasz?
                     </h2>
                     {selectedLabel ? (
-                      <p className="truncate text-[10px] font-semibold text-emerald-500 sm:text-[11px]">✓ {selectedLabel}</p>
+                      <p className="bi-accent-ink truncate text-[10px] font-semibold sm:text-[11px]">✓ {selectedLabel}</p>
                     ) : null}
                   </div>
                   <div className="bi-type-grid grid min-h-0 flex-1 grid-cols-2 gap-1.5 sm:gap-2">
@@ -1150,17 +1094,17 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                       </span>
                       {selectedLabel ? (
                         <span className="bi-property-pill inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]">
-                          {BUYER_PROPERTY_OPTIONS.find((o) => o.id === propertyType)?.emoji} {selectedLabel}
+                          {selectedLabel}
                         </span>
                       ) : null}
                     </div>
-                    <h1 className="text-[1.35rem] font-semibold leading-[1.08] tracking-[-0.03em] text-slate-900 dark:text-white sm:text-[1.75rem]">
+                    <h1 className="text-[1.35rem] font-semibold leading-[1.08] tracking-[-0.03em] bi-ink sm:text-[1.75rem]">
                       Gdzie i{' '}
-                      <span className="bg-gradient-to-r from-emerald-600 to-emerald-400 bg-clip-text text-transparent dark:from-emerald-300 dark:to-emerald-500">
+                      <span className="bi-accent">
                         {isRent ? 'w jakim budżecie?' : 'za ile?'}
                       </span>
                     </h1>
-                    <p className="mt-1 text-[13px] leading-snug text-slate-600 dark:text-slate-300">
+                    <p className="mt-1 text-[13px] leading-snug bi-ink-2">
                       {firstName} zawęzi {isRent ? 'oferty najmu' : 'rynek'} — wybierz lokalizację
                       {isRent ? ' i maksymalny czynsz.' : ' i budżet.'}
                     </p>
@@ -1169,7 +1113,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                   <div className="bi-step2-fields mt-2 shrink-0 space-y-2 pb-1 sm:mt-2.5 sm:space-y-2.5">
                       <section className="bi-form-block" aria-labelledby="bi-city-heading">
                         <div className="bi-form-block__head mb-1.5 flex items-center gap-1.5">
-                          <MapPin className="size-3.5 text-emerald-500" aria-hidden />
+                          <MapPin className="bi-accent-ink size-3.5" aria-hidden />
                           <h2 id="bi-city-heading" className="bi-form-block__title">
                             Miasto
                           </h2>
@@ -1206,7 +1150,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                             <h2 id="bi-district-heading" className="bi-form-block__title">
                               Dzielnica (opcjonalnie)
                             </h2>
-                            <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                            <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug bi-ink-3">
                               Możesz zaznaczyć kilka — np. tylko Żoliborz
                             </p>
                           </div>
@@ -1241,27 +1185,12 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                               type="button"
                               disabled={submitting}
                               onClick={() => setDistrictsExpanded((v) => !v)}
-                              className="bi-expand-btn mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-lg py-1 text-[10px] font-semibold text-emerald-500"
+                              className="bi-expand-btn mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-lg py-1 text-[11px] font-semibold"
                             >
                               {districtsExpanded ? 'Mniej dzielnic' : `Pokaż wszystkie (${filteredDistricts.length})`}
                               <ChevronDown className={`size-3 transition-transform ${districtsExpanded ? 'rotate-180' : ''}`} />
                             </button>
                           ) : null}
-                          <BuyerSuggestInput
-                            value={customDistrict}
-                            onChange={(value) => {
-                              setCustomDistrict(value);
-                              setStep2Saved(false);
-                              setError('');
-                            }}
-                            onSelect={handleDistrictSuggestionSelect}
-                            placeholder="Inna dzielnica…"
-                            disabled={submitting}
-                            suggestions={customDistrictSuggestions}
-                            compact
-                            className="mt-1.5"
-                            ariaLabel="Inna dzielnica"
-                          />
                         </section>
                       ) : resolvedCity ? (
                         <section className="bi-form-block" aria-labelledby="bi-district-custom-heading">
@@ -1310,18 +1239,18 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                       </section>
 
                       {showArea || showRooms ? (
-                        <div className={`grid shrink-0 gap-2 ${showArea && showRooms ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        <div className={`grid shrink-0 gap-2 ${showArea && showRooms ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                           {showArea ? (
                             <section className="bi-form-block" aria-labelledby="bi-area-heading">
                               <div className="mb-1.5">
                                 <h2 id="bi-area-heading" className="bi-form-block__title">
                                   {getBuyerAreaHeading(propertyType)}
                                 </h2>
-                                <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                                <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug bi-ink-3">
                                   {getBuyerAreaHint(propertyType)}
                                 </p>
                               </div>
-                              <p className="bi-form-block__hint mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                              <p className="bi-form-block__hint mb-1 text-[9px] font-semibold uppercase tracking-[0.12em] bi-ink-3">
                                 Od
                               </p>
                               <div className="bi-metric-grid grid grid-cols-3 gap-1">
@@ -1345,7 +1274,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                                   />
                                 ))}
                               </div>
-                              <p className="bi-form-block__hint mb-1 mt-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">
+                              <p className="bi-form-block__hint mb-1 mt-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] bi-ink-3">
                                 Do
                               </p>
                               <div className="bi-metric-grid grid grid-cols-3 gap-1">
@@ -1374,7 +1303,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                                 <h2 id="bi-rooms-heading" className="bi-form-block__title">
                                   Pokoje
                                 </h2>
-                                <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                                <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug bi-ink-3">
                                   Zaznacz kilka — np. 2 i 3 pokoje
                                 </p>
                               </div>
@@ -1420,17 +1349,17 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                       </span>
                       {selectedLabel ? (
                         <span className="bi-property-pill inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.12em]">
-                          {BUYER_PROPERTY_OPTIONS.find((o) => o.id === propertyType)?.emoji} {selectedLabel}
+                          {selectedLabel}
                         </span>
                       ) : null}
                     </div>
-                    <h1 className="text-[1.35rem] font-semibold leading-[1.08] tracking-[-0.03em] text-slate-900 dark:text-white sm:text-[1.75rem]">
+                    <h1 className="text-[1.35rem] font-semibold leading-[1.08] tracking-[-0.03em] bi-ink sm:text-[1.75rem]">
                       Co musi{' '}
-                      <span className="bg-gradient-to-r from-emerald-600 to-emerald-400 bg-clip-text text-transparent dark:from-emerald-300 dark:to-emerald-500">
+                      <span className="bi-accent">
                         być?
                       </span>
                     </h1>
-                    <p className="mt-1 text-[13px] leading-snug text-slate-600 dark:text-slate-300">
+                    <p className="mt-1 text-[13px] leading-snug bi-ink-2">
                       Zaznacz must-have — reszta jest opcjonalna.
                     </p>
                   </section>
@@ -1443,7 +1372,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                             <h2 id="bi-musthave-heading" className="bi-form-block__title">
                               Must-have
                             </h2>
-                            <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                            <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug bi-ink-3">
                               Zaznacz wszystko, czego nie odpuszczasz
                             </p>
                           </div>
@@ -1479,7 +1408,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                         <h2 id="bi-timeline-heading" className="bi-form-block__title">
                           {buyerIntakeTimelineHeading(transactionType)}
                         </h2>
-                        <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                        <p className="bi-form-block__hint mt-0.5 text-[10px] leading-snug bi-ink-3">
                           {buyerIntakeTimelineHint(firstName, transactionType)}
                         </p>
                       </div>
@@ -1526,7 +1455,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                   transactionLabel={transactionLabel}
                   propertyLabel={
                     selectedLabel
-                      ? `${BUYER_PROPERTY_OPTIONS.find((o) => o.id === propertyType)?.emoji ?? ''} ${selectedLabel}`.trim()
+                      ? selectedLabel
                       : undefined
                   }
                   summaryLine={fullSummaryLine}

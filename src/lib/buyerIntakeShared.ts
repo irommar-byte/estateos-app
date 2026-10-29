@@ -11,19 +11,18 @@ import { normalizePhoneE164 } from '@/lib/phoneE164';
 
 export const BUYER_MISSION_COOKIE = 'eos_buyer_mission';
 export const BUYER_MISSION_MAX_AGE_SEC = 60 * 60 * 24 * 30;
-export const BUYER_INTAKE_TOTAL_STEPS = 6;
-/** Kroki 1–4: formularz na /szukam; 5–6: panel klienta z propozycjami. */
+/** Formularz /szukam ma 4 kroki — potem klient ląduje w swoim panelu. */
 export const BUYER_INTAKE_FORM_STEPS = 4;
 
 export function buyerIntakeProgressPercent(uiStep: 1 | 2 | 3 | 4, intakeComplete: boolean): string {
   if (intakeComplete) return '100%';
-  return `${((uiStep / BUYER_INTAKE_TOTAL_STEPS) * 100).toFixed(3)}%`;
+  return `${((uiStep / BUYER_INTAKE_FORM_STEPS) * 100).toFixed(3)}%`;
 }
 
 export function buyerIntakeStepCaption(uiStep: 1 | 2 | 3 | 4, intakeComplete: boolean): string {
   if (intakeComplete) return 'Gotowe — otwórz panel';
-  if (uiStep === BUYER_INTAKE_FORM_STEPS) return `Krok ${uiStep} z ${BUYER_INTAKE_TOTAL_STEPS} · ostatni przed panelem`;
-  return `Krok ${uiStep} z ${BUYER_INTAKE_TOTAL_STEPS}`;
+  if (uiStep === BUYER_INTAKE_FORM_STEPS) return `Krok ${uiStep} z ${BUYER_INTAKE_FORM_STEPS} · ostatni`;
+  return `Krok ${uiStep} z ${BUYER_INTAKE_FORM_STEPS}`;
 }
 
 export type BuyerPropertyType = 'apartment' | 'house' | 'plot' | 'commercial';
@@ -37,13 +36,6 @@ export type BuyerMustHaveKey =
   | 'requireParking'
   | 'requireFurnished'
   | 'requireTwoLevel';
-
-export function buyerIntakeFreeServiceLine(transactionType: BuyerTransactionType | null | undefined): string {
-  if (transactionType === 'RENT') {
-    return 'Usługa dla szukających najmu jest bezpłatna — wynagrodzenie agenta po stronie wynajmującego.';
-  }
-  return 'Usługa dla kupujących jest bezpłatna — wynagrodzenie agenta po stronie sprzedającego.';
-}
 
 export type BuyerMissionRecord = {
   typ: 'buyer_mission';
@@ -77,13 +69,12 @@ export type BuyerMissionRecord = {
 export const BUYER_PROPERTY_OPTIONS: Array<{
   id: BuyerPropertyType;
   label: string;
-  emoji: string;
   hint: string;
 }> = [
-  { id: 'apartment', label: 'Mieszkanie', emoji: '🏠', hint: 'Kawalerka – 5 pokoi' },
-  { id: 'house', label: 'Dom', emoji: '🏡', hint: 'Segment, bliźniak' },
-  { id: 'plot', label: 'Działka', emoji: '🌳', hint: 'Budowlana, rekreacyjna' },
-  { id: 'commercial', label: 'Lokal', emoji: '🏢', hint: 'Biuro, usługi' },
+  { id: 'apartment', label: 'Mieszkanie', hint: 'Kawalerka – 5 pokoi' },
+  { id: 'house', label: 'Dom', hint: 'Segment, bliźniak' },
+  { id: 'plot', label: 'Działka', hint: 'Budowlana, rekreacyjna' },
+  { id: 'commercial', label: 'Lokal', hint: 'Biuro, usługi' },
 ];
 
 export const BUYER_CITY_OPTIONS = [

@@ -1,7 +1,7 @@
 'use client';
 
 import { motion, useReducedMotion } from 'framer-motion';
-import { ArrowRight, BrainCircuit, CheckCircle2, Loader2, Mail, UserRound } from 'lucide-react';
+import { ArrowRight, CalendarCheck2, CheckCircle2, Handshake, LayoutDashboard, Loader2, Mail, UserRound } from 'lucide-react';
 import PhoneCountryInput from '@/components/auth/PhoneCountryInput';
 
 export type BuyerContactFieldStatus = 'idle' | 'checking' | 'valid' | 'known' | 'invalid';
@@ -75,23 +75,21 @@ export function BuyerIntakeStep4Contact({
         <div className="bi-success-card rounded-[1.2rem] border px-4 py-5 sm:px-5 sm:py-6">
           <div className="flex items-start gap-3">
             <div className="bi-success-card__icon flex size-10 shrink-0 items-center justify-center rounded-2xl">
-              <CheckCircle2 className="size-5 text-emerald-500" />
+              <CheckCircle2 className="bi-accent-ink size-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-base font-semibold text-slate-900 dark:text-white">Panel jest gotowy</p>
-              <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
-                <span className="font-semibold text-slate-900 dark:text-white">{agentFirstName}</span> ma już Twoje
-                kryteria. Intelligence szuka dopasowań — pierwsza propozycja pojawi się w panelu.
+              <p className="text-base font-semibold bi-ink">Twój panel klienta jest gotowy</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed bi-ink-2">
+                <span className="font-semibold bi-ink">{agentFirstName}</span> ma już Twoje kryteria i przygotuje
+                dla Ciebie pierwsze propozycje — znajdziesz je w panelu.
               </p>
               {summaryLine ? (
                 <p className="bi-success-card__summary mt-2.5 rounded-xl px-3 py-2 text-[11px] leading-relaxed sm:text-[12px]">
                   Szukamy: <span className="font-semibold">{summaryLine}</span>
                 </p>
               ) : null}
-              <p className="mt-2.5 text-[12px] leading-relaxed text-slate-500 dark:text-slate-400">
-                {isRent
-                  ? 'Usługa jest bezpłatna dla Ciebie. Otwieramy panel — tam reagujesz na oferty i piszesz z agentem.'
-                  : 'Usługa jest bezpłatna dla kupujących. Otwieramy panel — tam reagujesz na oferty i piszesz z agentem.'}
+              <p className="mt-2.5 text-[12px] leading-relaxed bi-ink-3">
+                Otwieramy Twój panel — tam oceniasz oferty, umawiasz oglądania i piszesz z agentem.
               </p>
             </div>
           </div>
@@ -113,16 +111,13 @@ export function BuyerIntakeStep4Contact({
             </span>
           ) : null}
         </div>
-        <h1 className="text-[1.35rem] font-semibold leading-[1.08] tracking-[-0.03em] text-slate-900 dark:text-white sm:text-[1.75rem]">
-          Gdzie Cię{' '}
-          <span className="bg-gradient-to-r from-emerald-600 to-emerald-400 bg-clip-text text-transparent dark:from-emerald-300 dark:to-emerald-500">
-            złapać?
-          </span>
+        <h1 className="text-[1.35rem] font-semibold leading-[1.08] tracking-[-0.03em] bi-ink sm:text-[1.75rem]">
+          Ostatni krok —{' '}
+          <span className="bi-accent">Twój panel klienta</span>
         </h1>
-        <p className="mt-1 text-[13px] leading-snug text-slate-600 dark:text-slate-300">
-          {agentDisplayName} skontaktuje się tylko w tej sprawie — bez spamu
-          {isRent ? '.' : ' i bez rozmów ze sprzedającymi.'} Po wysłaniu otworzymy Twój panel z propozycjami
-          {email.trim() ? ' i wyślemy link na e-mail.' : '.'}
+        <p className="mt-1 text-[13px] leading-snug bi-ink-2">
+          {agentDisplayName} skontaktuje się z Tobą tylko w tej sprawie
+          {isRent ? '.' : ' — bez rozmów ze sprzedającymi.'}
         </p>
       </section>
 
@@ -131,7 +126,7 @@ export function BuyerIntakeStep4Contact({
           <div className="bi-field-grid grid grid-cols-2 gap-2">
             <label className="bi-field block">
               <span className="bi-form-block__title mb-1.5 flex items-center gap-1.5">
-                <UserRound className="size-3.5 text-emerald-500" aria-hidden />
+                <UserRound className="bi-accent-ink size-3.5" aria-hidden />
                 Imię
               </span>
               <input
@@ -146,7 +141,7 @@ export function BuyerIntakeStep4Contact({
               />
             </label>
             <label className="bi-field block">
-              <span className="bi-form-block__title mb-1.5">Nazwisko</span>
+              <span className="bi-form-block__title mb-1.5 flex items-center gap-1.5">Nazwisko</span>
               <input
                 type="text"
                 autoComplete="family-name"
@@ -174,7 +169,7 @@ export function BuyerIntakeStep4Contact({
             wrapperClassName="bi-phone-country"
           />
           {phoneStatus === 'checking' ? (
-            <p className="bi-field-hint mt-1.5 text-[10px] font-medium text-slate-500">Sprawdzam numer w bazie…</p>
+            <p className="bi-field-hint mt-1.5 text-[10px] font-medium bi-ink-3">Sprawdzam numer w bazie…</p>
           ) : phoneStatus === 'invalid' ? (
             <p className="bi-field-hint bi-field-hint--error mt-1.5 text-[10px] font-medium">
               Wybierz kod kraju i wpisz pełny numer krajowy.
@@ -189,10 +184,10 @@ export function BuyerIntakeStep4Contact({
         <label className="bi-form-block block">
           <span className="bi-form-block__title mb-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
             <span className="inline-flex items-center gap-1.5">
-              <Mail className="size-3.5 text-emerald-500" aria-hidden />
+              <Mail className="bi-accent-ink size-3.5" aria-hidden />
               E-mail
             </span>
-            <span className="font-normal normal-case tracking-normal text-slate-500">(opcjonalnie — link do panelu)</span>
+            <span className="font-normal normal-case tracking-normal bi-ink-3">(zalecane — wyślemy link do panelu)</span>
           </span>
           <input
             type="email"
@@ -207,7 +202,7 @@ export function BuyerIntakeStep4Contact({
             maxLength={191}
           />
           {emailStatus === 'checking' ? (
-            <p className="bi-field-hint mt-1.5 text-[10px] font-medium text-slate-500">Sprawdzam e-mail…</p>
+            <p className="bi-field-hint mt-1.5 text-[10px] font-medium bi-ink-3">Sprawdzam e-mail…</p>
           ) : emailStatus === 'invalid' ? (
             <p className="bi-field-hint bi-field-hint--error mt-1.5 text-[10px] font-medium">
               Podaj poprawny adres, np. jan@example.com
@@ -221,15 +216,32 @@ export function BuyerIntakeStep4Contact({
           ) : null}
         </label>
 
+        <div className="bi-next-card rounded-2xl px-3.5 py-3">
+          <p className="bi-kicker text-[10px] font-bold uppercase tracking-[0.16em]">Co dalej</p>
+          <ul className="mt-2 space-y-2">
+            {[
+              { icon: LayoutDashboard, text: 'Otwieramy Twój panel klienta — link dostaniesz też e-mailem.' },
+              { icon: CheckCircle2, text: `${agentFirstName} wysyła tam oferty dopasowane do Twoich kryteriów — oceniasz je jednym dotknięciem.` },
+              { icon: CalendarCheck2, text: 'Oglądania potwierdzasz w panelu, przypomnienia przychodzą same.' },
+              { icon: Handshake, text: 'Negocjacje, dokumenty i czat z agentem — wszystko w jednym miejscu.' },
+            ].map(({ icon: Icon, text }) => (
+              <li key={text} className="flex gap-2.5 text-[12px] leading-snug bi-ink-2">
+                <Icon className="bi-accent-ink mt-0.5 size-4 shrink-0" aria-hidden />
+                <span>{text}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <label className="bi-consent-row flex cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5">
           <input
             type="checkbox"
             checked={consentContact}
             disabled={submitting}
             onChange={(event) => onConsentChange(event.target.checked)}
-            className="bi-consent-row__check mt-0.5 size-4 shrink-0 rounded border-emerald-500/40 text-emerald-500 focus:ring-emerald-500/30"
+            className="bi-consent-row__check mt-0.5 size-4 shrink-0 rounded"
           />
-          <span className="text-[11px] leading-snug text-slate-600 dark:text-slate-300">
+          <span className="text-[11px] leading-snug bi-ink-2">
             Wyrażam zgodę na kontakt w sprawie wyszukiwania nieruchomości. Rozumiem, że jako{' '}
             {isRent ? 'szukający najmu' : 'kupujący'} nie ponoszę opłat za usługę agenta — wynagrodzenie po stronie{' '}
             {isRent ? 'wynajmującego' : 'sprzedającego'}.
@@ -258,13 +270,11 @@ export function BuyerIntakeStep4Footer({
   const reduceMotion = useReducedMotion();
   const hint = submitting
     ? hasEmail
-      ? 'Uruchamiamy panel i wysyłamy link na e-mail…'
-      : 'Uruchamiamy Twój panel…'
+      ? 'Tworzymy panel i wysyłamy link na e-mail…'
+      : 'Tworzymy Twój panel…'
     : ready
-      ? hasEmail
-        ? 'Panel + link na e-mail — jeden klik'
-        : 'Gotowe — otwieramy panel'
-      : 'Imię, nazwisko, telefon i zgoda';
+      ? 'Wszystko gotowe'
+      : 'Uzupełnij imię, nazwisko, telefon i zgodę';
 
   return (
     <>
@@ -278,8 +288,8 @@ export function BuyerIntakeStep4Footer({
         whileTap={reduceMotion || !ready || submitting ? undefined : { scale: 0.985 }}
         className="bi-primary-cta flex w-full items-center justify-center gap-2 rounded-[1rem] px-4 py-3 text-[14px] font-bold disabled:cursor-not-allowed sm:rounded-[1.1rem] sm:py-3.5 sm:text-[15px]"
       >
-        {submitting ? <Loader2 className="size-5 animate-spin" /> : <BrainCircuit className="size-5 opacity-90" />}
-        {submitting ? 'Uruchamiam panel…' : 'Otwórz mój panel'}
+        {submitting ? <Loader2 className="size-5 animate-spin" /> : null}
+        {submitting ? 'Tworzę panel…' : 'Otwórz mój panel klienta'}
         {!submitting ? <ArrowRight className="bi-primary-cta__arrow size-5" /> : null}
       </motion.button>
     </>
