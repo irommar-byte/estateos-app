@@ -1,5 +1,6 @@
 import path from 'path';
 import { NextResponse } from 'next/server';
+import { setOfferPhotoRoom } from '@/lib/offerPhotoRooms';
 import { getWebFormData } from '@/lib/requestFormData';
 import {
   MAX_OFFER_FILE_BYTES,
@@ -267,6 +268,12 @@ export async function POST(req: Request) {
           { success: false, error: img.error },
           { status: img.status }
         );
+      }
+
+      // Pomieszczenie wybrane przy dodawaniu zdjęcia (opcjonalnie) — łączy zdjęcie z rzutem.
+      const roomLabel = String(formData.get('roomLabel') || '').trim();
+      if (roomLabel && !isFloorPlan) {
+        await setOfferPhotoRoom(offerIdNum, img.url, roomLabel).catch(() => undefined);
       }
 
       const quota = await offerFolderQuota(offerIdNum);

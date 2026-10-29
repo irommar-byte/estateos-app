@@ -1,6 +1,9 @@
 import sharp from 'sharp';
 import type { FloorPlanScanMeta } from '@/types/roomScan';
-import { detectPlanRooms, normalizeScanMeta } from '@/lib/roomScan/planNormalize';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { detectPlanRooms, normalizeScanMeta, placePlanObjects } from '@/lib/roomScan/planNormalize';
+import { planFurnitureSymbol } from '@/components/offers/planFurnitureSymbols';
 
 const ROOM_TINT: Record<string, string> = {
   livingRoom: '#f6eddf',
@@ -48,9 +51,17 @@ export async function buildSheetPlan(raw: FloorPlanScanMeta | null, width: numbe
     .filter((o) => o.kind === 'window')
     .map((o) => `<line x1="${X(o.x1).toFixed(1)}" y1="${Y(o.z1).toFixed(1)}" x2="${X(o.x2).toFixed(1)}" y2="${Y(o.z2).toFixed(1)}"/>`)
     .join('');
+  // Rzut „ubrany” — te same meble i symbole co na stronie oferty.
+  const furniture = placePlanObjects(meta, rooms)
+    .map((o) => {
+      const inner = renderToStaticMarkup(createElement('g', null, planFurnitureSymbol(o.category, o.widthM * scale, o.depthM * scale)));
+      return `<g transform="translate(${X(o.centerX).toFixed(1)} ${Y(o.centerZ).toFixed(1)}) rotate(${o.rotationDeg})" opacity="0.9">${inner}</g>`;
+    })
+    .join('');
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width * density}" height="${height * density}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" fill="#ffffff"/>
   ${fills}
+  ${furniture}
   <g stroke="#15171a" stroke-width="${wallW}" stroke-linecap="square" stroke-linejoin="miter">${walls}</g>
   <g stroke="#ffffff" stroke-width="${wallW + 1}">${windows}</g>
   <g stroke="#2f6fd8" stroke-width="1.6">${windows}</g>

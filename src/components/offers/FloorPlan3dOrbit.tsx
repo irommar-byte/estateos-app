@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import type { FloorPlanScanMeta, RoomScanObjectCategory } from '@/types/roomScan';
-import { detectPlanRooms } from '@/lib/roomScan/planNormalize';
+import { detectPlanRooms, placePlanObjects } from '@/lib/roomScan/planNormalize';
 
 type Props = {
   meta: FloorPlanScanMeta;
@@ -100,7 +100,8 @@ export default function FloorPlan3dOrbit({ meta, className }: Props) {
       base.receiveShadow = true;
       scene.add(base);
       // Podłogi z wykrytych pomieszczeń (prostokąty wierszami scalone w jedną siatkę na pokój).
-      for (const room of detectPlanRooms(meta, 0.1)) {
+      const rooms = detectPlanRooms(meta);
+      for (const room of rooms) {
         const positions: number[] = [];
         for (const [x0, z0, x1, z1] of room.rects) {
           positions.push(x0, 0.005, z0, x0, 0.005, z1, x1, 0.005, z0, x1, 0.005, z0, x0, 0.005, z1, x1, 0.005, z1);
@@ -145,13 +146,14 @@ export default function FloorPlan3dOrbit({ meta, className }: Props) {
       }
 
       // Meble
-      for (const obj of meta.objects || []) {
-        const w = Math.max(0.25, obj.widthM || 0.5);
-        const d = Math.max(0.25, obj.depthM || 0.4);
+      // Te same pozycje co na rzucie: równolegle do ścian, w swoim pokoju, bez wchodzenia w ściany.
+      for (const obj of placePlanObjects(meta, rooms)) {
+        const w = Math.max(0.2, obj.widthM - 0.03);
+        const d = Math.max(0.2, obj.depthM - 0.03);
         const h = Math.max(0.2, Math.min(2.2, obj.heightM || 0.7));
         const mesh = new THREE.Mesh(geo(new THREE.BoxGeometry(w, h, d)), mat(OBJECT_COLOR[obj.category] ?? 0xd4d4d8));
         mesh.position.set(obj.centerX, h / 2, obj.centerZ);
-        mesh.rotation.y = -((obj.rotationDeg || 0) * Math.PI) / 180;
+        mesh.rotation.y = -(obj.rotationDeg * Math.PI) / 180;
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         scene.add(mesh);

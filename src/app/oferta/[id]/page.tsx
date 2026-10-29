@@ -40,6 +40,7 @@ import { isOfferNewListing } from "@/lib/offerLifecycle";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OfferFloorPlanPanel from "@/components/offers/OfferFloorPlanPanel";
 import OfferRevealEffects from "@/components/offer/OfferRevealEffects";
+import { photoRoomKey, type OfferPhotoRoom } from "@/lib/offerPhotoRoomKey";
 import { parseFloorPlanScanMeta } from "@/lib/roomScan/parseFloorPlanScanMeta";
 import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
 import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
@@ -164,6 +165,36 @@ function OfferDetails({
         );
   const images: string[] = allImages.length > 0 ? allImages : ["/placeholder.jpg"];
   const { meta: offerImageMeta } = useOfferImageMeta(offer?.id);
+  // Zdjęcia przypisane do pomieszczeń: rzut ↔ galeria w obie strony.
+  const [photoRooms, setPhotoRooms] = useState<OfferPhotoRoom[]>([]);
+  const [planFocus, setPlanFocus] = useState<{ room: string; nonce: number } | null>(null);
+  useEffect(() => {
+    const offerIdForRooms = Number(offer?.id ?? offer?._id);
+    if (!Number.isFinite(offerIdForRooms) || offerIdForRooms <= 0) return;
+    let cancelled = false;
+    fetch(`/api/offers/${offerIdForRooms}/photo-rooms`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.items)) setPhotoRooms(data.items);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [offer?.id, offer?._id]);
+  const photoRoomByKey = new Map(photoRooms.map((item) => [item.url, item.room]));
+  const roomOfPhoto = (url: string) => photoRoomByKey.get(photoRoomKey(url)) || null;
+  const openPhotoFromPlan = (url: string) => {
+    const at = images.findIndex((img) => photoRoomKey(img) === photoRoomKey(url));
+    setCurrentImageIndex(at >= 0 ? at : 0);
+    setIsFloorplanModalOpen(false);
+    setIsGalleryOpen(true);
+  };
+  const showRoomOnPlan = (room: string) => {
+    setIsGalleryOpen(false);
+    setPlanFocus({ room, nonce: Date.now() });
+    window.setTimeout(() => document.getElementById("offer-plan")?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+  };
   const thumbImages: string[] = images.slice(1);
   const mosaicCells = offerPhotoMosaicCells(Math.min(thumbImages.length, 6));
   const hiddenThumbCount = Math.max(0, thumbImages.length - mosaicCells.length);
@@ -546,7 +577,6 @@ function OfferDetails({
     : null;
 
   const buildingParams = [
-    { label: t.buildingType, value: formatOfferPropertyType(offer.propertyType, locale) },
     { label: t.buildYear, value: yearBuiltLabel },
     { label: t.heating, value: heatingLabel },
     {
@@ -1121,20 +1151,6 @@ function OfferDetails({
                   </div>
                 ) : null}
 
-                {(floorPlanSrc || floorPlan3dSrc || floorPlanScanMeta) && !isLocked ? (
-                  <OfferFloorPlanPanel
-                    floorPlanSrc={floorPlanSrc}
-                    extraFloorPlanSrcs={extraFloorPlanSrcs}
-                    floorPlan3dSrc={floorPlan3dSrc || undefined}
-                    scanMeta={floorPlanScanMeta}
-                    locale={locale}
-                    copy={t}
-                    themeColors={themeColors}
-                    variant="full"
-                    onEnlarge={() => setIsFloorplanModalOpen(true)}
-                  />
-                ) : null}
-
                 <div className="eos-offer-panel p-8 md:p-12">
                   <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
                   <OfferDescriptionBody description={offer.description || ""} />
@@ -1192,45 +1208,153 @@ function OfferDetails({
           </div>
 
           <div className="eos-offer-body__aside relative mt-8 xl:mt-0">
-            <div className="space-y-6 pt-2 xl:sticky xl:top-28">
-              
-              <div className="space-y-8">
-                <div className="eos-offer-panel p-6">
-                  <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.locationSection}</h4>
-                  <div className="mb-3 flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{t.country}</span>
-                    <span className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-1.5 text-sm font-bold text-[var(--eos-text)] shadow-[0_8px_22px_rgba(0,0,0,0.16)]">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-white/90 to-white/55 text-base shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_10px_rgba(0,0,0,0.15)]">
-                        {countryFlag}
-                      </span>
-                      {resolvedCountry.name}
+            <div className="eos-aside space-y-5 pt-2">
+              <AnimatePresence>
+                {negotiatorsCount > 0 && (
+                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="flex items-center gap-4 bg-[#0a0a0a] border border-red-500/20 rounded-full px-6 py-3 mb-0 shadow-[0_0_30px_rgba(239,68,68,0.1)] justify-center relative overflow-hidden group cursor-default">
+                    <div className="absolute inset-0 bg-red-500/5 group-hover:bg-red-500/10 transition-colors"></div>
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 shadow-[0_0_10px_#ef4444]"></span>
                     </span>
+                    <span className="text-[10px] text-white/90 font-black uppercase tracking-[0.2em] relative z-10">
+                      {negotiatorsCount === 1 ? t.negotiatorsOne : t.negotiatorsMany(negotiatorsCount)}
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="eos-aside-cta relative overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-900/80 p-3 backdrop-blur-3xl">
+                {isFormerOwnerViewer ? (
+                  <div className="rounded-[2rem] border border-blue-500/25 bg-blue-500/10 px-6 py-8 text-center">
+                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-300">Podgląd właściciela</p>
+                    <p className="mt-3 text-sm leading-relaxed text-white/70">
+                      Ta nieruchomość jest zarządzana przez agencję. Widzisz wszystkie zmiany na bieżąco — kontakt z kupującymi i umawianie spotkań obsługuje biuro.
+                    </p>
                   </div>
-                  <div className="grid grid-cols-1 gap-3">
-                    {locationParams.map((param, idx) => (
-                      <div key={idx} className="flex items-center justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                        <span className="max-w-[65%] text-right text-sm font-bold text-[var(--eos-text)]">{param.value}</span>
+                ) : !canManageOffer ? (
+                <div className="flex flex-col gap-3 relative z-10">
+                  {isArchived ? (
+                  <div className="py-8 text-center flex flex-col items-center justify-center">
+                     <ArchiveX size={24} className="text-zinc-600 mb-3" />
+                     <p className="text-zinc-500 font-black uppercase tracking-widest text-[10px]">{t.contactDisabled}</p>
+                  </div>
+                ) : (
+                  <>
+                    <DiscoveryVisitHint
+                      offerId={offer.id || offer._id}
+                      className="mb-1 border-emerald-500/20 bg-emerald-500/[0.08]"
+                    />
+                    <button
+                    onClick={openBidFlow}
+                    className={`relative overflow-hidden w-full group flex flex-col items-center justify-center gap-1.5 rounded-[2rem] px-4 py-6 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${themeColors.primaryBg} ${themeColors.primaryText} ${themeColors.primaryShadow}`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                    
+                    <span className="relative z-10 flex items-center gap-3 text-lg sm:text-xl font-black tracking-tight">
+                      <Briefcase size={22} /> {t.submitOffer}
+                    </span>
+                    <span className="relative z-10 text-[9px] font-black uppercase tracking-[0.3em] opacity-70">
+                      {t.startNegotiations}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={openAppointmentFlow}
+                    className="eos-lux-btn eos-lux-btn--platinum w-full px-4 py-5 text-[10px] sm:text-[11px]"
+                  >
+                    <CalendarPlus size={18} />
+                    {t.proposeViewing}
+                  </button>
+
+                  <div className="mt-2 mb-3 flex items-center justify-center gap-1.5 opacity-40 select-none">
+                    <Shield size={10} className="text-white" />
+                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white">{t.securedBy}</span>
+                  </div>
+
+                  <OfferShareLink
+                    offerId={Number(offer.id ?? offer._id)}
+                    presentingAgentId={
+                      offer.isPresentedByAgent
+                        ? Number(offer.presentingAgent?.userId ?? offer.user?.id)
+                        : currentUser?.id && isAgentOrAgencySeller(currentUser)
+                          ? Number(currentUser.id)
+                          : undefined
+                    }
+                    pricePln={offer.pricePln ?? listingPrice.plnAmount}
+                    price={offer.price}
+                    updatedAt={offer.updatedAt}
+                    title={offer.title}
+                  />
+
+                  </>
+                )}
+                </div>
+                ) : (
+                <OfferOwnerPublishPanel
+                  offerId={Number(offer.id ?? offer._id)}
+                  presentingAgentId={
+                    offer.isPresentedByAgent
+                      ? Number(offer.presentingAgent?.userId ?? offer.user?.id)
+                      : currentUser?.id && isAgentOrAgencySeller(currentUser)
+                        ? Number(currentUser.id)
+                        : undefined
+                  }
+                  pricePln={offer.pricePln ?? listingPrice.plnAmount}
+                  price={offer.price}
+                  updatedAt={offer.updatedAt}
+                  title={offer.title}
+                />
+                )}
+              </div>
+              {(mainParams.length > 0 || buildingParams.length > 0) ? (
+                <section className="eos-aside-card eos-reveal">
+                  <h4 className="eos-aside-card__title">{t.mainParamsSection}</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[...mainParams, ...buildingParams].map((param) => (
+                      <div key={param.label} className="eos-aside-stat">
+                        <span className="eos-aside-stat__label">{param.label}</span>
+                        <span className="eos-aside-stat__value">{param.value}</span>
                       </div>
                     ))}
                   </div>
-                  {offer?.lat && offer?.lng ? (
-                    <div className="mt-5">
-                      <NeighborhoodMapPreview
-                        lat={Number(offer.lat)}
-                        lng={Number(offer.lng)}
-                        street={offer.street}
-                        city={offer.city}
-                        district={offer.district}
-                        variant="offer"
-                        showPin={exactLocation}
-                        sectionLabel={t.neighborhoodPreview}
-                      />
-                    </div>
-                  ) : null}
+                </section>
+              ) : null}
+
+              <section className="eos-aside-card eos-reveal">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h4 className="eos-aside-card__title !mb-0">{t.locationSection}</h4>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-2.5 py-1 text-[11px] font-semibold text-[var(--eos-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+                    <span className="text-sm leading-none">{countryFlag}</span>
+                    {resolvedCountry.name}
+                  </span>
                 </div>
+                <dl className="divide-y divide-[var(--eos-border)]">
+                  {locationParams.map((param) => (
+                    <div key={param.label} className="flex items-baseline justify-between gap-4 py-2.5">
+                      <dt className="eos-aside-stat__label">{param.label}</dt>
+                      <dd className="max-w-[65%] text-right text-[13.5px] font-semibold text-[var(--eos-text)]">{param.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {offer?.lat && offer?.lng ? (
+                  <div className="mt-3 overflow-hidden rounded-[1.25rem]">
+                    <NeighborhoodMapPreview
+                      lat={Number(offer.lat)}
+                      lng={Number(offer.lng)}
+                      street={offer.street}
+                      city={offer.city}
+                      district={offer.district}
+                      variant="offer"
+                      showPin={exactLocation}
+                      sectionLabel={t.neighborhoodPreview}
+                    />
+                  </div>
+                ) : null}
+              </section>
 
                 {(floorPlanSrc || floorPlan3dSrc || floorPlanScanMeta) && !isLocked ? (
+                  <div id="offer-plan" className="scroll-mt-28">
                   <OfferFloorPlanPanel
                     floorPlanSrc={floorPlanSrc}
                     extraFloorPlanSrcs={extraFloorPlanSrcs}
@@ -1241,38 +1365,18 @@ function OfferDetails({
                     themeColors={themeColors}
                     variant="compact"
                     onEnlarge={() => setIsFloorplanModalOpen(true)}
+                    photos={images}
+                    photoRooms={photoRooms}
+                    focusRoom={planFocus}
+                    onOpenPhoto={openPhotoFromPlan}
                   />
+                  </div>
                 ) : null}
 
-                <div className="eos-offer-panel p-6">
-                  <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.mainParamsSection}</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    {mainParams.map((param, idx) => (
-                      <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
-                        <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                        <span className="text-lg font-bold text-[var(--eos-text)]">{param.value}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {buildingParams.length > 0 && (
-                  <div className="eos-offer-panel p-6">
-                    <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.buildingSection}</h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      {buildingParams.map((param, idx) => (
-                        <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
-                          <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                          <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {showCommissionSection && !contentSuppressed && (
-                  <div className="eos-offer-panel p-6">
-                    <h4 className={`eos-offer-metric-label mb-5 ml-2 ${themeColors.textActive}`}>{t.costsSection}</h4>
+                  <div className="eos-aside-card eos-reveal">
+                    <h4 className="eos-aside-card__title">{t.costsSection}</h4>
                     {agentCommissionInfo?.isZero ? (
                       <div className="mb-4 rounded-2xl border-2 border-emerald-500/45 bg-emerald-500/15 px-4 py-6 text-center shadow-[0_0_40px_rgba(16,185,129,0.12)]">
                         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-500">
@@ -1386,106 +1490,8 @@ function OfferDetails({
                     ) : null}
                   </div>
                 )}
-              </div>
 
-              <AnimatePresence>
-                {negotiatorsCount > 0 && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="flex items-center gap-4 bg-[#0a0a0a] border border-red-500/20 rounded-full px-6 py-3 mb-6 shadow-[0_0_30px_rgba(239,68,68,0.1)] justify-center relative overflow-hidden group cursor-default mt-6">
-                    <div className="absolute inset-0 bg-red-500/5 group-hover:bg-red-500/10 transition-colors"></div>
-                    <span className="relative flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 shadow-[0_0_10px_#ef4444]"></span>
-                    </span>
-                    <span className="text-[10px] text-white/90 font-black uppercase tracking-[0.2em] relative z-10">
-                      {negotiatorsCount === 1 ? t.negotiatorsOne : t.negotiatorsMany(negotiatorsCount)}
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
-              <div className="bg-zinc-900/50 border border-white/10 rounded-[2.5rem] p-3 backdrop-blur-3xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] relative overflow-hidden">
-                {isFormerOwnerViewer ? (
-                  <div className="rounded-[2rem] border border-blue-500/25 bg-blue-500/10 px-6 py-8 text-center">
-                    <p className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-300">Podgląd właściciela</p>
-                    <p className="mt-3 text-sm leading-relaxed text-white/70">
-                      Ta nieruchomość jest zarządzana przez agencję. Widzisz wszystkie zmiany na bieżąco — kontakt z kupującymi i umawianie spotkań obsługuje biuro.
-                    </p>
-                  </div>
-                ) : !canManageOffer ? (
-                <div className="flex flex-col gap-3 relative z-10">
-                  {isArchived ? (
-                  <div className="py-8 text-center flex flex-col items-center justify-center">
-                     <ArchiveX size={24} className="text-zinc-600 mb-3" />
-                     <p className="text-zinc-500 font-black uppercase tracking-widest text-[10px]">{t.contactDisabled}</p>
-                  </div>
-                ) : (
-                  <>
-                    <DiscoveryVisitHint
-                      offerId={offer.id || offer._id}
-                      className="mb-1 border-emerald-500/20 bg-emerald-500/[0.08]"
-                    />
-                    <button
-                    onClick={openBidFlow}
-                    className={`relative overflow-hidden w-full group flex flex-col items-center justify-center gap-1.5 rounded-[2rem] px-4 py-6 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer ${themeColors.primaryBg} ${themeColors.primaryText} ${themeColors.primaryShadow}`}
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                    
-                    <span className="relative z-10 flex items-center gap-3 text-lg sm:text-xl font-black tracking-tight">
-                      <Briefcase size={22} /> {t.submitOffer}
-                    </span>
-                    <span className="relative z-10 text-[9px] font-black uppercase tracking-[0.3em] opacity-70">
-                      {t.startNegotiations}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={openAppointmentFlow}
-                    className="eos-lux-btn eos-lux-btn--platinum w-full px-4 py-5 text-[10px] sm:text-[11px]"
-                  >
-                    <CalendarPlus size={18} />
-                    {t.proposeViewing}
-                  </button>
-
-                  <div className="mt-2 mb-3 flex items-center justify-center gap-1.5 opacity-40 select-none">
-                    <Shield size={10} className="text-white" />
-                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white">{t.securedBy}</span>
-                  </div>
-
-                  <OfferShareLink
-                    offerId={Number(offer.id ?? offer._id)}
-                    presentingAgentId={
-                      offer.isPresentedByAgent
-                        ? Number(offer.presentingAgent?.userId ?? offer.user?.id)
-                        : currentUser?.id && isAgentOrAgencySeller(currentUser)
-                          ? Number(currentUser.id)
-                          : undefined
-                    }
-                    pricePln={offer.pricePln ?? listingPrice.plnAmount}
-                    price={offer.price}
-                    updatedAt={offer.updatedAt}
-                    title={offer.title}
-                  />
-
-                  </>
-                )}
-                </div>
-                ) : (
-                <OfferOwnerPublishPanel
-                  offerId={Number(offer.id ?? offer._id)}
-                  presentingAgentId={
-                    offer.isPresentedByAgent
-                      ? Number(offer.presentingAgent?.userId ?? offer.user?.id)
-                      : currentUser?.id && isAgentOrAgencySeller(currentUser)
-                        ? Number(currentUser.id)
-                        : undefined
-                  }
-                  pricePln={offer.pricePln ?? listingPrice.plnAmount}
-                  price={offer.price}
-                  updatedAt={offer.updatedAt}
-                  title={offer.title}
-                />
-                )}
-              </div>
 
             </div>
           </div>
@@ -1519,6 +1525,10 @@ function OfferDetails({
                 copy={t}
                 themeColors={themeColors}
                 variant="full"
+                photos={images}
+                photoRooms={photoRooms}
+                focusRoom={planFocus}
+                onOpenPhoto={openPhotoFromPlan}
               />
             </motion.div>
           </motion.div>
@@ -1536,6 +1546,8 @@ function OfferDetails({
         primaryHoverClass={themeColors.primaryHover}
         borderActiveClass={themeColors.borderActive}
         glowActiveClass={themeColors.glowActive}
+        roomOf={photoRooms.length ? roomOfPhoto : undefined}
+        onShowRoom={floorPlanScanMeta ? showRoomOnPlan : undefined}
       />
 
     

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileImage, Maximize2, ScanLine } from 'lucide-react';
 import type { OfferPageCopy } from '@/content/offerPageCopy';
 import type { Locale } from '@/i18n/config';
@@ -13,6 +13,7 @@ import { formatListingAreaSqm } from '@/lib/listingRoomAreas';
 import { cropScanMetaToRoom, roomsFromScanMeta } from '@/lib/roomScan/refineScanSections';
 import { normalizeScanMeta } from '@/lib/roomScan/planNormalize';
 import type { RoomScanObjectCategory } from '@/types/roomScan';
+import { photoRoomKey, sameRoomName, type OfferPhotoRoom } from '@/lib/offerPhotoRoomKey';
 
 /** Meble i AGD po polsku, zgrupowane: „Krzesło ×6” zamiast sześciu „Chair”. Kolejność: od dużych do drobnych. */
 const FURNITURE_LABEL: Record<RoomScanObjectCategory, { pl: string; en: string }> = {
@@ -50,6 +51,12 @@ type OfferFloorPlanPanelProps = {
   themeColors: { textActive: string; borderActive: string; bgActiveSoft: string };
   variant?: 'full' | 'compact';
   onEnlarge?: () => void;
+  /** Zdjęcia oferty i ich pomieszczenia — wybór pokoju pokazuje jego zdjęcia. */
+  photos?: string[];
+  photoRooms?: OfferPhotoRoom[];
+  /** Z galerii: „Pokaż na planie” wybiera pomieszczenie. */
+  focusRoom?: { room: string; nonce: number } | null;
+  onOpenPhoto?: (url: string) => void;
 };
 
 function assetUrl(uri?: string | null): string {
@@ -66,17 +73,49 @@ export default function OfferFloorPlanPanel({
   themeColors,
   variant = 'full',
   onEnlarge,
+  photos = [],
+  photoRooms = [],
+  focusRoom = null,
+  onOpenPhoto,
 }: OfferFloorPlanPanelProps) {
   const roomScans = useMemo(() => roomsFromScanMeta(scanMeta || null), [scanMeta]);
   const [planKey, setPlanKey] = useState<'whole' | string>('whole');
+
+  // Zdjęcia pogrupowane po pomieszczeniu (w kolejności galerii).
+  const photosByRoom = useMemo(() => {
+    const byKey = new Map(photoRooms.map((item) => [item.url, item.room]));
+    const groups: Array<{ room: string; urls: string[] }> = [];
+    for (const url of photos) {
+      const room = byKey.get(photoRoomKey(url));
+      if (!room) continue;
+      const group = groups.find((g) => sameRoomName(g.room, room));
+      if (group) group.urls.push(url);
+      else groups.push({ room, urls: [url] });
+    }
+    return groups;
+  }, [photos, photoRooms]);
+  const photosFor = (name: string | null | undefined) => photosByRoom.find((g) => sameRoomName(g.room, name))?.urls || [];
+  // Pomieszczenia ze zdjęciami, których nie ma na rzucie (np. balkon, widok) — osobne zakładki.
+  const photoOnlyRooms = photosByRoom.filter((g) => !roomScans.some((room) => sameRoomName(room.name, g.room)));
+
+  useEffect(() => {
+    if (!focusRoom) return;
+    const room = roomScans.find((r) => sameRoomName(r.name, focusRoom.room));
+    setPlanKey(room ? room.id : photoOnlyRooms.some((g) => sameRoomName(g.room, focusRoom.room)) ? `photo:${focusRoom.room}` : 'whole');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRoom?.nonce]);
   const selectedRoom: PropertyRoomScan | null =
     planKey === 'whole' ? null : roomScans.find((room) => room.id === planKey) || null;
+  const selectedPhotoRoom = planKey.startsWith('photo:') ? planKey.slice(6) : null;
+  const selectedPhotos = selectedRoom ? photosFor(selectedRoom.name) : selectedPhotoRoom ? photosFor(selectedPhotoRoom) : [];
   const croppedSelected = selectedRoom ? cropScanMetaToRoom(scanMeta, selectedRoom) : null;
   const activeMeta = useMemo(() => normalizeScanMeta(croppedSelected || selectedRoom?.scanMeta || scanMeta), [croppedSelected, selectedRoom, scanMeta]);
   const activeImage = assetUrl(selectedRoom?.floorPlanPngUri) || floorPlanSrc;
   const active3d = assetUrl(selectedRoom?.floorPlan3dUri) || floorPlan3dSrc || '';
   const hasInteractive = Boolean(activeMeta?.walls?.length);
-  const [viewMode, setViewMode] = useState<'image' | 'interactive'>(hasInteractive ? 'interactive' : 'image');
+  // Zawsze „ubrany” rzut: pokój — gotowy rysunek z aplikacji (meble, wymiary); całe mieszkanie — wyprostowany plan z meblami.
+  const roomImage = assetUrl(selectedRoom?.floorPlanPngUri);
+  const showDrawing = selectedRoom ? !roomImage && hasInteractive : hasInteractive;
   const furniture = activeMeta?.objects || [];
 
   const metaLine = useMemo(() => {
@@ -101,16 +140,13 @@ export default function OfferFloorPlanPanel({
 
   if (!floorPlanSrc && !floorPlan3dSrc && !roomScans.length && !scanMeta?.walls?.length) return null;
 
-  const chips = roomScans.length > 0 ? (
-    <div className="flex flex-wrap gap-2">
+  const chips = roomScans.length > 0 || photoOnlyRooms.length > 0 ? (
+    <div className="flex flex-wrap gap-1.5">
       <button
         type="button"
         onClick={() => setPlanKey('whole')}
-        className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${
-          planKey === 'whole'
-            ? `${themeColors.bgActiveSoft} text-[var(--eos-text)]`
-            : 'border border-[var(--eos-border)] text-[var(--eos-muted)]'
-        }`}
+        aria-pressed={planKey === 'whole'}
+        className={`eos-plan-chip ${planKey === 'whole' ? 'is-active' : ''}`}
       >
         {copy.floorPlanScan.wholeHome}
       </button>
@@ -118,17 +154,42 @@ export default function OfferFloorPlanPanel({
         <button
           key={room.id || room.name}
           type="button"
-        onClick={() => {
-          setPlanKey(room.id);
-          onEnlarge?.();
-        }}
-          className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] ${
-            planKey === room.id
-              ? `${themeColors.bgActiveSoft} text-[var(--eos-text)]`
-              : 'border border-[var(--eos-border)] text-[var(--eos-muted)]'
-          }`}
+        onClick={() => setPlanKey(room.id)}
+          aria-pressed={planKey === room.id}
+        className={`eos-plan-chip ${planKey === room.id ? 'is-active' : ''}`}
         >
           {room.name}
+          {photosFor(room.name).length ? <span className="eos-plan-chip__count">{photosFor(room.name).length}</span> : null}
+        </button>
+      ))}
+      {photoOnlyRooms.map((group) => (
+        <button
+          key={`photo-${group.room}`}
+          type="button"
+          onClick={() => setPlanKey(`photo:${group.room}`)}
+          aria-pressed={planKey === `photo:${group.room}`}
+          className={`eos-plan-chip ${planKey === `photo:${group.room}` ? 'is-active' : ''}`}
+        >
+          {group.room}
+          <span className="eos-plan-chip__count">{group.urls.length}</span>
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const photoStrip = selectedPhotos.length ? (
+    <div className="eos-plan-photos" key={planKey}>
+      {selectedPhotos.slice(0, 12).map((url, i) => (
+        <button
+          key={url}
+          type="button"
+          onClick={() => onOpenPhoto?.(url)}
+          className="eos-plan-photos__item"
+          style={{ animationDelay: `${i * 40}ms` }}
+          aria-label="Otwórz zdjęcie"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt="" loading="lazy" />
         </button>
       ))}
     </div>
@@ -161,7 +222,7 @@ export default function OfferFloorPlanPanel({
   ) : null;
   const planCanvas = (
     <div className="relative z-10 flex h-full w-full items-center justify-center p-4">
-      {viewMode === 'interactive' && hasInteractive && activeMeta ? (
+      {showDrawing && activeMeta ? (
         <FloorPlanScanArtboard
           walls={activeMeta.walls}
           meta={activeMeta}
@@ -169,11 +230,13 @@ export default function OfferFloorPlanPanel({
           height={variant === 'compact' ? 480 : 600}
           locale={locale}
         />
-      ) : activeImage ? (
+      ) : roomImage || activeImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={activeImage}
+          key={roomImage || activeImage}
+          src={roomImage || activeImage}
           alt={copy.floorPlan}
-          className="h-full w-full object-contain"
+          className="eos-plan-fade h-full w-full object-contain"
         />
       ) : null}
     </div>
@@ -189,34 +252,31 @@ export default function OfferFloorPlanPanel({
 
   if (variant === 'compact') {
     return (
-      <div className="eos-offer-panel overflow-hidden p-0">
-        <div className="p-4">
-          <button
-            type="button"
-            onClick={onEnlarge}
-            className="group w-full text-left transition-colors"
-          >
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <p className={`eos-offer-metric-label ${themeColors.textActive}`}>{copy.floorPlan}</p>
-                {scanMeta ? (
-                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-sky-300/90">
-                    {copy.floorPlanScan.lidarBadge}
-                    {metaLine ? ` · ${metaLine}` : ''}
-                  </p>
-                ) : null}
-              </div>
-              <Maximize2 size={14} className="text-[var(--eos-muted)] transition-colors group-hover:text-[var(--eos-text)]" />
+      <section className="eos-aside-card eos-reveal overflow-hidden !p-0">
+        <div className="px-4 pb-3 pt-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <h4 className="eos-aside-card__title !mb-1">{copy.floorPlan}</h4>
+              {metaLine ? <p className="text-[12px] font-medium text-[var(--eos-muted)]">{metaLine}</p> : null}
             </div>
-          </button>
+            {scanMeta ? (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-sky-400/30 bg-sky-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-sky-700 dark:bg-sky-500/10 dark:text-sky-200">
+                <ScanLine size={10} />
+                {copy.floorPlanScan.lidarBadge}
+              </span>
+            ) : null}
+          </div>
           {chips ? <div className="mb-3">{chips}</div> : null}
-          <button type="button" onClick={onEnlarge} className="block w-full">
-            <div className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[#f4f7fb]">
-              <div className="aspect-[4/3] w-full">{planCanvas}</div>
-            </div>
+          <button type="button" onClick={onEnlarge} className="eos-plan-frame group block w-full" aria-label={copy.enlarge}>
+            <div className="aspect-[4/3] w-full">{planCanvas}</div>
+            <span className="eos-plan-frame__hint">
+              <Maximize2 size={12} />
+              {copy.enlarge}
+            </span>
           </button>
+          {photoStrip ? <div className="mt-3">{photoStrip}</div> : null}
         </div>
-        {furnitureRow ? <div className="px-4 pb-3">{furnitureRow}</div> : null}
+        {furnitureRow ? <div className="px-4 pb-4">{furnitureRow}</div> : null}
         {active3d || hasInteractive ? (
           <div className="border-t border-[var(--eos-border)] px-4 pb-4">
             <FloorPlan3dWalkthrough
@@ -227,7 +287,7 @@ export default function OfferFloorPlanPanel({
             />
           </div>
         ) : null}
-      </div>
+      </section>
     );
   }
 
@@ -250,32 +310,6 @@ export default function OfferFloorPlanPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {hasInteractive ? (
-            <div className="inline-flex rounded-full border border-[var(--eos-border)] p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode('image')}
-                className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
-                  viewMode === 'image'
-                    ? `${themeColors.bgActiveSoft} text-[var(--eos-text)]`
-                    : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'
-                }`}
-              >
-                {copy.floorPlanScan.viewImage}
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('interactive')}
-                className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] transition-colors ${
-                  viewMode === 'interactive'
-                    ? `${themeColors.bgActiveSoft} text-[var(--eos-text)]`
-                    : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'
-                }`}
-              >
-                {copy.floorPlanScan.viewInteractive}
-              </button>
-            </div>
-          ) : null}
           {onEnlarge ? (
             <button
               type="button"
@@ -304,6 +338,8 @@ export default function OfferFloorPlanPanel({
           </div>
         </div>
       </button>
+
+      {photoStrip ? <div className="px-6 pb-5 md:px-8">{photoStrip}</div> : null}
 
       {furnitureRow ? (
         <div className="border-t border-[var(--eos-border)] px-6 py-4 md:px-8">
@@ -335,10 +371,7 @@ export default function OfferFloorPlanPanel({
               <button
                 key={room.id || room.name}
                 type="button"
-                onClick={() => {
-                  setPlanKey(room.id);
-                  onEnlarge?.();
-                }}
+                onClick={() => setPlanKey(room.id)}
                 className={`flex items-stretch overflow-hidden rounded-[1.15rem] border text-left transition ${
                   selected
                     ? 'border-[#c9a227]/60 bg-[#f7f1e4] shadow-[inset_0_0_0_1px_rgba(201,162,39,0.2)] dark:border-amber-400/35 dark:bg-amber-500/10'

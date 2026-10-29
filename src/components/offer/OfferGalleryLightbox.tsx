@@ -18,6 +18,9 @@ type Props = {
   primaryHoverClass?: string;
   borderActiveClass?: string;
   glowActiveClass?: string;
+  /** Pomieszczenie przypisane do zdjęcia (np. „Salon”) — z przyciskiem „Pokaż na planie”. */
+  roomOf?: (url: string) => string | null;
+  onShowRoom?: (room: string) => void;
 };
 
 const MIN_SCALE = 1;
@@ -40,6 +43,8 @@ export default function OfferGalleryLightbox({
   onClose,
   onIndexChange,
   imageMeta,
+  roomOf,
+  onShowRoom,
 }: Props) {
   const [mounted, setMounted] = useState(false);
   const [scale, setScale] = useState(1);
@@ -279,6 +284,26 @@ export default function OfferGalleryLightbox({
           {index + 1} / {images.length}
           {scale > 1 ? <span className="ml-2 text-white/55">{Math.round(scale * 100)}%</span> : null}
         </div>
+
+        {(() => {
+          const room = roomOf?.(images[index] || '') || null;
+          if (!room) return null;
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowRoom?.(room);
+              }}
+              className="eos-lightbox-room absolute left-1/2 top-[max(0.9rem,env(safe-area-inset-top))] z-[2147483001] inline-flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/20 bg-black/65 py-1.5 pl-3.5 pr-1.5 text-[12px] font-semibold text-white backdrop-blur-md transition hover:border-[#c9a96e]/80"
+            >
+              {room}
+              {onShowRoom ? (
+                <span className="rounded-full bg-white px-2.5 py-1 text-[10.5px] font-semibold text-[#15171a]">Pokaż na planie</span>
+              ) : null}
+            </button>
+          );
+        })()}
 
         <div className="relative flex min-h-0 flex-1 items-center justify-center">
           {images.length > 1 ? (

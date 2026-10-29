@@ -1,4 +1,4 @@
-import type { FloorPlanScanMeta, RoomScanWallSegment } from '@/types/roomScan';
+import type { FloorPlanScanMeta, RoomScanDetectedObject, RoomScanObjectCategory, RoomScanWallSegment } from '@/types/roomScan';
 
 /**
  * Prostuje skan LiDAR do rysowania: obraca cały plan tak, by dominujące ściany szły w poziomie i pionie,
@@ -98,7 +98,8 @@ export function normalizeScanMeta(meta: FloorPlanScanMeta | null | undefined): F
   });
   const objects = (meta.objects || []).map((o) => {
     const p = rot(o.centerX, o.centerZ);
-    return { ...o, centerX: p.x, centerZ: p.z, rotationDeg: (o.rotationDeg || 0) - (angle * 180) / Math.PI };
+    // Brak orientacji w skanie (scalony skan mieszkania) → zostaje pusta; dobierze ją placePlanObjects.
+    return { ...o, centerX: p.x, centerZ: p.z, rotationDeg: o.rotationDeg == null ? undefined : o.rotationDeg - (angle * 180) / Math.PI };
   });
   const openings = (meta.openings || []).map((o) => {
     const a = rot(o.x1, o.z1);
@@ -187,13 +188,54 @@ export function detectPlanRooms(meta: FloorPlanScanMeta | null | undefined, res 
     if (grid[z * W + W - 1] === 0) fill(z * W + W - 1, -2);
   }
 
-  const comps: Array<{ id: number; cells: number[]; area: number }> = [];
+  // Zatoki otwarte z jednej strony — np. przedpokój, w którym skaner nie złapał ściany z drzwiami wejściowymi.
+  // Komórka „na zewnątrz”, która w 3 z 4 kierunków ma ścianę bliżej niż ~3 m, leży w środku mieszkania.
+  const reach = Math.round(3.2 / res);
+  const near = new Uint8Array(W * H);
+  for (let z = 0; z < H; z += 1) {
+    let last = -1e9;
+    for (let x = 0; x < W; x += 1) {
+      const c = z * W + x;
+      if (grid[c] === -1) last = x;
+      else if (x - last <= reach) near[c] += 1;
+    }
+    last = 1e9;
+    for (let x = W - 1; x >= 0; x -= 1) {
+      const c = z * W + x;
+      if (grid[c] === -1) last = x;
+      else if (last - x <= reach) near[c] += 1;
+    }
+  }
+  for (let x = 0; x < W; x += 1) {
+    let last = -1e9;
+    for (let z = 0; z < H; z += 1) {
+      const c = z * W + x;
+      if (grid[c] === -1) last = z;
+      else if (z - last <= reach) near[c] += 1;
+    }
+    last = 1e9;
+    for (let z = H - 1; z >= 0; z -= 1) {
+      const c = z * W + x;
+      if (grid[c] === -1) last = z;
+      else if (last - z <= reach) near[c] += 1;
+    }
+  }
+  const pocket = new Uint8Array(W * H);
+  for (let c = 0; c < grid.length; c += 1) {
+    if (grid[c] === -2 && near[c] >= 3) {
+      grid[c] = 0;
+      pocket[c] = 1;
+    }
+  }
+
+  const comps: Array<{ id: number; cells: number[]; area: number; pocket: boolean }> = [];
   for (let c = 0; c < grid.length; c += 1) {
     if (grid[c] !== 0) continue;
     const id = comps.length + 1;
     const cells = fill(c, id);
     const area = cells.length * res * res;
-    if (area >= 1) comps.push({ id, cells, area });
+    if (area >= 1) comps.push({ id, cells, area, pocket: pocket[c] === 1 });
+    else for (const cell of cells) grid[cell] = -2;
   }
   if (!comps.length) return [];
 
@@ -218,7 +260,15 @@ export function detectPlanRooms(meta: FloorPlanScanMeta | null | undefined, res 
       const areaDiff = Math.abs(comp.area - Number(s.areaSqM)) / Math.max(comp.area, Number(s.areaSqM));
       const seen = compKind(compCats[ci]);
       const wanted = kindOf(`${s.key} ${s.label}`);
-      const typeCost = !seen ? (wanted === 'bath' || wanted === 'bed' ? 0.15 : 0) : seen === wanted || (seen === 'bed' && wanted === 'room') ? -0.2 : 0.5;
+      const typeCost = !seen
+        ? wanted === 'bath' || wanted === 'bed'
+          ? 0.15
+          : wanted === 'hall' && comp.pocket
+            ? -0.25
+            : 0
+        : seen === wanted || (seen === 'bed' && wanted === 'room')
+          ? -0.2
+          : 0.5;
       pairs.push({ comp: ci, sec: si, diff: areaDiff + typeCost });
     }),
   );
@@ -231,7 +281,13 @@ export function detectPlanRooms(meta: FloorPlanScanMeta | null | undefined, res 
     usedSec.add(p.sec);
   }
 
-  return comps.map((comp, ci) => {
+  // Zatoka bez dopasowanego pomieszczenia to tylko wcięcie obrysu — zostaje na zewnątrz.
+  comps.forEach((comp, ci) => {
+    if (comp.pocket && !compSec.has(ci)) for (const cell of comp.cells) grid[cell] = -2;
+  });
+
+  return comps.flatMap((comp, ci) => {
+    if (comp.pocket && !compSec.has(ci)) return [];
     // Odległość od brzegu (BFS) → komórka najdalej od ścian to optyczny środek.
     const dist = new Map<number, number>();
     const queue: number[] = [];
@@ -276,7 +332,7 @@ export function detectPlanRooms(meta: FloorPlanScanMeta | null | undefined, res 
       }
     }
     const sec = compSec.has(ci) ? sections[compSec.get(ci)!] : null;
-    return {
+    return [{
       id: `plan-room-${ci}`,
       label: sec?.label || (comp.area < 3 ? '' : 'Pomieszczenie'),
       key: sec?.key || 'room',
@@ -284,6 +340,169 @@ export function detectPlanRooms(meta: FloorPlanScanMeta | null | undefined, res 
       labelX: minX + bx * res,
       labelZ: minZ + bz * res,
       rects,
-    };
+    }];
   });
+}
+
+/* ───────────────────── meble ułożone w pomieszczeniach ───────────────────── */
+
+export type PlacedPlanObject = RoomScanDetectedObject & { widthM: number; depthM: number; rotationDeg: number };
+
+const FALLBACK_SIZE: Partial<Record<RoomScanObjectCategory, [number, number]>> = {
+  bed: [1.6, 2.0],
+  sofa: [2.0, 0.9],
+  table: [1.2, 0.8],
+  chair: [0.5, 0.5],
+  storage: [0.8, 0.5],
+  refrigerator: [0.6, 0.65],
+  stove: [0.6, 0.6],
+  oven: [0.6, 0.6],
+  dishwasher: [0.6, 0.6],
+  washerDryer: [0.6, 0.6],
+  sink: [0.5, 0.45],
+  toilet: [0.4, 0.65],
+  bathtub: [1.7, 0.75],
+  television: [1.2, 0.3],
+};
+
+function inRoom(room: PlanRoom, x: number, z: number): boolean {
+  for (const [x0, z0, x1, z1] of room.rects) if (x >= x0 && x <= x1 && z >= z0 && z <= z1) return true;
+  return false;
+}
+
+/**
+ * Meble ze skanu ustawione porządnie: równolegle do ścian (co 90°), w całości w swoim pomieszczeniu,
+ * bez wchodzenia w ściany. Gdy skan nie zapisał orientacji, wybiera tę, która lepiej pasuje do pokoju
+ * (szerokość wzdłuż najbliższej ściany — tak stoją szafy, wanny, łóżka wezgłowiem do ściany).
+ */
+export function placePlanObjects(meta: FloorPlanScanMeta | null | undefined, rooms: PlanRoom[]): PlacedPlanObject[] {
+  if (!meta?.objects?.length || !rooms.length) return [];
+  const walls = meta.walls || [];
+  const out: PlacedPlanObject[] = [];
+  const boxes: Array<[number, number, number, number]> = [];
+  const seen = new Set<string>();
+  // Najpierw duże (łóżka, wanny, szafy), potem drobne — krzesło ustępuje łóżku, nie odwrotnie.
+  const ordered = [...meta.objects].sort((a, b) => (b.widthM || 0.5) * (b.depthM || 0.5) - (a.widthM || 0.5) * (a.depthM || 0.5));
+  for (const obj of ordered) {
+    if (obj.category === 'unknown') continue;
+    // Kuchenka i piekarnik w jednym miejscu to jedno urządzenie.
+    const dupKey = `${obj.category === 'oven' ? 'stove' : obj.category}:${obj.centerX.toFixed(1)}:${obj.centerZ.toFixed(1)}`;
+    if (seen.has(dupKey)) continue;
+    seen.add(dupKey);
+    const fb = FALLBACK_SIZE[obj.category] || [0.6, 0.5];
+    const w = obj.widthM && obj.widthM > 0.12 ? obj.widthM : fb[0];
+    const d = obj.depthM && obj.depthM > 0.12 ? obj.depthM : fb[1];
+    if (w * d > 5.5 && obj.category !== 'bed' && obj.category !== 'sofa') continue;
+
+    let room = rooms.find((r) => inRoom(r, obj.centerX, obj.centerZ));
+    if (!room) {
+      let best = Infinity;
+      for (const r of rooms) {
+        for (const [x0, z0, x1, z1] of r.rects) {
+          const dx = Math.max(x0 - obj.centerX, 0, obj.centerX - x1);
+          const dz = Math.max(z0 - obj.centerZ, 0, obj.centerZ - z1);
+          const dist = Math.hypot(dx, dz);
+          if (dist < best) {
+            best = dist;
+            room = r;
+          }
+        }
+      }
+      if (!room || best > 0.8) continue;
+    }
+    const target = room;
+    const misses = (cx: number, cz: number, ex: number, ez: number) => {
+      let n = 0;
+      for (const fx of [-1, -0.5, 0, 0.5, 1])
+        for (const fz of [-1, -0.5, 0, 0.5, 1]) if (!inRoom(target, cx + fx * ex * 0.96, cz + fz * ez * 0.96)) n += 1;
+      for (const [x0, z0, x1, z1] of boxes) {
+        const ox = Math.min(cx + ex, x1) - Math.max(cx - ex, x0);
+        const oz = Math.min(cz + ez, z1) - Math.max(cz - ez, z0);
+        if (ox > 0.02 && oz > 0.02) n += 1 + Math.round((ox * oz) / 0.05);
+      }
+      return n;
+    };
+
+    // Najbliższa ściana: pozioma czy pionowa?
+    let nearH = Infinity;
+    let nearV = Infinity;
+    for (const wall of walls) {
+      const horizontal = Math.abs(wall.z2 - wall.z1) < Math.abs(wall.x2 - wall.x1);
+      const t = Math.max(0, Math.min(1, ((obj.centerX - wall.x1) * (wall.x2 - wall.x1) + (obj.centerZ - wall.z1) * (wall.z2 - wall.z1)) / (Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1) ** 2 || 1)));
+      const dist = Math.hypot(obj.centerX - (wall.x1 + t * (wall.x2 - wall.x1)), obj.centerZ - (wall.z1 + t * (wall.z2 - wall.z1)));
+      if (horizontal) nearH = Math.min(nearH, dist);
+      else nearV = Math.min(nearV, dist);
+    }
+    const snapped = obj.rotationDeg == null ? null : (((Math.round(obj.rotationDeg / 90) * 90) % 360) + 360) % 360;
+    const options = snapped != null ? [snapped] : nearH <= nearV ? [0, 90] : [90, 0];
+
+    let pick = { rot: options[0], x: obj.centerX, z: obj.centerZ, cost: Infinity };
+    for (const rot of options) {
+      const quarter = rot % 180 !== 0;
+      const ex = (quarter ? d : w) / 2;
+      const ez = (quarter ? w : d) / 2;
+      // Szukamy najbliższego miejsca, w którym mebel mieści się w całości (spirala co 5 cm, do 90 cm).
+      let found = { x: obj.centerX, z: obj.centerZ, miss: misses(obj.centerX, obj.centerZ, ex, ez), shift: 0 };
+      if (found.miss) {
+        outer: for (let ring = 1; ring <= 24; ring += 1) {
+          const step = ring * 0.05;
+          for (let k = 0; k < ring * 8; k += 1) {
+            const a = (k / (ring * 8)) * Math.PI * 2;
+            const x = obj.centerX + Math.cos(a) * step;
+            const z = obj.centerZ + Math.sin(a) * step;
+            if (!inRoom(target, x, z)) continue;
+            const m = misses(x, z, ex, ez);
+            if (m < found.miss) found = { x, z, miss: m, shift: step };
+            if (m === 0) break outer;
+          }
+        }
+      }
+      const cost = found.miss * 10 + found.shift + (rot === options[0] ? 0 : 0.35);
+      if (cost < pick.cost) pick = { rot, x: found.x, z: found.z, cost };
+    }
+    const q = pick.rot % 180 !== 0;
+    const hx = (q ? d : w) / 2;
+    const hz = (q ? w : d) / 2;
+    boxes.push([pick.x - hx, pick.z - hz, pick.x + hx, pick.z + hz]);
+    out.push({ ...obj, centerX: pick.x, centerZ: pick.z, widthM: w, depthM: d, rotationDeg: pick.rot });
+  }
+  return out;
+}
+
+/**
+ * Miejsce na podpis pomieszczenia: w środku pokoju, ale tam, gdzie napis (w × h metrów) nie wchodzi
+ * na ściany ani na meble. Gdy się nie da, zwraca optyczny środek.
+ */
+export function planLabelSpot(room: PlanRoom, w: number, h: number, furniture: PlacedPlanObject[]): { x: number; z: number } {
+  const boxes = furniture.map((o) => {
+    const q = o.rotationDeg % 180 !== 0;
+    const hx = (q ? o.depthM : o.widthM) / 2;
+    const hz = (q ? o.widthM : o.depthM) / 2;
+    return [o.centerX - hx, o.centerZ - hz, o.centerX + hx, o.centerZ + hz] as const;
+  });
+  const fits = (x: number, z: number) => {
+    for (const fx of [-0.5, 0, 0.5]) for (const fz of [-0.5, 0.5]) if (!inRoom(room, x + fx * w, z + fz * h)) return false;
+    return true;
+  };
+  const overlap = (x: number, z: number) => {
+    let sum = 0;
+    for (const [x0, z0, x1, z1] of boxes) {
+      const ox = Math.min(x + w / 2, x1) - Math.max(x - w / 2, x0);
+      const oz = Math.min(z + h / 2, z1) - Math.max(z - h / 2, z0);
+      if (ox > 0 && oz > 0) sum += ox * oz;
+    }
+    return sum;
+  };
+  let best = { x: room.labelX, z: room.labelZ, cost: fits(room.labelX, room.labelZ) ? overlap(room.labelX, room.labelZ) * 10 : 1e6 };
+  if (best.cost === 0) return best;
+  const xs = room.rects.flatMap((r) => [r[0], r[2]]);
+  const zs = room.rects.flatMap((r) => [r[1], r[3]]);
+  const [minX, maxX, minZ, maxZ] = [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)];
+  for (let x = minX + w / 2; x <= maxX - w / 2; x += 0.08)
+    for (let z = minZ + h / 2; z <= maxZ - h / 2; z += 0.08) {
+      if (!fits(x, z)) continue;
+      const cost = overlap(x, z) * 10 + Math.hypot(x - room.labelX, z - room.labelZ) * 0.15;
+      if (cost < best.cost) best = { x, z, cost };
+    }
+  return best;
 }

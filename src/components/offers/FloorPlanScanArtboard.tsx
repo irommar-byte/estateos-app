@@ -11,7 +11,8 @@ import {
   mapOpeningsForRender,
   mapSectionsForRender,
 } from '@/lib/roomScan/floorPlanGeometry';
-import { detectPlanRooms } from '@/lib/roomScan/planNormalize';
+import { detectPlanRooms, placePlanObjects, planLabelSpot } from '@/lib/roomScan/planNormalize';
+import { planFurnitureSymbol } from '@/components/offers/planFurnitureSymbols';
 
 /** Delikatne tła pomieszczeń (jak na rzutach architektonicznych). */
 const ROOM_TINT: Record<string, string> = {
@@ -57,17 +58,6 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
     [meta.openings, meta.bounds, viewport],
   );
 
-  const dimensionLabels = useMemo(
-    () =>
-      buildCleanPlanDimensions(
-        walls,
-        meta.openings || [],
-        meta.bounds,
-        viewport,
-        mappedSections.map((section) => ({ x: section.x, y: section.y })),
-      ),
-    [walls, meta.openings, meta.bounds, viewport, mappedSections],
-  );
 
   const planRooms = useMemo(() => detectPlanRooms(meta), [meta]);
   const roomPaths = useMemo(
@@ -85,6 +75,9 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
       })),
     [planRooms, meta.bounds, viewport],
   );
+
+  // Rzut „ubrany”: meble ze skanu, równo przy ścianach, w swoich pomieszczeniach.
+  const furniture = useMemo(() => (compact ? [] : placePlanObjects(meta, planRooms)), [compact, meta, planRooms]);
 
   const scaleBar = useMemo(() => {
     const targetPx = 72;
@@ -104,11 +97,18 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
     const source = planRooms.length
       ? planRooms
           .filter((room) => room.label)
-          .map((room) => ({ id: room.id, label: room.label, areaSqM: room.areaSqM, ...mapFloorPlanPoint(room.labelX, room.labelZ, meta.bounds, viewport) }))
+          .map((room) => {
+            const small = room.areaSqM > 0 && room.areaSqM < 6.5;
+            const size = small ? nameSize * 0.78 : nameSize;
+            const wM = (Math.max(room.label.length * size * 0.6, 40) + 12) / viewport.scale;
+            const hM = (size * 2.4) / viewport.scale;
+            const spot = planLabelSpot(room, wM, hM, furniture);
+            return { id: room.id, label: room.label, areaSqM: room.areaSqM, ...mapFloorPlanPoint(spot.x, spot.z, meta.bounds, viewport) };
+          })
       : mappedSections;
     return source.map((section) => {
-      const small = (section.areaSqM || 0) > 0 && (section.areaSqM || 0) < 4;
-      const size = small ? nameSize * 0.82 : nameSize;
+      const small = (section.areaSqM || 0) > 0 && (section.areaSqM || 0) < 6.5;
+      const size = small ? nameSize * 0.78 : nameSize;
       const w = Math.max(section.label.length * size * 0.58, 40);
       const h = section.areaSqM ? size * 2.3 : size * 1.3;
       let y = section.y;
@@ -120,7 +120,19 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
       placed.push({ x: section.x, y, w, h });
       return { ...section, y, size };
     });
-  }, [mappedSections, nameSize, planRooms, meta.bounds, viewport]);
+  }, [mappedSections, nameSize, planRooms, furniture, meta.bounds, viewport]);
+
+  const dimensionLabels = useMemo(
+    () =>
+      buildCleanPlanDimensions(
+        walls,
+        meta.openings || [],
+        meta.bounds,
+        viewport,
+        roomLabels.map((label) => ({ x: label.x, y: label.y })),
+      ),
+    [walls, meta.openings, meta.bounds, viewport, roomLabels],
+  );
 
   const ink = '#1e293b';
   const halo = { stroke: '#ffffff', strokeWidth: 4, paintOrder: 'stroke' as const, strokeLinejoin: 'round' as const };
@@ -144,6 +156,15 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
       {roomPaths.map((room) => (
         <path key={room.id} d={room.d} fill={room.fill} stroke={room.fill} strokeWidth={0.6} />
       ))}
+
+      {furniture.map((obj) => {
+        const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, meta.bounds, viewport);
+        return (
+          <g key={obj.id} transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${obj.rotationDeg})`} opacity={0.92}>
+            {planFurnitureSymbol(obj.category, obj.widthM * viewport.scale, obj.depthM * viewport.scale)}
+          </g>
+        );
+      })}
 
       {wallPaths.map((path) => (
         <path key={path.id} d={path.d} fill="none" stroke={ink} strokeWidth={wallW} strokeLinecap="square" strokeLinejoin="miter" />
@@ -175,7 +196,9 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
 
       {compact
         ? null
-        : dimensionLabels.map((label) => {
+        : dimensionLabels
+            .filter((label) => !roomLabels.some((room) => Math.abs(room.x - label.x) < room.label.length * room.size * 0.36 + 18 && label.y > room.y - room.size * 1.4 && label.y < room.y + room.size * 1.6))
+            .map((label) => {
             const color = label.kind === 'window' ? '#0369a1' : label.kind === 'door' ? '#b45309' : '#475569';
             return (
               <text key={label.id} x={label.x} y={label.y + 3.5} fill={color} fontSize={13} fontWeight={600} textAnchor="middle" {...halo}>
