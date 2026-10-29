@@ -1052,7 +1052,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                   />
                 </section>
 
-                <section className="mt-2 flex min-h-0 flex-1 flex-col justify-end sm:mt-2.5" aria-labelledby="bi-type-heading">
+                <section className="mt-3 shrink-0" aria-labelledby="bi-type-heading">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <h2
                       id="bi-type-heading"
@@ -1064,7 +1064,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                       <p className="bi-accent-ink truncate text-[10px] font-semibold sm:text-[11px]">✓ {selectedLabel}</p>
                     ) : null}
                   </div>
-                  <div className="bi-type-grid grid min-h-0 flex-1 grid-cols-2 gap-1.5 sm:gap-2">
+                  <div className="bi-type-grid grid grid-cols-2 gap-2">
                     {BUYER_PROPERTY_OPTIONS.map((option, index) => (
                       <PropertyTypeCard
                         key={option.id}

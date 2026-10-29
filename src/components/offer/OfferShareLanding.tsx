@@ -12,9 +12,8 @@ import AppStoreBadgeLink from '@/components/ui/AppStoreBadgeLink';
 import AppointmentModal from '@/components/AppointmentModal';
 import OfferShareMessageModal from '@/components/offer/OfferShareMessageModal';
 import OfferSharePrintActions from '@/components/offer/OfferSharePrintActions';
-import OfferSharePrintBrochure from '@/components/offer/OfferSharePrintBrochure';
 import { loadOfferShareIntent, resumeOfferShareIntent } from '@/lib/offerShareIntent';
-import { offerSerif } from '@/components/offer/offerSerif';
+import { offerFontVars } from '@/components/offer/offerFonts';
 
 export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
   const [activeImage, setActiveImage] = useState(0);
@@ -68,7 +67,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
   ].filter((item): item is { label: string; value: string } => Boolean(item));
 
   return (
-    <main className={`${offerSerif.variable} min-h-[100dvh] bg-[#f6f3ee] text-[#15171a] dark:bg-[#0c0b0a] dark:text-[#f3eee6]`}>
+    <main className={`${offerFontVars} font-[family-name:var(--ofb-sans)] min-h-[100dvh] bg-[#f6f3ee] text-[#15171a] dark:bg-[#0c0b0a] dark:text-[#f3eee6]`}>
       <OfferShareAppBanner offerId={card.id} canonicalUrl={card.canonicalUrl} offerTitle={card.title} />
 
       <div className="mx-auto max-w-xl px-3 pb-12 pt-[calc(env(safe-area-inset-top)+1rem)]">
@@ -91,7 +90,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
               <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#d8c3a0]">
                 {card.transactionLabel} · {card.propertyTypeLabel}
               </p>
-              <h1 className="mt-1.5 font-[family-name:var(--ofb-serif)] text-[26px] font-medium leading-[1.12] text-white">
+              <h1 className="mt-1.5 font-[family-name:var(--ofb-sans)] text-[26px] font-semibold leading-[1.12] tracking-[-0.02em] text-white">
                 {card.title}
               </h1>
               <p className="mt-1.5 flex items-center gap-1.5 text-[13px] text-white/85">
@@ -125,7 +124,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
               <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#8a6a3a] dark:text-[#d8c3a0]">
                 {card.isRent ? 'Czynsz najmu' : 'Cena ofertowa'}
               </p>
-              <p className="mt-1 font-[family-name:var(--ofb-serif)] text-[34px] font-medium leading-none">{card.priceLabel}</p>
+              <p className="mt-1 font-[family-name:var(--ofb-sans)] text-[34px] font-semibold leading-none tracking-[-0.03em]">{card.priceLabel}</p>
               {card.pricePerSqmLabel ? (
                 <p className="mt-1.5 text-[13px] text-[#8a8478] dark:text-[#968e82]">{card.pricePerSqmLabel}</p>
               ) : null}
@@ -134,7 +133,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
                   {specs.map((spec, index) => (
                     <div key={spec.label} className={index ? 'border-l border-[#e4dccd] pl-3 dark:border-[#d8c3a0]/15' : ''}>
                       <dt className="text-[9px] font-bold uppercase tracking-[0.16em] text-[#8a8478] dark:text-[#968e82]">{spec.label}</dt>
-                      <dd className="mt-1 font-[family-name:var(--ofb-serif)] text-[18px]">{spec.value}</dd>
+                      <dd className="mt-1 font-[family-name:var(--ofb-sans)] text-[18px] font-semibold">{spec.value}</dd>
                     </div>
                   ))}
                 </dl>
@@ -226,7 +225,6 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
         </div>
       ) : null}
 
-      <OfferSharePrintBrochure card={card} />
     </main>
   );
 }

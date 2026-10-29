@@ -3524,7 +3524,7 @@ html.dark .portal-lux .reach-list__mark--page {
    /szukam · motyw EstateOS (jak panel klienta): kremowe tło, białe karty, atrament i złoto.
    Podwójna klasa .buyer-intake-shell przebija starsze reguły html.light / html.dark.
    ════════════════════════════════════════════════════════════════════════════ */
-.buyer-intake-shell.buyer-intake-shell {
+html .buyer-intake-shell.buyer-intake-shell {
   --bi-bg: #0c0b0a;
   --bi-card: #161412;
   --bi-well: #211e1a;
@@ -3563,72 +3563,72 @@ html.light .buyer-intake-shell.buyer-intake-shell {
   --bi-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 14px 34px rgba(21, 23, 26, 0.06);
 }
 
-.buyer-intake-shell.buyer-intake-shell .bi-page { background: var(--bi-bg); }
-.buyer-intake-shell.buyer-intake-shell .bi-page__halo { background: radial-gradient(circle, var(--bi-gold-soft), transparent 70%); }
-.buyer-intake-shell.buyer-intake-shell .bi-ink,
-.buyer-intake-shell.buyer-intake-shell .bi-page__headline { color: var(--bi-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-ink-2,
-.buyer-intake-shell.buyer-intake-shell .bi-page__lede { color: var(--bi-ink-2); }
-.buyer-intake-shell.buyer-intake-shell .bi-ink-3 { color: var(--bi-ink-3); }
-.buyer-intake-shell.buyer-intake-shell .bi-kicker,
-.buyer-intake-shell.buyer-intake-shell .bi-accent-ink,
-.buyer-intake-shell.buyer-intake-shell .bi-expand-btn { color: var(--bi-gold-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-accent {
+html .buyer-intake-shell.buyer-intake-shell .bi-page { background: var(--bi-bg); }
+html .buyer-intake-shell.buyer-intake-shell .bi-page__halo { background: radial-gradient(circle, var(--bi-gold-soft), transparent 70%); }
+html .buyer-intake-shell.buyer-intake-shell .bi-ink,
+html .buyer-intake-shell.buyer-intake-shell .bi-page__headline { color: var(--bi-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-ink-2,
+html .buyer-intake-shell.buyer-intake-shell .bi-page__lede { color: var(--bi-ink-2); }
+html .buyer-intake-shell.buyer-intake-shell .bi-ink-3 { color: var(--bi-ink-3); }
+html .buyer-intake-shell.buyer-intake-shell .bi-kicker,
+html .buyer-intake-shell.buyer-intake-shell .bi-accent-ink,
+html .buyer-intake-shell.buyer-intake-shell .bi-expand-btn { color: var(--bi-gold-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-accent {
   color: var(--bi-gold-ink);
   font-family: var(--font-lux-serif), Georgia, serif;
   font-style: italic;
   font-weight: 500;
 }
 
-.buyer-intake-shell.buyer-intake-shell .bi-step-track { background: var(--bi-line); }
-.buyer-intake-shell.buyer-intake-shell .bi-step-track__fill { background: var(--bi-gold); box-shadow: none; }
+html .buyer-intake-shell.buyer-intake-shell .bi-step-track { background: var(--bi-line); }
+html .buyer-intake-shell.buyer-intake-shell .bi-step-track__fill { background: var(--bi-gold); box-shadow: none; }
 
-.buyer-intake-shell.buyer-intake-shell .bi-agent-card__initial { background: var(--bi-gold-soft); color: var(--bi-gold-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-agent-card__avatar { box-shadow: 0 0 0 1px var(--bi-line-strong); }
+html .buyer-intake-shell.buyer-intake-shell .bi-agent-card__initial { background: var(--bi-gold-soft); color: var(--bi-gold-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-agent-card__avatar { box-shadow: 0 0 0 1px var(--bi-line-strong); }
 
-.buyer-intake-shell.buyer-intake-shell .bi-form-block,
-.buyer-intake-shell.buyer-intake-shell .bi-next-card {
+html .buyer-intake-shell.buyer-intake-shell .bi-form-block,
+html .buyer-intake-shell.buyer-intake-shell .bi-next-card {
   border: 1px solid var(--bi-line);
   background: var(--bi-card);
   box-shadow: var(--bi-shadow);
 }
-.buyer-intake-shell.buyer-intake-shell .bi-next-card { background: var(--bi-well); box-shadow: none; }
-.buyer-intake-shell.buyer-intake-shell .bi-form-block__title { color: var(--bi-ink-2); }
-.buyer-intake-shell.buyer-intake-shell .bi-form-block__hint { color: var(--bi-ink-3); }
+html .buyer-intake-shell.buyer-intake-shell .bi-next-card { background: var(--bi-well); box-shadow: none; }
+html .buyer-intake-shell.buyer-intake-shell .bi-form-block__title { color: var(--bi-ink-2); }
+html .buyer-intake-shell.buyer-intake-shell .bi-form-block__hint { color: var(--bi-ink-3); }
 
-.buyer-intake-shell.buyer-intake-shell .bi-transaction-segment {
+html .buyer-intake-shell.buyer-intake-shell .bi-transaction-segment {
   border-color: var(--bi-line);
   background: var(--bi-well);
   box-shadow: none;
 }
-.buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__thumb {
+html .buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__thumb {
   border-color: var(--bi-line-strong);
   background: var(--bi-card);
   box-shadow: var(--bi-shadow);
 }
-.buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__label { color: var(--bi-ink-3); }
-.buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__hint { color: var(--bi-ink-3); opacity: 0.8; }
-.buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__btn--active .bi-transaction-segment__label { color: var(--bi-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__btn--active .bi-transaction-segment__hint { color: var(--bi-gold-ink); opacity: 1; }
+html .buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__label { color: var(--bi-ink-3); }
+html .buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__hint { color: var(--bi-ink-3); opacity: 0.8; }
+html .buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__btn--active .bi-transaction-segment__label { color: var(--bi-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-transaction-segment__btn--active .bi-transaction-segment__hint { color: var(--bi-gold-ink); opacity: 1; }
 
-.buyer-intake-shell.buyer-intake-shell .bi-transaction-pill,
-.buyer-intake-shell.buyer-intake-shell .bi-property-pill {
+html .buyer-intake-shell.buyer-intake-shell .bi-transaction-pill,
+html .buyer-intake-shell.buyer-intake-shell .bi-property-pill {
   border: 1px solid var(--bi-line-strong);
   background: var(--bi-gold-soft);
   color: var(--bi-gold-ink);
 }
 
-.buyer-intake-shell.buyer-intake-shell .bi-type-card,
-.buyer-intake-shell.buyer-intake-shell .bi-choice-chip,
-.buyer-intake-shell.buyer-intake-shell .bi-must-have-chip {
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card,
+html .buyer-intake-shell.buyer-intake-shell .bi-choice-chip,
+html .buyer-intake-shell.buyer-intake-shell .bi-must-have-chip {
   border: 1px solid var(--bi-line);
   background: var(--bi-card);
   color: var(--bi-ink);
   box-shadow: none;
 }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card__glow,
-.buyer-intake-shell.buyer-intake-shell .bi-type-card::after { display: none; }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card__icon {
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card__glow,
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card::after { display: none; }
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card__icon {
   display: inline-flex;
   width: 2.1rem;
   height: 2.1rem;
@@ -3638,91 +3638,93 @@ html.light .buyer-intake-shell.buyer-intake-shell {
   background: var(--bi-well);
   color: var(--bi-gold-ink);
 }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card__label { color: var(--bi-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card__hint { color: var(--bi-ink-3); }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card--active,
-.buyer-intake-shell.buyer-intake-shell .bi-choice-chip--active,
-.buyer-intake-shell.buyer-intake-shell .bi-must-have-chip--active {
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card__label { color: var(--bi-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card__hint { color: var(--bi-ink-3); }
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card--active,
+html .buyer-intake-shell.buyer-intake-shell .bi-choice-chip--active,
+html .buyer-intake-shell.buyer-intake-shell .bi-must-have-chip--active {
   border-color: var(--bi-gold-ink);
   background: var(--bi-gold-soft);
   color: var(--bi-ink);
   box-shadow: 0 0 0 1px var(--bi-gold-ink) inset;
 }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card--active .bi-type-card__label { color: var(--bi-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card--active .bi-type-card__hint { color: var(--bi-gold-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card--active .bi-type-card__icon { background: var(--bi-solid); color: var(--bi-solid-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card__check,
-.buyer-intake-shell.buyer-intake-shell .bi-choice-chip__check,
-.buyer-intake-shell.buyer-intake-shell .bi-must-have-chip__check {
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card--active .bi-type-card__label { color: var(--bi-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card--active .bi-type-card__hint { color: var(--bi-gold-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card--active .bi-type-card__icon { background: var(--bi-solid); color: var(--bi-solid-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card__check,
+html .buyer-intake-shell.buyer-intake-shell .bi-choice-chip__check,
+html .buyer-intake-shell.buyer-intake-shell .bi-must-have-chip__check {
   background: var(--bi-solid);
   color: var(--bi-solid-ink);
   box-shadow: none;
 }
 @media (hover: hover) and (pointer: fine) {
-  .buyer-intake-shell.buyer-intake-shell .bi-type-card:not(:disabled):not(.bi-type-card--active):hover,
-  .buyer-intake-shell.buyer-intake-shell .bi-choice-chip:not(:disabled):not(.bi-choice-chip--active):hover,
-  .buyer-intake-shell.buyer-intake-shell .bi-must-have-chip:not(:disabled):not(.bi-must-have-chip--active):hover {
+  html .buyer-intake-shell.buyer-intake-shell .bi-type-card:not(:disabled):not(.bi-type-card--active):hover,
+  html .buyer-intake-shell.buyer-intake-shell .bi-choice-chip:not(:disabled):not(.bi-choice-chip--active):hover,
+  html .buyer-intake-shell.buyer-intake-shell .bi-must-have-chip:not(:disabled):not(.bi-must-have-chip--active):hover {
     border-color: var(--bi-line-strong);
     background: var(--bi-card);
     transform: none;
   }
 }
-.buyer-intake-shell.buyer-intake-shell .bi-type-card:focus-visible,
-.buyer-intake-shell.buyer-intake-shell .bi-choice-chip:focus-visible {
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card:focus-visible,
+html .buyer-intake-shell.buyer-intake-shell .bi-choice-chip:focus-visible {
   outline: 2px solid var(--bi-gold-ink);
   outline-offset: 2px;
 }
 
-.buyer-intake-shell.buyer-intake-shell .bi-city-input,
-.buyer-intake-shell.buyer-intake-shell .bi-contact-input,
-.buyer-intake-shell.buyer-intake-shell .bi-phone-country > div {
+html .buyer-intake-shell.buyer-intake-shell .bi-city-input,
+html .buyer-intake-shell.buyer-intake-shell .bi-contact-input,
+html .buyer-intake-shell.buyer-intake-shell .bi-phone-country > div {
   border-color: var(--bi-line);
   background: var(--bi-card);
   color: var(--bi-ink);
 }
-.buyer-intake-shell.buyer-intake-shell .bi-phone-country button,
-.buyer-intake-shell.buyer-intake-shell .bi-phone-country input { color: var(--bi-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-city-input::placeholder,
-.buyer-intake-shell.buyer-intake-shell .bi-contact-input::placeholder { color: var(--bi-ink-3); }
-.buyer-intake-shell.buyer-intake-shell .bi-city-input:focus,
-.buyer-intake-shell.buyer-intake-shell .bi-contact-input:focus {
+html .buyer-intake-shell.buyer-intake-shell .bi-phone-country button,
+html .buyer-intake-shell.buyer-intake-shell .bi-phone-country input { color: var(--bi-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-city-input::placeholder,
+html .buyer-intake-shell.buyer-intake-shell .bi-contact-input::placeholder { color: var(--bi-ink-3); }
+html .buyer-intake-shell.buyer-intake-shell .bi-city-input:focus,
+html .buyer-intake-shell.buyer-intake-shell .bi-contact-input:focus {
   border-color: var(--bi-gold-ink);
   box-shadow: 0 0 0 3px var(--bi-gold-soft);
 }
-.buyer-intake-shell.buyer-intake-shell .bi-suggest-list { border-color: var(--bi-line); background: var(--bi-card); }
-.buyer-intake-shell.buyer-intake-shell .bi-suggest-list__item { color: var(--bi-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-suggest-list__item:focus-visible { background: var(--bi-gold-soft); }
+html .buyer-intake-shell.buyer-intake-shell .bi-suggest-list { border-color: var(--bi-line); background: var(--bi-card); }
+html .buyer-intake-shell.buyer-intake-shell .bi-suggest-list__item { color: var(--bi-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-suggest-list__item:focus-visible { background: var(--bi-gold-soft); }
 
-.buyer-intake-shell.buyer-intake-shell .bi-consent-row { border-color: var(--bi-line); background: var(--bi-card); }
-.buyer-intake-shell.buyer-intake-shell .bi-consent-row__check { accent-color: var(--bi-solid); }
-.buyer-intake-shell.buyer-intake-shell .bi-field-hint--ok { color: var(--bi-good); }
-.buyer-intake-shell.buyer-intake-shell .bi-field-hint--warn { color: var(--bi-warn); }
-.buyer-intake-shell.buyer-intake-shell .bi-field-hint--error { color: var(--bi-danger); }
-.buyer-intake-shell.buyer-intake-shell .bi-live-summary { color: var(--bi-gold-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-consent-row { border-color: var(--bi-line); background: var(--bi-card); }
+html .buyer-intake-shell.buyer-intake-shell .bi-consent-row__check { accent-color: var(--bi-solid); }
+html .buyer-intake-shell.buyer-intake-shell .bi-field-hint--ok { color: var(--bi-good); }
+html .buyer-intake-shell.buyer-intake-shell .bi-field-hint--warn { color: var(--bi-warn); }
+html .buyer-intake-shell.buyer-intake-shell .bi-field-hint--error { color: var(--bi-danger); }
+html .buyer-intake-shell.buyer-intake-shell .bi-live-summary { color: var(--bi-gold-ink); }
 
-.buyer-intake-shell.buyer-intake-shell .bi-success-card {
+html .buyer-intake-shell.buyer-intake-shell .bi-success-card {
   border-color: var(--bi-line-strong);
   background: var(--bi-card);
   box-shadow: var(--bi-shadow);
 }
-.buyer-intake-shell.buyer-intake-shell .bi-success-card__icon { background: var(--bi-gold-soft); box-shadow: none; }
-.buyer-intake-shell.buyer-intake-shell .bi-success-card__summary { border-color: var(--bi-line); background: var(--bi-well); color: var(--bi-ink-2); }
+html .buyer-intake-shell.buyer-intake-shell .bi-success-card__icon { background: var(--bi-gold-soft); box-shadow: none; }
+html .buyer-intake-shell.buyer-intake-shell .bi-success-card__summary { border-color: var(--bi-line); background: var(--bi-well); color: var(--bi-ink-2); }
 
-.buyer-intake-shell.buyer-intake-shell .bi-page__footer { border-color: var(--bi-line); background: var(--bi-bg); }
-.buyer-intake-shell.buyer-intake-shell .bi-page__scroll-fade { background: linear-gradient(to top, var(--bi-bg) 0%, transparent 100%); }
-.buyer-intake-shell.buyer-intake-shell .bi-footer-hint { color: var(--bi-ink-3); }
-.buyer-intake-shell.buyer-intake-shell .bi-footer-hint--ready { color: var(--bi-gold-ink); }
-.buyer-intake-shell.buyer-intake-shell .bi-back-btn { color: var(--bi-ink-2); }
+html .buyer-intake-shell.buyer-intake-shell .bi-page__footer { border-color: var(--bi-line); background: var(--bi-bg); }
+html .buyer-intake-shell.buyer-intake-shell .bi-page__scroll-fade { background: linear-gradient(to top, var(--bi-bg) 0%, transparent 100%); }
+html .buyer-intake-shell.buyer-intake-shell .bi-footer-hint { color: var(--bi-ink-3); }
+html .buyer-intake-shell.buyer-intake-shell .bi-footer-hint--ready { color: var(--bi-gold-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-back-btn { color: var(--bi-ink-2); }
 
-.buyer-intake-shell.buyer-intake-shell .bi-primary-cta {
+html .buyer-intake-shell.buyer-intake-shell .bi-primary-cta {
   background: var(--bi-solid) !important;
   color: var(--bi-solid-ink) !important;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18) !important;
 }
-.buyer-intake-shell.buyer-intake-shell .bi-primary-cta svg { color: currentColor !important; }
-.buyer-intake-shell.buyer-intake-shell .bi-primary-cta:hover:not(:disabled) { background: var(--bi-solid) !important; filter: brightness(1.08); }
-.buyer-intake-shell.buyer-intake-shell .bi-primary-cta:disabled {
+html .buyer-intake-shell.buyer-intake-shell .bi-primary-cta svg { color: currentColor !important; }
+html .buyer-intake-shell.buyer-intake-shell .bi-primary-cta:hover:not(:disabled) { background: var(--bi-solid) !important; filter: brightness(1.08); }
+html .buyer-intake-shell.buyer-intake-shell .bi-primary-cta:disabled {
   background: var(--bi-well) !important;
   color: var(--bi-ink-3) !important;
   box-shadow: none !important;
 }
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card--fit { height: auto; min-height: 7.25rem; }
+html .buyer-intake-shell.buyer-intake-shell .bi-type-card__hint--hide-short { display: block; }

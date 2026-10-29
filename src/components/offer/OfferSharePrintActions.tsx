@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { ChevronDown, Download, FileImage, FileText, Printer } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Download, FileImage, FileText, Printer, X } from 'lucide-react';
 import type { OfferShareCard } from '@/lib/offerShareLanding';
 import { fetchOfferSharePrintAccess } from '@/lib/offerSharePrintAccess';
 import {
@@ -11,19 +11,28 @@ import {
   printOfferShareBrochure,
   type OfferShareDownloadFormat,
 } from '@/lib/offerSharePrint';
-import { eosBtn } from '@/components/ui/eosButtonStyles';
-
-type OfferSharePrintActionsProps = {
-  card: OfferShareCard;
-};
+import { OfferSheetFit } from '@/components/offer/OfferSharePrintBrochure';
+import { OFFER_SHEET_STYLES, useOfferSheetStyle } from '@/components/offer/offerSheetStyle';
 
 type BusyAction = 'print' | OfferShareDownloadFormat;
 
-export default function OfferSharePrintActions({ card }: OfferSharePrintActionsProps) {
-  const menuId = useId();
-  const rootRef = useRef<HTMLDivElement | null>(null);
+const ERRORS: Record<BusyAction, string> = {
+  print: 'Nie udało się przygotować wydruku. Spróbuj ponownie.',
+  pdf: 'Nie udało się wygenerować PDF. Spróbuj ponownie lub pobierz JPEG.',
+  jpeg: 'Nie udało się wygenerować JPEG. Spróbuj ponownie lub pobierz PDF.',
+};
+
+const BUSY_LABEL: Record<BusyAction, string> = {
+  print: 'Przygotowuję wydruk…',
+  pdf: 'Generuję PDF…',
+  jpeg: 'Generuję JPEG…',
+};
+
+/** Ofertówka: agent wybiera styl na żywym podglądzie, potem drukuje albo pobiera PDF/JPEG. */
+export default function OfferSharePrintActions({ card }: { card: OfferShareCard }) {
   const [allowed, setAllowed] = useState(false);
   const [open, setOpen] = useState(false);
+  const [style, pick] = useOfferSheetStyle();
   const [busy, setBusy] = useState<BusyAction | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,55 +48,33 @@ export default function OfferSharePrintActions({ card }: OfferSharePrintActionsP
 
   useEffect(() => {
     if (!open) return;
-    const onPointer = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node | null;
-      if (rootRef.current && target && !rootRef.current.contains(target)) {
-        setOpen(false);
-      }
-    };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape' && !busy) setOpen(false);
     };
-    document.addEventListener('mousedown', onPointer);
-    document.addEventListener('touchstart', onPointer);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('mousedown', onPointer);
-      document.removeEventListener('touchstart', onPointer);
+      document.body.style.overflow = prevOverflow;
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, busy]);
+
+  const openPicker = () => {
+    setError(null);
+    setOpen(true);
+  };
 
   const run = useCallback(
     async (action: BusyAction) => {
-      const root = document.getElementById('offer-share-print-brochure');
-      if (!root && action !== 'print') {
-        setError('Nie udało się przygotować ulotki do pobrania.');
-        return;
-      }
       setError(null);
       setBusy(action);
-      setOpen(false);
       try {
-        if (action === 'print') {
-          await printOfferShareBrochure();
-          return;
-        }
-        if (!root) return;
-        const filename = offerSharePrintFilename(card, action);
-        if (action === 'jpeg') {
-          await downloadOfferShareJpeg(root, filename);
-        } else {
-          await downloadOfferSharePdf(root, filename);
-        }
+        if (action === 'print') await printOfferShareBrochure();
+        else if (action === 'jpeg') await downloadOfferShareJpeg(offerSharePrintFilename(card, 'jpeg'));
+        else await downloadOfferSharePdf(offerSharePrintFilename(card, 'pdf'));
       } catch {
-        setError(
-          action === 'print'
-            ? 'Nie udało się przygotować wydruku. Spróbuj ponownie.'
-            : action === 'jpeg'
-              ? 'Nie udało się wygenerować JPEG. Spróbuj ponownie lub użyj PDF.'
-              : 'Nie udało się wygenerować PDF. Spróbuj ponownie lub użyj JPEG.',
-        );
+        setError(ERRORS[action]);
       } finally {
         setBusy(null);
       }
@@ -97,72 +84,114 @@ export default function OfferSharePrintActions({ card }: OfferSharePrintActionsP
 
   if (!allowed) return null;
 
-  const disabled = busy != null;
-  const label =
-    busy === 'print'
-      ? 'Przygotowuję wydruk…'
-      : busy === 'pdf'
-        ? 'Generuję PDF…'
-        : busy === 'jpeg'
-          ? 'Generuję JPEG…'
-          : 'Ofertówka';
+  const actionClass =
+    'flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold transition disabled:opacity-50';
 
   return (
-    <div ref={rootRef} className="relative flex flex-col gap-2">
+    <>
       <button
         type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={menuId}
-        onClick={() => setOpen((value) => !value)}
-        disabled={disabled}
-        className={eosBtn('promote', { block: true })}
+        onClick={openPicker}
+        className="flex min-h-11 w-full items-center gap-2.5 rounded-full bg-[#15171a] px-5 text-[13px] font-semibold text-white transition hover:bg-black dark:bg-[#f3eee6] dark:text-[#15171a] dark:hover:bg-white"
       >
-        <FileText size={14} />
-        <span className="flex-1 text-left">{label}</span>
-        <ChevronDown size={14} className={open ? 'rotate-180 transition-transform' : 'transition-transform'} />
+        <FileText size={15} />
+        <span className="flex-1 text-left">Ofertówka — wybierz styl i pobierz</span>
       </button>
 
       {open ? (
         <div
-          id={menuId}
-          role="menu"
-          className="absolute left-0 right-0 top-[calc(100%+6px)] z-20 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-[0_18px_40px_rgba(20,20,22,0.18)] dark:border-white/10 dark:bg-[#141418]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Ofertówka"
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-6"
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !busy) setOpen(false);
+          }}
         >
-          <button
-            type="button"
-            role="menuitem"
-            disabled={disabled}
-            onClick={() => void run('print')}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-semibold text-[#141416] hover:bg-black/[0.04] dark:text-white dark:hover:bg-white/[0.06]"
-          >
-            <Printer size={15} className="opacity-70" />
-            Wydrukuj
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={disabled}
-            onClick={() => void run('pdf')}
-            className="flex w-full items-center gap-3 border-t border-black/8 px-4 py-3 text-left text-sm font-semibold text-[#141416] hover:bg-black/[0.04] dark:border-white/8 dark:text-white dark:hover:bg-white/[0.06]"
-          >
-            <Download size={15} className="opacity-70" />
-            Pobierz PDF
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={disabled}
-            onClick={() => void run('jpeg')}
-            className="flex w-full items-center gap-3 border-t border-black/8 px-4 py-3 text-left text-sm font-semibold text-[#141416] hover:bg-black/[0.04] dark:border-white/8 dark:text-white dark:hover:bg-white/[0.06]"
-          >
-            <FileImage size={15} className="opacity-70" />
-            Pobierz JPEG
-          </button>
+          <div className="flex max-h-[100dvh] w-full max-w-[980px] flex-col overflow-hidden bg-[#f6f3ee] text-[#15171a] sm:max-h-[92dvh] sm:rounded-[28px] dark:bg-[#141312] dark:text-[#f3eee6]">
+            <div className="flex items-center justify-between gap-3 border-b border-black/10 px-5 py-4 dark:border-white/10">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#77736c]">Ofertówka · A4</p>
+                <h2 className="text-[18px] font-semibold tracking-[-0.01em]">Wybierz styl karty</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Zamknij"
+                disabled={busy != null}
+                onClick={() => setOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-black/[0.06] dark:bg-white/[0.08]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+              <div className="flex shrink-0 gap-2 overflow-x-auto px-5 py-3 sm:w-[260px] sm:flex-col sm:overflow-visible sm:border-r sm:border-black/10 sm:py-5 dark:sm:border-white/10">
+                {OFFER_SHEET_STYLES.map((option) => {
+                  const active = option.id === style;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => pick(option.id)}
+                      className={`shrink-0 rounded-2xl border px-4 py-3 text-left transition sm:w-full ${
+                        active
+                          ? 'border-[#15171a] bg-[#15171a] text-white dark:border-[#f3eee6] dark:bg-[#f3eee6] dark:text-[#15171a]'
+                          : 'border-black/10 bg-white hover:border-black/30 dark:border-white/10 dark:bg-white/[0.04] dark:hover:border-white/30'
+                      }`}
+                    >
+                      <span className="block text-[14px] font-semibold">{option.label}</span>
+                      <span className={`mt-0.5 hidden text-[12px] leading-snug sm:block ${active ? 'opacity-75' : 'text-[#77736c]'}`}>
+                        {option.hint}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto bg-[#e9e5de] px-4 py-5 sm:px-8 dark:bg-[#0c0b0a]">
+                <div className="mx-auto max-w-[560px]">
+                  <OfferSheetFit card={card} variant={style} />
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-black/10 px-5 py-4 dark:border-white/10">
+              {error ? <p className="mb-3 text-[12px] text-red-600 dark:text-red-400">{error}</p> : null}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy != null}
+                  onClick={() => void run('print')}
+                  className={`${actionClass} bg-[#15171a] text-white dark:bg-[#f3eee6] dark:text-[#15171a]`}
+                >
+                  <Printer size={15} />
+                  {busy === 'print' ? BUSY_LABEL.print : 'Drukuj'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy != null}
+                  onClick={() => void run('pdf')}
+                  className={`${actionClass} border border-black/15 bg-white dark:border-white/15 dark:bg-white/[0.04]`}
+                >
+                  <Download size={15} />
+                  {busy === 'pdf' ? BUSY_LABEL.pdf : 'Pobierz PDF'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy != null}
+                  onClick={() => void run('jpeg')}
+                  className={`${actionClass} border border-black/15 bg-white dark:border-white/15 dark:bg-white/[0.04]`}
+                >
+                  <FileImage size={15} />
+                  {busy === 'jpeg' ? BUSY_LABEL.jpeg : 'Pobierz JPEG'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
-
-      {error ? <p className="text-xs text-red-600 dark:text-red-400">{error}</p> : null}
-    </div>
+    </>
   );
 }

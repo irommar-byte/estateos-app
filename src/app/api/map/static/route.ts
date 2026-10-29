@@ -77,7 +77,28 @@ async function fetchNearbyPois(lng: number, lat: number, token: string): Promise
   return picked;
 }
 
-/** Neighborhood preview: closer zoom, streets style (POI labels) + nearby service pins. */
+function imageResponse(buffer: ArrayBuffer, contentType: string | null) {
+  return new NextResponse(buffer, {
+    headers: {
+      'Content-Type': contentType || 'image/png',
+      'Cache-Control': 'public, max-age=86400',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
+
+async function fetchMapImage(...urls: string[]) {
+  for (const url of urls) {
+    const response = await fetch(url, { cache: 'force-cache' });
+    if (response.ok) return imageResponse(await response.arrayBuffer(), response.headers.get('content-type'));
+  }
+  return NextResponse.json({ error: 'Nie udało się pobrać mapy.' }, { status: 502 });
+}
+
+/**
+ * Domyślnie: okolica (ulice, punkty usług w pobliżu).
+ * `styl=teren`: zdjęcie satelitarne z ulicami — teren, zabudowa, zieleń i dokładne położenie (ofertówka).
+ */
 export async function GET(req: Request) {
   const params = new URL(req.url).searchParams;
   const lat = Number(params.get('lat'));
@@ -90,37 +111,22 @@ export async function GET(req: Request) {
   if (!token) {
     return NextResponse.json({ error: 'Brak tokenu mapy.' }, { status: 503 });
   }
+  const key = encodeURIComponent(token);
+
+  if (params.get('styl') === 'teren') {
+    const pin = `pin-l+e8452c(${lng},${lat})`;
+    return fetchMapImage(
+      `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${pin}/${lng},${lat},16.3,0/800x640@2x?access_token=${key}`,
+    );
+  }
 
   const pois = await fetchNearbyPois(lng, lat, token);
   const overlays = [
     ...pois.map((poi) => `pin-s-${makiForKind(poi.kind)}+5c6b7a(${poi.lng},${poi.lat})`),
     `pin-l+b8922e(${lng},${lat})`,
   ].join(',');
-
-  const src = `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlays}/${lng},${lat},16,0/840x520@2x?access_token=${encodeURIComponent(token)}`;
-  const response = await fetch(src, { cache: 'force-cache' });
-  if (!response.ok) {
-    const fallback = `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+b8922e(${lng},${lat})/${lng},${lat},16,0/840x520@2x?access_token=${encodeURIComponent(token)}`;
-    const retry = await fetch(fallback, { cache: 'force-cache' });
-    if (!retry.ok) {
-      return NextResponse.json({ error: 'Nie udało się pobrać mapy.' }, { status: 502 });
-    }
-    const buffer = await retry.arrayBuffer();
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': retry.headers.get('content-type') || 'image/png',
-        'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': '*',
-      },
-    });
-  }
-
-  const buffer = await response.arrayBuffer();
-  return new NextResponse(buffer, {
-    headers: {
-      'Content-Type': response.headers.get('content-type') || 'image/png',
-      'Cache-Control': 'public, max-age=86400',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
+  return fetchMapImage(
+    `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${overlays}/${lng},${lat},16,0/840x520@2x?access_token=${key}`,
+    `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+b8922e(${lng},${lat})/${lng},${lat},16,0/840x520@2x?access_token=${key}`,
+  );
 }

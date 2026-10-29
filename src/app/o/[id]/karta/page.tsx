@@ -5,7 +5,7 @@ import { loadOfferShareCard } from '@/lib/offerShareLanding';
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ portal?: string; agent?: string; arkusz?: string }>;
+  searchParams: Promise<{ portal?: string; agent?: string; arkusz?: string; styl?: string }>;
 };
 
 /** Druk / QR — osobno od kliknięcia Facebook, które ma otworzyć pełną ofertę. */
@@ -21,7 +21,7 @@ export default async function OfferShareCardPage({ params, searchParams }: PageP
   });
   if (!card) notFound();
 
-  if (sp.arkusz === '1') return <OfferShareArkusz card={card} />;
+  if (sp.arkusz === '1') return <OfferShareArkusz card={card} initialStyle={sp.styl} />;
 
   return <OfferShareLanding card={card} />;
 }

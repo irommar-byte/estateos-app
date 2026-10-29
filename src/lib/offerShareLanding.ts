@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { formatOfferPropertyType } from '@/lib/offerDisplayLabels';
+import { formatOfferCondition, formatOfferPropertyType } from '@/lib/offerDisplayLabels';
 import { resolveOfferDetailAccess } from '@/lib/offerPublicAccess';
 import { extractListingRoomAreas, formatListingAreaSqm } from '@/lib/listingRoomAreas';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
@@ -122,6 +122,13 @@ export type OfferShareCard = {
   area: number | null;
   rooms: number | null;
   floor: number | string | null;
+  totalFloors: number | null;
+  plotArea: number | null;
+  /** czynsz administracyjny, np. „650 zł / mies.” */
+  adminFeeLabel: string | null;
+  conditionLabel: string | null;
+  /** rzut całego mieszkania (np. wygenerowany ze skanu LiDAR) */
+  floorPlanUrl: string | null;
   description: string | null;
   publisher: OfferSharePublisher | null;
   fullOfferPath: string;
@@ -303,6 +310,11 @@ export async function loadOfferShareCard(
     area: row.area != null ? Number(row.area) : null,
     rooms: row.rooms != null ? Number(row.rooms) : null,
     floor: row.floor != null ? row.floor : null,
+    totalFloors: Number(row.totalFloors) > 0 ? Number(row.totalFloors) : null,
+    plotArea: Number(row.plotArea) > 0 ? Number(row.plotArea) : null,
+    adminFeeLabel: Number(row.adminFee) > 0 ? `${Math.round(Number(row.adminFee)).toLocaleString('pl-PL')} zł / mies.` : null,
+    conditionLabel: formatOfferCondition(row.condition, 'pl'),
+    floorPlanUrl: String(row.floorPlanUrl || '').trim() || null,
     description: row.description
       ? stripHtmlToPlain(stripInternalOfferDescriptionMarkers(String(row.description))).slice(0, 2400)
       : null,

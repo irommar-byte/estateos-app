@@ -45,7 +45,7 @@ export default function OfferSharePublisherCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <h2 className="font-[family-name:var(--ofb-serif)] text-[20px] font-medium leading-tight text-[#141416] dark:text-[#f3eee6]">{primaryName}</h2>
+          <h2 className="font-[family-name:var(--ofb-sans)] text-[20px] font-semibold leading-tight tracking-[-0.01em] text-[#141416] dark:text-[#f3eee6]">{primaryName}</h2>
           {publisher.companyName && publisher.companyName !== primaryName ? (
             <p className="mt-1 text-sm font-semibold text-[#5c5c66] dark:text-[#9a9aa8]">{publisher.companyName}</p>
           ) : null}

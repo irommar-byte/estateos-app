@@ -4,7 +4,7 @@ export type OfferShareDownloadFormat = 'pdf' | 'jpeg';
 
 const A4_MM_WIDTH = 210;
 const A4_MM_HEIGHT = 297;
-const PRINT_CAPTURE_BG = '#f8f5ef';
+const SHEET_ID = 'offer-share-print-brochure';
 
 export function truncateOfferShareDescription(text: string | null | undefined, max = 420): string {
   const plain = String(text || '').replace(/\s+/g, ' ').trim();
@@ -29,20 +29,9 @@ export function truncateOfferShareDescription(text: string | null | undefined, m
   return `${cut}…`;
 }
 
-export function formatOfferShareFloor(floor: number | string | null | undefined): string | null {
-  if (floor == null || String(floor).trim() === '') return null;
-  const n = Number(floor);
-  if (Number.isFinite(n) && n === 0) return 'Parter';
-  return String(floor);
-}
-
 export function buildOfferShareQrSrc(url: string, size = 240): string {
   const safeSize = Number.isFinite(size) ? Math.min(480, Math.max(80, Math.round(size))) : 240;
   return `/api/qr?size=${safeSize}&data=${encodeURIComponent(url)}`;
-}
-
-export function buildOfferShareMapSrc(lat: number, lng: number): string {
-  return `/api/map/static?lat=${encodeURIComponent(String(lat))}&lng=${encodeURIComponent(String(lng))}`;
 }
 
 export function offerSharePrintFilename(
@@ -58,9 +47,6 @@ export function offerSharePrintFilename(
   return `estateos-oferta-${card.id}${slug ? `-${slug}` : ''}.${ext}`;
 }
 
-const PRINT_BODY_CLASS = 'offer-share-printing';
-const PDF_CAPTURE_CLASS = 'offer-share-pdf-capturing';
-
 function isLikelyMobileBrowser(): boolean {
   if (typeof navigator === 'undefined') return false;
   return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
@@ -68,7 +54,6 @@ function isLikelyMobileBrowser(): boolean {
 
 function waitForImages(root: HTMLElement, timeoutMs = 10000): Promise<void> {
   const images = Array.from(root.querySelectorAll('img'));
-  if (!images.length) return Promise.resolve();
   return Promise.all(
     images.map(
       (img) =>
@@ -96,50 +81,29 @@ async function loadHtml2Canvas(): Promise<Html2CanvasFn> {
   return ((mod as { default?: Html2CanvasFn }).default || mod) as Html2CanvasFn;
 }
 
-async function withVisiblePrintPortal<T>(run: () => Promise<T>): Promise<T> {
-  const portal = document.getElementById('offer-share-print-portal');
-  const prevStyle = portal?.getAttribute('style');
-  portal?.classList.add(PDF_CAPTURE_CLASS);
-  document.body.classList.add(PDF_CAPTURE_CLASS);
-  if (portal) {
-    portal.style.position = 'fixed';
-    portal.style.left = '0px';
-    portal.style.top = '0px';
-    portal.style.opacity = '1';
-    portal.style.pointerEvents = 'none';
-    portal.style.width = '210mm';
-    portal.style.zIndex = '1';
-  }
-
-  try {
-    return await run();
-  } finally {
-    if (portal) {
-      if (prevStyle == null) portal.removeAttribute('style');
-      else portal.setAttribute('style', prevStyle);
-    }
-    portal?.classList.remove(PDF_CAPTURE_CLASS);
-    document.body.classList.remove(PDF_CAPTURE_CLASS);
-  }
+function findSheet(): HTMLElement {
+  const root = document.getElementById(SHEET_ID);
+  if (!root) throw new Error('offer-sheet-missing');
+  return root;
 }
 
-/** Kartki ofertówki (okładka + szczegóły) — każda to pełna strona A4. */
-function brochurePages(root: HTMLElement): HTMLElement[] {
-  const pages = Array.from(root.querySelectorAll<HTMLElement>('.ofb-page'));
-  return pages.length ? pages : [root];
-}
-
-async function captureOfferSharePage(page: HTMLElement): Promise<HTMLCanvasElement> {
+/**
+ * Kartka w podglądzie jest pomniejszona (transform) — kopię do zdjęcia
+ * odpinamy od skali i kładziemy w lewym górnym rogu, więc zawsze wychodzi pełne A4.
+ */
+async function captureSheet(root: HTMLElement): Promise<HTMLCanvasElement> {
   const html2canvas = await loadHtml2Canvas();
-  await waitForImages(page);
-  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-  const width = Math.max(1, page.offsetWidth);
-  const height = Math.max(1, page.offsetHeight);
-  return html2canvas(page, {
+  if (document.fonts?.ready) await document.fonts.ready;
+  await waitForImages(root);
+  const width = root.offsetWidth || 794;
+  const height = root.offsetHeight || 1123;
+  return html2canvas(root, {
     scale: 2,
     useCORS: true,
-    backgroundColor: PRINT_CAPTURE_BG,
+    backgroundColor: '#ffffff',
     logging: false,
+    x: 0,
+    y: 0,
     width,
     height,
     windowWidth: width,
@@ -147,14 +111,22 @@ async function captureOfferSharePage(page: HTMLElement): Promise<HTMLCanvasEleme
     scrollX: 0,
     scrollY: 0,
     onclone: (doc: Document) => {
-      const clonePortal = doc.getElementById('offer-share-print-portal');
-      if (clonePortal) {
-        clonePortal.style.position = 'static';
-        clonePortal.style.opacity = '1';
-        clonePortal.style.width = '210mm';
+      const clone = doc.getElementById(SHEET_ID);
+      if (!clone) return;
+      for (let node = clone.parentElement; node; node = node.parentElement) {
+        node.style.transform = 'none';
       }
+      Object.assign(clone.style, { position: 'fixed', left: '0px', top: '0px', margin: '0', zIndex: '2147483647' });
     },
   });
+}
+
+async function buildPdfBlob(root: HTMLElement): Promise<Blob> {
+  const { jsPDF } = await import('jspdf');
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+  const canvas = await captureSheet(root);
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'FAST');
+  return pdf.output('blob');
 }
 
 async function deliverBlobFile(blob: Blob, filename: string, mime: string): Promise<void> {
@@ -164,7 +136,7 @@ async function deliverBlobFile(blob: Blob, filename: string, mime: string): Prom
     share?: (data?: ShareData) => Promise<void>;
   };
 
-  // iOS Safari often ignores <a download> — share sheet is the reliable path.
+  // iOS Safari często ignoruje <a download> — arkusz udostępniania jest pewniejszy.
   if (typeof nav.canShare === 'function' && typeof nav.share === 'function') {
     try {
       if (nav.canShare({ files: [file] })) {
@@ -172,7 +144,6 @@ async function deliverBlobFile(blob: Blob, filename: string, mime: string): Prom
         return;
       }
     } catch (err) {
-      // User cancel should not fall through as failure noise for share-only flows.
       if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') {
         return;
       }
@@ -203,74 +174,36 @@ async function deliverBlobFile(blob: Blob, filename: string, mime: string): Prom
   }
 }
 
-async function buildOfferSharePdfBlob(root: HTMLElement): Promise<Blob> {
-  const { jsPDF } = await import('jspdf');
-  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
-  const pages = brochurePages(root);
-  for (let i = 0; i < pages.length; i += 1) {
-    const canvas = await captureOfferSharePage(pages[i]);
-    if (i > 0) pdf.addPage('a4', 'portrait');
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'FAST');
-  }
-  return pdf.output('blob');
-}
-
-/** Prefer A4 PDF print — Safari Letter defaults no longer spill a hairline onto page 2. */
+/** Drukujemy gotowy PDF A4 — przeglądarka nie dokłada marginesów ani drugiej strony. */
 export async function printOfferShareBrochure(): Promise<void> {
-  const root = document.getElementById('offer-share-print-brochure');
-  if (!root) {
-    window.print();
-    return;
-  }
+  const blob = await buildPdfBlob(findSheet());
+  const url = URL.createObjectURL(blob);
+  const frame = document.createElement('iframe');
+  frame.setAttribute('aria-hidden', 'true');
+  Object.assign(frame.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' });
+  frame.src = url;
+  document.body.appendChild(frame);
 
-  try {
-    await withVisiblePrintPortal(async () => {
-      const blob = await buildOfferSharePdfBlob(root);
-      const url = URL.createObjectURL(blob);
-      const frame = document.createElement('iframe');
-      frame.setAttribute('aria-hidden', 'true');
-      frame.style.position = 'fixed';
-      frame.style.right = '0';
-      frame.style.bottom = '0';
-      frame.style.width = '0';
-      frame.style.height = '0';
-      frame.style.border = '0';
-      frame.src = url;
-      document.body.appendChild(frame);
+  const printed = await new Promise<boolean>((resolve) => {
+    const timeout = window.setTimeout(() => resolve(false), 12_000);
+    frame.onload = () => {
+      window.clearTimeout(timeout);
+      try {
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
+        resolve(true);
+      } catch {
+        resolve(false);
+      }
+    };
+  });
 
-      await new Promise<void>((resolve, reject) => {
-        const timeout = window.setTimeout(() => reject(new Error('print-timeout')), 12_000);
-        frame.onload = () => {
-          window.clearTimeout(timeout);
-          try {
-            frame.contentWindow?.focus();
-            frame.contentWindow?.print();
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        };
-      });
-
-      window.setTimeout(() => {
-        frame.remove();
-        URL.revokeObjectURL(url);
-      }, 60_000);
-    });
-    return;
-  } catch {
-    // Fall back to classic DOM print with tightened @media print CSS.
-  }
-
-  document.body.classList.add(PRINT_BODY_CLASS);
-  const cleanup = () => {
-    document.body.classList.remove(PRINT_BODY_CLASS);
-    window.removeEventListener('afterprint', cleanup);
-  };
-  window.addEventListener('afterprint', cleanup);
-  await waitForImages(root);
-  await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-  window.print();
+  // Safari na iOS nie drukuje z ramki — otwieramy PDF, a drukuje się go z podglądu.
+  if (!printed) window.open(url, '_blank', 'noopener,noreferrer');
+  window.setTimeout(() => {
+    frame.remove();
+    URL.revokeObjectURL(url);
+  }, 60_000);
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -286,42 +219,24 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-/** PDF tej samej kartki A4, którą WWW zapisuje jako ofertówkę — base64 dla tabletu. */
-export async function exportOfferSharePdfBase64(root: HTMLElement): Promise<string> {
-  const fit = root.parentElement;
-  const prev = fit?.style.transform ?? '';
-  if (fit) fit.style.transform = 'none';
-  try {
-    const blob = await buildOfferSharePdfBlob(root);
-    return await blobToBase64(blob);
-  } finally {
-    if (fit) fit.style.transform = prev;
-  }
+/** PDF wybranej kartki jako base64 — dla aplikacji (WebView). */
+export async function exportOfferSharePdfBase64(): Promise<string> {
+  return blobToBase64(await buildPdfBlob(findSheet()));
 }
 
-export async function downloadOfferSharePdf(root: HTMLElement, filename: string): Promise<void> {
-  await withVisiblePrintPortal(async () => {
-    const blob = await buildOfferSharePdfBlob(root);
-    await deliverBlobFile(blob, filename, 'application/pdf');
-  });
+export async function downloadOfferSharePdf(filename: string): Promise<void> {
+  const blob = await buildPdfBlob(findSheet());
+  await deliverBlobFile(blob, filename, 'application/pdf');
 }
 
-export async function downloadOfferShareJpeg(root: HTMLElement, filename: string): Promise<void> {
-  await withVisiblePrintPortal(async () => {
-    const canvas = await captureOfferSharePage(brochurePages(root)[0]);
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (result) => {
-          if (!result) {
-            reject(new Error('Nie udało się zbudować JPEG.'));
-            return;
-          }
-          resolve(result);
-        },
-        'image/jpeg',
-        0.92,
-      );
-    });
-    await deliverBlobFile(blob, filename, 'image/jpeg');
+export async function downloadOfferShareJpeg(filename: string): Promise<void> {
+  const canvas = await captureSheet(findSheet());
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (result) => (result ? resolve(result) : reject(new Error('Nie udało się zbudować JPEG.'))),
+      'image/jpeg',
+      0.92,
+    );
   });
+  await deliverBlobFile(blob, filename, 'image/jpeg');
 }
