@@ -399,10 +399,10 @@ function Galeria({ data }: { data: SheetData }) {
           <Chips items={data.amenities} boxed={false} />
         </div>
         {data.description ? (
-          <p style={{ margin: `${u(14)} 0 0`, fontSize: u(10.5), lineHeight: 1.5, color: INK_2, maxHeight: u(63), overflow: 'hidden', flexShrink: 0 }}>{data.description}</p>
+          <p style={{ margin: `${u(14)} 0 0`, fontSize: u(10.5), lineHeight: 1.5, color: INK_2, maxHeight: u(32), overflow: 'hidden', flexShrink: 0 }}>{data.description}</p>
         ) : null}
         {data.photos.length ? (
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(3, data.photos.length)}, minmax(0, 1fr))`, gap: u(8), height: u(112), minHeight: u(48), flexShrink: 1, marginTop: u(14) }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(3, data.photos.length)}, minmax(0, 1fr))`, gap: u(8), height: u(112), minHeight: u(84), flexShrink: 1, marginTop: u(12) }}>
             {data.photos.slice(0, 3).map((src) => (
               <Photo key={src} src={src} />
             ))}

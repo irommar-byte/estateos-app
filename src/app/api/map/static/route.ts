@@ -116,7 +116,7 @@ export async function GET(req: Request) {
   if (params.get('styl') === 'teren') {
     const pin = `pin-l+e8452c(${lng},${lat})`;
     return fetchMapImage(
-      `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${pin}/${lng},${lat},16.3,0/800x640@2x?access_token=${key}`,
+      `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/${pin}/${lng},${lat},17,0/800x640@2x?access_token=${key}`,
     );
   }
 
