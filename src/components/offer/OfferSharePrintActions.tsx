@@ -11,7 +11,7 @@ import {
   printOfferShareBrochure,
   type OfferShareDownloadFormat,
 } from '@/lib/offerSharePrint';
-import { OfferSheetFit } from '@/components/offer/OfferSharePrintBrochure';
+import OfferSheetImage from '@/components/offer/OfferSheetImage';
 import { OFFER_SHEET_STYLES, useOfferSheetStyle } from '@/components/offer/offerSheetStyle';
 
 type BusyAction = 'print' | OfferShareDownloadFormat;
@@ -70,31 +70,29 @@ export default function OfferSharePrintActions({ card }: { card: OfferShareCard 
       setError(null);
       setBusy(action);
       try {
-        if (action === 'print') await printOfferShareBrochure();
-        else if (action === 'jpeg') await downloadOfferShareJpeg(offerSharePrintFilename(card, 'jpeg'));
-        else await downloadOfferSharePdf(offerSharePrintFilename(card, 'pdf'));
+        if (action === 'print') await printOfferShareBrochure(card.id, style);
+        else if (action === 'jpeg') await downloadOfferShareJpeg(card.id, style, offerSharePrintFilename(card, 'jpeg'));
+        else await downloadOfferSharePdf(card.id, style, offerSharePrintFilename(card, 'pdf'));
       } catch {
         setError(ERRORS[action]);
       } finally {
         setBusy(null);
       }
     },
-    [card],
+    [card, style],
   );
 
   if (!allowed) return null;
 
-  const actionClass =
-    'flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-semibold transition disabled:opacity-50';
 
   return (
     <>
       <button
         type="button"
         onClick={openPicker}
-        className="flex min-h-11 w-full items-center gap-2.5 rounded-full bg-[#15171a] px-5 text-[13px] font-semibold text-white transition hover:bg-black dark:bg-[#f3eee6] dark:text-[#15171a] dark:hover:bg-white"
+        className="eos-lux-btn eos-lux-btn--primary w-full justify-start px-5"
       >
-        <FileText size={15} />
+        <FileText size={15} className="eos-lux-btn__icon" />
         <span className="flex-1 text-left">Ofertówka — wybierz styl i pobierz</span>
       </button>
 
@@ -119,7 +117,7 @@ export default function OfferSharePrintActions({ card }: { card: OfferShareCard 
                 aria-label="Zamknij"
                 disabled={busy != null}
                 onClick={() => setOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-black/[0.06] dark:bg-white/[0.08]"
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-black/[0.06] transition hover:rotate-90 hover:bg-black/[0.1] active:scale-90 dark:bg-white/[0.08] dark:hover:bg-white/[0.14]"
               >
                 <X size={18} />
               </button>
@@ -135,7 +133,7 @@ export default function OfferSharePrintActions({ card }: { card: OfferShareCard 
                       type="button"
                       aria-pressed={active}
                       onClick={() => pick(option.id)}
-                      className={`shrink-0 rounded-2xl border px-4 py-3 text-left transition sm:w-full ${
+                      className={`shrink-0 rounded-2xl border px-4 py-3 text-left transition duration-300 ease-[cubic-bezier(.2,.8,.2,1)] hover:-translate-y-0.5 active:scale-[0.98] sm:w-full ${
                         active
                           ? 'border-[#15171a] bg-[#15171a] text-white dark:border-[#f3eee6] dark:bg-[#f3eee6] dark:text-[#15171a]'
                           : 'border-black/10 bg-white hover:border-black/30 dark:border-white/10 dark:bg-white/[0.04] dark:hover:border-white/30'
@@ -151,40 +149,43 @@ export default function OfferSharePrintActions({ card }: { card: OfferShareCard 
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto bg-[#e9e5de] px-4 py-5 sm:px-8 dark:bg-[#0c0b0a]">
-                <div className="mx-auto max-w-[560px]">
-                  <OfferSheetFit card={card} variant={style} />
+                <div className="mx-auto max-w-[520px]">
+                  <OfferSheetImage offerId={card.id} style={style} />
                 </div>
               </div>
             </div>
 
             <div className="border-t border-black/10 px-5 py-4 dark:border-white/10">
               {error ? <p className="mb-3 text-[12px] text-red-600 dark:text-red-400">{error}</p> : null}
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <button
                   type="button"
                   disabled={busy != null}
                   onClick={() => void run('print')}
-                  className={`${actionClass} bg-[#15171a] text-white dark:bg-[#f3eee6] dark:text-[#15171a]`}
+                  aria-busy={busy === 'print'}
+                  className="eos-lux-btn eos-lux-btn--primary"
                 >
-                  <Printer size={15} />
+                  <Printer size={15} className="eos-lux-btn__icon" />
                   {busy === 'print' ? BUSY_LABEL.print : 'Drukuj'}
                 </button>
                 <button
                   type="button"
                   disabled={busy != null}
                   onClick={() => void run('pdf')}
-                  className={`${actionClass} border border-black/15 bg-white dark:border-white/15 dark:bg-white/[0.04]`}
+                  aria-busy={busy === 'pdf'}
+                  className="eos-lux-btn eos-lux-btn--ghost"
                 >
-                  <Download size={15} />
+                  <Download size={15} className="eos-lux-btn__icon" />
                   {busy === 'pdf' ? BUSY_LABEL.pdf : 'Pobierz PDF'}
                 </button>
                 <button
                   type="button"
                   disabled={busy != null}
                   onClick={() => void run('jpeg')}
-                  className={`${actionClass} border border-black/15 bg-white dark:border-white/15 dark:bg-white/[0.04]`}
+                  aria-busy={busy === 'jpeg'}
+                  className="eos-lux-btn eos-lux-btn--ghost"
                 >
-                  <FileImage size={15} />
+                  <FileImage size={15} className="eos-lux-btn__icon" />
                   {busy === 'jpeg' ? BUSY_LABEL.jpeg : 'Pobierz JPEG'}
                 </button>
               </div>

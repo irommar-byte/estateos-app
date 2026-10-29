@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import type { OfferShareCard } from '@/lib/offerShareLanding';
-import { OfferSheetFit } from '@/components/offer/OfferSharePrintBrochure';
+import OfferSheetImage from '@/components/offer/OfferSheetImage';
 import { OFFER_SHEET_STYLES, useOfferSheetStyle } from '@/components/offer/offerSheetStyle';
 import { exportOfferSharePdfBase64, offerSharePrintFilename } from '@/lib/offerSharePrint';
 
@@ -24,7 +24,7 @@ export default function OfferShareArkusz({ card, initialStyle }: { card: OfferSh
     const bridge = window as Window & NativeBridge;
     bridge.estateosExportSheet = async () => {
       try {
-        const base64 = await exportOfferSharePdfBase64();
+        const base64 = await exportOfferSharePdfBase64(card.id, style);
         post({ type: 'file', format: 'pdf', filename: offerSharePrintFilename(card, 'pdf'), base64 });
       } catch {
         post({ type: 'error', message: 'Nie udało się przygotować ofertówki.' });
@@ -34,7 +34,7 @@ export default function OfferShareArkusz({ card, initialStyle }: { card: OfferSh
     return () => {
       delete bridge.estateosExportSheet;
     };
-  }, [card]);
+  }, [card, style]);
 
   return (
     <div className="offer-share-arkusz-page">
@@ -57,7 +57,7 @@ export default function OfferShareArkusz({ card, initialStyle }: { card: OfferSh
         })}
       </div>
       <div className="px-3 pb-6 pt-1">
-        <OfferSheetFit card={card} variant={style} maxScale={1.2} />
+        <OfferSheetImage offerId={card.id} style={style} />
       </div>
     </div>
   );

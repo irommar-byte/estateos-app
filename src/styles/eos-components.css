@@ -3770,3 +3770,127 @@ html .buyer-intake-shell.buyer-intake-shell .bi-welcome__icon {
   background: var(--bi-gold-soft);
   color: var(--bi-gold-ink);
 }
+
+/* ── Ofertówka: podgląd z serwera ── */
+.eos-sheet-preview {
+  position: relative;
+  aspect-ratio: 210 / 297;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 24px 60px -24px rgba(0, 0, 0, 0.35);
+}
+.eos-sheet-preview__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  animation: eos-sheet-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.eos-sheet-preview__skeleton {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #8a857c;
+  background: linear-gradient(110deg, #f4f1ea 30%, #fbfaf7 50%, #f4f1ea 70%) 0 0 / 300% 100%;
+  animation: eos-sheet-shimmer 1.4s linear infinite;
+}
+@keyframes eos-sheet-in {
+  from { opacity: 0; transform: scale(0.985); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+@keyframes eos-sheet-shimmer {
+  to { background-position: -150% 0; }
+}
+
+/* ── Luksusowe przyciski: uniesienie, połysk, sprężyste wciśnięcie ── */
+.eos-lux-btn {
+  --lux-bg: #15171a;
+  --lux-fg: #ffffff;
+  --lux-border: transparent;
+  --lux-shine: rgba(255, 255, 255, 0.28);
+  --lux-shadow: rgba(21, 23, 26, 0.35);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-radius: 999px;
+  border: 1px solid var(--lux-border);
+  padding: 0 18px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--lux-fg) !important;
+  background: var(--lux-bg) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition:
+    transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 0.25s ease,
+    background-color 0.25s ease;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+.eos-lux-btn * { color: inherit !important; }
+.eos-lux-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 35%, var(--lux-shine) 50%, transparent 65%);
+  transform: translateX(-120%);
+  transition: transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.eos-lux-btn--ghost {
+  --lux-bg: #ffffff;
+  --lux-fg: #15171a;
+  --lux-border: rgba(21, 23, 26, 0.14);
+  --lux-shine: rgba(201, 169, 110, 0.22);
+  --lux-shadow: rgba(21, 23, 26, 0.16);
+}
+html.dark .eos-lux-btn--primary {
+  --lux-bg: #f3eee6;
+  --lux-fg: #15171a;
+  --lux-shine: rgba(255, 255, 255, 0.7);
+  --lux-shadow: rgba(0, 0, 0, 0.6);
+}
+html.dark .eos-lux-btn--ghost {
+  --lux-bg: rgba(255, 255, 255, 0.04);
+  --lux-fg: #f3eee6;
+  --lux-border: rgba(255, 255, 255, 0.16);
+  --lux-shine: rgba(201, 169, 110, 0.28);
+  --lux-shadow: rgba(0, 0, 0, 0.6);
+}
+.eos-lux-btn__icon { transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); }
+@media (hover: hover) {
+  .eos-lux-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 14px 30px -12px var(--lux-shadow);
+  }
+  .eos-lux-btn--ghost:hover:not(:disabled) { --lux-border: rgba(201, 169, 110, 0.75); }
+  html.dark .eos-lux-btn--ghost:hover:not(:disabled) { --lux-border: rgba(201, 169, 110, 0.7); }
+  .eos-lux-btn:hover:not(:disabled)::before { transform: translateX(120%); }
+  .eos-lux-btn:hover:not(:disabled) .eos-lux-btn__icon { transform: translateY(-1px) scale(1.12); }
+}
+.eos-lux-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.965);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  transition-duration: 0.1s;
+}
+.eos-lux-btn:focus-visible { outline: 2px solid #c9a96e; outline-offset: 3px; }
+.eos-lux-btn:disabled { opacity: 0.55; cursor: progress; }
+.eos-lux-btn[aria-busy='true'] .eos-lux-btn__icon { animation: eos-lux-pulse 1s ease-in-out infinite; }
+@keyframes eos-lux-pulse { 50% { transform: scale(0.8); opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .eos-lux-btn, .eos-lux-btn::before, .eos-lux-btn__icon, .eos-sheet-preview__img { transition: none; animation: none; }
+}

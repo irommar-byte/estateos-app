@@ -4,7 +4,6 @@ export type OfferShareDownloadFormat = 'pdf' | 'jpeg';
 
 const A4_MM_WIDTH = 210;
 const A4_MM_HEIGHT = 297;
-const SHEET_ID = 'offer-share-print-brochure';
 
 export function truncateOfferShareDescription(text: string | null | undefined, max = 420): string {
   const plain = String(text || '').replace(/\s+/g, ' ').trim();
@@ -47,35 +46,6 @@ export function offerSharePrintFilename(
   return `estateos-oferta-${card.id}${slug ? `-${slug}` : ''}.${ext}`;
 }
 
-function waitForImages(root: HTMLElement, timeoutMs = 10000): Promise<void> {
-  const images = Array.from(root.querySelectorAll('img'));
-  return Promise.all(
-    images.map(
-      (img) =>
-        new Promise<void>((resolve) => {
-          if (img.complete && img.naturalWidth > 0) {
-            resolve();
-            return;
-          }
-          const done = () => resolve();
-          img.addEventListener('load', done, { once: true });
-          img.addEventListener('error', done, { once: true });
-          window.setTimeout(done, timeoutMs);
-        }),
-    ),
-  ).then(() => undefined);
-}
-
-type Html2CanvasFn = (
-  element: HTMLElement,
-  options?: Record<string, unknown>,
-) => Promise<HTMLCanvasElement>;
-
-async function loadHtml2Canvas(): Promise<Html2CanvasFn> {
-  const mod = await import('html2canvas');
-  return ((mod as { default?: Html2CanvasFn }).default || mod) as Html2CanvasFn;
-}
-
 /**
  * Dopasowuje teksty kartki do ich ramek bez cięcia w połowie wiersza:
  * akapit, który się nie mieści, traci ostatnie słowa i dostaje „…”; jednowierszowy napis skraca się do szerokości.
@@ -111,52 +81,52 @@ export function fitSheetText(root: HTMLElement, releaseOverflow = false): void {
   }
 }
 
-function findSheet(): HTMLElement {
-  const root = document.getElementById(SHEET_ID);
-  if (!root) throw new Error('offer-sheet-missing');
-  return root;
+export type OfferSheetStyleParam = 'galeria' | 'architekt' | 'pelna';
+
+/** Adres ofertówki rysowanej na serwerze; przenosi ?agent= i ?portal= z bieżącej strony. */
+export function offerSheetImageUrl(offerId: number, style: OfferSheetStyleParam): string {
+  const params = new URLSearchParams({ styl: style });
+  if (typeof window !== 'undefined') {
+    const current = new URLSearchParams(window.location.search);
+    for (const key of ['agent', 'portal']) {
+      const value = current.get(key);
+      if (value) params.set(key, value);
+    }
+  }
+  return `/api/offer-sheet/${offerId}?${params.toString()}`;
 }
 
-/**
- * Kartka w podglądzie jest pomniejszona (transform) — kopię do zdjęcia
- * odpinamy od skali i kładziemy w lewym górnym rogu, więc zawsze wychodzi pełne A4.
- */
-async function captureSheet(root: HTMLElement): Promise<HTMLCanvasElement> {
-  const html2canvas = await loadHtml2Canvas();
-  if (document.fonts?.ready) await document.fonts.ready;
-  await waitForImages(root);
-  const width = root.offsetWidth || 794;
-  const height = root.offsetHeight || 1123;
-  return html2canvas(root, {
-    scale: 2,
-    useCORS: true,
-    backgroundColor: '#ffffff',
-    logging: false,
-    x: 0,
-    y: 0,
-    width,
-    height,
-    windowWidth: width,
-    windowHeight: height,
-    scrollX: 0,
-    scrollY: 0,
-    onclone: (doc: Document) => {
-      const clone = doc.getElementById(SHEET_ID);
-      if (!clone) return;
-      for (let node = clone.parentElement; node; node = node.parentElement) {
-        node.style.transform = 'none';
-      }
-      Object.assign(clone.style, { position: 'fixed', left: '0px', top: '0px', margin: '0', zIndex: '2147483647' });
-      fitSheetText(clone, true);
-    },
+const sheetCache = new Map<string, Promise<Blob>>();
+
+/** Jeden obraz na styl — podgląd, PDF, JPEG i druk używają tego samego pliku. */
+export function loadOfferSheetBlob(offerId: number, style: OfferSheetStyleParam): Promise<Blob> {
+  const url = offerSheetImageUrl(offerId, style);
+  let pending = sheetCache.get(url);
+  if (!pending) {
+    pending = fetch(url, { credentials: 'same-origin' }).then(async (res) => {
+      if (!res.ok) throw new Error(`offer-sheet-${res.status}`);
+      return res.blob();
+    });
+    pending.catch(() => sheetCache.delete(url));
+    sheetCache.set(url, pending);
+  }
+  return pending;
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('sheet-read'));
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.readAsDataURL(blob);
   });
 }
 
-async function buildPdfBlob(root: HTMLElement): Promise<Blob> {
-  const { jsPDF } = await import('jspdf');
+async function buildPdfBlob(offerId: number, style: OfferSheetStyleParam): Promise<Blob> {
+  const [{ jsPDF }, image] = await Promise.all([import('jspdf'), loadOfferSheetBlob(offerId, style)]);
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
-  const canvas = await captureSheet(root);
-  pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'FAST');
+  pdf.setProperties({ title: 'Ofertówka EstateOS™', creator: 'EstateOS™' });
+  pdf.addImage(await blobToDataUrl(image), 'JPEG', 0, 0, A4_MM_WIDTH, A4_MM_HEIGHT, undefined, 'NONE');
   return pdf.output('blob');
 }
 
@@ -191,8 +161,8 @@ async function deliverBlobFile(blob: Blob, filename: string, mime: string): Prom
 }
 
 /** Drukujemy gotowy PDF A4 — przeglądarka nie dokłada marginesów ani drugiej strony. */
-export async function printOfferShareBrochure(): Promise<void> {
-  const blob = await buildPdfBlob(findSheet());
+export async function printOfferShareBrochure(offerId: number, style: OfferSheetStyleParam): Promise<void> {
+  const blob = await buildPdfBlob(offerId, style);
   const url = URL.createObjectURL(blob);
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
@@ -236,23 +206,14 @@ function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /** PDF wybranej kartki jako base64 — dla aplikacji (WebView). */
-export async function exportOfferSharePdfBase64(): Promise<string> {
-  return blobToBase64(await buildPdfBlob(findSheet()));
+export async function exportOfferSharePdfBase64(offerId: number, style: OfferSheetStyleParam): Promise<string> {
+  return blobToBase64(await buildPdfBlob(offerId, style));
 }
 
-export async function downloadOfferSharePdf(filename: string): Promise<void> {
-  const blob = await buildPdfBlob(findSheet());
-  await deliverBlobFile(blob, filename, 'application/pdf');
+export async function downloadOfferSharePdf(offerId: number, style: OfferSheetStyleParam, filename: string): Promise<void> {
+  await deliverBlobFile(await buildPdfBlob(offerId, style), filename, 'application/pdf');
 }
 
-export async function downloadOfferShareJpeg(filename: string): Promise<void> {
-  const canvas = await captureSheet(findSheet());
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (result) => (result ? resolve(result) : reject(new Error('Nie udało się zbudować JPEG.'))),
-      'image/jpeg',
-      0.92,
-    );
-  });
-  await deliverBlobFile(blob, filename, 'image/jpeg');
+export async function downloadOfferShareJpeg(offerId: number, style: OfferSheetStyleParam, filename: string): Promise<void> {
+  await deliverBlobFile(await loadOfferSheetBlob(offerId, style), filename, 'image/jpeg');
 }

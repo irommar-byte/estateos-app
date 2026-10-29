@@ -63,7 +63,7 @@ async function readLocalUploadBuffer(url: string): Promise<Buffer | null> {
   return null;
 }
 
-async function loadPhotoBuffer(url: string): Promise<Buffer | null> {
+export async function loadPhotoBuffer(url: string): Promise<Buffer | null> {
   const raw = String(url || '').trim();
   if (!raw) return null;
   const local = await readLocalUploadBuffer(raw);
