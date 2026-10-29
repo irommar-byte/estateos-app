@@ -4156,3 +4156,27 @@ html.dark .eos-plan-chip.is-active { color: #15171a; background: #f3eee6; border
   color: var(--eos-text);
   font-variant-numeric: tabular-nums;
 }
+.eos-photo-room-badge {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  z-index: 40;
+  display: inline-flex;
+  max-width: calc(100% - 48px);
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 3px 8px 3px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fff !important;
+  background: rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(8px);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.25s ease;
+}
+.eos-photo-room-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.eos-photo-room-badge.is-set { background: rgba(21, 23, 26, 0.88) !important; border-color: rgba(201, 169, 110, 0.85); }
+.eos-photo-room-badge:hover { transform: translateY(-1px); border-color: rgba(201, 169, 110, 0.9); }
+.eos-photo-room-badge:active { transform: scale(0.95); }
+.eos-photo-room-dialog { animation: eos-sheet-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both; }

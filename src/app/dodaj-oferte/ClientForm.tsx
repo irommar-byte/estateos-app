@@ -30,6 +30,7 @@ import AiDescriptionOptions from '@/components/offer/AiDescriptionOptions';
 import { editorialToHtml } from '@/lib/listingDescriptionFormat';
 import { descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { OfferHdrBadge } from '@/components/offer/OfferHdrBadge';
+import { PhotoRoomBadge, PhotoRoomPickerDialog, photoRoomOptions } from '@/components/offer/PhotoRoomPicker';
 import { probeHdrFromBlob } from '@/lib/upload/hdrBinaryProbe';
 import { typewriterReveal } from '@/lib/typewriterReveal';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -213,7 +214,7 @@ type DistrictCatalogResponse = {
   strictCityDistricts: Record<string, string[]>;
 };
 
-const SortableItem = ({ id, img, idx, onRemove, progressObj, isHdr }: any) => {
+const SortableItem = ({ id, img, idx, onRemove, progressObj, isHdr, roomLabel, onPickRoom }: any) => {
   const { dict } = useLocale();
   const ao = dict.addOffer;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -233,6 +234,7 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj, isHdr }: any) => {
     <div ref={setNodeRef} style={style} className="w-32 h-32 relative rounded-2xl overflow-hidden group border border-white/10 hover:border-[#10b981]/50 transition-all z-50 shadow-lg bg-black/40 flex-shrink-0">
       <img src={img} className={`w-full h-full object-cover pointer-events-none transition-all ${isUploading ? 'opacity-40 blur-[2px]' : ''}`} alt={ao.thumbAlt} />
       {isHdr ? <OfferHdrBadge compact /> : null}
+      {onPickRoom && !isUploading ? <PhotoRoomBadge label={roomLabel} onOpen={() => onPickRoom(img)} className={isHdr ? '!top-8' : ''} /> : null}
 
       {/* Nakładka z kropeczkami (Uchwyt Drag & Drop) */}
       <div {...attributes} {...listeners} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing z-20">
@@ -313,6 +315,9 @@ export default function ClientForm({
   const [locatingUser, setLocatingUser] = useState(false);
   
   const [imagesList, setImagesList] = useState<string[]>([]);
+  // Opcjonalnie: pomieszczenie zdjęcia (łączy galerię z rzutem na stronie oferty).
+  const [photoRooms, setPhotoRooms] = useState<Record<string, string>>({});
+  const [roomPickerImg, setRoomPickerImg] = useState<string | null>(null);
   const [uploadStats, setUploadStats] = useState<{[key: string]: {progress: number, error: boolean, sizeMB: number}}>({});
   const [filesMap, setFilesMap] = useState<{[key: string]: File}>({}); 
   const [hdrFlags, setHdrFlags] = useState<Record<string, boolean>>({}); 
@@ -1338,6 +1343,7 @@ export default function ClientForm({
         const formData = new FormData();
         formData.append('offerId', String(createdOfferId));
         formData.append('file', file);
+        if (photoRooms[blobKey]) formData.append('roomLabel', photoRooms[blobKey]);
         const uploadRes = await fetch('/api/upload', {
           method: 'POST',
           body: formData,
@@ -2325,11 +2331,38 @@ export default function ClientForm({
                   
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { const { active, over } = e; if (active.id !== over?.id && over) { setImagesList((items) => arrayMove(items, items.indexOf(active.id as string), items.indexOf(over.id as string))); } }}>
                     <SortableContext items={imagesList} strategy={rectSortingStrategy}>
-                      {imagesList.map((img, idx) => <SortableItem key={img} id={img} img={img} idx={idx} onRemove={handleRemoveImage} progressObj={uploadStats[img]} isHdr={Boolean(hdrFlags[img])} />)}
+                      {imagesList.map((img, idx) => <SortableItem key={img} id={img} img={img} idx={idx} onRemove={handleRemoveImage} progressObj={uploadStats[img]} isHdr={Boolean(hdrFlags[img])} roomLabel={photoRooms[img] || null} onPickRoom={setRoomPickerImg} />)}
                     </SortableContext>
                   </DndContext>
+                  {(() => {
+                    const { options, scanned } = photoRoomOptions(
+                      (Array.isArray(data.propertyRoomScans) ? data.propertyRoomScans : []).map((room: { name?: string }) => room?.name),
+                    );
+                    return (
+                      <PhotoRoomPickerDialog
+                        open={Boolean(roomPickerImg)}
+                        options={options}
+                        scannedCount={scanned}
+                        current={roomPickerImg ? photoRooms[roomPickerImg] || null : null}
+                        onPick={(room) => {
+                          if (!roomPickerImg) return;
+                          setPhotoRooms((prev) => {
+                            const next = { ...prev };
+                            if (room) next[roomPickerImg] = room;
+                            else delete next[roomPickerImg];
+                            return next;
+                          });
+                          setRoomPickerImg(null);
+                        }}
+                        onClose={() => setRoomPickerImg(null)}
+                      />
+                    );
+                  })()}
                 </div>
                 <p className="text-[10px] text-zinc-500 mt-3 text-center">{ao.photoGalleryHint}</p>
+                {imagesList.length > 0 ? (
+                  <p className="mt-1 text-center text-[11px] text-zinc-500">Opcjonalnie: kliknij „+ Pomieszczenie” na zdjęciu — zdjęcia połączą się z rzutem.</p>
+                ) : null}
                 {imagesList.length === 0 ? (
                   <p className="mt-2 text-center text-[11px] font-bold text-red-500">{ao.sumNoPhotos}</p>
                 ) : null}

@@ -1,7 +1,6 @@
 import sharp from 'sharp';
 import type { FloorPlanScanMeta } from '@/types/roomScan';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { Fragment, isValidElement, type ReactNode } from 'react';
 import { detectPlanRooms, normalizeScanMeta, placePlanObjects } from '@/lib/roomScan/planNormalize';
 import { planFurnitureSymbol } from '@/components/offers/planFurnitureSymbols';
 
@@ -13,6 +12,21 @@ const ROOM_TINT: Record<string, string> = {
   kitchen: '#f6ebe3',
   hallway: '#efeeea',
 };
+
+/** Prosty zapis elementów SVG (React) do tekstu — bez react-dom/server, którego Next nie pozwala importować w trasach. */
+function svgMarkup(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  if (Array.isArray(node)) return node.map(svgMarkup).join('');
+  if (!isValidElement(node)) return '';
+  const { children, ...props } = (node.props || {}) as Record<string, unknown> & { children?: ReactNode };
+  if (node.type === Fragment || typeof node.type !== 'string') return svgMarkup(children);
+  const attrs = Object.entries(props)
+    .filter(([key, value]) => value != null && value !== false && key !== 'key')
+    .map(([key, value]) => `${key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}="${String(value).replace(/"/g, '&quot;')}"`)
+    .join(' ');
+  return `<${node.type}${attrs ? ` ${attrs}` : ''}>${svgMarkup(children)}</${node.type}>`;
+}
 
 export type SheetPlan = {
   /** Rzut bez napisów (PNG, data URI) — napisy kładzie silnik kartki, tą samą czcionką co reszta. */
@@ -54,7 +68,7 @@ export async function buildSheetPlan(raw: FloorPlanScanMeta | null, width: numbe
   // Rzut „ubrany” — te same meble i symbole co na stronie oferty.
   const furniture = placePlanObjects(meta, rooms)
     .map((o) => {
-      const inner = renderToStaticMarkup(createElement('g', null, planFurnitureSymbol(o.category, o.widthM * scale, o.depthM * scale)));
+      const inner = svgMarkup(planFurnitureSymbol(o.category, o.widthM * scale, o.depthM * scale));
       return `<g transform="translate(${X(o.centerX).toFixed(1)} ${Y(o.centerZ).toFixed(1)}) rotate(${o.rotationDeg})" opacity="0.9">${inner}</g>`;
     })
     .join('');

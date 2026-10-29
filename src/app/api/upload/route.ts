@@ -8,6 +8,7 @@ import {
   saveOfferFloorPlan3d,
 } from '@/lib/upload/offerMediaUpload';
 import { resolveUploaderUserId } from '@/lib/upload/resolveUploader';
+import { setOfferPhotoRoom } from '@/lib/offerPhotoRooms';
 
 const requestMap = new Map<string, { count: number; last: number }>();
 const RATE_LIMIT = 15;
@@ -96,6 +97,12 @@ export async function POST(req: Request) {
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
+    }
+
+    // Pomieszczenie wybrane przy dodawaniu zdjęcia (opcjonalnie) — łączy zdjęcie z rzutem.
+    const roomLabel = String(formData.get('roomLabel') || '').trim();
+    if (roomLabel && !isFloorPlan) {
+      await setOfferPhotoRoom(offerId, result.url, roomLabel).catch(() => undefined);
     }
 
     return NextResponse.json({

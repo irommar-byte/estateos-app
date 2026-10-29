@@ -1,5 +1,7 @@
 "use client";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { PhotoRoomBadge, PhotoRoomPickerDialog, photoRoomOptions, scannedRoomNames } from '@/components/offer/PhotoRoomPicker';
+import { photoRoomKey } from '@/lib/offerPhotoRoomKey';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -185,8 +187,12 @@ const SortablePhoto = ({
   isMain,
   meta,
   progress,
+  roomLabel,
+  onPickRoom,
 }: {
   url: string;
+  roomLabel?: string | null;
+  onPickRoom?: (url: string) => void;
   onRemove: (url: string) => void;
   onMarkAsPlan?: (url: string) => void;
   isMain: boolean;
@@ -228,6 +234,7 @@ const SortablePhoto = ({
           <span className="h-1.5 w-1.5 rounded-full bg-white/85" />
         </div>
       </div>
+      {onPickRoom && !uploading ? <PhotoRoomBadge label={roomLabel} onOpen={() => onPickRoom(url)} /> : null}
       <button onClick={() => onRemove(url)} className="absolute top-2 right-2 p-2 bg-black/80 border border-white/10 hover:bg-red-500 hover:border-red-400 rounded-full text-white/80 hover:text-white z-20 transition-all shadow-xl"><Trash2 size={14} /></button>
       {onMarkAsPlan ? (
         <button
@@ -282,6 +289,11 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [selectedAmenities, setSelectedAmenities] = useState<OfferAmenityId[]>([]);
   const [intelPatches, setIntelPatches] = useState<IntelligenceAmenityPatchMap>({});
   const [imagesList, setImagesList] = useState<string[]>([]);
+  // Opcjonalnie: pomieszczenie zdjęcia (łączy galerię z rzutem na stronie oferty).
+  const [photoRooms, setPhotoRooms] = useState<Record<string, string>>({});
+  const [photoRoomsTouched, setPhotoRoomsTouched] = useState(false);
+  const [roomPickerUrl, setRoomPickerUrl] = useState<string | null>(null);
+  const [scannedRooms, setScannedRooms] = useState<string[]>([]);
   const [imageMeta, setImageMeta] = useState<Record<string, OfferImageMetaPublic>>({});
   const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
   const [floorPlanExtraUrls, setFloorPlanExtraUrls] = useState<string[]>([]);
@@ -410,6 +422,20 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
           cp === null || cp === undefined ? '' : String(cp).replace('.', ','),
         );
         if (parsedImages.length) setImagesList(parsedImages);
+        setScannedRooms(scannedRoomNames(offer.floorPlanScanMeta));
+        fetch(`/api/offers/${offerId}/photo-rooms`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((json) => {
+            const items = Array.isArray(json?.items) ? (json.items as Array<{ url: string; room: string }>) : [];
+            const byPath: Record<string, string> = Object.fromEntries(items.map((item) => [item.url, item.room]));
+            const next: Record<string, string> = {};
+            for (const url of parsedImages as string[]) {
+              const room = byPath[photoRoomKey(url)];
+              if (room) next[url] = room;
+            }
+            setPhotoRooms(next);
+          })
+          .catch(() => undefined);
         try {
           const metaRes = await fetch(`/api/offers/${offerId}/images-meta`, { credentials: 'include' });
           if (metaRes.ok) {
@@ -706,6 +732,16 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     };
     const res = await fetch(`/api/offers/${offerId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const result = await res.json().catch(() => ({}));
+    if (res.ok && photoRoomsTouched) {
+      await fetch(`/api/offers/${offerId}/photo-rooms`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          items: imagesList.filter((url) => photoRooms[url]).map((url) => ({ url, room: photoRooms[url] })),
+        }),
+      }).catch(() => undefined);
+    }
     if (res.ok) { 
       setIsSuccess(true); 
       setTimeout(() => goBackFromEdit(), 2500); 
@@ -1304,6 +1340,29 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
             />
           </div>
           
+          {(() => {
+            const { options, scanned } = photoRoomOptions(scannedRooms);
+            return (
+              <PhotoRoomPickerDialog
+                open={Boolean(roomPickerUrl)}
+                options={options}
+                scannedCount={scanned}
+                current={roomPickerUrl ? photoRooms[roomPickerUrl] || null : null}
+                onPick={(room) => {
+                  if (!roomPickerUrl) return;
+                  setPhotoRooms((prev) => {
+                    const next = { ...prev };
+                    if (room) next[roomPickerUrl] = room;
+                    else delete next[roomPickerUrl];
+                    return next;
+                  });
+                  setPhotoRoomsTouched(true);
+                  setRoomPickerUrl(null);
+                }}
+                onClose={() => setRoomPickerUrl(null)}
+              />
+            );
+          })()}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={imagesList} strategy={horizontalListSortingStrategy}>
               <div className="flex flex-wrap gap-4 md:gap-6 mb-6">
@@ -1315,6 +1374,8 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                     onMarkAsPlan={handleMarkAsPlan}
                     isMain={idx === 0}
                     meta={imageMeta[url] || null}
+                    roomLabel={photoRooms[url] || null}
+                    onPickRoom={setRoomPickerUrl}
                   />
                 ))}
                 {uploadingTiles.map((tile) => (
