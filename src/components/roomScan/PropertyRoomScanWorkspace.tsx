@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActionSheetIOS, Alert, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -103,6 +103,26 @@ type Props = {
 
 type ActiveScan = { mode: 'room'; roomId: string } | { mode: 'property' };
 
+/** Ikony kafelków typów pomieszczeń. */
+const ROOM_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  livingRoom: 'tv-outline',
+  livingRoomKitchenette: 'restaurant-outline',
+  room: 'square-outline',
+  bedroom: 'bed-outline',
+  kitchen: 'flame-outline',
+  diningRoom: 'cafe-outline',
+  bathroom: 'water-outline',
+  wc: 'water-outline',
+  hallway: 'walk-outline',
+  office: 'desktop-outline',
+  closet: 'shirt-outline',
+  storageUnit: 'cube-outline',
+  balcony: 'sunny-outline',
+  garage: 'car-outline',
+  laundry: 'sync-outline',
+  unspecified: 'ellipsis-horizontal',
+};
+
 export default function PropertyRoomScanWorkspace({
   rooms,
   onChangeRooms,
@@ -118,6 +138,9 @@ export default function PropertyRoomScanWorkspace({
   const [customRoomName, setCustomRoomName] = useState('');
   const [activeScan, setActiveScan] = useState<ActiveScan | null>(null);
   const [showCoachmark, setShowCoachmark] = useState(Boolean(autoOpen));
+  /** Okienko wyboru typu: nowe pomieszczenie (null) albo zmiana typu istniejącego (id). */
+  const [typePicker, setTypePicker] = useState<{ roomId: string | null; scan: boolean } | null>(null);
+  const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
   const coachmarkHandled = useRef(false);
   const scanAvailable = isRoomScanSupportedOnDevice();
   const roomsRef = useRef(rooms);
@@ -180,8 +203,8 @@ export default function PropertyRoomScanWorkspace({
   );
   const scannedRooms = rooms.filter((room) => room.scanMeta).length;
 
-  const addRoom = (scanImmediately = false) => {
-    const name = (newRoomName === 'Inne' ? customRoomName : newRoomName).trim();
+  const addRoom = (scanImmediately = false, presetName?: string) => {
+    const name = (presetName || (newRoomName === 'Inne' ? customRoomName : newRoomName)).trim();
     if (!name) return;
     const room: PropertyRoomScan = {
       id: `room-${Date.now()}-${Math.round(Math.random() * 1000)}`,
@@ -294,6 +317,31 @@ export default function PropertyRoomScanWorkspace({
           ),
         );
       });
+    }
+  };
+
+  const openRoomMenu = (room: PropertyRoomScan) => {
+    const actions: Array<{ label: string; run: () => void; destructive?: boolean }> = [
+      { label: 'Zmień typ', run: () => setTypePicker({ roomId: room.id, scan: false }) },
+      { label: 'Popraw wymiary', run: () => setEditingRoomId(editingRoomId === room.id ? null : room.id) },
+      ...(scanAvailable ? [{ label: room.scanMeta ? 'Skanuj ponownie' : 'Skanuj', run: () => setActiveScan({ mode: 'room', roomId: room.id }) }] : []),
+      {
+        label: 'Usuń',
+        destructive: true,
+        run: () =>
+          Alert.alert(`Usunąć: ${room.name}?`, 'Skan i wymiary tego pomieszczenia znikną z oferty.', [
+            { text: 'Anuluj', style: 'cancel' },
+            { text: 'Usuń', style: 'destructive', onPress: () => removeRoom(room) },
+          ]),
+      },
+    ];
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { title: room.name, options: [...actions.map((a) => a.label), 'Anuluj'], cancelButtonIndex: actions.length, destructiveButtonIndex: actions.findIndex((a) => a.destructive) },
+        (index) => actions[index]?.run(),
+      );
+    } else {
+      Alert.alert(room.name, undefined, [...actions.map((a) => ({ text: a.label, style: a.destructive ? ('destructive' as const) : ('default' as const), onPress: a.run })), { text: 'Anuluj', style: 'cancel' as const }]);
     }
   };
 
@@ -433,7 +481,7 @@ export default function PropertyRoomScanWorkspace({
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: palette.text }]}>Studio pomiarowe LiDAR</Text>
           <Text style={[styles.subtitle, { color: palette.secondary }]}>
-            Osobny rzut 2D i model 3D każdego pomieszczenia oraz plan całej nieruchomości.
+            Plan 2D i model 3D każdego pomieszczenia.
           </Text>
         </View>
       </View>
@@ -442,7 +490,7 @@ export default function PropertyRoomScanWorkspace({
         <View style={[styles.coachmark, { borderColor: `${palette.accent}55` }]}>
           <Ionicons name="information-circle-outline" size={21} color={palette.accent} />
           <Text style={[styles.coachmarkText, { color: palette.text }]}>
-            Wybierz nazwę, dodaj pomieszczenie i uruchom skan z jego karty. Wymiary wpiszą się automatycznie.
+            Dotknij „Skanuj pomieszczenie”, wybierz typ i obejdź pokój z telefonem. Wymiary wpiszą się same.
           </Text>
           <Pressable onPress={() => setShowCoachmark(false)} hitSlop={10}>
             <Ionicons name="close" size={18} color={palette.secondary} />
@@ -451,76 +499,61 @@ export default function PropertyRoomScanWorkspace({
       ) : null}
 
       {!disabled ? (
-        <View style={[styles.addCard, { backgroundColor: palette.elevated, borderColor: palette.border }]}>
-          <Text style={[styles.label, { color: palette.secondary }]}>1. WYBIERZ POMIESZCZENIE</Text>
-          <View style={styles.presets}>
-            {ROOM_PRESET_DEFS.map((preset) => {
-              const selected = newRoomName === preset.label;
-              return (
-                <Pressable
-                  key={preset.key}
-                  onPress={() => setNewRoomName(preset.label)}
-                  style={[
-                    styles.preset,
-                    {
-                      backgroundColor: selected ? palette.accent : palette.card,
-                      borderColor: selected ? palette.accent : palette.border,
-                    },
-                  ]}
-                >
-                  <Text style={{ color: selected ? '#fff' : palette.text, fontSize: 11, fontWeight: '800' }}>
-                    {preset.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          {newRoomName === 'Inne' ? (
-            <TextInput
-              value={customRoomName}
-              onChangeText={setCustomRoomName}
-              placeholder="Wpisz nazwę pomieszczenia"
-              placeholderTextColor={palette.secondary}
-              style={[styles.nameInput, { color: palette.text, backgroundColor: palette.input, borderColor: palette.border }]}
-            />
-          ) : null}
-          <View style={styles.addActions}>
-            <Pressable onPress={() => addRoom(false)} style={[styles.addSecondary, { borderColor: palette.border }]}>
+        <View style={styles.addActions}>
+          <Pressable onPress={() => setTypePicker({ roomId: null, scan: scanAvailable })} style={[styles.addPrimary, { backgroundColor: palette.accent }]}>
+            <Ionicons name={scanAvailable ? 'scan' : 'add'} size={19} color="#fff" />
+            <Text style={styles.addPrimaryText}>{scanAvailable ? 'Skanuj pomieszczenie' : 'Dodaj pomieszczenie'}</Text>
+          </Pressable>
+          {scanAvailable ? (
+            <Pressable onPress={() => setTypePicker({ roomId: null, scan: false })} style={[styles.addSecondary, { borderColor: palette.border }]}>
               <Ionicons name="add" size={19} color={palette.text} />
-              <Text style={{ color: palette.text, fontWeight: '800' }}>Dodaj do listy</Text>
+              <Text style={{ color: palette.text, fontWeight: '700' }}>Bez skanu</Text>
             </Pressable>
-            {scanAvailable ? (
-              <Pressable onPress={() => addRoom(true)} style={[styles.addPrimary, { backgroundColor: palette.accent }]}>
-                <Ionicons name="scan" size={19} color="#fff" />
-                <Text style={styles.addPrimaryText}>Dodaj i skanuj</Text>
-              </Pressable>
-            ) : null}
-          </View>
+          ) : null}
         </View>
       ) : null}
 
-      <View style={styles.summaryRow}>
-        <View style={[styles.summaryPill, { backgroundColor: palette.elevated, borderColor: palette.border }]}>
-          <Text style={[styles.summaryLabel, { color: palette.secondary }]}>POKOJE</Text>
-          <Text style={[styles.summaryValue, { color: palette.text }]}>{listingRooms}</Text>
-        </View>
-        <View style={[styles.summaryPill, { backgroundColor: palette.elevated, borderColor: palette.border }]}>
-          <Text style={[styles.summaryLabel, { color: palette.secondary }]}>POMIESZCZENIA</Text>
-          <Text style={[styles.summaryValue, { color: palette.text }]}>{rooms.length}</Text>
-        </View>
-        <View style={[styles.summaryPill, { backgroundColor: palette.elevated, borderColor: palette.border }]}>
-          <Text style={[styles.summaryLabel, { color: palette.secondary }]}>ZESKANOWANE</Text>
-          <Text style={[styles.summaryValue, { color: palette.text }]}>{scannedRooms}/{rooms.length}</Text>
-        </View>
-        <View style={[styles.summaryPill, { backgroundColor: palette.elevated, borderColor: palette.border }]}>
-          <Text style={[styles.summaryLabel, { color: palette.secondary }]}>SUMA</Text>
-          <Text style={[styles.summaryValue, { color: palette.success }]}>{totalArea.toFixed(1)} m²</Text>
-        </View>
-      </View>
+      {rooms.length ? (
+        <Text style={[styles.countHint, { color: palette.secondary }]}>
+          {[
+            listingRooms ? `${listingRooms} ${listingRooms === 1 ? 'pokój' : listingRooms < 5 ? 'pokoje' : 'pokoi'}` : null,
+            `${rooms.length} ${rooms.length === 1 ? 'pomieszczenie' : rooms.length < 5 ? 'pomieszczenia' : 'pomieszczeń'}`,
+            totalArea ? `${totalArea.toFixed(1).replace('.', ',')} m²` : null,
+            `zeskanowane ${scannedRooms}/${rooms.length}`,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </Text>
+      ) : null}
 
-      <Text style={[styles.countHint, { color: palette.secondary }]}>
-        Do liczby pokoi w ofercie liczą się salon, pokój, sypialnia, gabinet i jadalnia. Łazienka, WC, kuchnia, komórka i przedpokój pozostają na planie, ale nie jako pokoje.
-      </Text>
+      <Modal visible={Boolean(typePicker)} transparent animationType="slide" onRequestClose={() => setTypePicker(null)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setTypePicker(null)}>
+          <Pressable style={[styles.sheet, { backgroundColor: palette.card }]} onPress={() => {}}>
+            <View style={[styles.sheetHandle, { backgroundColor: palette.border }]} />
+            <Text style={[styles.title, { color: palette.text, marginBottom: 12 }]}>{typePicker?.roomId ? 'Zmień typ' : 'Jakie to pomieszczenie?'}</Text>
+            <View style={styles.tileGrid}>
+              {ROOM_PRESET_DEFS.map((preset) => (
+                <Pressable
+                  key={preset.key}
+                  onPress={() => {
+                    const picker = typePicker;
+                    setTypePicker(null);
+                    if (!picker) return;
+                    if (picker.roomId) updateRoom(picker.roomId, { name: preset.label, typeKey: preset.key });
+                    else addRoom(picker.scan, preset.label);
+                  }}
+                  style={({ pressed }) => [styles.tile, { backgroundColor: palette.elevated, borderColor: palette.border, opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Ionicons name={ROOM_ICON[preset.key] || 'square-outline'} size={22} color={palette.accent} />
+                  <Text style={[styles.tileText, { color: palette.text }]} numberOfLines={2}>
+                    {preset.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {rooms.map((room, index) => (
         <View key={room.id} style={[styles.roomCard, { backgroundColor: palette.elevated, borderColor: room.scanMeta ? `${palette.success}66` : palette.border }]}>
@@ -528,12 +561,9 @@ export default function PropertyRoomScanWorkspace({
             <View style={[styles.roomNumber, { backgroundColor: room.scanMeta ? palette.success : palette.accent }]}>
               <Text style={styles.roomNumberText}>{index + 1}</Text>
             </View>
-            <TextInput
-              value={room.name}
-              editable={!disabled}
-              onChangeText={(name) => updateRoom(room.id, { name })}
-              style={[styles.roomName, { color: palette.text }]}
-            />
+            <Text style={[styles.roomName, { color: palette.text }]} numberOfLines={1}>
+              {room.name}
+            </Text>
             {room.scanMeta ? (
               <View style={styles.readyBadge}>
                 <Ionicons name="checkmark-circle" size={14} color={palette.success} />
@@ -541,36 +571,12 @@ export default function PropertyRoomScanWorkspace({
               </View>
             ) : null}
             {!disabled ? (
-              <Pressable onPress={() => removeRoom(room)} hitSlop={10}>
-                <Ionicons name="trash-outline" size={18} color="#ef4444" />
+              <Pressable onPress={() => openRoomMenu(room)} hitSlop={10}>
+                <Ionicons name="ellipsis-horizontal-circle" size={22} color={palette.secondary} />
               </Pressable>
             ) : null}
           </View>
-          {!disabled ? (
-            <View style={styles.presets}>
-              {ROOM_PRESET_DEFS.map((preset) => {
-                const selected = (room.typeKey || roomTypeKeyFromName(room.name)) === preset.key;
-                return (
-                  <Pressable
-                    key={`${room.id}-${preset.key}`}
-                    onPress={() => updateRoom(room.id, { name: preset.label, typeKey: preset.key })}
-                    style={[
-                      styles.preset,
-                      {
-                        backgroundColor: selected ? palette.accent : palette.card,
-                        borderColor: selected ? palette.accent : palette.border,
-                      },
-                    ]}
-                  >
-                    <Text style={{ color: selected ? '#fff' : palette.text, fontSize: 10, fontWeight: '800' }}>
-                      {preset.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-
+          {editingRoomId === room.id ? (
           <View style={styles.measureGrid}>
             {([
               ['widthM', 'SZEROKOŚĆ', 'm'],
@@ -595,6 +601,15 @@ export default function PropertyRoomScanWorkspace({
               </View>
             ))}
           </View>
+          ) : (
+            <Pressable disabled={disabled} onPress={() => setEditingRoomId(room.id)}>
+              <Text style={[styles.planSubtitle, { color: room.areaM2 ? palette.text : palette.secondary, fontSize: 14 }]}>
+                {room.areaM2
+                  ? [room.widthM && room.lengthM ? `${room.widthM} × ${room.lengthM} m` : null, `${room.areaM2} m²`, room.heightM ? `wys. ${room.heightM} m` : null].filter(Boolean).join(' · ')
+                  : 'Wymiary uzupełnią się po skanie — albo dotknij, żeby wpisać'}
+              </Text>
+            </Pressable>
+          )}
 
           {(() => {
             const cropped = cropScanMetaToRoom(wholeScan?.scanMeta, room);
@@ -641,7 +656,6 @@ export default function PropertyRoomScanWorkspace({
               </View>
             </Pressable>
             <View style={{ flex: 1, gap: 4 }}>
-              <Text style={[styles.planTitle, { color: palette.text }]}>Plan przypisany do: {room.name}</Text>
               <Text style={[styles.planSubtitle, { color: palette.secondary }]}>
                 {(previewMeta?.openings || room.scanMeta?.openings)?.length || 0} przejść, drzwi lub okien · wysokość {room.heightM || '—'} m
                 {(previewMeta?.objects || room.scanMeta?.objects)?.length
@@ -672,7 +686,7 @@ export default function PropertyRoomScanWorkspace({
             );
           })()}
 
-          {scanAvailable && !disabled ? (
+          {scanAvailable && !disabled && !room.scanMeta ? (
             <Pressable
               onPress={() => setActiveScan({ mode: 'room', roomId: room.id })}
               style={[styles.scanRoomBtn, { borderColor: `${palette.accent}66`, backgroundColor: isDark ? '#082f49' : '#e0f2fe' }]}
@@ -817,6 +831,12 @@ const styles = StyleSheet.create({
   addPrimary: { flex: 1.25, minHeight: 44, borderRadius: 12, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' },
   addPrimaryText: { color: '#fff', fontWeight: '900' },
   summaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 8 },
+  sheetBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18, paddingBottom: 34 },
+  sheetHandle: { alignSelf: 'center', width: 38, height: 5, borderRadius: 3, marginBottom: 14 },
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tile: { width: '31.5%', minHeight: 78, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 8 },
+  tileText: { fontSize: 12, fontWeight: '700', textAlign: 'center' },
   countHint: { fontSize: 10, lineHeight: 14, fontWeight: '600', marginBottom: 10 },
   summaryPill: { flex: 1, borderRadius: 12, borderWidth: 1, padding: 9, alignItems: 'center' },
   summaryLabel: { fontSize: 8, fontWeight: '900', letterSpacing: 0.6 },
