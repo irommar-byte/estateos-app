@@ -1157,9 +1157,9 @@ function OfferDetails({
                 </div>
 
                 {amenityLabels.length > 0 && (
-                <div className="eos-offer-panel mt-8 p-8 md:p-12">
-                  <h3 className="eos-offer-metric-label mb-6">{t.amenities}</h3>
-                  <div className="flex flex-wrap gap-3">
+                <div className="eos-offer-panel mt-8 p-6 md:p-8">
+                  <h3 className="eos-offer-metric-label mb-4">{t.amenities}</h3>
+                  <div className="flex flex-wrap gap-2.5">
                     {amenityLabels.map((amenity: string, idx: number) => (
                       <div key={idx} className={`flex items-center gap-2 rounded-2xl border bg-[var(--eos-input)] px-4 py-2.5 ${themeColors.borderActive}`}>
                         <CheckCircle2 size={16} className={themeColors.textActive} />
@@ -1390,69 +1390,54 @@ function OfferDetails({
                         </p>
                       </div>
                     ) : costsParams.length > 0 ? (
-                      <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="mb-3 grid grid-cols-2 gap-2">
                         {costsParams.map((param, idx) => (
-                          <div key={idx} className="flex min-h-[90px] flex-col justify-between rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 transition-colors hover:bg-[var(--eos-surface-strong)]">
-                            <span className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{param.label}</span>
-                            <span className="text-base font-bold text-[var(--eos-text)]">{param.value}</span>
+                          <div key={idx} className="eos-aside-stat">
+                            <span className="eos-aside-stat__label">{param.label}</span>
+                            <span className="eos-aside-stat__value">{param.value}</span>
                           </div>
                         ))}
                       </div>
                     ) : null}
                     {showServicingCompanyBlock ? (
-                      <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 sm:p-5">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
-                          {t.commissionCompany}
-                        </p>
-
-                        <div className="mt-4 flex flex-col items-center text-center">
-                          <div className="flex size-20 items-center justify-center overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[var(--eos-shadow-soft)] sm:size-24">
+                      <div className="eos-aside-company">
+                        <div className="flex items-center gap-3">
+                          <div className="eos-aside-company__logo">
                             {servicingCompanyLogoUrl ? (
-                              <img
-                                src={servicingCompanyLogoUrl}
-                                alt={t.companyLogoAlt}
-                                className="h-full w-full object-contain p-2"
-                              />
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={servicingCompanyLogoUrl} alt={t.companyLogoAlt} className="h-full w-full object-contain p-1.5" />
                             ) : (
-                              <Briefcase className={`size-8 ${themeColors.textActive}`} aria-hidden />
+                              <Briefcase className={`size-5 ${themeColors.textActive}`} aria-hidden />
                             )}
                           </div>
-                          {servicingCompanyName ? (
-                            <p className="mt-3 text-base font-bold leading-snug text-[var(--eos-text)] sm:text-lg">
-                              {servicingCompanyName}
-                            </p>
-                          ) : null}
+                          <div className="min-w-0">
+                            <p className="eos-aside-stat__label">{t.commissionCompany}</p>
+                            {servicingCompanyName ? (
+                              <p className="truncate text-[15px] font-semibold text-[var(--eos-text)]">{servicingCompanyName}</p>
+                            ) : null}
+                          </div>
                         </div>
 
                         {(agentPhotoUrl || agentPersonName) ? (
-                          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-3">
-                            <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                          <div className="mt-3 flex items-center gap-3 border-t border-[var(--eos-border)] pt-3">
+                            <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] shadow-[0_6px_14px_-8px_rgba(0,0,0,0.5)]">
                               {agentPhotoUrl ? (
-                                <img
-                                  src={agentPhotoUrl}
-                                  alt={t.agentPhotoAlt}
-                                  className="h-full w-full object-cover"
-                                />
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={agentPhotoUrl} alt={t.agentPhotoAlt} className="h-full w-full object-cover" />
                               ) : (
-                                <span className="text-lg" aria-hidden>
-                                  👤
-                                </span>
+                                <span className="text-base" aria-hidden>👤</span>
                               )}
                             </div>
                             <div className="min-w-0 text-left">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">
-                                {t.agentRoleLabel}
-                              </p>
+                              <p className="eos-aside-stat__label">{t.agentRoleLabel}</p>
                               {agentPersonName ? (
-                                <p className="truncate text-sm font-semibold text-[var(--eos-text)]">
-                                  {agentPersonName}
-                                </p>
+                                <p className="truncate text-[14px] font-semibold text-[var(--eos-text)]">{agentPersonName}</p>
                               ) : null}
                             </div>
                           </div>
                         ) : null}
 
-                        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                           <button
                             type="button"
                             onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}

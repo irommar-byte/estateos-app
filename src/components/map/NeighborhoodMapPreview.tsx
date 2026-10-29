@@ -248,7 +248,8 @@ export default function NeighborhoodMapPreview({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+        {/* Na stronie oferty nagłówek z adresem jest już w karcie „Lokalizacja” — tu tylko mapa i skróty. */}
+        <div className={isOffer ? "hidden" : ""}>
           <p className={labelClass}>
             <MapPin size={12} />
             {sectionLabel || defaultLabel}
@@ -291,8 +292,8 @@ export default function NeighborhoodMapPreview({
             ref={containerRef}
             className={`absolute inset-0 w-full h-full ${isOffer ? "min-h-[280px] md:min-h-[320px]" : "min-h-[320px] md:min-h-[380px]"} ${locked ? "pointer-events-none" : ""}`}
           />
-          <div className={gradientClass} />
-          <p className={footerClass}>{footerCaption || defaultFooter}</p>
+          {isOffer ? null : <div className={gradientClass} />}
+          {isOffer ? null : <p className={footerClass}>{footerCaption || defaultFooter}</p>}
         </div>
 
         {previewImageUrl && !isOffer ? (

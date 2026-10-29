@@ -16,6 +16,8 @@ type ReportQuota = {
 };
 
 type Props = {
+  /** Na stronie oferty: gdy wyceny nie da się policzyć, panel znika zamiast pokazywać komunikat techniczny. */
+  hideWhenUnavailable?: boolean;
   lat?: number | null;
   lng?: number | null;
   area?: number | null;
@@ -128,6 +130,7 @@ function CompRow({ c }: { c: MarketComp }) {
 }
 
 export default function MarketValuationPanel({
+  hideWhenUnavailable = false,
   lat,
   lng,
   area,
@@ -373,6 +376,8 @@ export default function MarketValuationPanel({
       : quota?.kind === "credits"
         ? `${quota.remaining}`
         : null;
+
+  if (hideWhenUnavailable && error && !result && !loading) return null;
 
   return (
     <>

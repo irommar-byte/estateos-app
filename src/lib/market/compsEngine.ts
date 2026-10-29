@@ -11,6 +11,7 @@ import {
   WARSAW_CITY,
 } from '@/lib/market/constants';
 import { prisma } from '@/lib/prisma';
+import { resolveRcnAsOfDate } from '@/lib/market/asOf';
 import { KIND_LABEL, KIND_QUALITY, MARKET_KIND_LOCAL, type MarketKind } from '@/lib/market/marketKinds';
 import { ensureMarketTables } from '@/lib/market/ensureMarketTables';
 import { marketPriceScore } from '@/lib/market/format';
@@ -18,8 +19,9 @@ import { sortCompsBySimilarity } from '@/lib/market/compSimilarity';
 import { haversineMeters } from '@/lib/market/warsawDistricts';
 import type { MarketComp, PriceScore, ValuationResult, ValuationSubject } from '@/lib/market/types';
 
-function monthsAgo(months: number) {
-  const d = new Date();
+/** Okno liczone od ostatnich kompletnych aktów RCN (rejestr publikuje z opóźnieniem), a nie od dziś. */
+function monthsAgo(months: number, anchor: Date = new Date()) {
+  const d = new Date(anchor.getTime());
   d.setMonth(d.getMonth() - months);
   return d;
 }
@@ -238,13 +240,14 @@ export async function valueProperty(
     };
   }
 
+  const rcnAsOf = await resolveRcnAsOfDate(subject.city || WARSAW_CITY).catch(() => new Date());
   let windowMonths = DEFAULT_COMPS_MONTHS;
   let used: Candidate[] = [];
   let radiusM = COMPS_RADIUS_STEPS_M[0];
 
   for (const months of [DEFAULT_COMPS_MONTHS, FALLBACK_COMPS_MONTHS]) {
     windowMonths = months;
-    const since = monthsAgo(months);
+    const since = monthsAgo(months, rcnAsOf);
     used = [];
     for (const step of COMPS_RADIUS_STEPS_M) {
       radiusM = step;
@@ -260,7 +263,7 @@ export async function valueProperty(
   let ppsmValues = used.map((r) => r.pricePerM2).sort((a, b) => a - b);
 
   if (ppsmValues.length < COMPS_MIN_COUNT) {
-    const fallback = await districtOrCityMedian(subject, monthsAgo(FALLBACK_COMPS_MONTHS));
+    const fallback = await districtOrCityMedian(subject, monthsAgo(FALLBACK_COMPS_MONTHS, rcnAsOf));
     if (fallback.values.length < 8) {
       return {
         ok: false,

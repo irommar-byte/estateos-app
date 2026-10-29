@@ -31,6 +31,7 @@ export default function OfferMarketAnalysis(props: Props) {
         listingPrice={props.price}
         purpose="consumer"
         showReport
+        hideWhenUnavailable
       />
     </div>
   );

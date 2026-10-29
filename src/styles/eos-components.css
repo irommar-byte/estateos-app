@@ -4180,3 +4180,23 @@ html.dark .eos-plan-chip.is-active { color: #15171a; background: #f3eee6; border
 .eos-photo-room-badge:hover { transform: translateY(-1px); border-color: rgba(201, 169, 110, 0.9); }
 .eos-photo-room-badge:active { transform: scale(0.95); }
 .eos-photo-room-dialog { animation: eos-sheet-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.eos-aside-company {
+  border-radius: 1.1rem;
+  border: 1px solid var(--eos-border);
+  padding: 0.85rem;
+  background: linear-gradient(160deg, var(--eos-input), var(--eos-card));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+}
+.eos-aside-company__logo {
+  display: flex;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--eos-border);
+  background: var(--eos-card);
+  box-shadow: 0 8px 18px -12px rgba(15, 23, 42, 0.55);
+}

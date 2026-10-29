@@ -17,7 +17,7 @@ const TYPE_NAMES: Record<MarketKind, string> = { LOCAL: 'ms:lokale', BUILDING: '
 const UA = 'EstateOS-Market/1.0 (rcn-ingest; estateos.pl)';
 
 /** Warszawa + data aktu; dla mieszkań dodatkowo tylko lokale mieszkalne (funkcję domów sprawdza jakość). */
-function warsawFilter(kind: MarketKind, sinceIsoDate: string) {
+function warsawFilter(kind: MarketKind, sinceIsoDate: string, untilIsoDate?: string) {
   return (
     `<Filter xmlns="http://www.opengis.net/fes/2.0"><And>` +
     `<PropertyIsLike wildCard="*" singleChar="." escapeChar="\\">` +
@@ -28,6 +28,9 @@ function warsawFilter(kind: MarketKind, sinceIsoDate: string) {
       : '') +
     `<PropertyIsGreaterThanOrEqualTo><ValueReference>dok_data</ValueReference>` +
     `<Literal>${sinceIsoDate}</Literal></PropertyIsGreaterThanOrEqualTo>` +
+    (untilIsoDate
+      ? `<PropertyIsLessThan><ValueReference>dok_data</ValueReference><Literal>${untilIsoDate}</Literal></PropertyIsLessThan>`
+      : '') +
     `</And></Filter>`
   );
 }
@@ -53,14 +56,14 @@ async function wfsGet(params: Record<string, string>, attempt = 1): Promise<stri
   }
 }
 
-export async function countWarsawSince(kind: MarketKind, sinceIsoDate: string): Promise<number | null> {
+export async function countWarsawSince(kind: MarketKind, sinceIsoDate: string, untilIsoDate?: string): Promise<number | null> {
   const xml = await wfsGet({
     service: 'WFS',
     version: '2.0.0',
     request: 'GetFeature',
     typeNames: TYPE_NAMES[kind],
     resultType: 'hits',
-    FILTER: warsawFilter(kind, sinceIsoDate),
+    FILTER: warsawFilter(kind, sinceIsoDate, untilIsoDate),
   });
   return wfsNumberMatched(xml);
 }
@@ -68,6 +71,8 @@ export async function countWarsawSince(kind: MarketKind, sinceIsoDate: string): 
 export async function fetchWarsawPage(opts: {
   kind: MarketKind;
   sinceIsoDate: string;
+  /** Koniec okna (bez tej daty) — import idzie miesiąc po miesiącu. */
+  untilIsoDate?: string;
   startIndex: number;
   count: number;
 }): Promise<{ features: Array<RcnLocalFeature & { priceScope?: 'unit' | 'property' }>; returned: number; sample: string | null }> {
@@ -78,7 +83,7 @@ export async function fetchWarsawPage(opts: {
     typeNames: TYPE_NAMES[opts.kind],
     count: String(opts.count),
     startIndex: String(opts.startIndex),
-    FILTER: warsawFilter(opts.kind, opts.sinceIsoDate),
+    FILTER: warsawFilter(opts.kind, opts.sinceIsoDate, opts.untilIsoDate),
     SORTBY: 'dok_data D',
   });
   if (xml.includes('Exception')) {
