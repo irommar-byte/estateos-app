@@ -11,6 +11,34 @@ import FloorPlan3dWalkthrough from '@/components/offers/FloorPlan3dWalkthrough';
 import FloorPlanScanArtboard from '@/components/offers/FloorPlanScanArtboard';
 import { formatListingAreaSqm } from '@/lib/listingRoomAreas';
 import { cropScanMetaToRoom, roomsFromScanMeta } from '@/lib/roomScan/refineScanSections';
+import { normalizeScanMeta } from '@/lib/roomScan/planNormalize';
+import type { RoomScanObjectCategory } from '@/types/roomScan';
+
+/** Meble i AGD po polsku, zgrupowane: „Krzesło ×6” zamiast sześciu „Chair”. Kolejność: od dużych do drobnych. */
+const FURNITURE_LABEL: Record<RoomScanObjectCategory, { pl: string; en: string }> = {
+  bed: { pl: 'Łóżko', en: 'Bed' },
+  sofa: { pl: 'Sofa', en: 'Sofa' },
+  table: { pl: 'Stół', en: 'Table' },
+  chair: { pl: 'Krzesło', en: 'Chair' },
+  storage: { pl: 'Szafa / szafka', en: 'Wardrobe / cabinet' },
+  refrigerator: { pl: 'Lodówka', en: 'Fridge' },
+  stove: { pl: 'Płyta grzewcza', en: 'Hob' },
+  oven: { pl: 'Piekarnik', en: 'Oven' },
+  dishwasher: { pl: 'Zmywarka', en: 'Dishwasher' },
+  washerDryer: { pl: 'Pralka', en: 'Washing machine' },
+  sink: { pl: 'Umywalka / zlew', en: 'Sink' },
+  toilet: { pl: 'WC', en: 'Toilet' },
+  bathtub: { pl: 'Wanna', en: 'Bathtub' },
+  television: { pl: 'Telewizor', en: 'TV' },
+  fireplace: { pl: 'Kominek', en: 'Fireplace' },
+  stairs: { pl: 'Schody', en: 'Stairs' },
+  unknown: { pl: 'Inne', en: 'Other' },
+};
+const FURNITURE_GROUPS: Array<{ pl: string; en: string; cats: RoomScanObjectCategory[] }> = [
+  { pl: 'Meble', en: 'Furniture', cats: ['bed', 'sofa', 'table', 'chair', 'storage', 'television', 'fireplace', 'stairs'] },
+  { pl: 'Kuchnia', en: 'Kitchen', cats: ['refrigerator', 'stove', 'oven', 'dishwasher'] },
+  { pl: 'Łazienka', en: 'Bathroom', cats: ['bathtub', 'toilet', 'sink', 'washerDryer'] },
+];
 
 type OfferFloorPlanPanelProps = {
   floorPlanSrc: string;
@@ -44,7 +72,7 @@ export default function OfferFloorPlanPanel({
   const selectedRoom: PropertyRoomScan | null =
     planKey === 'whole' ? null : roomScans.find((room) => room.id === planKey) || null;
   const croppedSelected = selectedRoom ? cropScanMetaToRoom(scanMeta, selectedRoom) : null;
-  const activeMeta = croppedSelected || selectedRoom?.scanMeta || scanMeta;
+  const activeMeta = useMemo(() => normalizeScanMeta(croppedSelected || selectedRoom?.scanMeta || scanMeta), [croppedSelected, selectedRoom, scanMeta]);
   const activeImage = assetUrl(selectedRoom?.floorPlanPngUri) || floorPlanSrc;
   const active3d = assetUrl(selectedRoom?.floorPlan3dUri) || floorPlan3dSrc || '';
   const hasInteractive = Boolean(activeMeta?.walls?.length);
@@ -106,19 +134,31 @@ export default function OfferFloorPlanPanel({
     </div>
   ) : null;
 
-  const furnitureRow = furniture.length > 0 ? (
-    <div className="flex flex-wrap gap-2">
-      {furniture.map((obj) => (
-        <span
-          key={obj.id}
-          className="rounded-full border border-sky-400/30 bg-sky-100 px-2.5 py-1 text-[10px] font-bold text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-100"
-        >
-          {obj.label}
-        </span>
+  const lang = locale === 'pl' ? 'pl' : 'en';
+  const furnitureGroups = FURNITURE_GROUPS.map((group) => {
+    const items = group.cats
+      .map((cat) => ({ cat, count: furniture.filter((obj) => obj.category === cat).length }))
+      .filter((item) => item.count > 0);
+    return { label: group[lang], items };
+  }).filter((group) => group.items.length);
+  const furnitureRow = furnitureGroups.length ? (
+    <div className="grid gap-x-6 gap-y-2 sm:grid-cols-3">
+      {furnitureGroups.map((group) => (
+        <div key={group.label}>
+          <p className="mb-1 text-[11px] font-semibold text-[var(--eos-muted)]">{group.label}</p>
+          <p className="text-[13px] leading-relaxed text-[var(--eos-text)]">
+            {group.items.map((item, index) => (
+              <span key={item.cat}>
+                {index ? ' · ' : ''}
+                {FURNITURE_LABEL[item.cat][lang]}
+                {item.count > 1 ? <span className="text-[var(--eos-muted)]"> ×{item.count}</span> : null}
+              </span>
+            ))}
+          </p>
+        </div>
       ))}
     </div>
   ) : null;
-
   const planCanvas = (
     <div className="relative z-10 flex h-full w-full items-center justify-center p-4">
       {viewMode === 'interactive' && hasInteractive && activeMeta ? (

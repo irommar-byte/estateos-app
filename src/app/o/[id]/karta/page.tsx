@@ -15,17 +15,14 @@ const getCard = cache((offerId: number, portal: string | null, agent: string | n
   Number.isFinite(offerId) && offerId > 0 ? loadOfferShareCard(offerId, { portalToken: portal, agentUserId: agent }) : null,
 );
 
-export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
-  const { id } = await params;
-  const sp = await searchParams;
-  const card = await getCard(Number(id), sp.portal ?? null, sp.agent ?? null);
-  if (!card) return { title: 'Oferta' };
-  return {
-    title: `${card.title} — ${card.priceLabel}`,
-    description: [card.locationLabel, card.area != null ? `${card.area} m²` : null, card.rooms != null ? `${card.rooms} pok.` : null]
-      .filter(Boolean)
-      .join(' · '),
-  };
+/**
+ * Te same tagi Open Graph co pełna oferta (/o/{id}): tytuł z aktualną ceną, karta 1200×630 z ceną
+ * i og:url wersjonowany ceną — Facebook i Messenger pokazują podgląd także przy udostępnianiu wizytówki.
+ */
+export async function generateMetadata(props: PageProps): Promise<Metadata> {
+  const { generateMetadata: offerMetadata } = await import('../page');
+  const sp = await props.searchParams;
+  return offerMetadata({ params: props.params, searchParams: Promise.resolve({ portal: sp.portal, agent: sp.agent }) });
 }
 
 /** Druk / QR — osobno od kliknięcia Facebook, które ma otworzyć pełną ofertę. */

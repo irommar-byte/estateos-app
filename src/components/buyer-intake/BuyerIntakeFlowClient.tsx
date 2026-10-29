@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import BuyerIntakeWelcome from './BuyerIntakeWelcome';
 import {
   ArrowLeft,
   ArrowRight,
@@ -294,6 +295,8 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
   const firstName = agent.displayName.split(/\s+/)[0] || agent.displayName;
 
   const [uiStep, setUiStep] = useState<1 | 2 | 3 | 4>(() => resolveBuyerUiStep(initialMission));
+  /** Ekran powitalny tylko przy pierwszym wejściu (bez zapisanego wcześniej poszukiwania). */
+  const [showWelcome, setShowWelcome] = useState(() => !initialMission);
   const [propertyType, setPropertyType] = useState<BuyerPropertyType | null>(initialMission?.propertyType ?? null);
   const [city, setCity] = useState(initialMission?.city ?? '');
   const [customCity, setCustomCity] = useState(() => {
@@ -948,6 +951,24 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
     });
     setStep2Saved(false);
   };
+
+  if (showWelcome) {
+    return (
+      <main className="bi-page relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="bi-page__halo absolute left-1/2 top-10 h-56 w-56 -translate-x-1/2 rounded-full blur-3xl" />
+        </div>
+        <div className="relative mx-auto flex w-full max-w-xl min-h-0 flex-1 flex-col px-4 pt-[max(1rem,env(safe-area-inset-top,0px)+0.75rem)] pb-[max(1rem,env(safe-area-inset-bottom,0px)+0.75rem)] sm:px-6">
+          <BuyerIntakeWelcome
+            agentName={agent.displayName}
+            agentFirstName={firstName}
+            agentImage={agent.image}
+            onStart={() => setShowWelcome(false)}
+          />
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="bi-page relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden">

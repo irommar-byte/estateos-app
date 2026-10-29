@@ -70,7 +70,8 @@ export default function OfferShareLink({
       </p>
       <div className="flex flex-col sm:flex-row gap-2">
         <div className="flex-1 min-w-0 rounded-xl bg-black/40 border border-white/10 px-3 py-2 font-mono text-[10px] text-white/70 truncate select-all">
-          {shareUrl}
+          {/* Kopiujemy pełny link z wersją ceny (Facebook odświeża podgląd), a pokazujemy krótki. */}
+          {shareUrl.replace(/^https?:\/\//, '').replace(/\/og\/[^/?#]+/, '')}
         </div>
         <div className="flex gap-2 shrink-0">
           <button

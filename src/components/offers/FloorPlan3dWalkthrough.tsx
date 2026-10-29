@@ -57,7 +57,7 @@ export default function FloorPlan3dWalkthrough({
       <div className="mt-3 space-y-2">
         {canOrbitFromScan && scanMeta ? (
           <div className="overflow-hidden rounded-2xl border border-sky-400/20">
-            <FloorPlan3dOrbit meta={scanMeta} className="block h-56 w-full cursor-grab touch-none bg-[#05070c]" />
+            <FloorPlan3dOrbit meta={scanMeta} className="relative h-64 w-full cursor-grab bg-[#eef2f6]" />
           </div>
         ) : null}
         {showArLink ? (
@@ -85,7 +85,7 @@ export default function FloorPlan3dWalkthrough({
         ) : null}
       </div>
 
-      <div className="overflow-hidden rounded-[1.25rem] border border-sky-400/20 bg-[#050505]">
+      <div className="overflow-hidden rounded-[1.25rem] border border-[var(--eos-border)] bg-[#eef2f6]">
         {canOrbitFromScan && scanMeta ? (
           <FloorPlan3dOrbit meta={scanMeta} />
         ) : useGltfViewer && ready ? (

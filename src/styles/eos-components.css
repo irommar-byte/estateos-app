@@ -3728,3 +3728,45 @@ html .buyer-intake-shell.buyer-intake-shell .bi-primary-cta:disabled {
 }
 html .buyer-intake-shell.buyer-intake-shell .bi-type-card--fit { height: auto; min-height: 7.25rem; }
 html .buyer-intake-shell.buyer-intake-shell .bi-type-card__hint--hide-short { display: block; }
+
+/* ── /szukam: ekran powitalny ── */
+html .buyer-intake-shell.buyer-intake-shell .bi-welcome__mark {
+  background: linear-gradient(145deg, #1d1a16 0%, #0c0b0a 100%);
+  border: 1px solid var(--bi-line-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 24px 48px -22px rgba(216, 195, 160, 0.45);
+}
+html.light .buyer-intake-shell.buyer-intake-shell .bi-welcome__mark {
+  background: linear-gradient(145deg, #1d1a16 0%, #0c0b0a 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 24px 48px -20px rgba(120, 95, 55, 0.5);
+}
+html .buyer-intake-shell.buyer-intake-shell .bi-welcome__mark-text {
+  font-family: var(--font-lux-serif), Georgia, serif;
+  font-size: 30px;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  background: linear-gradient(180deg, #f1e3c4 0%, #c9a96e 55%, #a8864a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html .buyer-intake-shell.buyer-intake-shell .bi-welcome__glow {
+  box-shadow: 0 0 0 1px rgba(216, 195, 160, 0.35), 0 0 42px rgba(216, 195, 160, 0.28);
+}
+@media (prefers-reduced-motion: no-preference) {
+  html .buyer-intake-shell.buyer-intake-shell .bi-welcome__glow {
+    animation: bi-welcome-breathe 4.2s ease-in-out infinite;
+  }
+}
+@keyframes bi-welcome-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+html .buyer-intake-shell.buyer-intake-shell .bi-welcome__wordmark { color: var(--bi-gold-ink); }
+html .buyer-intake-shell.buyer-intake-shell .bi-welcome__feature {
+  background: var(--bi-card);
+  border: 1px solid var(--bi-line);
+}
+html .buyer-intake-shell.buyer-intake-shell .bi-welcome__icon {
+  background: var(--bi-gold-soft);
+  color: var(--bi-gold-ink);
+}

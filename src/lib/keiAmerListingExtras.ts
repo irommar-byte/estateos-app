@@ -26,7 +26,10 @@ function cleanText(raw: unknown): string | null {
 }
 
 export function parseKeiPhone(raw: unknown): string | null {
-  const digits = String(raw ?? '').replace(/\D/g, '');
+  // KEI bywa, że trzyma kilka numerów w jednym polu („600 100 200, 501 202 303”) — bierzemy pierwszy pełny.
+  const text = String(raw ?? '');
+  const first = text.match(/(?:\+?48[\s-]*)?\d{3}[\s-]?\d{3}[\s-]?\d{3}/);
+  const digits = (first ? first[0] : text).replace(/\D/g, '');
   if (digits.length < 9 || digits.length > 15) return null;
   if (digits.length === 9) return digits;
   if (digits.length === 11 && digits.startsWith('48')) return digits.slice(2);
@@ -44,7 +47,7 @@ export function parseKeiRooms(raw: unknown, allowBareNumber = false): number | n
 
 function truthyKeiFlag(raw: unknown): boolean {
   const text = String(raw ?? '').trim().toLowerCase();
-  return text === '1' || text === 'true' || text === 'tak' || text === 'yes';
+  return ['1', 'true', 'tak', 'yes', 't', 'y', 'x', 'on'].includes(text) || /bez\s*po[sś]r|prywat|w[lł]a[sś]ciciel/.test(text);
 }
 
 export function buildKeiImportContext(row: Partial<KeiListingRow> | null | undefined): KeiImportContext | null {

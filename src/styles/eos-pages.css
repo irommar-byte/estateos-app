@@ -6526,66 +6526,67 @@ html.light .eos-cinematic-dark .eos-offer-hero-back {
    ========================================================================== */
 
 /* Jawne utility kolorów tekstu na button/a — zawsze wygrywają */
-button[class~="text-black"],
-a[class~="text-black"],
-button[class~="text-zinc-950"],
-a[class~="text-zinc-950"],
-button[class~="text-neutral-950"],
-a[class~="text-neutral-950"] {
+/* Wyjątek: element z własnym kolorem w ciemnym motywie (dark:text-…) — wtedy decyduje Tailwind. */
+button[class~="text-black"]:not([class*="dark:text-"]),
+a[class~="text-black"]:not([class*="dark:text-"]),
+button[class~="text-zinc-950"]:not([class*="dark:text-"]),
+a[class~="text-zinc-950"]:not([class*="dark:text-"]),
+button[class~="text-neutral-950"]:not([class*="dark:text-"]),
+a[class~="text-neutral-950"]:not([class*="dark:text-"]) {
   color: #0a0a0a !important;
   -webkit-text-fill-color: #0a0a0a !important;
 }
 
-button[class~="text-white"],
-a[class~="text-white"] {
+button[class~="text-white"]:not([class*="dark:text-"]),
+a[class~="text-white"]:not([class*="dark:text-"]) {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
 }
 
 /* Solidne białe CTA → ciemny atrament (nie mylić z bg-white/5 szkłem) */
-button[class~="bg-white"],
-a[class~="bg-white"],
-button[class~="bg-white/90"],
-a[class~="bg-white/90"],
-button[class~="bg-white/92"],
-a[class~="bg-white/92"],
-button[class~="bg-white/95"],
-a[class~="bg-white/95"],
-button[class~="bg-white/80"],
-a[class~="bg-white/80"],
-button[class~="hover:bg-white"]:hover,
-a[class~="hover:bg-white"]:hover {
+button[class~="bg-white"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-white"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-white/90"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-white/90"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-white/92"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-white/92"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-white/95"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-white/95"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-white/80"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-white/80"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="hover:bg-white"]:not([class*="dark:bg-"]):not([class*="dark:text-"]):hover,
+a[class~="hover:bg-white"]:not([class*="dark:bg-"]):not([class*="dark:text-"]):hover {
   color: #0a0a0a !important;
   -webkit-text-fill-color: #0a0a0a !important;
 }
 
-button[class~="bg-white"] *,
-a[class~="bg-white"] *,
-button[class~="bg-white/90"] *,
-a[class~="bg-white/90"] *,
-button[class~="bg-white/92"] *,
-a[class~="bg-white/92"] *,
-button[class~="bg-white/95"] *,
-a[class~="bg-white/95"] * {
+button[class~="bg-white"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) *,
+a[class~="bg-white"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) *,
+button[class~="bg-white/90"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) *,
+a[class~="bg-white/90"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) *,
+button[class~="bg-white/92"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) *,
+a[class~="bg-white/92"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) *,
+button[class~="bg-white/95"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) *,
+a[class~="bg-white/95"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) * {
   color: inherit !important;
   -webkit-text-fill-color: inherit !important;
 }
 
 /* Solidne czarne / near-black CTA → biały atrament */
-button[class~="bg-black"],
-a[class~="bg-black"],
-button[class~="bg-zinc-950"],
-a[class~="bg-zinc-950"],
-button[class~="bg-neutral-950"],
-a[class~="bg-neutral-950"],
-button[class~="bg-[#141416]"],
-a[class~="bg-[#141416]"],
-button[class~="bg-[#0a0a0a]"],
-a[class~="bg-[#0a0a0a]"],
-button[class~="bg-[#111]"],
-a[class~="bg-[#111]"],
-button[class~="bg-[#111111]"],
-a[class~="bg-[#111111]"] {
+button[class~="bg-black"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-black"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-zinc-950"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-zinc-950"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-neutral-950"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-neutral-950"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-[#141416]"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-[#141416]"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-[#0a0a0a]"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-[#0a0a0a]"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-[#111]"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-[#111]"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+button[class~="bg-[#111111]"]:not([class*="dark:bg-"]):not([class*="dark:text-"]),
+a[class~="bg-[#111111]"]:not([class*="dark:bg-"]):not([class*="dark:text-"]) {
   color: #ffffff !important;
   -webkit-text-fill-color: #ffffff !important;
 }
@@ -6822,3 +6823,26 @@ html:not(.light) .eos-offer-feature-banner {
     0 1px 0 rgba(255, 255, 255, 0.16) inset;
 }
 
+
+/* ── Strona oferty: mikroanimacje (wjazd sekcji, delikatne uniesienie paneli) ── */
+@media (prefers-reduced-motion: no-preference) {
+  .eos-reveal-ready .eos-offer-body .eos-offer-panel:not(.is-in),
+  .eos-reveal-ready .eos-offer-body .eos-reveal:not(.is-in) {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  .eos-reveal-ready .eos-offer-body .eos-offer-panel,
+  .eos-reveal-ready .eos-offer-body .eos-reveal {
+    transition:
+      opacity 0.75s cubic-bezier(0.22, 0.7, 0.2, 1),
+      transform 0.75s cubic-bezier(0.22, 0.7, 0.2, 1),
+      box-shadow 0.35s ease;
+    will-change: opacity, transform;
+  }
+  @media (hover: hover) {
+    .eos-offer-body .eos-offer-panel.is-in:hover {
+      transform: translate3d(0, -2px, 0);
+      box-shadow: 0 18px 40px -24px rgba(15, 23, 42, 0.35);
+    }
+  }
+}

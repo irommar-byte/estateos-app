@@ -39,6 +39,7 @@ import { isOfferLegallyVerified } from "@/lib/legalVerificationStatus";
 import { isOfferNewListing } from "@/lib/offerLifecycle";
 import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OfferFloorPlanPanel from "@/components/offers/OfferFloorPlanPanel";
+import OfferRevealEffects from "@/components/offer/OfferRevealEffects";
 import { parseFloorPlanScanMeta } from "@/lib/roomScan/parseFloorPlanScanMeta";
 import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
 import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
@@ -495,10 +496,7 @@ function OfferDetails({
     ...(propertyTypeRaw === 'PLOT'
       ? []
       : [
-          {
-            label: t.pricePerSqm,
-            value: perSqmDisplay && !isLocked ? perSqmDisplay : isLocked ? t.hiddenPrice : null,
-          },
+          // Cena za m² jest już w pasku cen pod ceną — tutaj bez powtórki.
           { label: t.rooms, value: offer.rooms != null && offer.rooms !== '' ? String(offer.rooms) : null },
           { label: t.floor, value: floorDisplay },
           ...(floorDisplay && offer.totalFloors != null && offer.totalFloors !== '' && !String(offer.floor ?? '').trim()
@@ -646,6 +644,7 @@ function OfferDetails({
   return (
     <main className="theme-aware-dashboard eos-offer-page min-h-screen bg-[var(--eos-bg)] pb-[calc(7.5rem+env(safe-area-inset-bottom,0px))] font-sans text-[var(--eos-text)] selection:bg-emerald-500/20 sm:pb-32">
       {portalToken ? <ClientPortalReturnBar token={portalToken} /> : null}
+      <OfferRevealEffects key={String(offer?.id || offer?._id || "")} />
       
       <div className="eos-cinematic-dark relative h-[58svh] min-h-[52svh] w-full overflow-hidden bg-black sm:h-[100dvh] sm:min-h-[100vh]">
         <motion.div style={{ y: bgY }} className="absolute inset-0 z-0 overflow-hidden">
@@ -1094,31 +1093,25 @@ function OfferDetails({
                   </div>
                 ) : null}
                 {!isLocked && listingPrice.amount > 0 && (
-                  <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {eurResolved && priceFormatted.displayCurrency !== "EUR" ? (
-                      <div className="eos-offer-metric-card px-4 py-3">
-                        <p className="eos-offer-metric-label">{t.priceInEur}</p>
-                        <p className="eos-offer-metric-value mt-1">
-                          {formatAmountWithCurrency(eurResolved.displayAmount, "EUR", dateLocale)}
-                        </p>
-                      </div>
-                    ) : null}
-                    {plnResolved && priceFormatted.displayCurrency !== "PLN" ? (
-                      <div className="eos-offer-metric-card px-4 py-3">
-                        <p className="eos-offer-metric-label">{locale === "en" ? "Price in PLN" : "Cena w PLN"}</p>
-                        <p className="eos-offer-metric-value mt-1">
-                          {formatAmountWithCurrency(plnResolved.displayAmount, "PLN", dateLocale)}
-                        </p>
-                      </div>
-                    ) : null}
-                    <div className="eos-offer-metric-card px-4 py-3">
-                      <p className="eos-offer-metric-label">{t.pricePerSqm}</p>
-                      <p className="eos-offer-metric-value mt-1">{perSqmPln}</p>
-                    </div>
-                    <div className="eos-offer-metric-card px-4 py-3">
-                      <p className="eos-offer-metric-label">{t.pricePerSqmEur}</p>
-                      <p className="eos-offer-metric-value mt-1">{perSqmEur}</p>
-                    </div>
+                  /* Jedna zwarta linia cen pomocniczych zamiast trzech dużych kafli (EUR jest już pod ceną). */
+                  <div className="eos-reveal mb-8 flex flex-wrap items-stretch overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]">
+                    {[
+                      !priceFormatted.secondary && eurResolved && priceFormatted.displayCurrency !== "EUR"
+                        ? { label: t.priceInEur, value: formatAmountWithCurrency(eurResolved.displayAmount, "EUR", dateLocale) }
+                        : null,
+                      plnResolved && priceFormatted.displayCurrency !== "PLN"
+                        ? { label: locale === "en" ? "Price in PLN" : "Cena w PLN", value: formatAmountWithCurrency(plnResolved.displayAmount, "PLN", dateLocale) }
+                        : null,
+                      { label: t.pricePerSqm, value: perSqmPln },
+                      { label: t.pricePerSqmEur, value: perSqmEur },
+                    ]
+                      .filter((item): item is { label: string; value: string } => Boolean(item && item.value))
+                      .map((item, index) => (
+                        <div key={item.label} className={`min-w-[8.5rem] flex-1 px-4 py-3 ${index ? "border-l border-[var(--eos-border)]" : ""}`}>
+                          <p className="text-[11px] text-[var(--eos-muted)]">{item.label}</p>
+                          <p className="mt-0.5 text-[15px] font-semibold tabular-nums text-[var(--eos-text)]">{item.value}</p>
+                        </div>
+                      ))}
                   </div>
                 )}
                 {!isLocked && agentCommissionLine ? (

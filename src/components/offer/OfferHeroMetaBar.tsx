@@ -147,6 +147,7 @@ export default function OfferHeroMetaBar({
             {sellerPersonLine ? (
               <span className="eos-offer-hero-bar__person">{sellerPersonLine}</span>
             ) : null}
+            {totalReviews > 0 ? (
             <span
               className="eos-offer-hero-bar__stars"
               aria-label={totalReviews > 0 ? `${averageRating.toFixed(1)} / 5` : undefined}
@@ -159,10 +160,9 @@ export default function OfferHeroMetaBar({
                   aria-hidden
                 />
               ))}
-              {totalReviews > 0 ? (
-                <span className="eos-offer-hero-bar__rating">{averageRating.toFixed(1)}</span>
-              ) : null}
+              <span className="eos-offer-hero-bar__rating">{averageRating.toFixed(1)}</span>
             </span>
+            ) : null}
           </span>
         </button>
 
@@ -183,6 +183,8 @@ export default function OfferHeroMetaBar({
       </div>
 
       <div className="eos-offer-hero-bar__meta">
+        {/* Pokazujemy tylko to, co działa na korzyść oferty: bez „0 w ulubionych” i „Bez weryfikacji” dla odwiedzających. */}
+        {views >= 20 || isOwner ? (
         <div className="eos-offer-hero-bar__cell">
           <span className="eos-offer-hero-bar__k">{labels.views}</span>
           <span className="eos-offer-hero-bar__v">
@@ -190,7 +192,9 @@ export default function OfferHeroMetaBar({
             {views}
           </span>
         </div>
+        ) : null}
 
+        {favoritesCount > 0 || isOwner ? (
         <div
           className="eos-offer-hero-bar__cell"
           title={labels.favoritesHint || "Liczba osób, które dodały tę ofertę do ulubionych"}
@@ -201,6 +205,7 @@ export default function OfferHeroMetaBar({
             {favoritesCount}
           </span>
         </div>
+        ) : null}
 
         {isOwner && !isLegalKwVerified && onLegalShieldPress ? (
           <button
@@ -218,15 +223,15 @@ export default function OfferHeroMetaBar({
               {kwLabel}
             </span>
           </button>
-        ) : (
-          <div className={`eos-offer-hero-bar__cell ${isLegalKwVerified ? "is-ok" : "is-warn"}`}>
+        ) : isLegalKwVerified ? (
+          <div className="eos-offer-hero-bar__cell is-ok">
             <span className="eos-offer-hero-bar__k">{labels.legalVerifiedKwSublabel}</span>
             <span className="eos-offer-hero-bar__v eos-offer-hero-bar__v--wrap">
               <ShieldCheck size={14} aria-hidden />
               {kwLabel}
             </span>
           </div>
-        )}
+        ) : null}
 
         {labels.openHouseDate ? (
           <button

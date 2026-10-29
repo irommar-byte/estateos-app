@@ -308,7 +308,7 @@ export async function exportKeiListingsToEstateOS(options?: {
         transactionKind,
         keiIds: thin.map((row) => row.keiListingId),
         portalUrls: thin.map((row) => row.portalUrl),
-        maxPages: 3,
+        maxPages: 8,
       });
       const byId = new Map(listings.map((row) => [String(row.id), row]));
       const byUrl = new Map(
