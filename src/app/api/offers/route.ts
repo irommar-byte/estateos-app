@@ -162,8 +162,9 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "Brak autoryzacji" }, { status: 401 });
       }
 
+      // Wycofane oferty leżą w archiwum — widzi je tylko admin.
       const mineOffers = await prisma.offer.findMany({
-        where: { userId },
+        where: { userId, status: { not: 'ARCHIVED' } },
         orderBy: { updatedAt: "desc" },
         select: {
           id: true,

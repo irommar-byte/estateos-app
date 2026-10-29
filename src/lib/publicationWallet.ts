@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { Locale } from "@/i18n/config";
 import { listProfilePromoCardsForUser } from "@/lib/profilePromoCards";
-import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS } from "@/lib/publicationConstants";
+import { PAKIET_PLUS_PRICE_LABEL } from "@/lib/publicationConstants";
 import { ensureOfferPublicationSchema } from "@/lib/offerPublication";
 import {
   buildInvestorProCreditsBackfillData,
@@ -75,8 +75,8 @@ export async function getPublicationWallet(userId: number, locale: Locale = "pl"
       title: locale === "pl" ? "Kupon powitalny" : "Welcome coupon",
       subtitle:
         locale === "pl"
-          ? "Jedna darmowa publikacja pierwszej oferty"
-          : "One free publication of your first listing",
+          ? "Pierwsza oferta prywatnego użytkownika za darmo"
+          : "Your first listing as a private seller is free",
       meta:
         locale === "pl"
           ? "Gotowy do wykorzystania przy pierwszym wystawieniu."
@@ -107,7 +107,6 @@ export async function getPublicationWallet(userId: number, locale: Locale = "pl"
     publicationCoupons,
     couponCount: coupons.length,
     priceLabel: PAKIET_PLUS_PRICE_LABEL,
-    publicationDays: PUBLICATION_DURATION_DAYS,
     firstFreePublicationUsed: firstFreeUsed,
   };
 }

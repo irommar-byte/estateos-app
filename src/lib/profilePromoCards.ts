@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { randomBytes } from 'crypto';
 import { logWalletCouponConsume, logWalletCouponGrant } from '@/lib/walletLedger';
+import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
 
 export type ProfilePromoCardRow = {
   id: string;
@@ -59,7 +60,7 @@ function rowToApiCard(row: ProfilePromoCardRow) {
 }
 
 export async function listProfilePromoCardsForUser(userId: number) {
-  await ensureProfilePromoCardTable();
+  await ensureWelcomePromoCardForUser(userId);
   const rows = (await prisma.$queryRawUnsafe(
     `
       SELECT id, userId, kind, title, subtitle, meta, accentColor, iconName, pillLabel,
@@ -151,34 +152,56 @@ export function welcomePromoCardId(userId: number): string {
   return `welcome_${userId}`;
 }
 
-/** Stały kupon powitalny w DB — wymagany do pobrania przy imporcie / publikacji z mobile. */
+/**
+ * Kupon powitalny = pierwsza darmowa oferta prywatnego użytkownika.
+ * Agent / biuro i osoba, która już wystawiła ofertę, go nie mają: kupon zapisujemy jako wykorzystany,
+ * żeby aplikacja nie podsuwała darmowej publikacji.
+ */
 export async function ensureWelcomePromoCardForUser(userId: number): Promise<void> {
   await ensureProfilePromoCardTable();
   const id = welcomePromoCardId(userId);
+  const userRows = (await prisma.$queryRawUnsafe(
+    'SELECT role, planType, buyerType, firstFreePublicationUsed FROM `User` WHERE id = ? LIMIT 1',
+    userId,
+  )) as Array<{ role: string | null; planType: string | null; buyerType: string | null; firstFreePublicationUsed: number | null }>;
+  const user = userRows[0];
+  if (!user) return;
+  const published = (await prisma.$queryRawUnsafe(
+    'SELECT COUNT(*) AS total FROM OfferPublication WHERE userId = ?',
+    userId,
+  )) as Array<{ total: number | bigint }>;
+  // Agent albo ktoś, kto już wystawił ofertę, nie ma darmowej publikacji.
+  const noFreeListing = isAgentOrAgencySeller(user) || Number(published[0]?.total ?? 0) > 0;
+
   const existing = (await prisma.$queryRawUnsafe(
     `SELECT id, couponUsed FROM MobileProfilePromoCard WHERE id = ? AND userId = ? LIMIT 1`,
     id,
     userId,
   )) as Array<{ id: string; couponUsed: number }>;
-  if (existing[0]) return;
-
-  const userRows = (await prisma.$queryRawUnsafe(
-    'SELECT firstFreePublicationUsed FROM `User` WHERE id = ? LIMIT 1',
-    userId,
-  )) as Array<{ firstFreePublicationUsed: number | null }>;
-  if (Number(userRows[0]?.firstFreePublicationUsed ?? 0) > 0) return;
+  if (existing[0]) {
+    if (noFreeListing && !Number(existing[0].couponUsed)) {
+      await prisma.$executeRawUnsafe(
+        `UPDATE MobileProfilePromoCard SET couponUsed = 1, updatedAt = NOW(3) WHERE id = ? AND userId = ?`,
+        id,
+        userId,
+      );
+    }
+    return;
+  }
+  if (!noFreeListing && Number(user.firstFreePublicationUsed ?? 0) > 0) return;
 
   await prisma.$executeRawUnsafe(
     `
       INSERT INTO MobileProfilePromoCard
         (id, userId, kind, title, subtitle, meta, accentColor, iconName, pillLabel,
          templateId, grantsFreeListing, couponUsed, purpose, birthdayYear, expiresAt)
-      VALUES (?, ?, 'welcome_coupon', 'Kupon powitalny', 'Jedna darmowa publikacja pierwszej oferty',
-              'Wykorzystaj przy pierwszym publicznym wystawieniu ogłoszenia.',
-              '#0A84FF', 'sparkles', 'Powitalny', 'welcome_free_listing', 1, 0, 'publication', NULL, NULL)
+      VALUES (?, ?, 'welcome_coupon', 'Kupon powitalny', 'Pierwsza oferta prywatnego użytkownika za darmo',
+              'Wykorzystaj przy pierwszym wystawieniu ogłoszenia.',
+              '#0A84FF', 'sparkles', 'Powitalny', 'welcome_free_listing', 1, ?, 'publication', NULL, NULL)
     `,
     id,
     userId,
+    noFreeListing ? 1 : 0,
   );
 }
 

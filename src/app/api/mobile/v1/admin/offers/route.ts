@@ -125,7 +125,7 @@ export async function POST(req: Request) {
 
         const offer = await prisma.offer.update({
           where: { id: Number(offerId) },
-          data: { status: 'ACTIVE', expiresAt: reactivation.endsAt },
+          data: { status: 'ACTIVE', expiresAt: null },
         });
 
         notifyOwnerOfferModeration({
@@ -153,7 +153,7 @@ export async function POST(req: Request) {
 
       const offer = await prisma.offer.update({
         where: { id: Number(offerId) },
-        data: { status: 'ACTIVE', expiresAt: approval.endsAt },
+        data: { status: 'ACTIVE', expiresAt: null },
       });
 
       notifyOwnerOfferModeration({

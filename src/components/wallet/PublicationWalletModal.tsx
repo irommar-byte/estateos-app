@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Gift, ShoppingBag, Sparkles, Ticket, X } from "lucide-react";
-import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS } from "@/lib/publicationConstants";
+import { PAKIET_PLUS_PRICE_LABEL } from "@/lib/publicationConstants";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 
 type WalletCoupon = {
@@ -171,7 +171,7 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
               <div className="rounded-2xl border border-orange-500/25 bg-orange-500/10 p-4">
                 <p className="text-[9px] font-black uppercase tracking-[0.2em] text-orange-700">Kupony</p>
                 <p className="mt-2 text-3xl font-black tabular-nums text-orange-700">{loading ? "…" : coupons.length}</p>
-                <p className="mt-1 text-[10px] text-[var(--eos-muted)]">{PUBLICATION_DURATION_DAYS} dni / publikacja</p>
+                <p className="mt-1 text-[10px] text-[var(--eos-muted)]">do sprzedaży / publikacja</p>
               </div>
             </div>
 
@@ -219,7 +219,7 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
                 <div className="mb-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
                   <p className="text-sm font-bold text-[var(--eos-text)]">Aktywny kredyt Plus</p>
                   <p className="mt-1 text-xs text-[var(--eos-muted)]">
-                    {plusCredits} publikacja do wykorzystania · {PUBLICATION_DURATION_DAYS} dni na rynku
+                    {plusCredits} publikacja do wykorzystania · aktywna do sprzedaży
                     {expiryLabel ? ` · ważne do ${expiryLabel}` : ""}
                   </p>
                 </div>
@@ -238,7 +238,7 @@ export default function PublicationWalletModal({ isOpen, onClose }: Props) {
                 <span className="min-w-0 flex-1 text-left">
                   <span className="block text-sm font-bold">Kup Pakiet Plus</span>
                   <span className="mt-0.5 block text-[11px] font-semibold opacity-80">
-                    1 dodatkowa publikacja · {PAKIET_PLUS_PRICE_LABEL} · {PUBLICATION_DURATION_DAYS} dni
+                    1 dodatkowa publikacja · {PAKIET_PLUS_PRICE_LABEL} · bez limitu czasu
                   </span>
                 </span>
               </button>

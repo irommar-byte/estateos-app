@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Ticket, ShoppingBag, Sparkles, Gift, CheckCircle2 } from "lucide-react";
-import { PAKIET_PLUS_PRICE_LABEL, PUBLICATION_DURATION_DAYS, PUBLICATION_RENEWAL_PRICE_LABEL } from "@/lib/publicationConstants";
+import { PAKIET_PLUS_PRICE_LABEL } from "@/lib/publicationConstants";
 import type { PublicationSelection } from "@/lib/publicationSelection";
 import { defaultPublicationSelection } from "@/lib/publicationSelection";
 import { useLocale } from "@/contexts/LocaleContext";
@@ -281,7 +281,6 @@ export default function PublicationWalletPanel({
                     <p className="mt-1 text-xs text-[color:var(--eos-muted)]">
                       {ao.walletPlusCreditLine
                         .replace("{count}", String(plusCredits))
-                        .replace("{days}", String(PUBLICATION_DURATION_DAYS))
                         .replace("{expiry}", plusCreditExpirySuffix)}
                     </p>
                   </div>
@@ -312,8 +311,7 @@ export default function PublicationWalletPanel({
                   <p className="mt-1 text-xs text-[color:var(--eos-muted)]">
                     {isRenew
                       ? ao.walletRenewPaymentDesc
-                          .replace("{days}", String(PUBLICATION_DURATION_DAYS))
-                          .replace("{price}", PUBLICATION_RENEWAL_PRICE_LABEL)
+                            .replace("{price}", PAKIET_PLUS_PRICE_LABEL)
                       : ao.walletBuyPlusPaymentDesc.replace("{price}", PAKIET_PLUS_PRICE_LABEL)}
                   </p>
                 </div>

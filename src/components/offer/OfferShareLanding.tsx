@@ -114,10 +114,10 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
     'flex size-11 shrink-0 items-center justify-center rounded-full bg-[#f2f0ec] text-[#15171a] dark:bg-white/[0.08] dark:text-[#f3eee6]';
 
   return (
-    <main className={`${offerFontVars} font-[family-name:var(--ofb-sans)] min-h-[100dvh] bg-[#ece7df] text-[#15171a] dark:bg-[#0c0b0a] dark:text-[#f3eee6]`}>
+    <main className={`${offerFontVars} font-[family-name:var(--ofb-sans)] flex min-h-[100dvh] flex-col bg-[#ece7df] text-[#15171a] dark:bg-[#0c0b0a] dark:text-[#f3eee6]`}>
       <OfferShareAppBanner offerId={card.id} canonicalUrl={card.canonicalUrl} offerTitle={card.title} />
 
-      <div className="mx-auto flex min-h-[100dvh] max-w-[960px] items-stretch justify-center gap-12 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-[calc(env(safe-area-inset-top)+0.75rem)] lg:items-center lg:py-10">
+      <div className="mx-auto flex w-full max-w-[960px] flex-1 items-stretch justify-center gap-12 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-[calc(env(safe-area-inset-top)+0.75rem)] lg:items-center lg:py-10">
         <div className="flex w-full max-w-[440px] flex-col">
           <div className="flex items-center justify-between px-1 pb-2.5">
             <span className="text-[11px] font-bold uppercase tracking-[0.3em]">EstateOS™</span>
@@ -132,7 +132,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
           </div>
 
           <article className="flex flex-1 flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_20px_40px_rgba(40,30,20,0.12)] dark:bg-[#161412] dark:shadow-[0_20px_40px_rgba(0,0,0,0.5)]">
-            <div className="relative h-[42dvh] min-h-[220px] max-h-[460px] shrink-0 bg-[#d9d4cc] dark:bg-[#1c1a17]">
+            <div className="relative min-h-[190px] max-h-[460px] flex-1 bg-[#d9d4cc] dark:bg-[#1c1a17]">
               {images.length ? (
                 <div
                   ref={galleryRef}
@@ -207,7 +207,7 @@ export default function OfferShareLanding({ card }: { card: OfferShareCard }) {
               <span className="absolute -right-3 -top-3 size-[22px] rounded-full bg-[#ece7df] dark:bg-[#0c0b0a]" />
             </div>
 
-            <div className="mt-auto px-[18px] pb-[18px] pt-4">
+            <div className="px-[18px] pb-[18px] pt-4">
               {publisher ? (
                 <div className="flex items-center gap-2.5">
                   <Link href={publisher.profileHref} className="flex min-w-0 flex-1 items-center gap-2.5">

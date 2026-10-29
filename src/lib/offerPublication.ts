@@ -8,14 +8,19 @@ import {
   readPendingPublication,
 } from '@/lib/offerPendingPublication';
 import { tryRecoverImportOfferPendingPublication, tryReserveWelcomeCouponPublication } from '@/lib/otodomImportPublication';
+import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
 
-const PUBLICATION_DURATION_DAYS = 30;
+/**
+ * Publikacja jest bezterminowa: oferta jest na rynku, dopóki się nie sprzeda albo właściciel jej nie wycofa.
+ * Tabela OfferPublication wymaga daty końca — sesja aktywna dostaje datę „bez końca”, a Offer.expiresAt zostaje puste.
+ */
+export const OPEN_ENDED_PUBLICATION_ENDS_AT = new Date('2099-12-31T23:59:59.000Z');
 const PAKIET_PLUS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
 /** Schema ensure + consume credit can exceed Prisma default 5s on cold deploy. */
 const PUBLICATION_TX_OPTIONS = { timeout: 15_000 } as const;
 
 export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID' | 'PLUS_CREDIT';
-export type PublicationEndReason = 'EXPIRED' | 'MANUAL_ARCHIVE' | 'SOLD' | 'ADMIN';
+export type PublicationEndReason = 'MANUAL_ARCHIVE' | 'SOLD' | 'ADMIN';
 export type PublicationQuoteReason =
   | 'NOT_FIRST_OFFER'
   | 'FREE_ALREADY_USED'
@@ -137,41 +142,7 @@ async function readOfferOwnership(db: any, offerId: number) {
   return offer;
 }
 
-/**
- * Domknięcie „zombie” publikacji: status ACTIVE w tabeli, ale endsAt już minął.
- * Bez tego activate/quote zwraca ALREADY_ACTIVE, client pokazuje sukces,
- * a oferta zostaje „nieaktualna” (Offer.expiresAt w przeszłości).
- */
-async function expireStaleActivePublications(db: any, offerId?: number) {
-  if (offerId != null && Number.isFinite(offerId) && offerId > 0) {
-    await db.$executeRawUnsafe(
-      `
-        UPDATE OfferPublication
-        SET status = 'ENDED',
-            endedAt = COALESCE(endedAt, NOW(3)),
-            endReason = COALESCE(endReason, 'EXPIRED')
-        WHERE offerId = ?
-          AND status = 'ACTIVE'
-          AND endsAt <= NOW(3)
-      `,
-      offerId,
-    );
-    return;
-  }
-  await db.$executeRawUnsafe(
-    `
-      UPDATE OfferPublication
-      SET status = 'ENDED',
-          endedAt = COALESCE(endedAt, NOW(3)),
-          endReason = COALESCE(endReason, 'EXPIRED')
-      WHERE status = 'ACTIVE'
-        AND endsAt <= NOW(3)
-    `,
-  );
-}
-
 async function activePublicationForOffer(db: any, offerId: number) {
-  await expireStaleActivePublications(db, offerId);
   const rows = (await db.$queryRawUnsafe(
     `
       SELECT *
@@ -216,6 +187,10 @@ export async function getPublicationQuote(params: {
   const offer = await readOfferOwnership(db, offerId);
   if (!offer || offer.userId !== userId) {
     throw new Error('OFFER_NOT_FOUND_OR_FORBIDDEN');
+  }
+  // Wycofana oferta leży w archiwum (widzi je tylko admin) — powrót na rynek to nowa oferta.
+  if (String(offer.status).toUpperCase() === 'ARCHIVED') {
+    throw new Error('OFFER_ARCHIVED');
   }
 
   const active = await activePublicationForOffer(db, offerId);
@@ -314,6 +289,46 @@ export async function getCreatePublicationQuote(params: {
   };
 }
 
+/**
+ * Darmowa publikacja: kupon promocyjny (urodzinowy, od admina) albo pierwsza oferta prywatnego użytkownika.
+ * Agent i biuro płacą kredytem za każdą ofertę.
+ */
+async function assertFreePublicationAvailableInTx(
+  tx: any,
+  params: { userId: number; offerId: number; bonusCouponId?: string | null },
+) {
+  const couponId = String(params.bonusCouponId || '').trim().slice(0, 64);
+  if (couponId && !couponId.startsWith('welcome_')) {
+    const coupons = (await tx.$queryRawUnsafe(
+      `SELECT id FROM MobileProfilePromoCard WHERE id = ? AND userId = ? AND couponUsed = 0 AND grantsFreeListing = 1 LIMIT 1`,
+      couponId,
+      params.userId,
+    )) as Array<{ id: string }>;
+    if (!coupons[0]) throw new Error('FREE_PUBLICATION_NOT_AVAILABLE');
+    return;
+  }
+
+  const users = (await tx.$queryRawUnsafe(
+    'SELECT role, planType, buyerType FROM `User` WHERE id = ? LIMIT 1',
+    params.userId,
+  )) as Array<{ role: string | null; planType: string | null; buyerType: string | null }>;
+  if (!users[0] || isAgentOrAgencySeller(users[0])) throw new Error('FREE_PUBLICATION_NOT_AVAILABLE');
+
+  const used = (await tx.$queryRawUnsafe(
+    `
+      SELECT
+        (SELECT COUNT(*) FROM OfferPublication WHERE userId = ? AND offerId <> ?) +
+        (SELECT COUNT(*) FROM \`Offer\` WHERE userId = ? AND id <> ? AND pendingPublicationKind IS NOT NULL AND pendingPublicationEntitlementConsumed = 1)
+        AS total
+    `,
+    params.userId,
+    params.offerId,
+    params.userId,
+    params.offerId,
+  )) as Array<{ total: number | bigint }>;
+  if (Number(used[0]?.total ?? 0) > 0) throw new Error('FREE_PUBLICATION_NOT_AVAILABLE');
+}
+
 async function consumePublicationEntitlementInTx(
   tx: any,
   params: {
@@ -322,6 +337,7 @@ async function consumePublicationEntitlementInTx(
     kind: PublicationKind;
     iapTransactionId?: string | null;
     iapProductId?: string | null;
+    bonusCouponId?: string | null;
     consumeFreeFirst?: boolean;
   },
 ) {
@@ -365,6 +381,10 @@ async function consumePublicationEntitlementInTx(
     if (Number(consumeCredit || 0) < 1) {
       throw new Error('NO_PLUS_CREDIT_AVAILABLE');
     }
+  }
+
+  if (params.kind === 'FREE_FIRST') {
+    await assertFreePublicationAvailableInTx(tx, params);
   }
 
   if (params.consumeFreeFirst && params.kind === 'FREE_FIRST') {
@@ -463,6 +483,7 @@ export async function submitOfferActivation(params: {
         ? pending.kind
         : null;
     const activationKind = pendingKind || params.kind;
+    const bonusCouponId = String(params.bonusCouponId || pending?.bonusCouponId || '').trim();
     const activation = await activateOfferPublication({
       userId: params.userId,
       offerId: params.offerId,
@@ -472,11 +493,11 @@ export async function submitOfferActivation(params: {
           ? txId || (pending?.iapTransactionId ? String(pending.iapTransactionId) : null)
           : null,
       iapProductId: productId,
+      bonusCouponId: bonusCouponId || null,
       // Pending już skonsumowało kredyt / IAP — nie ściągaj drugi raz.
       skipEntitlementConsume: Boolean(pending?.entitlementConsumed),
     });
     await clearPendingPublication(params.offerId);
-    const bonusCouponId = String(params.bonusCouponId || pending?.bonusCouponId || '').trim();
     if (
       bonusCouponId &&
       activationKind === 'FREE_FIRST' &&
@@ -562,6 +583,7 @@ export async function stageOfferPublicationForReview(params: {
       kind: params.kind,
       iapTransactionId: params.iapTransactionId,
       iapProductId,
+      bonusCouponId: params.bonusCouponId,
       consumeFreeFirst: true,
     });
 
@@ -605,6 +627,7 @@ export async function activateOfferPublication(params: {
   kind: PublicationKind;
   iapTransactionId?: string | null;
   iapProductId?: string | null;
+  bonusCouponId?: string | null;
   skipEntitlementConsume?: boolean;
   db?: DbClient;
 }) {
@@ -617,8 +640,7 @@ export async function activateOfferPublication(params: {
   const alreadyActive = await activePublicationForOffer(db, params.offerId);
   if (alreadyActive) throw new Error('PUBLICATION_ALREADY_ACTIVE');
 
-  const now = new Date();
-  const endsAt = new Date(now.getTime() + PUBLICATION_DURATION_DAYS * 24 * 60 * 60 * 1000);
+  const endsAt = OPEN_ENDED_PUBLICATION_ENDS_AT;
 
   const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
   if (params.kind === 'PLUS_PAID' && !txId && !params.skipEntitlementConsume) {
@@ -638,6 +660,7 @@ export async function activateOfferPublication(params: {
         kind: params.kind,
         iapTransactionId: params.iapTransactionId,
         iapProductId: params.iapProductId,
+        bonusCouponId: params.bonusCouponId,
         consumeFreeFirst: true,
       });
     }
@@ -659,7 +682,7 @@ export async function activateOfferPublication(params: {
 
     await tx.offer.update({
       where: { id: params.offerId },
-      data: { status: 'ACTIVE', expiresAt: endsAt, updatedAt: new Date() },
+      data: { status: 'ACTIVE', expiresAt: null, updatedAt: new Date() },
     });
 
     const publication = await activePublicationForOffer(tx, params.offerId);
@@ -763,7 +786,6 @@ export async function endOfferPublicationInTx(
 
 export async function allActivePublicationOfferIds() {
   await ensureOfferPublicationSchema();
-  await expireStaleActivePublications(prisma);
   const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
     `
       SELECT offerId
@@ -780,7 +802,6 @@ export async function activePublicationOfferIds(offerIds: number[]) {
   if (!offerIds.length) return new Set<number>();
   const safeIds = offerIds.filter((id) => Number.isFinite(id));
   if (!safeIds.length) return new Set<number>();
-  await expireStaleActivePublications(prisma);
   const rows = await prisma.$queryRawUnsafe<Array<{ offerId: number }>>(
     `
       SELECT offerId
@@ -907,8 +928,7 @@ export async function adminReactivateArchivedOffer(params: {
 }
 
 /**
- * Po akceptacji admina: uruchamia oczekującą publikację (30 dni) i ustawia expiresAt.
- * Bez tego oferta ma status ACTIVE, ale wygasłe expiresAt → „nieaktualna” na rynku.
+ * Po akceptacji admina: uruchamia oczekującą (opłaconą) publikację — oferta wchodzi na rynek bezterminowo.
  */
 export async function completeAdminOfferApproval(params: {
   offerId: number;
@@ -928,7 +948,7 @@ export async function completeAdminOfferApproval(params: {
     const endsAt = new Date(active.endsAt);
     await prisma.offer.update({
       where: { id: offerId },
-      data: { status: 'ACTIVE', expiresAt: endsAt, updatedAt: new Date() },
+      data: { status: 'ACTIVE', expiresAt: null, updatedAt: new Date() },
     });
     await clearPendingPublication(offerId);
     if (String(before?.status || '').toUpperCase() !== 'ACTIVE') {

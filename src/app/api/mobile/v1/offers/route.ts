@@ -104,10 +104,12 @@ export async function GET(req: Request) {
 
   let where: any = {};
 
-  // owner view: pełna lista własnych ogłoszeń (bez ograniczania do ACTIVE)
+  // owner view: własne ogłoszenia bez archiwum (wycofane widzi tylko admin w Centrali)
   if (userId) {
-    where = { userId: Number(userId) };
-  } else if (!includeAll) {
+    where = { userId: Number(userId), status: { not: 'ARCHIVED' } };
+  } else if (includeAll) {
+    where = { status: { not: 'ARCHIVED' } };
+  } else {
     // public view: tylko aktywne i z koordynatami
     where = {
       status: 'ACTIVE',
@@ -317,7 +319,7 @@ export async function POST(req: Request) {
           offer,
           activationSkipped: true,
           errorCode: 'PUBLICATION_REQUIRES_PLUS',
-          message: 'Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.',
+          message: 'Wystawienie tej oferty wymaga 1 kredytu Pakietu Plus.',
           quote,
         },
         { status: 422 }
@@ -407,12 +409,15 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
-    if (e instanceof Error && e.message === 'NO_PLUS_CREDIT_AVAILABLE') {
+    if (e instanceof Error && (e.message === 'NO_PLUS_CREDIT_AVAILABLE' || e.message === 'FREE_PUBLICATION_NOT_AVAILABLE')) {
       return NextResponse.json(
         {
           success: false,
           errorCode: 'PUBLICATION_REQUIRES_PLUS',
-          message: 'Brak dostępnego kredytu Pakietu Plus. Kup nowy pakiet i spróbuj ponownie.',
+          message:
+            e.message === 'FREE_PUBLICATION_NOT_AVAILABLE'
+              ? 'Darmowa publikacja przysługuje tylko przy pierwszej ofercie prywatnego użytkownika. Wystaw ofertę za 1 kredyt Pakietu Plus.'
+              : 'Brak dostępnego kredytu Pakietu Plus. Kup nowy pakiet i spróbuj ponownie.',
         },
         { status: 409 }
       );

@@ -66,7 +66,7 @@ export async function GET(req: Request) {
 
     const [myOffersRaw, deals, acquisitionActs, leads, bids] = await Promise.all([
       prisma.offer.findMany({
-        where: { userId: finalUserId },
+        where: { userId: finalUserId, status: { not: 'ARCHIVED' } },
         orderBy: { createdAt: 'desc' },
         select: CRM_OFFER_CARD_SELECT,
       }),

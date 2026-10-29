@@ -39,6 +39,9 @@ export async function GET(req: Request) {
     return NextResponse.json(quote);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Błąd serwera';
+    if (message === 'OFFER_ARCHIVED') {
+      return NextResponse.json({ error: message, errorCode: 'OFFER_ARCHIVED', message: 'Ta oferta została wycofana i jest w archiwum. Żeby wrócić na rynek, wystaw ją jako nową ofertę.' }, { status: 409 });
+    }
     const status = message === 'OFFER_NOT_FOUND_OR_FORBIDDEN' ? 404 : 500;
     return NextResponse.json({ error: message }, { status });
   }

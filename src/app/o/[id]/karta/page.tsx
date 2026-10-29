@@ -19,9 +19,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const { id } = await params;
   const sp = await searchParams;
   const card = await getCard(Number(id), sp.portal ?? null, sp.agent ?? null);
-  if (!card) return { title: 'Oferta | EstateOS™' };
+  if (!card) return { title: 'Oferta' };
   return {
-    title: `${card.title} — ${card.priceLabel} | EstateOS™`,
+    title: `${card.title} — ${card.priceLabel}`,
     description: [card.locationLabel, card.area != null ? `${card.area} m²` : null, card.rooms != null ? `${card.rooms} pok.` : null]
       .filter(Boolean)
       .join(' · '),

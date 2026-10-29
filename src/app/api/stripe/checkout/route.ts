@@ -4,7 +4,6 @@ import { cookies } from 'next/headers';
 import { decryptSession } from '@/lib/sessionUtils';
 import {
   PAKIET_PLUS_STRIPE_AMOUNT,
-  PUBLICATION_RENEWAL_STRIPE_AMOUNT,
   MARKET_REPORT_STRIPE_AMOUNT,
 } from '@/lib/publicationConstants';
 import {
@@ -37,7 +36,7 @@ export async function POST(req: Request) {
   try {
     const stripe = getStripeClient();
     const body = await req.json();
-    const { returnUrl, cancelUrl, plan, offerPayload, offerId } = body;
+    const { returnUrl, cancelUrl, plan, offerPayload } = body;
     const cookieStore = await cookies();
     const sessionCookie = cookieStore.get('estateos_session');
 
@@ -60,19 +59,12 @@ export async function POST(req: Request) {
     if (normalizedPlan === 'investor') {
       productName = 'EstateOS Investor PRO';
       productDesc =
-        '5 kredytów publikacji (30 dni każdy), wczesny podgląd nowych ofert, Radar sprzedawcy bez 24-godzinnego oczekiwania. Kolejne publikacje — Pakiet +.';
+        '5 kredytów publikacji (oferta zostaje na rynku do sprzedaży lub wycofania), wczesny podgląd nowych ofert, Radar sprzedawcy bez 24-godzinnego oczekiwania. Kolejne publikacje — Pakiet +.';
       unitAmount = 24900;
-    } else if (normalizedPlan === 'renewal') {
-      productName = 'Odnowienie Oferty (30 Dni)';
-      productDesc = 'Przedłużenie ważności Twojej oferty o kolejne 30 dni z natychmiastowym efektem.';
-      unitAmount = PUBLICATION_RENEWAL_STRIPE_AMOUNT;
-      if (offerId) {
-        metadata.offer_id_to_renew = String(offerId);
-      }
     } else if (normalizedPlan === 'pakiet_plus') {
-      productName = 'Pakiet Plus (1 publikacja / 30 dni)';
+      productName = 'Pakiet Plus (1 publikacja)';
       productDesc =
-        'Jeden kredyt publikacji na 30 dni na szerokim rynku. Nie jest to abonament ani slot — zużywasz kredyt przy wystawieniu lub odnowieniu.';
+        'Jeden kredyt na wystawienie oferty. Oferta jest na rynku, dopóki się nie sprzeda albo jej nie wycofasz. To nie abonament.';
       unitAmount = PAKIET_PLUS_STRIPE_AMOUNT;
     } else if (normalizedPlan === 'market_report') {
       productName = 'EstateOS™ Market — raport wyceny';
@@ -117,7 +109,6 @@ export async function POST(req: Request) {
     const successUrl = buildSuccessUrl(finalReturnUrl, {
       payment_success: 'true',
       plan_activated: normalizedPlan,
-      renewalOfferId: normalizedPlan === 'renewal' && offerId ? String(offerId) : '',
     });
 
     if (

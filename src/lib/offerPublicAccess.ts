@@ -61,10 +61,13 @@ export async function resolveOfferDetailAccess(
     activeIds,
   );
   const viewerId = Number(viewer?.userId);
-  const isOwner = Number.isFinite(viewerId) && viewerId > 0 && Number(offer.userId) === viewerId;
   const isAdmin = String(viewer?.role || '').toUpperCase() === 'ADMIN';
+  // Wycofana oferta trafia do archiwum: widzi ją admin (i strony transakcji), właściciel już nie.
+  const isArchived = String(offer.status || '').toUpperCase() === 'ARCHIVED';
+  const isOwner =
+    !isArchived && Number.isFinite(viewerId) && viewerId > 0 && Number(offer.userId) === viewerId;
   const crmPortal =
-    !isPublic && !isOwner && !isAdmin
+    !isPublic && !isOwner && !isAdmin && !isArchived
       ? await isCrmPortalGrantedOfferAccess(db, Number(offer.id), viewer?.portalToken)
       : false;
   const dealParticipant =

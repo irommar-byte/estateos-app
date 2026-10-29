@@ -45,7 +45,7 @@ export async function POST(req: Request, context: RouteContext) {
       return NextResponse.json(
         {
           errorCode: "PUBLICATION_REQUIRES_PLUS",
-          message: "Publikacja tego ogłoszenia na 30 dni wymaga Pakiet Plus.",
+          message: "Wystawienie tej oferty wymaga 1 kredytu Pakietu Plus.",
           quote,
         },
         { status: 422 },
@@ -117,14 +117,20 @@ export async function POST(req: Request, context: RouteContext) {
         { status: 409 },
       );
     }
-    if (message === "NO_PLUS_CREDIT_AVAILABLE") {
+    if (message === "NO_PLUS_CREDIT_AVAILABLE" || message === "FREE_PUBLICATION_NOT_AVAILABLE") {
       return NextResponse.json(
         {
           errorCode: "PUBLICATION_REQUIRES_PLUS",
-          message: "Brak dostępnego kredytu Pakietu Plus.",
+          message:
+            message === "FREE_PUBLICATION_NOT_AVAILABLE"
+              ? "Darmowa publikacja przysługuje tylko przy pierwszej ofercie prywatnego użytkownika. Wystaw ofertę za 1 kredyt Pakietu Plus."
+              : "Brak dostępnego kredytu Pakietu Plus.",
         },
         { status: 409 },
       );
+    }
+    if (message === "OFFER_ARCHIVED") {
+      return NextResponse.json({ errorCode: "OFFER_ARCHIVED", message: "Ta oferta została wycofana i jest w archiwum. Żeby wrócić na rynek, wystaw ją jako nową ofertę." }, { status: 409 });
     }
     const status = message === "OFFER_NOT_FOUND_OR_FORBIDDEN" ? 404 : 500;
     return NextResponse.json({ error: message }, { status });

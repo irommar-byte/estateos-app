@@ -21,7 +21,7 @@ function getStripeClient() {
 
 export async function POST(req: Request) {
   try {
-    const { plan, offerId, sessionId } = await req.json();
+    const { plan, sessionId } = await req.json();
     const normalizedPlan = String(plan || '').trim().toLowerCase();
     if (!normalizedPlan) return NextResponse.json({ error: 'Brak planu' }, { status: 400 });
 
@@ -34,47 +34,6 @@ export async function POST(req: Request) {
     const userId = Number(sessionData?.id || 0);
     if (!email || !userId) {
       return NextResponse.json({ error: 'Nieprawidłowa sesja' }, { status: 401 });
-    }
-
-    if (normalizedPlan === 'renewal') {
-      const numericOfferId = Number(offerId);
-      if (!Number.isFinite(numericOfferId) || numericOfferId <= 0) {
-        return NextResponse.json({ error: 'Nieprawidłowy offerId' }, { status: 400 });
-      }
-
-      if (!sessionId) {
-        return NextResponse.json({ error: 'Brak session_id dla odnowienia' }, { status: 400 });
-      }
-
-      const stripe = getStripeClient();
-      const session = await stripe.checkout.sessions.retrieve(String(sessionId), { expand: ['payment_intent'] });
-      const paymentStatus = session.payment_status;
-      const stripePlan = session.metadata?.plan_type;
-      const stripeOfferId = Number(session.metadata?.offer_id_to_renew || 0);
-
-      if (paymentStatus !== 'paid' || stripePlan !== 'renewal' || stripeOfferId !== numericOfferId) {
-        return NextResponse.json({ error: 'Płatność niepotwierdzona dla tej oferty' }, { status: 409 });
-      }
-
-      const expires = new Date();
-      expires.setDate(expires.getDate() + 30);
-
-      const result = await prisma.offer.updateMany({
-        where: {
-          id: numericOfferId,
-          userId: Number(sessionData?.id),
-        },
-        data: {
-          status: 'ACTIVE',
-          expiresAt: expires,
-        },
-      });
-
-      if (result.count === 0) {
-        return NextResponse.json({ error: 'Nie znaleziono oferty do aktywacji' }, { status: 404 });
-      }
-
-      return NextResponse.json({ success: true, renewedOfferId: numericOfferId });
     }
 
     if (normalizedPlan === 'pakiet_plus') {

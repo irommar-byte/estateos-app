@@ -407,11 +407,11 @@ const pl: AddOfferFormExtended = {
   walletHttpError: "Nie udało się załadować portfela (błąd HTTP).",
   walletUsePlusCredit: "Użyj kredytu Plus",
   walletPlusCreditLine:
-    "{count} publikacja do wykorzystania · {days} dni na rynku{expiry}",
+    "{count} publikacja do wykorzystania · oferta aktywna do sprzedaży{expiry}",
   walletNoPlusOnAccount: "Brak aktywnego kredytu Plus na koncie.",
   walletPayRenewal: "Opłać odnowienie",
   walletBuyPlusAction: "Kup Pakiet Plus",
-  walletRenewPaymentDesc: "Przedłuż ofertę o {days} dni · {price}",
+  walletRenewPaymentDesc: "Przywróć ofertę na rynek · {price}",
   walletBuyPlusPaymentDesc:
     "Opłać 1 dodatkowe wystawienie ({price}) — kredyt pojawi się na koncie po płatności",
   sumSecOffer: "Oferta",
@@ -652,11 +652,11 @@ const en: AddOfferFormExtended = {
   walletHttpError: "Could not load wallet (HTTP error).",
   walletUsePlusCredit: "Use Plus credit",
   walletPlusCreditLine:
-    "{count} publication(s) available · {days} days on market{expiry}",
+    "{count} publication(s) available · listed until sold{expiry}",
   walletNoPlusOnAccount: "No active Plus credit on account.",
   walletPayRenewal: "Pay renewal",
   walletBuyPlusAction: "Buy Plus package",
-  walletRenewPaymentDesc: "Extend listing by {days} days · {price}",
+  walletRenewPaymentDesc: "Put the listing back on the market · {price}",
   walletBuyPlusPaymentDesc:
     "Pay for 1 extra listing ({price}) — credit appears after payment",
   sumSecOffer: "Listing",
@@ -898,11 +898,11 @@ const uk: AddOfferFormExtended = {
   walletHttpError: "Не вдалося завантажити гаманець (помилка HTTP).",
   walletUsePlusCredit: "Використати кредит Plus",
   walletPlusCreditLine:
-    "{count} публікація(й) · {days} днів на ринку{expiry}",
+    "{count} публікація(й) · оголошення активне до продажу{expiry}",
   walletNoPlusOnAccount: "Немає активного кредиту Plus на обліковому записі.",
   walletPayRenewal: "Оплатити поновлення",
   walletBuyPlusAction: "Купити пакет Plus",
-  walletRenewPaymentDesc: "Подовжити оголошення на {days} днів · {price}",
+  walletRenewPaymentDesc: "Повернути оголошення на ринок · {price}",
   walletBuyPlusPaymentDesc:
     "Оплатити 1 додаткову публікацію ({price}) — кредит з'явиться після оплати",
   sumSecOffer: "Оголошення",

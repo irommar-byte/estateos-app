@@ -5,7 +5,6 @@ import { prisma } from '@/lib/prisma';
 import type { PropertyType, TransactionType } from '@prisma/client';
 import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
-import { activePublicationOfferIds } from '@/lib/offerPublication';
 import {
   grantPartnerPlanFromStripeCheckout,
   grantPartnerPlanFromStripeInvoice,
@@ -82,7 +81,6 @@ export async function POST(req: Request) {
 
       const customerEmail = session.customer_details?.email;
       const rawPlanType = String(session.metadata?.plan_type || '').trim().toLowerCase();
-      const offerIdToRenew = session.metadata?.offer_id_to_renew;
       const checkoutSessionId = session.id;
       const metadataUserId = Number(session.metadata?.user_id || 0);
 
@@ -106,8 +104,6 @@ export async function POST(req: Request) {
               `[stripe:webhook] partner_subscription email=${customerEmail} session=${checkoutSessionId} sub=${subscriptionId} trial=${isTrial} granted=${grant.granted}`,
             );
           }
-        } else if (rawPlanType === 'renewal') {
-          console.log(`[stripe:webhook] renewal_completed email=${customerEmail} session=${checkoutSessionId} offer=${offerIdToRenew || 'missing'}`);
         } else if (rawPlanType === 'pakiet_plus') {
           const user = await prisma.user.findUnique({
             where: { email: customerEmail },
@@ -197,46 +193,6 @@ export async function POST(req: Request) {
           console.warn(
             `[stripe:webhook] unknown_plan_type plan=${rawPlanType} email=${customerEmail} session=${checkoutSessionId}`
           );
-        }
-
-
-        if (rawPlanType === 'renewal' && offerIdToRenew) {
-          const numericOfferId = Number(offerIdToRenew);
-          if (!Number.isFinite(numericOfferId) || numericOfferId <= 0) {
-            console.error(`[stripe:webhook] invalid renewal offer id: ${offerIdToRenew}`);
-            return NextResponse.json({ error: 'Nieprawidłowe offerId do odnowienia' }, { status: 400 });
-          }
-
-          const existing = await prisma.offer.findUnique({
-            where: { id: numericOfferId },
-            select: { id: true, status: true, expiresAt: true },
-          });
-          if (!existing) {
-            console.error(`[stripe:webhook] renewal update missed offerId=${numericOfferId} session=${checkoutSessionId}`);
-            return NextResponse.json({ error: 'Nie udało się aktywować odnowionej oferty' }, { status: 404 });
-          }
-
-          const pubIds = await activePublicationOfferIds([numericOfferId]);
-          if (!pubIds.has(numericOfferId)) {
-            console.warn(
-              `[stripe:webhook] renewal skipped — no active publication offerId=${numericOfferId} session=${checkoutSessionId}`,
-            );
-            return NextResponse.json({ received: true });
-          }
-
-          const newExpiresAt = new Date();
-          newExpiresAt.setDate(newExpiresAt.getDate() + 30);
-
-          const updateResult = await prisma.offer.updateMany({
-            where: { id: numericOfferId, status: 'ACTIVE' },
-            data: { expiresAt: newExpiresAt },
-          });
-
-          if (updateResult.count === 0) {
-            console.error(`[stripe:webhook] renewal update missed offerId=${numericOfferId} session=${checkoutSessionId}`);
-            return NextResponse.json({ error: 'Nie udało się aktywować odnowionej oferty' }, { status: 404 });
-          }
-          console.log(`[stripe:webhook] renewal activated offerId=${numericOfferId} session=${checkoutSessionId}`);
         }
       }
     }

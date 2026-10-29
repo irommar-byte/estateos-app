@@ -10,7 +10,7 @@ import {
   publicationSelectionToRedemption,
   type PublicationSelection,
 } from "@/lib/publicationSelection";
-import { PUBLICATION_RENEWAL_PRICE_LABEL } from "@/lib/publicationConstants";
+import { PAKIET_PLUS_PRICE_LABEL } from "@/lib/publicationConstants";
 import { eosBtn } from "@/components/ui/eosButtonStyles";
 import EosModal from "@/components/ui/EosModal";
 
@@ -166,7 +166,7 @@ export default function OfferRenewalModal({
 
   const confirmLabel =
     selection && publicationSelectionLabel(selection, locale) === "Opłać odnowienie"
-      ? `Opłać odnowienie · ${PUBLICATION_RENEWAL_PRICE_LABEL}`
+      ? `Opłać odnowienie · ${PAKIET_PLUS_PRICE_LABEL}`
       : selection
         ? publicationSelectionLabel(selection, locale)
         : "Wybierz metodę";

@@ -358,7 +358,7 @@ export async function PUT(req: Request) {
           where: { id: offerId },
           data: {
             status: 'ACTIVE',
-            expiresAt: reactivation.endsAt,
+            expiresAt: null,
             ...(wantsReassign ? { userId: ownerUserId } : {}),
             ...(nextDescription !== undefined ? { description: nextDescription } : {}),
           },
@@ -397,7 +397,7 @@ export async function PUT(req: Request) {
         where: { id: offerId },
         data: {
           status: 'ACTIVE',
-          expiresAt: approval.endsAt,
+          expiresAt: null,
           ...(wantsReassign ? { userId: ownerUserId } : {}),
           ...(nextDescription !== undefined ? { description: nextDescription } : {}),
         },
