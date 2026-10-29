@@ -95,7 +95,8 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
   const drawH = height;
 
   const wallW = Math.max(compact ? 3 : 4.5, Math.min(compact ? 6 : 9, viewport.scale * 0.13));
-  const nameSize = compact ? 0 : Math.max(11, Math.min(16, viewport.scale * 0.24));
+  // Plan rysuje się w ~960 px i jest pomniejszany na stronie — litery liczymy z zapasem.
+  const nameSize = compact ? 0 : Math.max(15, Math.min(24, viewport.scale * 0.3));
 
   // Etykiety pomieszczeń: na środku pokoju, bez nachodzenia (kolejna zsuwa się w dół).
   const roomLabels = useMemo(() => {
@@ -177,7 +178,7 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
         : dimensionLabels.map((label) => {
             const color = label.kind === 'window' ? '#0369a1' : label.kind === 'door' ? '#b45309' : '#475569';
             return (
-              <text key={label.id} x={label.x} y={label.y + 3.5} fill={color} fontSize={10} fontWeight={600} textAnchor="middle" {...halo}>
+              <text key={label.id} x={label.x} y={label.y + 3.5} fill={color} fontSize={13} fontWeight={600} textAnchor="middle" {...halo}>
                 {label.text}
               </text>
             );
@@ -203,7 +204,7 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
           <line x1={padding} y1={drawH - padding + 8} x2={padding + scaleBar.px} y2={drawH - padding + 8} stroke={ink} strokeWidth={2} />
           <line x1={padding} y1={drawH - padding + 3} x2={padding} y2={drawH - padding + 13} stroke={ink} strokeWidth={2} />
           <line x1={padding + scaleBar.px} y1={drawH - padding + 3} x2={padding + scaleBar.px} y2={drawH - padding + 13} stroke={ink} strokeWidth={2} />
-          <text x={padding + scaleBar.px / 2} y={drawH - padding - 1} fill={ink} fontSize={10} fontWeight={600} textAnchor="middle">
+          <text x={padding + scaleBar.px / 2} y={drawH - padding - 1} fill={ink} fontSize={13} fontWeight={600} textAnchor="middle">
             {scaleBar.meters} m
           </text>
         </g>

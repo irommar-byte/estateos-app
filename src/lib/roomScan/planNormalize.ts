@@ -199,13 +199,34 @@ export function detectPlanRooms(meta: FloorPlanScanMeta | null | undefined, res 
 
   // Sekcje skanu → pomieszczenia po najbliższej powierzchni.
   const sections = [...(meta.sections || [])].filter((s) => (s.areaSqM || 0) > 0);
+  // Meble ze skanu podpowiadają typ pomieszczenia (wanna/WC → łazienka, łóżko → sypialnia, kuchenka → kuchnia).
+  const compCats = comps.map(() => new Set<string>());
+  for (const obj of meta.objects || []) {
+    const gx = Math.round((obj.centerX - minX) / res);
+    const gz = Math.round((obj.centerZ - minZ) / res);
+    if (gx < 0 || gz < 0 || gx >= W || gz >= H) continue;
+    const ci = comps.findIndex((comp) => comp.id === grid[gz * W + gx]);
+    if (ci >= 0) compCats[ci].add(obj.category);
+  }
+  const kindOf = (key: string) =>
+    /bath|wc|toilet|łaz/i.test(key) ? 'bath' : /bed|sypial/i.test(key) ? 'bed' : /kitchen|kuch/i.test(key) ? 'kitchen' : /hall|przedpok|korytarz/i.test(key) ? 'hall' : 'room';
+  const compKind = (cats: Set<string>) =>
+    cats.has('toilet') || cats.has('bathtub') ? 'bath' : cats.has('bed') ? 'bed' : cats.has('stove') || cats.has('oven') || cats.has('refrigerator') ? 'kitchen' : null;
   const pairs: Array<{ comp: number; sec: number; diff: number }> = [];
-  comps.forEach((comp, ci) => sections.forEach((s, si) => pairs.push({ comp: ci, sec: si, diff: Math.abs(comp.area - Number(s.areaSqM)) / Math.max(comp.area, Number(s.areaSqM)) })));
+  comps.forEach((comp, ci) =>
+    sections.forEach((s, si) => {
+      const areaDiff = Math.abs(comp.area - Number(s.areaSqM)) / Math.max(comp.area, Number(s.areaSqM));
+      const seen = compKind(compCats[ci]);
+      const wanted = kindOf(`${s.key} ${s.label}`);
+      const typeCost = !seen ? (wanted === 'bath' || wanted === 'bed' ? 0.15 : 0) : seen === wanted || (seen === 'bed' && wanted === 'room') ? -0.2 : 0.5;
+      pairs.push({ comp: ci, sec: si, diff: areaDiff + typeCost });
+    }),
+  );
   pairs.sort((a, b) => a.diff - b.diff);
   const compSec = new Map<number, number>();
   const usedSec = new Set<number>();
   for (const p of pairs) {
-    if (compSec.has(p.comp) || usedSec.has(p.sec) || p.diff > 0.6) continue;
+    if (compSec.has(p.comp) || usedSec.has(p.sec) || p.diff > 0.7) continue;
     compSec.set(p.comp, p.sec);
     usedSec.add(p.sec);
   }

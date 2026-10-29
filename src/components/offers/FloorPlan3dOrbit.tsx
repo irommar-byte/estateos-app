@@ -52,7 +52,8 @@ export default function FloorPlan3dOrbit({ meta, className }: Props) {
       const cz = (b.minZ + b.maxZ) / 2;
       const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 4);
       const height = meta.ceilingHeightM && meta.ceilingHeightM > 1.8 ? Math.min(meta.ceilingHeightM, 3.2) : 2.6;
-      const wallH = height * 0.92;
+      // Makieta „przekrój”: ściany ścięte na ~1,2 m, żeby było widać wnętrza z góry.
+      const wallH = Math.min(1.25, height * 0.5);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -65,7 +66,7 @@ export default function FloorPlan3dOrbit({ meta, className }: Props) {
 
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(38, 1, 0.1, span * 20);
-      camera.position.set(cx + span * 0.55, span * 1.05, cz + span * 1.05);
+      camera.position.set(cx + span * 0.75, span * 1.35, cz + span * 1.45);
 
       scene.add(new THREE.HemisphereLight(0xffffff, 0xcbd5e1, 1.25));
       const sun = new THREE.DirectionalLight(0xffffff, 1.35);
@@ -139,8 +140,8 @@ export default function FloorPlan3dOrbit({ meta, className }: Props) {
       const glass = mat(0x7dd3fc, { transparent: true, opacity: 0.55, roughness: 0.1 });
       const door = mat(0xd6c7b0);
       for (const o of meta.openings || []) {
-        if (o.kind === 'window') addBox(o.x1, o.z1, o.x2, o.z2, 0.85, Math.min(2.15, wallH - 0.1), 0.14, glass);
-        else if (o.kind === 'door') addBox(o.x1, o.z1, o.x2, o.z2, 0, 2.02, 0.14, door);
+        if (o.kind === 'window') addBox(o.x1, o.z1, o.x2, o.z2, 0.8, wallH + 0.01, 0.14, glass);
+        else if (o.kind === 'door') addBox(o.x1, o.z1, o.x2, o.z2, 0, wallH + 0.01, 0.14, door);
       }
 
       // Meble
@@ -161,7 +162,7 @@ export default function FloorPlan3dOrbit({ meta, className }: Props) {
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
       controls.maxPolarAngle = Math.PI * 0.45;
-      controls.minDistance = span * 0.5;
+      controls.minDistance = span * 0.7;
       controls.maxDistance = span * 3;
       controls.enablePan = false;
       controls.autoRotate = true;

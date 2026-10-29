@@ -328,7 +328,7 @@ export default function OfferFloorPlanPanel({
       {roomScans.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 border-t border-[var(--eos-border)] p-4 sm:grid-cols-2 md:grid-cols-3">
           {roomScans.map((room) => {
-            const cropped = cropScanMetaToRoom(scanMeta, room);
+            const cropped = normalizeScanMeta(cropScanMetaToRoom(scanMeta, room));
             const areaLabel = room.areaM2 ? `${formatListingAreaSqm(room.areaM2)} m²` : null;
             const selected = planKey === room.id;
             return (
