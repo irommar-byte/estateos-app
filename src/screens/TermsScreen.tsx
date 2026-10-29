@@ -143,9 +143,9 @@ export default function TermsScreen() {
 
         <Text style={[styles.sectionTitle, { color: textColor }]}>4. Płatności w aplikacji</Text>
         <Text style={[styles.paragraph, { color: textColor }]}>
-          Pakiet Plus pozwala dodać jedną dodatkową publikację na 30 dni: nową ofertę albo
-          zakończoną ofertę przywróconą jako nową 30-dniową publikację. Nie jest subskrypcją,
-          nie odnawia się automatycznie, nie przedłuża aktywnych ogłoszeń i nie aktywuje planu
+          Pierwsza oferta prywatnego użytkownika jest bezpłatna. Pakiet Plus (1 kredyt) pozwala
+          wystawić jedną kolejną ofertę, która pozostaje aktywna, dopóki się nie sprzeda albo jej
+          nie wycofasz. Nie jest subskrypcją, nie odnawia się automatycznie i nie aktywuje planu
           konta. Zakup jest jednorazowy (consumable) i odbywa się wyłącznie przez systemy płatnicze
           platform: Apple App Store na iOS i Google Play na Androidzie. Apple i Google dostarczają
           osobne potwierdzenia płatności na adres e-mail powiązany z kontem.
