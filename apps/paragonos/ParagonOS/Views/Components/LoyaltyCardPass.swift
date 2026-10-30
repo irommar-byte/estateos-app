@@ -712,16 +712,17 @@ struct LoyaltyPassStack: View {
         guard draggingID == nil, let openID = openingID,
               let openIndex = orderedCards.firstIndex(where: { $0.id == openID })
         else { return slot }
-        if cardID == openID { return slot - PassStackMotion.slideOutLift }
-        // Like Wallet: the cards in front slide down until the chosen card is fully free,
-        // so nothing overlaps it on the way out — or on the way back in.
-        if index > openIndex { return slot + pocketDrop }
-        return slot
+        _ = openIndex
+        // The chosen card rides up to the top of the pile; every other card — in front of it
+        // and behind it — slides down out of its way. Coming back, it drops from the top
+        // into its old slot while the cards behind rise under it and those in front close over it.
+        if cardID == openID { return -PassStackMotion.slideOutLift }
+        return slot + pocketDrop
     }
 
-    /// How far the cards in front drop so the opening card is uncovered.
+    /// How far the other cards drop so the card at the top is completely free.
     private var pocketDrop: CGFloat {
-        LoyaltyPassStackMetrics.cardHeight - step + PassStackMotion.slideOutLift + PassStackMotion.pocketGap
+        LoyaltyPassStackMetrics.cardHeight - PassStackMotion.slideOutLift + PassStackMotion.pocketGap
     }
 
     /// The opening card keeps its place in the pile: it slides out from behind the
