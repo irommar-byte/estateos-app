@@ -50,6 +50,12 @@ export async function startMarketDataUpdate(token: string): Promise<MarketDataSt
   );
 }
 
+export async function stopMarketDataUpdate(token: string): Promise<MarketDataState> {
+  return parse(
+    await fetch(`${API_URL}/api/mobile/v1/admin/market-data`, { method: 'POST', headers: headers(token), body: JSON.stringify({ action: 'stop' }) }),
+  );
+}
+
 export async function saveMarketDataSchedule(token: string, schedule: IngestSchedule): Promise<MarketDataState> {
   return parse(
     await fetch(`${API_URL}/api/mobile/v1/admin/market-data`, {

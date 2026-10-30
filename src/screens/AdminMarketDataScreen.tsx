@@ -25,6 +25,7 @@ import {
   fetchMarketDataState,
   saveMarketDataSchedule,
   startMarketDataUpdate,
+  stopMarketDataUpdate,
   type IngestSchedule,
   type IngestScheduleMode,
   type MarketDataState,
@@ -38,10 +39,10 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const MODES: Array<{ id: IngestScheduleMode; label: string }> = [
   { id: 'off', label: 'Wył.' },
-  { id: 'daily', label: 'Codziennie' },
-  { id: 'weekly', label: 'Tydzień' },
+  { id: 'daily', label: 'Codz.' },
+  { id: 'weekly', label: 'Tydz.' },
   { id: 'biweekly', label: '2 tyg.' },
-  { id: 'monthly', label: 'Miesiąc' },
+  { id: 'monthly', label: 'Mies.' },
 ];
 const WEEKDAYS = [
   { id: 1, label: 'Pn' },
@@ -251,34 +252,61 @@ function GrowthChart({ history, palette }: { history: MarketDataState['history']
   if (!items.length) {
     return <Text style={[styles.empty, { color: palette.secondary }]}>Wykres pojawi się po pierwszej aktualizacji.</Text>;
   }
+  const last = items[items.length - 1];
+  const sum = items.reduce((acc, h) => acc + h.added, 0);
+  const short = (n: number) => (n > 999 ? `${(n / 1000).toFixed(n > 99_999 ? 0 : 1).replace('.', ',')}k` : String(n));
   return (
-    <View style={styles.chart}>
-      {items.map((h, i) => {
-        const pct = h.added / max;
-        const failed = h.status === 'FAILED';
-        return (
-          <View key={h.runId} style={styles.chartCol}>
-            <Text style={[styles.chartValue, { color: palette.secondary }]} numberOfLines={1}>
-              {h.added > 999 ? `${(h.added / 1000).toFixed(1).replace('.', ',')}k` : h.added}
-            </Text>
-            <View style={styles.chartBarWrap}>
-              <Animated.View
-                style={[
-                  styles.chartBar,
-                  {
-                    backgroundColor: failed ? palette.red : i === items.length - 1 ? palette.green : palette.blue,
-                    opacity: i === items.length - 1 ? 1 : 0.55,
-                    height: (anims[i] || new Animated.Value(1)).interpolate({ inputRange: [0, 1], outputRange: ['2%', `${Math.max(4, pct * 100)}%`] }),
-                  },
-                ]}
-              />
-            </View>
-            <Text style={[styles.chartLabel, { color: palette.tertiary }]} numberOfLines={1}>
-              {new Date(h.finishedAt).toLocaleDateString('pl-PL', { day: 'numeric', month: 'numeric' })}
-            </Text>
+    <View>
+      <View style={styles.chartHead}>
+        <View>
+          <Text style={[styles.chartKicker, { color: palette.secondary }]} maxFontSizeMultiplier={1.2}>Ostatnia aktualizacja</Text>
+          <Text style={[styles.chartBig, { color: last.status === 'FAILED' ? palette.red : palette.text }]} maxFontSizeMultiplier={1.2}>
+            +{nf(last.added)}
+            <Text style={[styles.chartUnit, { color: palette.secondary }]}> aktów</Text>
+          </Text>
+        </View>
+        {items.length > 1 ? (
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={[styles.chartKicker, { color: palette.secondary }]} maxFontSizeMultiplier={1.2}>Łącznie ({items.length})</Text>
+            <Text style={[styles.chartMid, { color: palette.text }]} maxFontSizeMultiplier={1.2}>+{nf(sum)}</Text>
           </View>
-        );
-      })}
+        ) : null}
+      </View>
+      <View style={[styles.chart, { borderBottomColor: palette.separator }]}>
+        {[0.5, 1].map((g) => (
+          <View key={g} pointerEvents="none" style={[styles.chartGrid, { bottom: `${g * 100}%`, borderColor: palette.separator }]} />
+        ))}
+        {items.map((h, i) => {
+          const pct = h.added / max;
+          const failed = h.status === 'FAILED';
+          const isLast = i === items.length - 1;
+          return (
+            <View key={h.runId} style={styles.chartCol}>
+              <View style={styles.chartBarWrap}>
+                <Text style={[styles.chartValue, { color: isLast ? palette.text : palette.secondary }]} numberOfLines={1} maxFontSizeMultiplier={1}>
+                  {short(h.added)}
+                </Text>
+                <Animated.View
+                  style={[
+                    styles.chartBar,
+                    {
+                      backgroundColor: failed ? palette.red : isLast ? palette.green : palette.blue,
+                      opacity: isLast ? 1 : 0.45,
+                      height: (anims[i] || new Animated.Value(1)).interpolate({ inputRange: [0, 1], outputRange: ['2%', `${Math.max(4, pct * 82)}%`] }),
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.chartLabel, { color: palette.tertiary }]} numberOfLines={1} maxFontSizeMultiplier={1}>
+                {new Date(h.finishedAt).toLocaleDateString('pl-PL', { day: 'numeric', month: 'numeric' })}
+              </Text>
+            </View>
+          );
+        })}
+        {Array.from({ length: Math.max(0, 7 - items.length) }, (_, i) => (
+          <View key={`pad${i}`} style={styles.chartCol} />
+        ))}
+      </View>
     </View>
   );
 }
@@ -311,7 +339,7 @@ function Segmented({ value, onChange, palette }: { value: IngestScheduleMode; on
             onChange(m.id);
           }}
         >
-          <Text style={[styles.segmentText, { color: palette.text, fontWeight: m.id === value ? '600' : '500' }]}>{m.label}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.15} style={[styles.segmentText, { color: palette.text, fontWeight: m.id === value ? '600' : '500' }]}>{m.label}</Text>
         </Pressable>
       ))}
     </View>
@@ -339,6 +367,7 @@ export default function AdminMarketDataScreen() {
   const [now, setNow] = useState(Date.now());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasRunning = useRef(false);
+  const hourScroll = useRef<ScrollView>(null);
 
   const load = useCallback(async () => {
     const token = getAdminToken();
@@ -377,6 +406,36 @@ export default function AdminMarketDataScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const stopNow = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    Alert.alert(
+      'Zatrzymać aktualizację?',
+      'Import zostanie przerwany. Akty pobrane do tej pory zostają w bazie — kolejna aktualizacja dociągnie resztę.',
+      [
+        { text: 'Kontynuuj', style: 'cancel' },
+        {
+          text: 'Zatrzymaj',
+          style: 'destructive',
+          onPress: async () => {
+            const token = getAdminToken();
+            if (!token) return;
+            setStarting(true);
+            try {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setState(await stopMarketDataUpdate(token));
+              wasRunning.current = false;
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+            } catch (e) {
+              Alert.alert('Aktualizacja', e instanceof Error ? e.message : 'Nie udało się zatrzymać.');
+            } finally {
+              setStarting(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const runNow = () => {
@@ -534,8 +593,8 @@ export default function AdminMarketDataScreen() {
                 {Object.entries(state.totals.byKind).map(([kind, count]) => (
                   <View key={kind} style={[styles.kind, { backgroundColor: palette.fill }]}>
                     <Ionicons name={KIND_LABEL[kind]?.icon || 'grid-outline'} size={15} color={palette.secondary} />
-                    <Text style={[styles.kindLabel, { color: palette.secondary }]}>{KIND_LABEL[kind]?.label || kind}</Text>
-                    <Text style={[styles.kindValue, { color: palette.text }]}>{nf(count)}</Text>
+                    <Text numberOfLines={1} maxFontSizeMultiplier={1.2} style={[styles.kindLabel, { color: palette.secondary }]}>{KIND_LABEL[kind]?.label || kind}</Text>
+                    <Text numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.2} style={[styles.kindValue, { color: palette.text }]}>{nf(count)}</Text>
                   </View>
                 ))}
               </View>
@@ -570,7 +629,7 @@ export default function AdminMarketDataScreen() {
                             { backgroundColor: active ? palette.blue : palette.fill, transform: [{ scale: pressed ? 0.92 : 1 }] },
                           ]}
                         >
-                          <Text style={{ color: active ? '#fff' : palette.text, fontWeight: '600', fontSize: 14 }}>{d.label}</Text>
+                          <Text maxFontSizeMultiplier={1.1} style={{ color: active ? '#fff' : palette.text, fontWeight: '600', fontSize: 14 }}>{d.label}</Text>
                         </Pressable>
                       );
                     })}
@@ -580,7 +639,14 @@ export default function AdminMarketDataScreen() {
               {schedule && schedule.mode !== 'off' ? (
                 <>
                   <Text style={[styles.fieldLabel, { color: palette.secondary }]}>Godzina</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingRight: 8 }}>
+                  <ScrollView
+                    ref={hourScroll}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ marginHorizontal: -16 }}
+                    contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
+                    onContentSizeChange={() => hourScroll.current?.scrollTo({ x: Math.max(0, (schedule.hour - 1) * 76), animated: false })}
+                  >
                     {Array.from({ length: 24 }, (_, h) => {
                       const active = schedule.hour === h;
                       return (
@@ -595,7 +661,7 @@ export default function AdminMarketDataScreen() {
                             { backgroundColor: active ? palette.blue : palette.fill, transform: [{ scale: pressed ? 0.92 : 1 }] },
                           ]}
                         >
-                          <Text style={{ color: active ? '#fff' : palette.text, fontWeight: '600', fontVariant: ['tabular-nums'] }}>
+                          <Text maxFontSizeMultiplier={1.1} style={{ color: active ? '#fff' : palette.text, fontWeight: '600', fontSize: 15, fontVariant: ['tabular-nums'] }}>
                             {String(h).padStart(2, '0')}:20
                           </Text>
                         </Pressable>
@@ -617,20 +683,23 @@ export default function AdminMarketDataScreen() {
             </Card>
 
             <Pressable
-              onPress={runNow}
-              disabled={running || starting}
+              onPress={running ? stopNow : runNow}
+              disabled={starting}
               style={({ pressed }) => [
                 styles.cta,
-                { backgroundColor: running ? palette.fill : palette.blue, opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
+                running
+                  ? { backgroundColor: 'rgba(255,59,48,0.12)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,59,48,0.35)' }
+                  : { backgroundColor: palette.blue },
+                { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
               ]}
             >
               {starting ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={running ? '#FF3B30' : '#fff'} />
               ) : (
                 <>
-                  <Ionicons name={running ? 'hourglass-outline' : 'arrow-down-circle'} size={20} color={running ? palette.secondary : '#fff'} />
-                  <Text style={[styles.ctaText, { color: running ? palette.secondary : '#fff' }]}>
-                    {running ? 'Aktualizacja trwa…' : 'Aktualizuj teraz'}
+                  <Ionicons name={running ? 'stop-circle' : 'arrow-down-circle'} size={20} color={running ? '#FF3B30' : '#fff'} />
+                  <Text style={[styles.ctaText, { color: running ? '#FF3B30' : '#fff' }]}>
+                    {running ? 'Zatrzymaj aktualizację' : 'Aktualizuj teraz'}
                   </Text>
                 </>
               )}
@@ -674,15 +743,21 @@ const styles = StyleSheet.create({
   pillText: { fontSize: 15, fontWeight: '700', fontVariant: ['tabular-nums'] },
   countdown: { fontSize: 14, fontWeight: '600' },
   errorText: { fontSize: 13, paddingBottom: 10, paddingLeft: 42 },
-  chart: { flexDirection: 'row', alignItems: 'flex-end', height: 150, gap: 6 },
+  chartHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 },
+  chartKicker: { fontSize: 12, fontWeight: '500' },
+  chartBig: { fontSize: 28, fontWeight: '700', letterSpacing: -0.6, fontVariant: ['tabular-nums'], marginTop: 2 },
+  chartUnit: { fontSize: 15, fontWeight: '500', letterSpacing: 0 },
+  chartMid: { fontSize: 17, fontWeight: '600', fontVariant: ['tabular-nums'], marginTop: 2 },
+  chart: { flexDirection: 'row', alignItems: 'flex-end', height: 120, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, paddingBottom: 0, marginBottom: 22 },
+  chartGrid: { position: 'absolute', left: 0, right: 0, borderTopWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', opacity: 0.7 },
   chartCol: { flex: 1, alignItems: 'center', height: '100%' },
-  chartValue: { fontSize: 10, fontWeight: '600', marginBottom: 4 },
-  chartBarWrap: { flex: 1, width: '100%', justifyContent: 'flex-end' },
-  chartBar: { width: '100%', borderRadius: 5 },
-  chartLabel: { fontSize: 10, marginTop: 5 },
+  chartValue: { width: 48, fontSize: 10, fontWeight: '600', marginBottom: 4, textAlign: 'center' },
+  chartBarWrap: { flex: 1, width: '100%', maxWidth: 22, justifyContent: 'flex-end', alignItems: 'center' },
+  chartBar: { width: '100%', borderTopLeftRadius: 6, borderTopRightRadius: 6, borderBottomLeftRadius: 2, borderBottomRightRadius: 2 },
+  chartLabel: { position: 'absolute', bottom: -18, fontSize: 10, width: 40, textAlign: 'center' },
   empty: { fontSize: 15, paddingVertical: 24, textAlign: 'center' },
-  kinds: { flexDirection: 'row', gap: 8, marginTop: 14 },
-  kind: { flex: 1, borderRadius: 10, padding: 10, gap: 2 },
+  kinds: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  kind: { flex: 1, borderRadius: 12, padding: 10, gap: 3 },
   kindLabel: { fontSize: 12 },
   kindValue: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
   segment: { flexDirection: 'row', borderRadius: 9, padding: 2, height: 34 },
@@ -698,12 +773,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  segmentItem: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  segmentItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   segmentText: { fontSize: 13 },
   fieldLabel: { fontSize: 13, marginTop: 16, marginBottom: 8 },
   weekRow: { flexDirection: 'row', justifyContent: 'space-between' },
   dayDot: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  hourChip: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 },
+  hourChip: { width: 68, borderRadius: 10, paddingVertical: 9, alignItems: 'center' },
   footnote: { fontSize: 13, lineHeight: 18, marginTop: 12 },
   cta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 54, borderRadius: 14, marginTop: 10 },
   ctaText: { fontSize: 17, fontWeight: '600' },
