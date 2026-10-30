@@ -14,7 +14,7 @@ async function main() {
   if (scheduled) {
     // W trakcie wdrożenia (next build) nie startujemy — za mało pamięci na oba naraz; ruszy za godzinę.
     try {
-      if (execSync("pgrep -f 'next build' || true").toString().trim()) {
+      if (execSync("pgrep -f '[n]ext build' || true").toString().trim()) {
         console.log(JSON.stringify({ job: 'rcn-ingest', message: 'deploy_in_progress' }));
         return;
       }

@@ -5,7 +5,7 @@ const started = Date.now();
 const LIMIT_MS = 75 * 60 * 1000;
 function running() {
   try {
-    return execSync("pgrep -f 'ingest-rcn-market' || true").toString().trim().length > 0;
+    return execSync("pgrep -f '[i]ngest-rcn-market' || true").toString().trim().length > 0;
   } catch {
     return false;
   }

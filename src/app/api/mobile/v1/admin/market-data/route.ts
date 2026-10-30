@@ -108,7 +108,7 @@ export async function POST(req: Request) {
     // Budowanie strony i import naraz nie mieszczą się w pamięci serwera.
     let building = false;
     try {
-      building = execSync("pgrep -f 'next build' || true").toString().trim().length > 0;
+      building = execSync("pgrep -f '[n]ext build' || true").toString().trim().length > 0;
     } catch {
       building = false;
     }
