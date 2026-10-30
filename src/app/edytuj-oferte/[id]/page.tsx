@@ -51,6 +51,7 @@ import { HEATING_DICT_KEYS } from '@/i18n/addOfferDictionary';
 import { isValidLandRegistryNumber, normalizeLandRegistryInput } from '@/lib/landRegistryInput';
 import dynamic from 'next/dynamic';
 import LuxurySegmentSwitch from '@/components/ui/LuxurySegmentSwitch';
+import EditOfferAside from '@/components/offer/EditOfferAside';
 
 const NeighborhoodMapPreview = dynamic(
   () => import('@/components/map/NeighborhoodMapPreview'),
@@ -297,6 +298,9 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [photoRoomsTouched, setPhotoRoomsTouched] = useState(false);
   const [roomPickerUrl, setRoomPickerUrl] = useState<string | null>(null);
   const [scannedRooms, setScannedRooms] = useState<string[]>([]);
+  // Model 3D (USDZ z aplikacji) — można go usunąć z poziomu www; skany dodaje się w aplikacji (LiDAR).
+  const [has3dModel, setHas3dModel] = useState(false);
+  const [drop3dModel, setDrop3dModel] = useState(false)
   // AI: „to wygląda na kuchnię” — podpowiedzi do zatwierdzenia jednym kliknięciem.
   const [roomSuggestions, setRoomSuggestions] = useState<Record<string, string>>({});
   const [roomAiBusy, setRoomAiBusy] = useState(false);
@@ -430,6 +434,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         );
         if (parsedImages.length) setImagesList(parsedImages);
         setScannedRooms(scannedRoomNames(offer.floorPlanScanMeta));
+        setHas3dModel(Boolean(offer.floorPlan3dUrl));
         fetch(`/api/offers/${offerId}/photo-rooms`)
           .then((r) => (r.ok ? r.json() : null))
           .then((json) => {
@@ -706,6 +711,41 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
     setPhotoRoomsTouched(true);
   };
 
+  // Niezapisane zmiany: porównujemy migawkę formularza z tą zaraz po wczytaniu oferty.
+  const editSnapshot = useMemo(
+    () => JSON.stringify([data, imagesList, floorPlanUrl, floorPlanExtraUrls, photoRooms, selectedAmenities, agentCommissionPercent, drop3dModel]),
+    [data, imagesList, floorPlanUrl, floorPlanExtraUrls, photoRooms, selectedAmenities, agentCommissionPercent, drop3dModel],
+  );
+  const baselineRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isLoading || baselineRef.current !== null) return;
+    const t = window.setTimeout(() => {
+      baselineRef.current = editSnapshot;
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [isLoading, editSnapshot]);
+  const isDirty = baselineRef.current !== null && baselineRef.current !== editSnapshot && !isSuccess;
+  const saveRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveRef.current();
+      }
+    };
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [isDirty]);
+
   const handleSave = async () => {
     const exactLocation = data.isExactLocation !== false;
     const streetName = String(data.streetName || data.address || '').trim();
@@ -757,6 +797,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       apartmentNumber: data.apartmentNumber || '',
       landRegistryNumber: kwNormalized || '',
       ...amenityBooleanPatch(selectedAmenities),
+      ...(drop3dModel ? { clearFloorPlan3d: true, floorPlan3dUrl: null } : {}),
       ...(isAgentCommissionAccount({ role: viewerRole }) && agentCommissionPercent.trim() !== ''
         ? { agentCommissionPercent: agentCommissionPercent.replace(',', '.') }
         : {}),
@@ -780,6 +821,10 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
       alert(result.error || result.message || 'Wystąpił błąd zapisu.'); 
       setIsSubmitting(false); 
     }
+  };
+
+  saveRef.current = () => {
+    if (!isSubmitting && !isSuccess) void handleSave();
   };
 
   const amenityFieldForId = (id: OfferAmenityId): IntelligenceAmenityField | null => {
@@ -857,12 +902,18 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 md:px-6 mt-12 space-y-12">
+      <div className="mx-auto mt-12 max-w-7xl px-4 md:px-6 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-10">
+      <div className="min-w-0 space-y-12">
         
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-8 relative">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-emerald-500/10 blur-[100px] rounded-full pointer-events-none"></div>
-          <h1 className="text-4xl md:text-6xl font-black uppercase tracking-tighter mb-4 relative z-10 drop-shadow-2xl">Edytuj <span className="text-transparent bg-clip-text bg-gradient-to-br from-emerald-400 via-emerald-500 to-teal-700">Ofertę</span></h1>
-          <p className="text-zinc-500 text-xs md:text-sm font-bold tracking-[0.2em] uppercase relative z-10">Zarządzaj ogłoszeniem <span className="text-white/40 ml-2">#{offerId}</span></p>
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="relative mb-2">
+          <div className="pointer-events-none absolute -left-10 -top-16 h-56 w-56 rounded-full bg-emerald-500/10 blur-[90px]" />
+          <p className="relative text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-500">Edycja ogłoszenia · #{offerId}</p>
+          <h1 className="relative mt-2 line-clamp-2 text-3xl font-semibold tracking-tight text-[var(--eos-text)] md:text-[40px] md:leading-[1.1]">
+            {String(data.title || '').trim() || 'Twoja oferta'}
+          </h1>
+          <p className="relative mt-2 text-sm text-[var(--eos-muted)]">
+            Zmiany widać od razu w podglądzie obok. Zapisz przyciskiem albo skrótem ⌘S.
+          </p>
         </motion.div>
 
         <div className="sticky top-[4.5rem] z-40 -mx-1 mb-4 flex flex-wrap gap-2 rounded-[1.6rem] border border-white/10 bg-[#050505]/85 p-2 backdrop-blur-xl md:top-[5.5rem]">
@@ -1518,6 +1569,60 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               </div>
             </div>
           )}
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">Skan LiDAR</p>
+              {scannedRooms.length ? (
+                <>
+                  <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{scannedRooms.length} zeskanowanych pomieszczeń</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {scannedRooms.map((room) => (
+                      <span key={room} className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-[11px] font-medium text-cyan-600 dark:text-cyan-300">
+                        {room}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-[var(--eos-subtle)]">
+                    Na stronie oferty powstaje z nich interaktywny rzut z wymiarami. Zdjęcia możesz przypisać do pomieszczeń w Galerii.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--eos-muted)]">
+                  Brak skanu. Zeskanuj pomieszczenia iPhonem z LiDAR w aplikacji EstateOS (Edytuj ofertę → Plan) — powstanie rzut z wymiarami.
+                </p>
+              )}
+            </div>
+            <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[var(--eos-muted)]">Model 3D</p>
+              {has3dModel ? (
+                drop3dModel ? (
+                  <>
+                    <p className="mt-1 text-sm font-semibold text-orange-500">Model 3D zostanie usunięty po zapisie</p>
+                    <button type="button" onClick={() => setDrop3dModel(false)} className="mt-2 text-xs font-semibold text-[var(--eos-accent)] hover:underline">
+                      Cofnij
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">Dodany (spacer 3D na stronie oferty)</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Usunąć model 3D? Skany pomieszczeń i rzut zostaną.')) setDrop3dModel(true);
+                      }}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-3 py-1.5 text-[11px] font-semibold text-red-500 transition hover:bg-red-500/10"
+                    >
+                      <Trash2 size={12} /> Usuń model 3D
+                    </button>
+                  </>
+                )
+              ) : (
+                <p className="mt-1 text-[12.5px] leading-relaxed text-[var(--eos-muted)]">
+                  Brak modelu. Model 3D zapisuje się automatycznie przy skanie całego mieszkania w aplikacji.
+                </p>
+              )}
+            </div>
+          </div>
         </motion.div>
 
         {/* --- OPIS --- */}
@@ -1631,10 +1736,23 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         </motion.div>
 
       </div>
+      <EditOfferAside
+        offerId={offerId}
+        data={data}
+        images={imagesList}
+        floorPlanUrl={floorPlanUrl}
+        scannedRooms={scannedRooms}
+        has3d={has3dModel && !drop3dModel}
+        dirty={isDirty}
+        isSubmitting={isSubmitting}
+        isSuccess={isSuccess}
+        onSave={() => saveRef.current()}
+      />
+      </div>
 
       {/* --- LEWITUJĄCY, POTĘŻNY PRZYCISK ZAPISU (FLOATING ACTION BAR) --- */}
       <AnimatePresence>
-        <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl z-[100]">
+        <motion.div initial={{ opacity: 0, y: 50 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-2xl z-[100] lg:hidden">
           <div className="absolute inset-0 bg-emerald-500/20 blur-3xl rounded-full"></div>
           <button onClick={handleSave} disabled={isSubmitting || isSuccess} className={`relative w-full py-5 md:py-6 rounded-[2rem] font-black text-xs md:text-sm uppercase tracking-[0.3em] transition-all duration-500 flex items-center justify-center gap-3 border-2 overflow-hidden group shadow-[0_20px_50px_rgba(0,0,0,0.8)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black ${isSuccess ? 'bg-emerald-500 border-emerald-400 text-black scale-105' : 'bg-[#0a0a0a]/90 backdrop-blur-xl border-emerald-500/50 text-emerald-400 hover:bg-emerald-500 hover:text-black hover:border-emerald-400 hover:scale-[1.02] hover:shadow-[0_0_40px_rgba(16,185,129,0.5)] active:scale-95'}`}>
             {/* Lśnienie w tle przycisku */}
