@@ -66,6 +66,7 @@ function groupedNumber(payload: string): string {
 
 function passJson(req: PassRequest): Buffer {
   const storeCard: Record<string, unknown> = {
+    headerFields: [{ key: 'source', label: 'ZE STOSU', value: ORGANIZATION }],
     primaryFields: [{ key: 'member', label: 'NUMER KARTY', value: groupedNumber(req.memberNumber) }],
     backFields: [
       { key: 'note', label: 'Notatka', value: req.note || '—' },
