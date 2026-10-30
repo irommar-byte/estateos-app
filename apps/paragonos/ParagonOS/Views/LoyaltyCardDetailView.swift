@@ -13,11 +13,18 @@ struct LoyaltyCardDetailView: View {
     @State private var photoTarget: CardPhotoTarget?
     @State private var saveError: String?
     @State private var persistTask: Task<Void, Never>?
+    @Environment(CardFlight.self) private var flight: CardFlight?
+
+    private var flown: Bool { flight?.presentedID == card.id }
 
     var body: some View {
         List {
             Section {
                 LoyaltyCardPass(card: card, showsBarcode: true, foilActive: true)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
+                        if flown { flight?.reportTarget(rect) }
+                    }
+                    .opacity(flown && flight?.phase != .open ? 0 : 1)
                     .paragonReadableWidth(560)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
@@ -106,7 +113,29 @@ struct LoyaltyCardDetailView: View {
             .listRowBackground(ParagonTheme.surface)
         }
         .scrollContentBackground(.hidden)
+        .opacity(flown && flight?.phase == .opening ? (flight?.progress ?? 1) : 1)
         .background(ParagonTheme.canvas)
+        .navigationBarBackButtonHidden(flown)
+        .toolbar {
+            if flown {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: flyHome) {
+                        Image(systemName: "chevron.backward")
+                    }
+                    .accessibilityLabel("Wróć")
+                }
+            }
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24).onEnded { value in
+                guard flown, value.startLocation.x < 36, value.translation.width > 90,
+                      abs(value.translation.height) < 80 else { return }
+                flyHome()
+            }
+        )
+        .onDisappear {
+            if flown, flight?.phase == .open { flight?.finish() }
+        }
         .navigationTitle(card.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .paragonHidesTabBar()
@@ -128,6 +157,13 @@ struct LoyaltyCardDetailView: View {
             Button("Anuluj", role: .cancel) {}
         } message: {
             Text("Karta zniknie z tego iPhone’a. Jeśli była udostępniona, zniknie też u rodziny.")
+        }
+    }
+
+    /// Back: the card flips to its front, flies down and drops into its slot in the stack.
+    private func flyHome() {
+        flight?.close {
+            if wallet.loyaltyPath.isEmpty == false { wallet.loyaltyPath.removeLast() }
         }
     }
 

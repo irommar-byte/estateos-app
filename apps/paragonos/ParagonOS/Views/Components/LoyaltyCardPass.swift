@@ -138,7 +138,12 @@ struct LoyaltyCardPass: View {
             }
         }
         .task(id: card.programID) {
+            if let cached = LoyaltyVisualCache.map[program.id] {
+                visual = cached
+                return
+            }
             let loaded = await LoyaltyLogoStore.shared.visual(for: program)
+            LoyaltyVisualCache.map[program.id] = loaded
             withAnimation(.smooth(duration: 0.3)) { visual = loaded }
         }
         .task(id: showsBarcode ? "\(card.barcodePayload)|\(card.barcodeSymbology)" : "") {
@@ -247,7 +252,7 @@ struct LoyaltyCardPass: View {
         ZStack(alignment: .topLeading) {
             passChrome
             VStack(alignment: .leading, spacing: 0) {
-                LoyaltyBrandHeader(program: program, visual: visual, onDark: onDark, height: 34)
+                LoyaltyBrandHeader(program: program, visual: visual ?? LoyaltyVisualCache.map[program.id], onDark: onDark, height: 34)
                 Spacer(minLength: 10)
                 if card.barcodePayload.isEmpty == false {
                     numberLabel
@@ -273,7 +278,7 @@ struct LoyaltyCardPass: View {
         ZStack(alignment: .topLeading) {
             passChrome
             VStack(alignment: .leading, spacing: 0) {
-                LoyaltyBrandHeader(program: program, visual: visual, onDark: onDark, height: 34)
+                LoyaltyBrandHeader(program: program, visual: visual ?? LoyaltyVisualCache.map[program.id], onDark: onDark, height: 34)
                 Spacer(minLength: 10)
                 if card.barcodePayload.isEmpty == false {
                     numberLabel
@@ -342,7 +347,7 @@ struct LoyaltyCardPass: View {
                 Image(uiImage: BrushedMetal.image)
                     .resizable()
                     .blendMode(.overlay)
-                    .opacity(0.7)
+                    .opacity(0.32)
                 // Anisotropic light bands of brushed metal.
                 LinearGradient(
                     stops: [
@@ -443,7 +448,7 @@ enum BrushedMetal {
         let width = 512, height = 160
         var pixels = [UInt8](repeating: 128, count: width * height)
         for y in 0..<height {
-            let row = Double.random(in: -0.22...0.22)
+            let row = Double.random(in: -0.05...0.05)
             var noise = [Double](repeating: 0, count: width)
             for x in 0..<width { noise[x] = Double.random(in: -1...1) }
             // Box blur along x so strokes look brushed, not sandy.
@@ -453,7 +458,7 @@ enum BrushedMetal {
                 acc += noise[x % width]
                 if x >= window { acc -= noise[(x - window) % width] }
                 if x >= window {
-                    let v = 0.5 + row + (acc / Double(window)) * 0.55
+                    let v = 0.5 + row + (acc / Double(window)) * 0.32
                     pixels[y * width + (x - window)] = UInt8(max(0, min(255, v * 255)))
                 }
             }
@@ -496,10 +501,21 @@ struct EmbossedMetalText: View {
     let text: String
     var fontSize: CGFloat = 22
     var gyroSheen: Bool = false
+    @State private var width: CGFloat = 0
+
+    /// Long numbers shrink to the card's width instead of pushing the card wider than the screen.
+    private var fitted: CGFloat {
+        guard width > 0 else { return fontSize }
+        let natural = (text as NSString).size(withAttributes: [.font: MetalPANView.roundedMono(fontSize)]).width
+        guard natural > width else { return fontSize }
+        return max(10, floor(fontSize * width / natural * 0.97))
+    }
 
     var body: some View {
-        MetalPANLabel(text: text, fontSize: fontSize, gyroActive: gyroSheen)
+        MetalPANLabel(text: text, fontSize: fitted, gyroActive: gyroSheen)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: fontSize * 1.35)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .accessibilityHidden(true)
     }
 }
@@ -700,6 +716,8 @@ struct LoyaltyPassStack: View {
         }
     }
 
+    @Environment(CardFlight.self) private var flight: CardFlight?
+
     private func cardFace(_ card: LoyaltyCard, index: Int, count: Int) -> some View {
         let depth = Double(count - 1 - index)
         let isDragging = draggingID == card.id
@@ -717,6 +735,9 @@ struct LoyaltyPassStack: View {
             style: .stack,
             foilActive: false
         )
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
+            flight?.updateStackFrame(card.id, rect)
+        }
         .compositingGroup()
         .overlay(alignment: .top) {
             if index > 0, isDragging == false {
@@ -759,6 +780,7 @@ struct LoyaltyPassStack: View {
         }
         .scaleEffect(lifted ? 1.03 : (openingID == card.id ? 1.015 : 1), anchor: .top)
         .matchedTransitionSource(id: card.id, in: zoomNamespace)
+        .opacity(flight?.hiddenID == card.id ? 0 : 1)
         .frame(height: LoyaltyPassStackMetrics.cardHeight, alignment: .top)
         .allowsHitTesting(false)
         .overlay(alignment: .top) {
@@ -1107,6 +1129,13 @@ enum BrandInlay {
     )
 }
 
+/// Logos already resolved this session, so a fresh copy of a card (e.g. the flying one)
+/// shows its real logo on the first frame.
+@MainActor
+enum LoyaltyVisualCache {
+    static var map: [String: LoyaltyVisual] = [:]
+}
+
 /// How a card header shows its brand. Picked once per logo (pixel checks are cached), never per frame.
 enum BrandHeaderLayout: Equatable {
     case wordmark(UIImage)
@@ -1148,5 +1177,152 @@ enum BrandHeaderLayout: Equatable {
     private static func key(_ program: LoyaltyProgram, _ visual: LoyaltyVisual?) -> String {
         let size = visual?.image.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none"
         return "\(program.id)-\(program.cardColorHex)-\(size)"
+    }
+}
+
+
+/// Choreographs a card rising out of the stack, flipping to its back and landing in the
+/// detail view — and the way back: flip to the front, fly down, drop into its slot.
+@MainActor
+@Observable
+final class CardFlight {
+    enum Phase { case idle, opening, open, closing }
+
+    private(set) var card: LoyaltyCard?
+    private(set) var phase: Phase = .idle
+    private(set) var source: CGRect = .zero
+    private(set) var target: CGRect = .zero
+    var progress: Double = 0
+    @ObservationIgnored private var stackFrames: [UUID: CGRect] = [:]
+    @ObservationIgnored private var landed: (() -> Void)?
+    @ObservationIgnored private var started = false
+
+    /// Detail opened by a flight: it shows a custom back that flies the card home.
+    var presentedID: UUID? { phase == .idle ? nil : card?.id }
+    /// The real card stays invisible in the stack and the detail while its double flies.
+    var hiddenID: UUID? { card?.id }
+    var isFlying: Bool { phase == .opening || phase == .closing }
+
+    static var opening: Animation { .spring(response: 0.62, dampingFraction: 0.84) }
+    static var closing: Animation { .spring(response: 0.5, dampingFraction: 0.88) }
+
+    func updateStackFrame(_ id: UUID, _ rect: CGRect) {
+        stackFrames[id] = rect
+        if phase == .closing, id == card?.id { source = rect }
+    }
+
+    func open(_ card: LoyaltyCard, push: () -> Void, landed: @escaping () -> Void) {
+        guard UIAccessibility.isReduceMotionEnabled == false, let frame = stackFrames[card.id] else {
+            push()
+            landed()
+            return
+        }
+        self.card = card
+        self.landed = landed
+        source = frame
+        target = .zero
+        progress = 0
+        started = false
+        phase = .opening
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { push() }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.8))
+            if self.phase == .opening, self.started == false { self.phase = .open }
+        }
+    }
+
+    /// The detail reports where its card sits; the flight lands exactly there.
+    func reportTarget(_ rect: CGRect) {
+        guard rect.width > 0, phase == .opening || phase == .open else { return }
+        target = rect
+        guard phase == .opening, started == false else { return }
+        started = true
+        // Next turn, so the flying double exists at the stack position before it moves.
+        DispatchQueue.main.async {
+            withAnimation(Self.opening) { self.progress = 1 } completion: {
+                if self.phase == .opening { self.phase = .open }
+            }
+        }
+    }
+
+    func close(pop: () -> Void) {
+        guard let card, phase == .open, target.width > 0, let frame = stackFrames[card.id] else {
+            pop()
+            finish()
+            return
+        }
+        source = frame
+        progress = 1
+        phase = .closing
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) { pop() }
+        DispatchQueue.main.async {
+            withAnimation(Self.closing) { self.progress = 0 } completion: { self.finish() }
+        }
+    }
+
+    func finish() {
+        let done = landed
+        card = nil
+        phase = .idle
+        progress = 0
+        target = .zero
+        landed = nil
+        done?()
+    }
+}
+
+/// Sits above the whole app (bars included) while a card flies.
+struct CardFlightOverlay: View {
+    @Environment(CardFlight.self) private var flight: CardFlight?
+
+    var body: some View {
+        if let flight, flight.isFlying, let card = flight.card, flight.target.width > 0, flight.source.width > 0 {
+            FlyingCard(card: card, source: flight.source, target: flight.target, progress: flight.progress)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
+private struct FlyingCard: View, Animatable {
+    let card: LoyaltyCard
+    let source: CGRect
+    let target: CGRect
+    var progress: Double
+
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        let p = CGFloat(progress)
+        let arc = CGFloat(sin(Double.pi * progress))
+        // The flip happens mid-flight, eased, so the card turns while it travels.
+        let t = min(1, max(0, (progress - 0.12) / 0.7))
+        let angle = 180 * t * t * (3 - 2 * t)
+        let showsBack = angle > 90
+        ZStack(alignment: .top) {
+            LoyaltyCardPass(card: card, style: .stack)
+                .opacity(showsBack ? 0 : 1)
+            LoyaltyCardPass(card: card, showsBarcode: true)
+                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
+                .opacity(showsBack ? 1 : 0)
+        }
+        .frame(
+            width: source.width + (target.width - source.width) * p,
+            height: source.height + (target.height - source.height) * p,
+            alignment: .top
+        )
+        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.42)
+        .scaleEffect(1 + 0.06 * arc)
+        .shadow(color: .black.opacity(0.16 + 0.24 * arc), radius: 10 + 22 * arc, y: 8 + 16 * arc)
+        .position(
+            x: source.midX + (target.midX - source.midX) * p,
+            y: source.midY + (target.midY - source.midY) * p - 48 * arc
+        )
     }
 }

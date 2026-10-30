@@ -232,7 +232,6 @@ private struct PorcelainCupArt {
                    lineWidth: thickness)
         ctx.stroke(innerPath, with: .color(.black.opacity(0.10)), lineWidth: 0.6)
 
-        if let pour, pour < 0.92 { drawStream(&ctx, cx: cx, to: surface, u: u, progress: pour) }
         if steam > 0 { drawSteam(&ctx, cx: cx, top: cupTop - ry, u: u, width: rx) }
     }
 
@@ -302,22 +301,6 @@ private struct PorcelainCupArt {
             Path(ellipseIn: CGRect(x: surface.minX + surface.width * 0.16, y: surface.minY + surface.height * 0.18, width: surface.width * 0.2, height: surface.height * 0.16)),
             with: .color(.white.opacity(0.28))
         )
-    }
-
-    private func drawStream(_ ctx: inout GraphicsContext, cx: CGFloat, to surface: CGRect, u: CGFloat, progress: Double) {
-        let ending = progress > 0.74 ? max(0, (0.92 - progress) / 0.18) : 1
-        let starting = min(1, progress / 0.08)
-        let width = u * 0.04 * CGFloat(ending)
-        guard width > 0.3 else { return }
-        let top = surface.midY - (surface.midY - 0) * CGFloat(starting)
-        let wobble = CGFloat(sin(time * 11)) * u * 0.004
-        let rect = CGRect(x: cx - width / 2 + wobble, y: top, width: width, height: surface.midY - top)
-        ctx.fill(Path(roundedRect: rect, cornerRadius: width / 2), with: .linearGradient(
-            Gradient(colors: [Color(red: 0.42, green: 0.22, blue: 0.09), Color(red: 0.30, green: 0.15, blue: 0.06)]),
-            startPoint: CGPoint(x: rect.minX, y: 0), endPoint: CGPoint(x: rect.maxX, y: 0)
-        ))
-        ctx.fill(Path(CGRect(x: rect.minX + width * 0.22, y: rect.minY, width: max(0.5, width * 0.16), height: rect.height)),
-                 with: .color(.white.opacity(0.22)))
     }
 
     private func drawSteam(_ ctx: inout GraphicsContext, cx: CGFloat, top: CGFloat, u: CGFloat, width: CGFloat) {

@@ -11,6 +11,7 @@ struct LoyaltyHomeView: View {
     @State private var showPicker = false
     @State private var spread: CGFloat = 0
     @State private var openingID: UUID?
+    @Environment(CardFlight.self) private var flight: CardFlight?
     @State private var scrollOffsetY: CGFloat = 0
     @State private var isReordering = false
     @Namespace private var passSpace
@@ -87,7 +88,11 @@ struct LoyaltyHomeView: View {
                         openingID: $openingID,
                         isReordering: $isReordering,
                         onOpen: { card in
-                            wallet.loyaltyPath.append(LoyaltyRoute.card(card.id))
+                            let push = { wallet.loyaltyPath.append(LoyaltyRoute.card(card.id)) }
+                            guard let flight else { return push() }
+                            flight.open(card, push: push) {
+                                withAnimation(PassStackMotion.slideIn) { openingID = nil }
+                            }
                         },
                         onCommitOrder: { ids in
                             commitCardOrder(ids)
@@ -118,7 +123,7 @@ struct LoyaltyHomeView: View {
                 }
                 .onChange(of: wallet.loyaltyPath.count) { _, count in
                     // Clear zoom source immediately so swipe-back isn't fighting a lifted card.
-                    if count == 0 {
+                    if count == 0, flight?.card == nil {
                         // Card slides back into its slot once the zoom has landed.
                         withAnimation(PassStackMotion.slideIn) {
                             openingID = nil

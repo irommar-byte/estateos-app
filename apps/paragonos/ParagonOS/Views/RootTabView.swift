@@ -3,6 +3,7 @@ import SwiftUI
 import TipKit
 
 struct RootTabView: View {
+    @State private var cardFlight = CardFlight()
     @EnvironmentObject private var wallet: WalletModel
     @EnvironmentObject private var lock: BiometricLock
     @Environment(\.modelContext) private var context
@@ -129,6 +130,8 @@ struct RootTabView: View {
         }
         // Revolut / Liquid Glass: shrink on scroll-up, expand after a short scroll-down.
         .modifier(TabBarScrollMinimize())
+        .overlay { CardFlightOverlay().ignoresSafeArea() }
+        .environment(cardFlight)
     }
 
     @ViewBuilder
