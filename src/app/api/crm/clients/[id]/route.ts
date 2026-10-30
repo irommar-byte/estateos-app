@@ -322,7 +322,13 @@ export async function GET(req: Request, ctx: RouteCtx) {
   return NextResponse.json({
     success: true,
     client: {
-      ...shapeClientListItem(client, { dealClosed, sentCount }),
+      // Te same pola co na liście — karta i lista klientów nie mogą sobie przeczyć.
+      ...shapeClientListItem(client, {
+        dealClosed,
+        sentCount,
+        acquisitionSigned: acquisition?.status === 'SIGNED' || Boolean(acquisition?.signedAt),
+        linkedOfferStatus: client.linkedOffer?.status ?? null,
+      }),
       nextStep,
       notes: client.notes,
       sellerTransactionType: client.sellerTransactionType,

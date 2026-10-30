@@ -5863,6 +5863,21 @@ html:not(.light) .eos-car-form-cancel {
 .eos-offer-hero-overlay--features .eos-offer-hero-title {
   font-size: clamp(1.15rem, 2.8vw, 2.4rem);
 }
+/* Tytuł nie może być ucinany góra/dół, gdy hero jest niskie (np. pasek „Otwórz w aplikacji” w Safari):
+   rozmiar zależy też od wysokości okna, a tekst ma max 3 linie z wielokropkiem. */
+.eos-offer-hero-title {
+  font-size: clamp(1.1rem, min(3.6vw, 4.4vh), 3.15rem);
+}
+.eos-offer-hero-overlay--features .eos-offer-hero-title {
+  font-size: clamp(1rem, min(2.8vw, 3.6vh), 2.4rem);
+}
+.eos-offer-hero-title__text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-height: 100%;
+}
 
 .eos-offer-body {
   display: flex;

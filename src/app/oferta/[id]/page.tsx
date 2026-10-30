@@ -725,8 +725,23 @@ function OfferDetails({
           <div className="eos-offer-hero-overlay__inner mx-auto flex h-full max-w-5xl min-h-0 flex-col">
             <div className="eos-offer-hero-overlay__top flex shrink-0 flex-col gap-2 sm:gap-3">
             <div className="eos-offer-hero-chrome pointer-events-auto">
-              <Link href="/odkryj-mape" className="eos-offer-hero-back">
-                {t.backToMap}
+              <Link
+                href="/odkryj-mape"
+                className="eos-offer-hero-back"
+                onClick={(e) => {
+                  // Wracamy tam, skąd użytkownik przyszedł (lista, mapa, CRM, ulubione) — mapa tylko gdy wszedł z zewnątrz.
+                  try {
+                    const ref = document.referrer ? new URL(document.referrer) : null;
+                    if (ref && ref.origin === window.location.origin && window.history.length > 1) {
+                      e.preventDefault();
+                      window.history.back();
+                    }
+                  } catch {
+                    /* zostaje link do mapy */
+                  }
+                }}
+              >
+                {locale === "en" ? "← Back" : locale === "uk" ? "← Назад" : "← Wróć"}
               </Link>
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5 sm:gap-2">
                 {!isArchived && !isLocked ? (
@@ -774,7 +789,7 @@ function OfferDetails({
 
             {!isArchived ? (
               <h1 className="eos-offer-hero-title pointer-events-none hidden min-h-0 flex-1 items-center justify-center self-center px-2 text-center font-light leading-tight tracking-tighter [text-wrap:balance] sm:flex">
-                {isLocked ? t.beforeLaunchTitle : displayTitle}
+                <span className="eos-offer-hero-title__text">{isLocked ? t.beforeLaunchTitle : displayTitle}</span>
               </h1>
             ) : (
               <div className="hidden min-h-0 flex-1 sm:block" aria-hidden />

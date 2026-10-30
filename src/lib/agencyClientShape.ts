@@ -167,7 +167,8 @@ export function shapeClientListItem(
   const presentationConfirmed = (client.activities || []).some(
     (item) => String(item.kind || '') === 'PRESENTATION_CONFIRMED',
   );
-  const meetingConfirmed = Boolean(rawMeetingStart);
+  // Potwierdzone = status spotkania „confirmed” (sam termin to dopiero propozycja).
+  const meetingConfirmed = String((meetingMeta as { status?: unknown }).status || '') === 'confirmed' || (Boolean(rawMeetingStart) && !(meetingMeta as { status?: unknown }).status);
   const linkedOfferStatus =
     extras?.linkedOfferStatus ??
     (typeof client.linkedOffer?.status === 'string' ? client.linkedOffer.status : null);

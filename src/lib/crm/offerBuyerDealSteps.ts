@@ -587,6 +587,32 @@ const STEP_LABEL: Record<TransactionStepId, string> = {
   commission: 'Prowizja',
 };
 
+/**
+ * Klucze przekazane = sprzedaż zamknięta: oferta SOLD i koniec publikacji (jak finalizacja w Dealroomie),
+ * pozostali kupujący tej oferty — zamknięci z adnotacją. Wcześniej oferta zostawała aktywna na portalu.
+ */
+async function closeSaleAfterHandover(deal: Deal) {
+  const offerId = Number((deal as { offerId?: number }).offerId);
+  if (!Number.isFinite(offerId) || offerId <= 0) return;
+  try {
+    const offer = await prisma.offer.findUnique({ where: { id: offerId }, select: { status: true } });
+    if (offer && String(offer.status) !== 'SOLD') {
+      const { endOfferPublicationInTx } = await import('@/lib/offerPublication');
+      await prisma.$transaction(async (tx) => {
+        await endOfferPublicationInTx(tx, { offerId, endReason: 'SOLD', offerStatus: 'SOLD' });
+      });
+    }
+  } catch (error) {
+    console.error('[crm.handover] offer close failed', error);
+  }
+  const others = await prisma.offerBuyerDeal.findMany({
+    where: { offerId, id: { not: deal.id }, status: { in: ['ACTIVE', 'PAUSED'] } },
+  });
+  for (const other of others) {
+    await save(other as Deal, 'Oferta sprzedana innemu kupującemu', (data) => data, { status: 'LOST' }).catch(() => undefined);
+  }
+}
+
 export async function setTransactionStep(params: {
   agencyUserId: number;
   dealId: number;
@@ -625,6 +651,7 @@ export async function setTransactionStep(params: {
     }),
     params.step === 'handover' && params.done !== undefined ? { status: params.done ? 'WON' : 'ACTIVE' } : {},
   );
+  if (params.step === 'handover' && params.done === true) await closeSaleAfterHandover(deal);
   const neg = parseData(deal.data).negotiation;
   return { otherActive: params.step === 'preliminary' && params.done && !neg?.othersDecision ? await otherActiveCount(deal) : 0 };
 }
