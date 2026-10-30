@@ -212,13 +212,16 @@ export default function CrmPulpit({
       <section className="crmx-desk crmx-desk--band">
         <DeskClock desk={desk} />
         <CrmMarketPulse />
-        <DeskCalendar desk={desk} />
+        <div className="crmx-desk__calcol">
+          <DeskCalendar desk={desk} />
+          <div className="crmx-desk__calnote">
+            <DeskNotes desk={desk} />
+          </div>
+        </div>
       </section>
 
       <div className="crmx-row2">
-        <section className="crmx-card crmx-desk--notes">
-          <DeskNotes desk={desk} />
-        </section>
+        <section className="crmx-card crmx-slot-empty" aria-hidden />
         <section className="crmx-card">
           <header className="crmx-card__head">
             <h3 className="crmx-card__title"><CheckCircle2 /> Czeka na Twój ruch</h3>

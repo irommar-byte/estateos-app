@@ -636,3 +636,11 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-peek.crmx-quick { pointer-events: auto; width: 300px; margin-left: -150px; z-index: 10060; }
 .crmx-quick__input { margin-top: 8px; width: 100%; resize: none; padding: 9px 11px; border-radius: 11px; font-size: 13.5px; line-height: 1.45; color: var(--x-ink); background: var(--x-surface-2); border: 1px solid var(--x-line-strong); outline: none; }
 .crmx-quick__input:focus { border-color: var(--x-gold); box-shadow: 0 0 0 3px var(--x-gold-soft); }
+/* Kalendarz + notatka w jednej kolumnie biurka */
+.crmx-desk--band > .crmx-desk__calcol { padding: 0; display: flex; flex-direction: column; }
+.crmx-desk__calcol > .crmx-desk__cal { padding: 22px 24px 14px; }
+.crmx-desk__calnote { padding: 14px 24px 18px; border-top: 1px solid var(--x-line); }
+.crmx-desk__calnote .crmx-desk__note { padding: 0; }
+.crmx-desk__calnote .crmx-desk__textarea { height: 76px; min-height: 0; resize: none; }
+.crmx-desk__calnote .crmx-desk__events, .crmx-desk__calnote .crmx-desk__free { margin: 6px 0 8px; }
+.crmx-slot-empty { min-height: 160px; background: transparent; border-style: dashed; box-shadow: none; }
