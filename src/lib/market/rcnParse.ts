@@ -26,9 +26,13 @@ export type RcnLocalFeature = {
   lng: number | null;
 };
 
+/**
+ * Wartość pola <ms:NAZWA>. GUGiK część pól (np. DOK_DATA) podaje z atrybutem gml:id i zagnieżdżonym
+ * <gml:timePosition>…</gml:timePosition> — wtedy zwracamy sam tekst ze środka.
+ */
 function tag(block: string, name: string): string {
-  const m = block.match(new RegExp(`<ms:${name}>([\\s\\S]*?)</ms:${name}>`, 'i'));
-  return m ? m[1].trim() : '';
+  const m = block.match(new RegExp(`<ms:${name}(?:\\s[^>]*)?>([\\s\\S]*?)</ms:${name}>`, 'i'));
+  return m ? m[1].replace(/<[^>]+>/g, '').trim() : '';
 }
 
 function num(raw: string): number | null {
@@ -138,9 +142,10 @@ export function wfsNumberMatched(xml: string): number | null {
 /** Wszystkie proste pola <ms:nazwa>wartość</ms:nazwa> obiektu WFS. */
 export function rcnTags(block: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of block.matchAll(/<ms:([a-z0-9_]+)>([^<]*)<\/ms:\1>/gi)) {
+  for (const m of block.matchAll(/<ms:([a-z0-9_]+)(?:\s[^>]*)?>((?:(?!<ms:)[\s\S])*?)<\/ms:\1>/gi)) {
     const key = m[1].toLowerCase();
-    const value = m[2].trim();
+    if (key === 'geometria') continue;
+    const value = m[2].replace(/<[^>]+>/g, '').trim();
     if (value && !(key in out)) out[key] = value;
   }
   return out;
