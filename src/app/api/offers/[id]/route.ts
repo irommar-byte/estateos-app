@@ -91,6 +91,9 @@ const OFFER_WEB_PUT_SELECT = {
   plotArea: true,
   floorPlanUrl: true,
   floorPlanExtraUrls: true,
+  // Bez tych pól zapis z edytora www zerował model 3D i skany LiDAR (`?? null` przy braku w select).
+  floorPlan3dUrl: true,
+  floorPlanScanMeta: true,
   heating: true,
   isFurnished: true,
   transactionType: true,
