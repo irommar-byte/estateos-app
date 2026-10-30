@@ -228,6 +228,17 @@
       "barcode": "code128"
     },
     {
+      "id": "dyson",
+      "name": "Dyson",
+      "programName": "Dyson",
+      "domain": "dyson.com",
+      "color": "#4B0D6B",
+      "keywords": [
+        "dyson"
+      ],
+      "barcode": "code128"
+    },
+    {
       "id": "diverse",
       "name": "Diverse",
       "programName": "Diverse",

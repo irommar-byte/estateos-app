@@ -106,11 +106,12 @@ struct VoucherPassCard: View {
         .padding(.top, 16)
         .padding(.bottom, 22)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: LoyaltyCardPass.stackHeight, alignment: .top)
         .background {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
                 .fill(passGradient)
                 .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
                         .strokeBorder(
                             LinearGradient(
                                 colors: [.white.opacity(0.38), .white.opacity(0.06), .black.opacity(0.18)],
@@ -121,8 +122,8 @@ struct VoucherPassCard: View {
                         )
                 }
                 .overlay {
-                    GyroFoilOverlay(cornerRadius: 16, intensity: 0.52, isActive: foilActive)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    GyroFoilOverlay(cornerRadius: ParagonTheme.passCorner, intensity: 0.52, isActive: foilActive)
+                        .clipShape(RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous))
                         .allowsHitTesting(false)
                 }
                 .overlay(alignment: .top) {
@@ -132,16 +133,10 @@ struct VoucherPassCard: View {
                         endPoint: .bottom
                     )
                     .frame(height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous))
                 }
         }
-        .overlay(alignment: .bottom) {
-            Capsule()
-                .fill(.white.opacity(0.32))
-                .frame(width: 42, height: 5)
-                .padding(.bottom, 8)
-        }
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 
@@ -240,18 +235,8 @@ struct WalletPassStack: View {
                 }
             }
         }
-        .animation(PassStackMotion.snappy, value: expanded)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 18)
-                .onEnded { value in
-                    guard group.tickets.count > 1 else { return }
-                    if value.translation.height < -36, expanded == false {
-                        toggle(group)
-                    } else if value.translation.height > 36, expanded {
-                        toggle(group)
-                    }
-                }
-        )
+        .animation(PassStackMotion.expand, value: expanded)
+        // No DragGesture — keeps ScrollView first-swipe responsive (same as LoyaltyPassStack).
     }
 
     private func stackedFace(_ group: WalletRetailerGroup, expanded: Bool) -> some View {
@@ -259,13 +244,13 @@ struct WalletPassStack: View {
         let color = RetailerBrand.cardColor(for: group.retailerID)
         return ZStack(alignment: .top) {
             ForEach(0..<extras, id: \.self) { layer in
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
                     .fill(color.opacity(0.55 - Double(layer) * 0.12))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
                             .strokeBorder(.white.opacity(0.14), lineWidth: 0.5)
                     }
-                    .frame(height: 118)
+                    .frame(height: LoyaltyCardPass.stackHeight)
                     .padding(.horizontal, CGFloat(layer + 1) * 9)
                     .offset(y: CGFloat(layer + 1) * 9)
                     .allowsHitTesting(false)
@@ -280,7 +265,7 @@ struct WalletPassStack: View {
                 now: now,
                 showsDisclosure: group.tickets.count > 1,
                 isExpanded: expanded,
-                foilActive: true
+                foilActive: false
             )
         }
         .padding(.bottom, CGFloat(extras) * 9)
@@ -293,7 +278,7 @@ struct WalletPassStack: View {
         }
         let expanding = expandedRetailerID != group.retailerID
         UIImpactFeedbackGenerator(style: expanding ? .soft : .light).impactOccurred()
-        withAnimation(PassStackMotion.snappy) {
+        withAnimation(PassStackMotion.expand) {
             expandedRetailerID = expanding ? group.retailerID : nil
         }
     }
@@ -306,7 +291,7 @@ struct WalletPassStack: View {
         }
         .buttonStyle(LoyaltyPassPressStyle())
         .contextMenu { ticketMenu(ticket) }
-        .shadow(color: .black.opacity(0.2), radius: 10, y: 5)
+        .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
     }
 
     @ViewBuilder

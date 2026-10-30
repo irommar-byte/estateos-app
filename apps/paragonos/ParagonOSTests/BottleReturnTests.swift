@@ -82,13 +82,45 @@ final class BottleReturnTests: XCTestCase {
         )
         XCTAssertTrue(box.contains(CLLocationCoordinate2D(latitude: 52.23, longitude: 21.01)))
         XCTAssertTrue(box.padded.latitudeDelta > box.latitudeDelta)
-        XCTAssertTrue(box.showsIndividualPins)
+        XCTAssertEqual(box.pinDensity, .thin)
+        let close = MKRegionBox(
+            center: box.center,
+            latitudeDelta: 0.08,
+            longitudeDelta: 0.08
+        )
+        XCTAssertEqual(close.pinDensity, .all)
+        let mid = MKRegionBox(
+            center: box.center,
+            latitudeDelta: 0.8,
+            longitudeDelta: 0.8
+        )
+        XCTAssertEqual(mid.pinDensity, .thin)
+        let city = MKRegionBox(
+            center: box.center,
+            latitudeDelta: 0.2,
+            longitudeDelta: 0.2
+        )
+        XCTAssertEqual(city.pinDensity, .thin)
         let zoomedOut = MKRegionBox(
             center: box.center,
             latitudeDelta: 3,
             longitudeDelta: 3
         )
-        XCTAssertFalse(zoomedOut.showsIndividualPins)
+        XCTAssertEqual(zoomedOut.pinDensity, .cluster)
+        let clustered = BottleMapLayout.markers(
+            from: [
+                BottleReturnPoint(
+                    id: "a", brand: "Żabka", brandID: "zabka", name: "", address: "", city: "", postcode: "",
+                    latitude: 52.23, longitude: 21.01, hoursRaw: "", acceptsPET: true, acceptsCans: true, acceptsGlass: false, kind: .store
+                ),
+                BottleReturnPoint(
+                    id: "b", brand: "Lidl", brandID: "lidl", name: "", address: "", city: "", postcode: "",
+                    latitude: 52.24, longitude: 21.02, hoursRaw: "", acceptsPET: true, acceptsCans: true, acceptsGlass: false, kind: .machine
+                )
+            ],
+            in: zoomedOut
+        )
+        XCTAssertFalse(clustered.isEmpty)
     }
 
     func testOSMQueryDoesNotPullEverySupermarket() {
@@ -102,5 +134,24 @@ final class BottleReturnTests: XCTestCase {
         XCTAssertEqual(DistanceFormat.string(1000), "1 km")
         XCTAssertEqual(DistanceFormat.string(1500), "1,5 km")
         XCTAssertEqual(DistanceFormat.string(12_400), "12 km")
+    }
+
+    func testNearbyTeaserShowsExactlyThreeRows() {
+        XCTAssertEqual(BottleNearbyTeaser.visibleRows, 3)
+        XCTAssertEqual(Array(BottleNearbyTeaser.displayed([1, 2, 3, 4, 5, 6])), [1, 2, 3])
+        XCTAssertEqual(Array(BottleNearbyTeaser.displayed([1, 2])), [1, 2])
+    }
+
+    func testMapOverviewFitsNeighborhoodIn3D() {
+        let origin = CLLocationCoordinate2D(latitude: 50.723, longitude: 23.252)
+        let lidl = CLLocationCoordinate2D(latitude: 50.728, longitude: 23.255)
+        let kaufland = CLLocationCoordinate2D(latitude: 50.718, longitude: 23.248)
+        let camera = BottleMapOverview.camera(fitting: [origin, lidl, kaufland])
+        XCTAssertNotNil(camera)
+        XCTAssertGreaterThan(camera?.distance ?? 0, 800)
+        XCTAssertEqual(camera?.pitch ?? 0, 58, accuracy: 0.01)
+        XCTAssertEqual(camera?.heading ?? 0, 18, accuracy: 0.01)
+        XCTAssertEqual(camera?.latitude ?? 0, 50.723, accuracy: 0.01)
+        XCTAssertNil(BottleMapOverview.camera(fitting: []))
     }
 }

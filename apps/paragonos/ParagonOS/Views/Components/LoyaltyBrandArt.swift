@@ -1,6 +1,384 @@
 import SwiftUI
 import UIKit
 
+/// Canonical brand face for in-app cards and Wallet strips.
+/// Bundled original art always wins. No remote favicons. No generic system wordmarks when a mark exists.
+enum LoyaltyBrandKit {
+    enum Face: Equatable {
+        /// PNG/vector *is* the name (Auchan, Payback). Don't print a second title.
+        case wordmark
+        /// Icon + original name (Biedronka ladybug + wordmark).
+        case markAndName
+        /// Complete lockup already contains text (IKEA oval, Lidl).
+        case lockup
+    }
+
+    enum Placement: Equatable {
+        case leading
+        case centered
+    }
+
+    struct Spec: Equatable {
+        var face: Face
+        var hex: String?
+        /// Original strip word when `face == .markAndName`.
+        var stripWord: String?
+        /// White silhouette on the brand field (red/blue cards).
+        var whiteOnBrand: Bool
+        /// Remote favicons are never used for catalog brands with a kit face.
+        var allowsRemote: Bool
+    }
+
+    /// Symbols that are not the name — ladybug, siren, shell. The original word is drawn beside them.
+    private static let symbolNeedsName: Set<String> = [
+        "biedronka", "starbucks", "shell", "bp", "circlek", "silpo", "stokrotka"
+    ]
+
+    static func spec(for id: String) -> Spec {
+        let catalog = LoyaltyCatalog.program(id: id)
+        let hex = LoyaltyBrandArt.hex(for: id) ?? catalog?.color
+        let bundled = bundledLogo(for: id)
+        let face = inferredFace(id: id, bundled: bundled)
+        return Spec(
+            face: face,
+            hex: hex,
+            stripWord: originalWord(for: id),
+            whiteOnBrand: false,
+            allowsRemote: catalog == nil
+        )
+    }
+
+    static func inferredFace(id: String, bundled: UIImage?) -> Face {
+        switch id {
+        case "biedronka":
+            return .markAndName
+        case "ikea", "lidlplus", "kaufland", "orlen":
+            return .lockup
+        case "mcdonalds", "auchan", "payback", "kfc", "rossmann", "wog", "atb", "selgros", "okko",
+             "xkom", "action", "dyson", "house":
+            return .wordmark
+        default:
+            break
+        }
+        if symbolNeedsName.contains(id) {
+            return .markAndName
+        }
+        if let bundled {
+            let trimmed = LogoCropper.trim(bundled)
+            let aspect = trimmed.size.width / max(trimmed.size.height, 1)
+            if LogoQuality.looksLikeTile(trimmed) == false, aspect >= 1.45 {
+                return .wordmark
+            }
+            if LogoQuality.looksLikeTile(trimmed) == false {
+                return .lockup
+            }
+        }
+        return hasMark(id) && symbolNeedsName.contains(id) ? .markAndName : .wordmark
+    }
+
+    static func originalWord(for id: String) -> String? {
+        switch id {
+        case "biedronka":
+            return "biedronka"
+        case "hebe":
+            return "hebe"
+        case "orlen":
+            return "ORLEN"
+        case "rossmann", "rossmannclub":
+            return "ROSSMANN"
+        default:
+            return LoyaltyCatalog.program(id: id)?.name
+        }
+    }
+
+    static func hasMark(_ id: String) -> Bool {
+        LoyaltyBrandArt.hasMark(id)
+    }
+
+    static func bundledLogo(for id: String) -> UIImage? {
+        let url = Bundle.main.url(forResource: id, withExtension: "png", subdirectory: "BrandLogos")
+            ?? Bundle.main.url(forResource: id, withExtension: "png")
+        guard let url, let image = UIImage(contentsOfFile: url.path) else { return nil }
+        return image
+    }
+
+    private static var faceCache: [String: UIImage] = [:]
+
+    /// Single face used by in-app cards and Apple Wallet `strip.png`.
+    @MainActor
+    static func composeForeground(
+        program: LoyaltyProgram,
+        logo: UIImage?,
+        size: CGSize,
+        placement: Placement,
+        onBrandField: Bool = true,
+        scale: CGFloat = 3
+    ) -> UIImage {
+        let key = "\(program.id)-\(Int(size.width))x\(Int(size.height))-\(placement == .leading ? "L" : "C")-\(onBrandField ? "1" : "0")-s\(Int(scale))-v10"
+        if let cached = faceCache[key] { return cached }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = max(1, scale)
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        let image = renderer.image { _ in
+            let spec = spec(for: program.id)
+            let height = max(8, size.height * (spec.face == .markAndName ? 0.78 : 0.86))
+            guard var content = contentImage(
+                program: program,
+                logo: logo,
+                spec: spec,
+                height: height,
+                onBrandField: false
+            ) else { return }
+            if onBrandField {
+                let ring = PassArtwork.strokeInk(for: content, fieldHex: program.cardColorHex)
+                let stroke = max(1.6, min(content.size.height * 0.09, size.height * 0.07))
+                content = PassArtwork.halo(content, color: ring, width: stroke)
+            }
+            let insetX: CGFloat = placement == .centered ? 0.08 : 0.02
+            let insetY: CGFloat = placement == .centered ? 0.16 : 0.08
+            let box = CGSize(
+                width: max(8, size.width * (1 - insetX * 2)),
+                height: max(8, size.height * (1 - insetY * 2))
+            )
+            let fit = min(box.width / max(content.size.width, 1), box.height / max(content.size.height, 1))
+            let drawn = CGSize(width: content.size.width * fit, height: content.size.height * fit)
+            let x: CGFloat
+            switch placement {
+            case .leading:
+                x = size.width * insetX
+            case .centered:
+                x = (size.width - drawn.width) / 2
+            }
+            let y = (size.height - drawn.height) / 2
+            content.draw(in: CGRect(origin: CGPoint(x: x, y: y), size: drawn))
+        }
+        faceCache[key] = image
+        return image
+    }
+
+    @MainActor
+    private static func contentImage(
+        program: LoyaltyProgram,
+        logo: UIImage?,
+        spec: Spec,
+        height: CGFloat,
+        onBrandField: Bool
+    ) -> UIImage? {
+        switch spec.face {
+        case .wordmark:
+            if let mark = preparedMark(
+                program: program,
+                logo: logo,
+                spec: spec,
+                height: height,
+                onBrandField: false,
+                forceWhite: false
+            ), acceptsForeground(mark, spec: spec, hex: program.cardColorHex) {
+                return mark
+            }
+            return originalWordImage(
+                word: spec.stripWord ?? program.name,
+                id: program.id,
+                height: height,
+                color: wordColor(program: program, spec: spec, onBrandField: false)
+            )
+        case .lockup:
+            if let mark = preparedMark(
+                program: program,
+                logo: logo,
+                spec: spec,
+                height: height,
+                onBrandField: false,
+                forceWhite: false
+            ), acceptsForeground(mark, spec: spec, hex: program.cardColorHex) {
+                return mark
+            }
+            return originalWordImage(
+                word: spec.stripWord ?? program.name,
+                id: program.id,
+                height: height,
+                color: wordColor(program: program, spec: spec, onBrandField: false)
+            )
+        case .markAndName:
+            return markAndNameImage(
+                program: program,
+                logo: logo,
+                spec: spec,
+                height: height,
+                onBrandField: onBrandField
+            )
+        }
+    }
+
+    @MainActor
+    private static func markAndNameImage(
+        program: LoyaltyProgram,
+        logo: UIImage?,
+        spec: Spec,
+        height: CGFloat,
+        onBrandField: Bool
+    ) -> UIImage? {
+        let mark = preparedMark(
+            program: program,
+            logo: logo,
+            spec: spec,
+            height: height,
+            onBrandField: false,
+            forceWhite: false
+        )
+        let word = spec.stripWord ?? program.name
+        let wordImage = originalWordImage(
+            word: word,
+            id: program.id,
+            height: height * 0.78,
+            color: wordColor(program: program, spec: spec, onBrandField: false)
+        )
+        let markSize = mark.map { fittedSize($0, height: height) } ?? .zero
+        let wordSize = wordImage.size
+        let gap: CGFloat = height * 0.16
+        let canvas = CGSize(
+            width: max(1, markSize.width + (mark == nil ? 0 : gap) + wordSize.width),
+            height: max(height, wordSize.height)
+        )
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = 3
+        let renderer = UIGraphicsImageRenderer(size: canvas, format: format)
+        return renderer.image { _ in
+            var x: CGFloat = 0
+            if let mark {
+                let origin = CGPoint(x: x, y: (canvas.height - markSize.height) / 2)
+                mark.draw(in: CGRect(origin: origin, size: markSize))
+                x += markSize.width + gap
+            }
+            let origin = CGPoint(x: x, y: (canvas.height - wordSize.height) / 2)
+            wordImage.draw(in: CGRect(origin: origin, size: wordSize))
+        }
+    }
+
+    @MainActor
+    private static func preparedMark(
+        program: LoyaltyProgram,
+        logo: UIImage?,
+        spec: Spec,
+        height: CGFloat,
+        onBrandField _: Bool,
+        forceWhite _: Bool
+    ) -> UIImage? {
+        let bundled = bundledLogo(for: program.id)
+        let candidates: [UIImage]
+        if spec.allowsRemote {
+            candidates = [logo, bundled].compactMap { $0 }
+        } else {
+            candidates = [bundled].compactMap { $0 }
+        }
+        for raw in candidates {
+            let trimmed = LogoCropper.trim(raw)
+            guard isUsable(trimmed, for: spec.face) else { continue }
+            if PassArtwork.opaqueRatio(trimmed) > 0.03 {
+                return trimmed
+            }
+        }
+        guard LoyaltyBrandArt.hasMark(program.id) else { return nil }
+        guard let raster = LoyaltyBrandArt.raster(program: program, dimension: max(220, height * 5), onBrandField: false) else {
+            return nil
+        }
+        let trimmed = LogoCropper.trim(raster)
+        return PassArtwork.opaqueRatio(trimmed) > 0.03 ? trimmed : raster
+    }
+
+    static func acceptsForeground(_ image: UIImage, spec: Spec, hex: String) -> Bool {
+        let fill = PassArtwork.opaqueRatio(image)
+        guard fill > 0.06 else { return false }
+        return isUsable(image, for: spec.face)
+    }
+
+    static func isUsable(_ image: UIImage, for face: Face) -> Bool {
+        let trimmed = LogoCropper.trim(image)
+        guard PassArtwork.opaqueRatio(trimmed) > 0.03 else { return false }
+        if LogoQuality.looksLikeTile(trimmed) {
+            return face != .wordmark
+        }
+        if face == .wordmark {
+            let aspect = trimmed.size.width / max(trimmed.size.height, 1)
+            if aspect < 1.28, LogoQuality.looksLikeTile(trimmed) { return false }
+        }
+        return true
+    }
+
+    static func wordColor(program: LoyaltyProgram, spec: Spec, onBrandField: Bool) -> UIColor {
+        if ["wog", "selgros"].contains(program.id) {
+            return .white
+        }
+        return UIColor(Color(hex: spec.hex ?? LoyaltyBrandArt.hex(for: program.id) ?? program.color))
+    }
+
+    static func originalWordImage(word: String, id: String, height: CGFloat, color: UIColor) -> UIImage {
+        let font = wordFont(for: id, height: height)
+        let kern = wordKern(for: id, height: height)
+        let text = NSAttributedString(
+            string: word,
+            attributes: [
+                .font: font,
+                .foregroundColor: color,
+                .kern: kern
+            ]
+        )
+        let size = text.size()
+        let canvas = CGSize(width: max(1, ceil(size.width) + 2), height: max(1, ceil(size.height) + 2))
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = 3
+        let renderer = UIGraphicsImageRenderer(size: canvas, format: format)
+        return renderer.image { _ in
+            text.draw(at: CGPoint(x: 1, y: 1))
+        }
+    }
+
+    static func wordFont(for id: String, height: CGFloat) -> UIFont {
+        switch id {
+        case "auchan":
+            return UIFont(name: "Futura-Bold", size: height * 0.92)
+                ?? UIFont.systemFont(ofSize: height * 0.88, weight: .heavy)
+        case "payback":
+            return UIFont(name: "AvenirNext-Bold", size: height * 0.84)
+                ?? UIFont.systemFont(ofSize: height * 0.82, weight: .bold)
+        case "biedronka", "zabka", "hebe":
+            let base = UIFont.systemFont(ofSize: height * 0.78, weight: .bold)
+            if let rounded = base.fontDescriptor.withDesign(.rounded) {
+                return UIFont(descriptor: rounded, size: height * 0.78)
+            }
+            return base
+        case "rossmann", "rossmannclub":
+            return UIFont(name: "TimesNewRomanPS-BoldMT", size: height * 0.72)
+                ?? UIFont.systemFont(ofSize: height * 0.70, weight: .semibold)
+        case "orlen":
+            return UIFont.systemFont(ofSize: height * 0.78, weight: .heavy)
+        case "decathlon":
+            return UIFont.systemFont(ofSize: height * 0.70, weight: .bold)
+        default:
+            return UIFont.systemFont(ofSize: height * 0.72, weight: .bold)
+        }
+    }
+
+    static func wordKern(for id: String, height: CGFloat) -> CGFloat {
+        switch id {
+        case "auchan": return height * -0.048
+        case "payback": return height * -0.036
+        case "biedronka", "zabka", "hebe": return height * -0.018
+        case "orlen": return height * 0.08
+        case "decathlon": return height * 0.06
+        default: return height * -0.01
+        }
+    }
+
+    private static func fittedSize(_ image: UIImage, height: CGFloat) -> CGSize {
+        let scale = height / max(image.size.height, 1)
+        return CGSize(width: image.size.width * scale, height: height)
+    }
+}
+
 enum LoyaltyBrandArt {
     static func hex(for id: String) -> String? {
         switch id {
@@ -17,16 +395,22 @@ enum LoyaltyBrandArt {
         case "carrefour": return "#004E9F"
         case "circlek": return "#E1251B"
         case "ikea": return "#0058A3"
+        case "decathlon": return "#0082C3"
         case "mcdonalds": return "#DA291C"
         case "starbucks": return "#00704A"
         case "hebe": return "#E1007A"
         case "allegro": return "#FF5A00"
         case "inpost": return "#FFD100"
         case "empik": return "#E30613"
+        case "action": return "#FF6A00"
+        case "xkom": return "#111111"
+        case "dyson": return "#4B0D6B"
+        case "house": return "#111111"
         case "dino": return "#009639"
         case "netto": return "#F6C700"
         case "aldi": return "#00005F"
         case "auchan": return "#E4002B"
+        case "payback": return "#0033A0"
         case "costa": return "#6B1F32"
         case "kfc": return "#E4002B"
         case "stokrotka": return "#2E9E48"
@@ -61,7 +445,8 @@ enum LoyaltyBrandArt {
              "rossmann", "rossmannclub", "sephora", "shell", "bp", "carrefour",
              "circlek", "ikea", "mcdonalds", "starbucks", "hebe", "allegro",
              "inpost", "empik", "dino", "netto", "aldi", "auchan", "costa", "kfc", "stokrotka",
-             "selgros", "okko", "wog", "silpo", "atb":
+             "selgros", "okko", "wog", "silpo", "atb", "payback",
+             "xkom", "action", "dyson", "house":
             return true
         default:
             return false
@@ -69,11 +454,11 @@ enum LoyaltyBrandArt {
     }
 
     @MainActor
-    static func raster(program: LoyaltyProgram, dimension: CGFloat) -> UIImage? {
-        let view = LoyaltyBrandMark(program: program, size: dimension)
+    static func raster(program: LoyaltyProgram, dimension: CGFloat, onBrandField: Bool = false) -> UIImage? {
+        let view = LoyaltyBrandMark(program: program, size: dimension, onBrandField: onBrandField)
             .frame(width: dimension, height: dimension)
         let renderer = ImageRenderer(content: view)
-        renderer.scale = 1
+        renderer.scale = 3
         renderer.isOpaque = false
         return renderer.uiImage
     }
@@ -82,6 +467,14 @@ enum LoyaltyBrandArt {
 struct LoyaltyBrandMark: View {
     let program: LoyaltyProgram
     var size: CGFloat
+    var onBrandField: Bool = false
+
+    private var wordInk: Color {
+        if let hex = LoyaltyBrandKit.spec(for: program.id).hex ?? LoyaltyBrandArt.hex(for: program.id) {
+            return Color(hex: hex)
+        }
+        return program.brandColor
+    }
 
     var body: some View {
         Group {
@@ -108,7 +501,8 @@ struct LoyaltyBrandMark: View {
             case "dino": letter("D", ink: Color(hex: "#009639"))
             case "netto": letter("N", ink: Color(hex: "#C7A000"))
             case "aldi": letter("A", ink: Color(hex: "#00005F"))
-            case "auchan": letter("A", ink: Color(hex: "#E4002B"))
+            case "auchan": auchan
+            case "payback": payback
             case "costa": letter("C", ink: Color(hex: "#6B1F32"))
             case "kfc": letter("KFC", ink: Color(hex: "#E4002B"))
             case "stokrotka": stokrotka
@@ -117,6 +511,34 @@ struct LoyaltyBrandMark: View {
             case "wog": letter("WOG", ink: .white)
             case "silpo": silpo
             case "atb": letter("ATB", ink: Color(hex: "#FFCC00"))
+            case "xkom":
+                Text("x-kom")
+                    .font(.system(size: size * 0.28, weight: .heavy, design: .rounded))
+                    .tracking(-0.8)
+                    .foregroundStyle(Color(hex: "#111111"))
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(1)
+            case "action":
+                Text("Action")
+                    .font(.custom("Futura-Bold", size: size * 0.32))
+                    .tracking(-0.8)
+                    .foregroundStyle(Color(hex: "#FF6A00"))
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(1)
+            case "dyson":
+                Text("dyson")
+                    .font(.system(size: size * 0.30, weight: .semibold, design: .serif))
+                    .tracking(-1.0)
+                    .foregroundStyle(Color(hex: "#4B0D6B"))
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(1)
+            case "house":
+                Text("HOUSE")
+                    .font(.custom("AvenirNext-Bold", size: size * 0.26))
+                    .tracking(1.4)
+                    .foregroundStyle(Color(hex: "#111111"))
+                    .minimumScaleFactor(0.4)
+                    .lineLimit(1)
             default:
                 Text(program.monogram)
                     .font(.system(size: size * 0.36, weight: .bold, design: .rounded))
@@ -125,6 +547,24 @@ struct LoyaltyBrandMark: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    private var auchan: some View {
+        Text("Auchan")
+            .font(.custom("Futura-Bold", size: size * 0.42))
+            .tracking(-1.1)
+            .foregroundStyle(wordInk)
+            .minimumScaleFactor(0.5)
+            .lineLimit(1)
+    }
+
+    private var payback: some View {
+        Text("Payback")
+            .font(.custom("AvenirNext-Bold", size: size * 0.38))
+            .tracking(-0.8)
+            .foregroundStyle(wordInk)
+            .minimumScaleFactor(0.5)
+            .lineLimit(1)
     }
 
     private func letter(_ value: String, ink: Color) -> some View {
@@ -137,9 +577,9 @@ struct LoyaltyBrandMark: View {
 
     private var biedronka: some View {
         Canvas { context, canvas in
-            let s = min(canvas.width, canvas.height)
+            let s = min(canvas.width, canvas.height) * 0.84
             let cx = canvas.width / 2
-            let cy = canvas.height / 2 + s * 0.06
+            let cy = canvas.height / 2 + s * 0.02
             let red = Color(hex: "#E30613")
             let ink = Color.black
             let face = Color.white
@@ -208,6 +648,7 @@ struct LoyaltyBrandMark: View {
             )
             context.stroke(smile, with: .color(ink), lineWidth: s * 0.028)
         }
+        .padding(size * 0.18)
     }
 
     private var orlen: some View {
@@ -343,7 +784,7 @@ struct LoyaltyBrandMark: View {
 
     private var silpo: some View {
         Canvas { context, canvas in
-            let s = min(canvas.width, canvas.height)
+            let s = min(canvas.width, canvas.height) * 0.70
             let cx = canvas.width / 2
             let cy = canvas.height / 2 + s * 0.06
             let orange = Color(hex: "#F15A22")

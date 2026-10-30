@@ -98,13 +98,15 @@ final class LoyaltyCard {
     var barcodePayload: String = ""
     var barcodeSymbologyRaw: String = BarcodeSymbology.code128.rawValue
     var note: String = ""
-    var photoData: Data?
+    @Attribute(.externalStorage) var photoData: Data?
     var scannedByName: String = ""
     var familyShareID: String?
     var addedToAppleWallet: Bool = false
     var ocrText: String = ""
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
+    /// Lower = closer to top of Wallet stack (Apple Wallet reorder).
+    var sortOrder: Double = 0
 
     init(
         id: UUID = UUID(),
@@ -116,7 +118,8 @@ final class LoyaltyCard {
         note: String,
         photoData: Data?,
         scannedByName: String,
-        ocrText: String
+        ocrText: String,
+        sortOrder: Double? = nil
     ) {
         self.id = id
         self.programID = programID
@@ -130,6 +133,7 @@ final class LoyaltyCard {
         self.ocrText = ocrText
         self.createdAt = Date()
         self.updatedAt = Date()
+        self.sortOrder = sortOrder ?? -Date().timeIntervalSince1970
     }
 
     var barcodeSymbology: BarcodeSymbology {

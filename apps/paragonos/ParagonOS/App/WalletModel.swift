@@ -1,5 +1,4 @@
 import CloudKit
-import Combine
 import Foundation
 import SwiftData
 import SwiftUI
@@ -41,7 +40,13 @@ final class WalletModel: ObservableObject {
     let cloudSync = CloudSyncMonitor.shared
     private var profileContext: ModelContext?
     private var didBootstrap = false
-    private var cloudCancellables = Set<AnyCancellable>()
+    private var persistTicketTask: Task<Void, Never>?
+    private var persistLoyaltyTask: Task<Void, Never>?
+    private var persistNameTask: Task<Void, Never>?
+    private var chromeTask: Task<Void, Never>?
+    private var notificationTask: Task<Void, Never>?
+    private var cloudSyncTask: Task<Void, Never>?
+    private var familyMergeTask: Task<Void, Never>?
     @Published var settings = AppSettings.load() {
         didSet { settings.save() }
     }
@@ -51,27 +56,46 @@ final class WalletModel: ObservableObject {
         AppLocale.apply(AppSettings.load().language)
         ExpiryNotificationService.shared.configure()
         cloudSync.start()
-        cloudSync.objectWillChange
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.objectWillChange.send()
-            }
-            .store(in: &cloudCancellables)
     }
 
-    func bootstrap(context: ModelContext, tickets: [Ticket], receipts: [Receipt], cards: [LoyaltyCard] = []) async {
+    func bootstrap(context: ModelContext) async {
         profileContext = context
+        if didBootstrap {
+            consumePendingLaunch()
+            return
+        }
         if FileManager.default.ubiquityIdentityToken == nil {
             cloudSync.markLocalOnly()
         }
+        // Register before CloudKit work: an accepted invitation can be delivered
+        // during bootstrap, and it must trigger a local merge rather than being
+        // lost between the initial fetch and observer installation.
+        observeNotifications()
         await refreshDisplayName(context: context)
         await family.refreshAccountStatus()
+        let tickets = storedTickets(in: context)
+        let receipts = storedReceipts(in: context)
         repairMissingBarcodes(tickets: tickets, context: context)
         healReceiptDates(receipts: receipts, context: context)
-        await repairImpossibleDates(tickets: tickets, context: context)
-        await mergeFamilyTickets(context: context, existing: tickets)
-        await mergeFamilyReceipts(context: context, existing: receipts)
-        await mergeFamilyCards(context: context, existing: cards)
+        shrinkStoredPhotos(tickets: tickets, receipts: receipts, context: context)
+        Task { await repairImpossibleDates(tickets: storedTickets(in: context), context: context) }
+        await mergeFamilyTickets(context: context, existing: storedTickets(in: context))
+        await mergeFamilyReceipts(context: context, existing: storedReceipts(in: context))
+        await mergeFamilyCards(context: context, existing: storedCards(in: context))
+        if family.familyWalletID != nil {
+            await retryFamilyUploads(context: context)
+        }
+        dedupeFamilyLocals(in: context)
+        await family.subscribeToRemoteChanges()
+        await family.repairMissingParents()
+        if family.consumePendingShareMerge() {
+            await refreshFamilyFromCloud()
+        }
+        cloudSync.requestExport(from: context)
+        didBootstrap = true
+        await mergeFamilyTickets(context: context, existing: storedTickets(in: context))
+        await mergeFamilyReceipts(context: context, existing: storedReceipts(in: context))
+        await mergeFamilyCards(context: context, existing: storedCards(in: context))
         let latestTickets = storedTickets(in: context)
         let latestReceipts = storedReceipts(in: context)
         healReceiptDates(receipts: latestReceipts, context: context)
@@ -80,14 +104,9 @@ final class WalletModel: ObservableObject {
             receipts: latestReceipts,
             settings: settings.notificationSettings
         )
-        await family.subscribeToRemoteChanges()
-        await family.repairMissingParents()
-        observeNotifications()
-        cloudSync.requestExport(from: context)
-        didBootstrap = true
         publishHomeChrome(from: context)
         consumePendingLaunch()
-        if settings.hasCompletedOnboarding {
+        if settings.hasCompletedOnboarding, ParagonUIDemo.isEnabled == false {
             await ExpiryNotificationService.shared.requestAuthorization()
         }
     }
@@ -152,20 +171,150 @@ final class WalletModel: ObservableObject {
         )
     }
 
-    func requestCloudSync() {
-        guard let context = profileContext else { return }
-        cloudSync.requestExport(from: context)
-        Task { await refreshFamilyFromCloud() }
+    func scheduleRefreshNotifications() {
+        notificationTask?.cancel()
+        notificationTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard Task.isCancelled == false, let context = profileContext else { return }
+            await refreshNotifications(
+                tickets: storedTickets(in: context),
+                receipts: storedReceipts(in: context)
+            )
+        }
     }
 
-    func refreshFamilyFromCloud() async {
-        guard didBootstrap, let context = profileContext else { return }
+    func requestCloudSync() {
+        Task { await requestCloudSyncAndWait() }
+    }
+
+    func requestCloudSyncAndWait() async {
+        guard let context = profileContext else { return }
+        cloudSync.requestExport(from: context, userInitiated: true)
+        let previous = cloudSyncTask
+        let task = Task { @MainActor in
+            await previous?.value
+            await self.performFamilyCloudSync(context: context)
+        }
+        cloudSyncTask = task
+        await task.value
+    }
+
+    private func performFamilyCloudSync(context: ModelContext) async {
+        family.beginFamilyPush()
+        let uploadUnits = familyUploadUnitCount(context: context)
+        let totalUnits = uploadUnits + 4 // three data categories + participants
+        var completedUnits = 0
+        cloudSync.beginFamilySync(totalUnits: totalUnits)
+
+        // Each finished upload is a measured unit. A unit can be unsuccessful,
+        // but it is still completed work; the result controls the final state.
+        await retryFamilyUploads(context: context) { _ in
+            completedUnits += 1
+            self.cloudSync.updateFamilySync(
+                completedUnits: completedUnits,
+                totalUnits: totalUnits,
+                phase: .exporting
+            )
+        }
+
+        await refreshFamilyFromCloud {
+            completedUnits += 1
+            self.cloudSync.updateFamilySync(
+                completedUnits: completedUnits,
+                totalUnits: totalUnits,
+                phase: .importing
+            )
+        }
+        await family.refreshParticipants()
+        completedUnits += 1
+        cloudSync.updateFamilySync(
+            completedUnits: completedUnits,
+            totalUnits: totalUnits,
+            phase: .importing
+        )
+        cloudSync.noteLocalSyncCompleted(success: family.lastPushFailed == false)
+    }
+
+    /// Re-sends local family items after a failed CloudKit save (e.g. unknown `photo`).
+    func retryFamilyUploads(
+        context: ModelContext,
+        onItemFinished: ((Bool) -> Void)? = nil
+    ) async {
+        guard family.familyWalletID != nil else { return }
+        let shareExisting = settings.familyShareExisting
+        if settings.shareNewTicketsWithFamily {
+            for ticket in storedTickets(in: context) {
+                let tagged = ticket.familyWalletID != nil
+                guard FamilyUploadRetry.shouldRepush(
+                    categoryEnabled: true,
+                    shareExisting: shareExisting,
+                    isTagged: tagged
+                ) else { continue }
+                if ticket.familyWalletID == nil {
+                    ticket.familyWalletID = family.familyWalletID
+                    ticket.updatedAt = Date()
+                }
+                onItemFinished?(await family.upsertShared(ticket: ticket))
+            }
+        }
+        if settings.shareNewReceiptsWithFamily {
+            for receipt in storedReceipts(in: context) {
+                let tagged = receipt.familyShareID != nil
+                guard FamilyUploadRetry.shouldRepush(
+                    categoryEnabled: true,
+                    shareExisting: shareExisting,
+                    isTagged: tagged
+                ) else { continue }
+                if receipt.familyShareID == nil {
+                    receipt.familyShareID = family.familyWalletID
+                    receipt.updatedAt = Date()
+                }
+                onItemFinished?(await family.upsertShared(receipt: receipt))
+            }
+        }
+        if settings.shareNewLoyaltyCardsWithFamily {
+            for card in storedCards(in: context) {
+                let tagged = card.familyShareID != nil
+                guard FamilyUploadRetry.shouldRepush(
+                    categoryEnabled: true,
+                    shareExisting: shareExisting,
+                    isTagged: tagged
+                ) else { continue }
+                if card.familyShareID == nil {
+                    card.familyShareID = family.familyWalletID
+                    card.updatedAt = Date()
+                }
+                onItemFinished?(await family.upsertShared(card: card))
+            }
+        }
+        try? context.save()
+        await family.repairMissingParents()
+    }
+
+    func refreshFamilyFromCloud(onCategoryFinished: (() -> Void)? = nil) async {
+        guard profileContext != nil else { return }
+        let previous = familyMergeTask
+        let task = Task { @MainActor in
+            await previous?.value
+            await self.performFamilyMerge(onCategoryFinished: onCategoryFinished)
+        }
+        familyMergeTask = task
+        await task.value
+    }
+
+    private func performFamilyMerge(onCategoryFinished: (() -> Void)?) async {
+        guard let context = profileContext else { return }
+        dedupeFamilyLocals(in: context)
         let tickets = storedTickets(in: context)
         let receipts = storedReceipts(in: context)
         let cards = storedCards(in: context)
         await mergeFamilyTickets(context: context, existing: tickets)
+        onCategoryFinished?()
         await mergeFamilyReceipts(context: context, existing: receipts)
+        onCategoryFinished?()
         await mergeFamilyCards(context: context, existing: cards)
+        onCategoryFinished?()
+        dedupeFamilyLocals(in: context)
         let latestReceipts = storedReceipts(in: context)
         healReceiptDates(receipts: latestReceipts, context: context)
         await ExpiryNotificationService.shared.reschedule(
@@ -173,6 +322,58 @@ final class WalletModel: ObservableObject {
             receipts: latestReceipts,
             settings: settings.notificationSettings
         )
+    }
+
+    func dedupeFamilyLocals(in context: ModelContext) {
+        var dirty = false
+        for ticket in FamilyMergePolicy.extrasToDelete(storedTickets(in: context), id: \.id, updatedAt: \.updatedAt) {
+            context.delete(ticket)
+            dirty = true
+        }
+        for receipt in FamilyMergePolicy.extrasToDelete(storedReceipts(in: context), id: \.id, updatedAt: \.updatedAt) {
+            context.delete(receipt)
+            dirty = true
+        }
+        for card in FamilyMergePolicy.extrasToDelete(storedCards(in: context), id: \.id, updatedAt: \.updatedAt) {
+            context.delete(card)
+            dirty = true
+        }
+        if dirty {
+            try? context.save()
+        }
+    }
+
+    private func familyUploadUnitCount(context: ModelContext) -> Int {
+        guard family.familyWalletID != nil else { return 0 }
+        let shareExisting = settings.familyShareExisting
+        let tickets = settings.shareNewTicketsWithFamily
+            ? storedTickets(in: context).filter {
+                FamilyUploadRetry.shouldRepush(
+                    categoryEnabled: true,
+                    shareExisting: shareExisting,
+                    isTagged: $0.familyWalletID != nil
+                )
+            }.count
+            : 0
+        let receipts = settings.shareNewReceiptsWithFamily
+            ? storedReceipts(in: context).filter {
+                FamilyUploadRetry.shouldRepush(
+                    categoryEnabled: true,
+                    shareExisting: shareExisting,
+                    isTagged: $0.familyShareID != nil
+                )
+            }.count
+            : 0
+        let cards = settings.shareNewLoyaltyCardsWithFamily
+            ? storedCards(in: context).filter {
+                FamilyUploadRetry.shouldRepush(
+                    categoryEnabled: true,
+                    shareExisting: shareExisting,
+                    isTagged: $0.familyShareID != nil
+                )
+            }.count
+            : 0
+        return tickets + receipts + cards
     }
 
     private func prepareRedeem(id: UUID) {
@@ -240,19 +441,36 @@ final class WalletModel: ObservableObject {
         let lastID = (UserDefaults(suiteName: AppGroup.id)?.string(forKey: AppGroup.lastCardKey)
             ?? UserDefaults.standard.string(forKey: AppGroup.lastCardKey))
             .flatMap(UUID.init)
-        let snapshotCards = cards.prefix(6).map { card -> SnapshotCard in
+        let programCounts = Dictionary(grouping: cards, by: \.programID)
+        var orderedCards = cards
+        if let lastID, let index = orderedCards.firstIndex(where: { $0.id == lastID }) {
+            let selected = orderedCards.remove(at: index)
+            orderedCards = [selected] + orderedCards
+        }
+        let snapshotCards = orderedCards.prefix(9).map { card -> SnapshotCard in
             let program = card.program
             if let png = WidgetStampRenderer.png(program: program) {
                 WidgetStampStore.save(id: card.id, png: png)
             }
+            let duplicates = (programCounts[card.programID] ?? []).count > 1
+            let caption: String? = {
+                guard duplicates else { return nil }
+                let holder = card.holderName.trimmingCharacters(in: .whitespacesAndNewlines)
+                if holder.isEmpty == false { return holder }
+                if let digits = HomeSnapshot.lastDigits(from: card.barcodePayload) {
+                    return "••\(digits)"
+                }
+                return nil
+            }()
             return SnapshotCard(
                 id: card.id,
                 name: card.displayName,
                 colorHex: program.cardColorHex,
-                programID: program.id
+                programID: program.id,
+                caption: caption
             )
         }
-        let snapshotTickets = active.prefix(6).map { ticket -> SnapshotTicket in
+        let snapshotTickets = active.prefix(9).map { ticket -> SnapshotTicket in
             let program = LoyaltyCatalog.programForRetailer(ticket.retailerID)
             if let png = WidgetStampRenderer.png(program: program) {
                 WidgetStampStore.save(id: ticket.id, png: png)
@@ -283,7 +501,18 @@ final class WalletModel: ObservableObject {
         )
         HomeSnapshotStore.save(snapshot)
         HomeQuickActions.refresh(snapshot: snapshot)
-        WidgetCenter.shared.reloadAllTimelines()
+        for kind in ParagonWidgetKind.all {
+            WidgetCenter.shared.reloadTimelines(ofKind: kind)
+        }
+    }
+
+    func schedulePublishHomeChrome(from context: ModelContext) {
+        chromeTask?.cancel()
+        chromeTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard Task.isCancelled == false else { return }
+            publishHomeChrome(from: context)
+        }
     }
 
     func completeOnboarding() {
@@ -523,7 +752,7 @@ final class WalletModel: ObservableObject {
         }
         pendingLoyaltyID = card.id
         rememberCheckoutCard(card.id)
-        publishHomeChrome(from: context)
+        schedulePublishHomeChrome(from: context)
         noteSuccessfulSave()
         return card
     }
@@ -540,7 +769,16 @@ final class WalletModel: ObservableObject {
         if card.familyShareID != nil {
             Task { await family.upsertShared(card: card) }
         }
-        publishHomeChrome(from: context)
+        schedulePublishHomeChrome(from: context)
+    }
+
+    func schedulePersistLoyalty(_ card: LoyaltyCard, context: ModelContext) {
+        persistLoyaltyTask?.cancel()
+        persistLoyaltyTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard Task.isCancelled == false else { return }
+            try? persistLoyalty(card, context: context)
+        }
     }
 
     func matchingLoyaltyCard(payload: String, excluding: UUID? = nil, in context: ModelContext) -> LoyaltyCard? {
@@ -555,6 +793,16 @@ final class WalletModel: ObservableObject {
         try context.save()
         if ticket.familyWalletID != nil {
             Task { await family.upsertShared(ticket: ticket) }
+        }
+        schedulePublishHomeChrome(from: context)
+    }
+
+    func schedulePersistTicket(_ ticket: Ticket, context: ModelContext) {
+        persistTicketTask?.cancel()
+        persistTicketTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard Task.isCancelled == false else { return }
+            try? persistTicket(ticket, context: context)
         }
     }
 
@@ -594,6 +842,7 @@ final class WalletModel: ObservableObject {
     }
 
     func persistReceipt(_ receipt: Receipt, context: ModelContext) throws {
+        _ = FamilyPhotoCodec.settle(receipt)
         receipt.updatedAt = Date()
         try context.save()
         if receipt.familyShareID != nil {
@@ -602,6 +851,7 @@ final class WalletModel: ObservableObject {
     }
 
     func shareReceiptWithFamily(_ receipt: Receipt, context: ModelContext) async {
+        _ = FamilyPhotoCodec.settle(receipt)
         receipt.familyShareID = family.familyWalletID
         receipt.updatedAt = Date()
         try? context.save()
@@ -666,6 +916,37 @@ final class WalletModel: ObservableObject {
         }
     }
 
+    /// Camera originals used to sit in iCloud at several megabytes each. Re-encode
+    /// only the oversized blobs so Settings → iCloud drops without softening
+    /// photos that are already small.
+    private func shrinkStoredPhotos(tickets: [Ticket], receipts: [Receipt], context: ModelContext) {
+        var changed = false
+        for receipt in receipts {
+            if FamilyPhotoCodec.settle(receipt) {
+                receipt.updatedAt = Date()
+                changed = true
+            }
+            guard let data = receipt.photoData else { continue }
+            let next = ScanService.recompressStoredPhoto(data)
+            guard next.count < data.count else { continue }
+            receipt.photoData = next
+            receipt.updatedAt = Date()
+            changed = true
+        }
+        for ticket in tickets {
+            guard let data = ticket.photoData else { continue }
+            let next = ScanService.recompressStoredPhoto(data)
+            guard next.count < data.count else { continue }
+            ticket.photoData = next
+            ticket.updatedAt = Date()
+            changed = true
+        }
+        if changed {
+            try? context.save()
+            cloudSync.requestExport(from: context)
+        }
+    }
+
     private func repairMissingBarcodes(tickets: [Ticket], context: ModelContext) {
         var changed = false
         for ticket in tickets {
@@ -688,20 +969,23 @@ final class WalletModel: ObservableObject {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Europe/Warsaw") ?? .current
         var changed = false
+        var ocrBudget = 2
         for ticket in tickets {
             guard ticket.storedStatus != .redeemed else { continue }
             guard Self.hasImplausibleDates(ticket, calendar: calendar) else { continue }
-            if let data = ticket.photoData, let image = UIImage(data: data),
-               let result = try? await ScanService.analyze(image: image),
-               result.draft.issuedWasPrinted {
-                ticket.issuedAt = result.draft.issuedAt
-                ticket.expiresAt = result.draft.expiresAt
-                if ticket.retailerID == "unknown", result.draft.retailerID != "unknown" {
-                    ticket.retailerID = result.draft.retailerID
+            if ocrBudget > 0, let data = ticket.photoData, let image = UIImage(data: data) {
+                ocrBudget -= 1
+                if let result = try? await ScanService.analyze(image: image),
+                   result.draft.issuedWasPrinted {
+                    ticket.issuedAt = result.draft.issuedAt
+                    ticket.expiresAt = result.draft.expiresAt
+                    if ticket.retailerID == "unknown", result.draft.retailerID != "unknown" {
+                        ticket.retailerID = result.draft.retailerID
+                    }
+                    ticket.updatedAt = Date()
+                    changed = true
+                    continue
                 }
-                ticket.updatedAt = Date()
-                changed = true
-                continue
             }
             let issued = calendar.startOfDay(for: ticket.createdAt)
             ticket.issuedAt = issued
@@ -799,14 +1083,56 @@ final class WalletModel: ObservableObject {
         try? context.save()
     }
 
+    /// Uploads existing local items into the family share when mode is "Wszystko".
+    func backfillFamilyShare(context: ModelContext, only: FamilyShareTarget? = nil) async {
+        guard family.familyWalletID != nil, family.isFamilyOwner else { return }
+        guard settings.familyShareExisting else { return }
+        family.beginFamilyPush()
+        cloudSync.presentIsland(.running)
+
+        let walletID = family.familyWalletID
+        if only == nil || only == .deposit, settings.shareNewTicketsWithFamily {
+            for ticket in storedTickets(in: context) {
+                if ticket.familyWalletID == nil {
+                    ticket.familyWalletID = walletID
+                    ticket.updatedAt = Date()
+                }
+                await family.upsertShared(ticket: ticket)
+            }
+        }
+        if only == nil || only == .receipt, settings.shareNewReceiptsWithFamily {
+            for receipt in storedReceipts(in: context) {
+                if receipt.familyShareID == nil {
+                    receipt.familyShareID = walletID
+                    receipt.updatedAt = Date()
+                }
+                await family.upsertShared(receipt: receipt)
+            }
+        }
+        if only == nil || only == .loyalty, settings.shareNewLoyaltyCardsWithFamily {
+            for card in storedCards(in: context) {
+                if card.familyShareID == nil {
+                    card.familyShareID = walletID
+                    card.updatedAt = Date()
+                }
+                await family.upsertShared(card: card)
+            }
+        }
+        try? context.save()
+        await family.repairMissingParents()
+        cloudSync.requestExport(from: context)
+        cloudSync.noteLocalSyncCompleted(success: family.lastPushFailed == false)
+    }
+
     private func mergeFamilyTickets(context: ModelContext, existing: [Ticket]) async {
         let fetch = await family.fetchSharedTickets()
         guard fetch.succeeded else { return }
         let records = fetch.records
-        let byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id.uuidString, $0) })
+        let byID = FamilyMergePolicy.keyedByID(existing, id: \.id)
         let remote = Set(records.map(\.recordID.recordName))
         for record in records {
             let name = record.recordID.recordName
+            guard let localID = FamilyMergePolicy.localID(fromRecordName: name) else { continue }
             let amount = record["amount"] as? Double ?? 0
             let retailerID = record["retailerID"] as? String ?? "unknown"
             let issuedAt = record["issuedAt"] as? Date ?? Date()
@@ -821,7 +1147,8 @@ final class WalletModel: ObservableObject {
             if let asset = record["photo"] as? CKAsset, let url = asset.fileURL {
                 photo = try? Data(contentsOf: url)
             }
-            if let ticket = byID[name] {
+            let live = FamilyMergePolicy.keyedByID(storedTickets(in: context), id: \.id)
+            if let ticket = byID[name] ?? live[name] {
                 ticket.amount = amount
                 ticket.statusRaw = status
                 ticket.redeemedByName = redeemedBy
@@ -833,7 +1160,7 @@ final class WalletModel: ObservableObject {
                 ticket.updatedAt = Date()
             } else {
                 let ticket = Ticket(
-                    id: UUID(uuidString: name) ?? UUID(),
+                    id: localID,
                     retailerID: retailerID,
                     amount: amount,
                     issuedAt: issuedAt,
@@ -851,9 +1178,14 @@ final class WalletModel: ObservableObject {
                 context.insert(ticket)
             }
         }
-        for ticket in existing where ticket.familyWalletID != nil {
-            if remote.contains(ticket.id.uuidString) == false {
-                context.delete(ticket)
+        if FamilyMergePolicy.shouldDeleteLocalsMissingFromRemote(
+            fetchSucceeded: fetch.succeeded,
+            remoteCount: records.count
+        ) {
+            for ticket in existing where ticket.familyWalletID != nil {
+                if remote.contains(ticket.id.uuidString) == false {
+                    context.delete(ticket)
+                }
             }
         }
         try? context.save()
@@ -863,10 +1195,11 @@ final class WalletModel: ObservableObject {
         let fetch = await family.fetchSharedReceipts()
         guard fetch.succeeded else { return }
         let records = fetch.records
-        let byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id.uuidString, $0) })
+        let byID = FamilyMergePolicy.keyedByID(existing, id: \.id)
         let remote = Set(records.map(\.recordID.recordName))
         for record in records {
             let name = record.recordID.recordName
+            guard let localID = FamilyMergePolicy.localID(fromRecordName: name) else { continue }
             let merchant = record["merchantName"] as? String ?? ""
             let nip = record["merchantNIP"] as? String ?? ""
             let amount = record["amount"] as? Double ?? 0
@@ -876,15 +1209,14 @@ final class WalletModel: ObservableObject {
             let documentType = ReceiptDocumentType(rawValue: record["documentType"] as? String ?? "") ?? .receipt
             let number = record["documentNumber"] as? String ?? ""
             let payment = record["paymentMethod"] as? String ?? ""
-            let itemName = record["itemName"] as? String ?? ""
+            let unpacked = FamilyPhotoCodec.unpack(record["itemName"] as? String)
+            let itemName = unpacked.items
             let scannedBy = record["scannedByName"] as? String ?? ""
             let warrantyUntil = record["warrantyUntil"] as? Date
             let returnUntil = record["returnUntil"] as? Date
-            var photo: Data?
-            if let asset = record["photo"] as? CKAsset, let url = asset.fileURL {
-                photo = try? Data(contentsOf: url)
-            }
-            if let receipt = byID[name] {
+            let photo = FamilyPhotoCodec.photoData(from: record) ?? unpacked.photo
+            let live = FamilyMergePolicy.keyedByID(storedReceipts(in: context), id: \.id)
+            if let receipt = byID[name] ?? live[name] {
                 receipt.amount = amount
                 receipt.merchantName = merchant
                 receipt.merchantNIP = nip
@@ -896,7 +1228,7 @@ final class WalletModel: ObservableObject {
                 receipt.updatedAt = Date()
             } else {
                 let receipt = Receipt(
-                    id: UUID(uuidString: name) ?? UUID(),
+                    id: localID,
                     merchantName: merchant,
                     merchantNIP: nip,
                     amount: amount,
@@ -918,9 +1250,14 @@ final class WalletModel: ObservableObject {
                 context.insert(receipt)
             }
         }
-        for receipt in existing where receipt.familyShareID != nil {
-            if remote.contains(receipt.id.uuidString) == false {
-                context.delete(receipt)
+        if FamilyMergePolicy.shouldDeleteLocalsMissingFromRemote(
+            fetchSucceeded: fetch.succeeded,
+            remoteCount: records.count
+        ) {
+            for receipt in existing where receipt.familyShareID != nil {
+                if remote.contains(receipt.id.uuidString) == false {
+                    context.delete(receipt)
+                }
             }
         }
         try? context.save()
@@ -930,10 +1267,11 @@ final class WalletModel: ObservableObject {
         let fetch = await family.fetchSharedCards()
         guard fetch.succeeded else { return }
         let records = fetch.records
-        let byID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id.uuidString, $0) })
+        let byID = FamilyMergePolicy.keyedByID(existing, id: \.id)
         let remote = Set(records.map(\.recordID.recordName))
         for record in records {
             let name = record.recordID.recordName
+            guard let localID = FamilyMergePolicy.localID(fromRecordName: name) else { continue }
             let programID = record["programID"] as? String ?? ""
             let programName = record["programName"] as? String ?? ""
             let holderName = record["holderName"] as? String ?? ""
@@ -945,7 +1283,8 @@ final class WalletModel: ObservableObject {
             if let asset = record["photo"] as? CKAsset, let url = asset.fileURL {
                 photo = try? Data(contentsOf: url)
             }
-            if let card = byID[name] {
+            let live = FamilyMergePolicy.keyedByID(storedCards(in: context), id: \.id)
+            if let card = byID[name] ?? live[name] {
                 card.programName = programName
                 card.holderName = holderName
                 card.barcodePayload = payload
@@ -955,7 +1294,7 @@ final class WalletModel: ObservableObject {
                 card.updatedAt = Date()
             } else {
                 let card = LoyaltyCard(
-                    id: UUID(uuidString: name) ?? UUID(),
+                    id: localID,
                     programID: programID,
                     programName: programName,
                     holderName: holderName,
@@ -970,9 +1309,14 @@ final class WalletModel: ObservableObject {
                 context.insert(card)
             }
         }
-        for card in existing where card.familyShareID != nil {
-            if remote.contains(card.id.uuidString) == false {
-                context.delete(card)
+        if FamilyMergePolicy.shouldDeleteLocalsMissingFromRemote(
+            fetchSucceeded: fetch.succeeded,
+            remoteCount: records.count
+        ) {
+            for card in existing where card.familyShareID != nil {
+                if remote.contains(card.id.uuidString) == false {
+                    context.delete(card)
+                }
             }
         }
         try? context.save()
@@ -1022,8 +1366,6 @@ final class WalletModel: ObservableObject {
         })
         NSUbiquitousKeyValueStore.default.synchronize()
     }
-
-    private var persistNameTask: Task<Void, Never>?
 
     func schedulePersistDisplayName(_ name: String) {
         persistNameTask?.cancel()
@@ -1154,50 +1496,74 @@ enum ScanSaveError: LocalizedError {
 }
 
 struct AppSettings: Equatable {
+    static let sharesExistingByDefault = false
+
     var hasCompletedOnboarding: Bool
     var displayName: String
-    var reminder7Days: Bool
-    var reminder1Day: Bool
-    var reminderOnDay: Bool
     var boostBrightness: Bool
     var shareNewTicketsWithFamily: Bool
     var shareNewReceiptsWithFamily: Bool
     var shareNewLoyaltyCardsWithFamily: Bool
+    /// When true, existing items in enabled categories are uploaded to the family share.
+    var familyShareExisting: Bool
     var scanOpensImmediately: Bool
     var language: AppLanguage
-    var warrantyReminder30: Bool
-    var warrantyReminder7: Bool
-    var returnReminder3: Bool
+    var depositReminderDays: [Int]
+    var warrantyReminderDays: [Int]
+    var returnReminderDays: [Int]
     var lockWithBiometrics: Bool
 
     var notificationSettings: NotificationSettings {
         NotificationSettings(
-            reminder7Days: reminder7Days,
-            reminder1Day: reminder1Day,
-            reminderOnDay: reminderOnDay,
-            warrantyReminder30: warrantyReminder30,
-            warrantyReminder7: warrantyReminder7,
-            returnReminder3: returnReminder3
+            depositReminderDays: depositReminderDays,
+            warrantyReminderDays: warrantyReminderDays,
+            returnReminderDays: returnReminderDays
         )
     }
 
     static func load() -> AppSettings {
         let defaults = UserDefaults.standard
+        let depositDays: [Int] = {
+            if let stored = defaults.array(forKey: Keys.depositReminders) as? [Int] {
+                return NotificationSettings.normalized(stored)
+            }
+            var days: [Int] = []
+            if defaults.object(forKey: Keys.reminder7) as? Bool ?? true { days.append(7) }
+            if defaults.object(forKey: Keys.reminder1) as? Bool ?? true { days.append(1) }
+            if defaults.object(forKey: Keys.reminder0) as? Bool ?? true { days.append(0) }
+            return NotificationSettings.normalized(days.isEmpty ? [7, 1, 0] : days)
+        }()
+        let warrantyDays: [Int] = {
+            if let stored = defaults.array(forKey: Keys.warrantyReminders) as? [Int] {
+                return NotificationSettings.normalized(stored)
+            }
+            var days: [Int] = []
+            if defaults.object(forKey: Keys.warranty30) as? Bool ?? true { days.append(30) }
+            if defaults.object(forKey: Keys.warranty7) as? Bool ?? true { days.append(7) }
+            return NotificationSettings.normalized(days.isEmpty ? [30, 7] : days)
+        }()
+        let returnDays: [Int] = {
+            if let stored = defaults.array(forKey: Keys.returnReminders) as? [Int] {
+                return NotificationSettings.normalized(stored)
+            }
+            if defaults.object(forKey: Keys.return3) as? Bool ?? true {
+                return [3]
+            }
+            return [3]
+        }()
         return AppSettings(
             hasCompletedOnboarding: defaults.bool(forKey: Keys.onboarding),
             displayName: defaults.string(forKey: Keys.displayName) ?? "",
-            reminder7Days: defaults.object(forKey: Keys.reminder7) as? Bool ?? true,
-            reminder1Day: defaults.object(forKey: Keys.reminder1) as? Bool ?? true,
-            reminderOnDay: defaults.object(forKey: Keys.reminder0) as? Bool ?? true,
             boostBrightness: defaults.object(forKey: Keys.brightness) as? Bool ?? true,
             shareNewTicketsWithFamily: defaults.object(forKey: Keys.shareFamily) as? Bool ?? true,
             shareNewReceiptsWithFamily: defaults.object(forKey: Keys.shareReceipts) as? Bool ?? true,
             shareNewLoyaltyCardsWithFamily: defaults.object(forKey: Keys.shareCards) as? Bool ?? true,
+            familyShareExisting: defaults.object(forKey: Keys.shareExisting) as? Bool ?? sharesExistingByDefault,
             scanOpensImmediately: defaults.object(forKey: Keys.scanImmediate) as? Bool ?? true,
             language: AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .system,
-            warrantyReminder30: defaults.object(forKey: Keys.warranty30) as? Bool ?? true,
-            warrantyReminder7: defaults.object(forKey: Keys.warranty7) as? Bool ?? true,
-            returnReminder3: defaults.object(forKey: Keys.return3) as? Bool ?? true,
+            depositReminderDays: depositDays,
+            warrantyReminderDays: warrantyDays,
+            returnReminderDays: returnDays,
             lockWithBiometrics: defaults.bool(forKey: Keys.lockBiometrics)
         )
     }
@@ -1206,33 +1572,35 @@ struct AppSettings: Equatable {
         let defaults = UserDefaults.standard
         defaults.set(hasCompletedOnboarding, forKey: Keys.onboarding)
         defaults.set(displayName, forKey: Keys.displayName)
-        defaults.set(reminder7Days, forKey: Keys.reminder7)
-        defaults.set(reminder1Day, forKey: Keys.reminder1)
-        defaults.set(reminderOnDay, forKey: Keys.reminder0)
         defaults.set(boostBrightness, forKey: Keys.brightness)
         defaults.set(shareNewTicketsWithFamily, forKey: Keys.shareFamily)
         defaults.set(shareNewReceiptsWithFamily, forKey: Keys.shareReceipts)
         defaults.set(shareNewLoyaltyCardsWithFamily, forKey: Keys.shareCards)
+        defaults.set(familyShareExisting, forKey: Keys.shareExisting)
         defaults.set(scanOpensImmediately, forKey: Keys.scanImmediate)
         defaults.set(language.rawValue, forKey: Keys.language)
-        defaults.set(warrantyReminder30, forKey: Keys.warranty30)
-        defaults.set(warrantyReminder7, forKey: Keys.warranty7)
-        defaults.set(returnReminder3, forKey: Keys.return3)
+        defaults.set(depositReminderDays, forKey: Keys.depositReminders)
+        defaults.set(warrantyReminderDays, forKey: Keys.warrantyReminders)
+        defaults.set(returnReminderDays, forKey: Keys.returnReminders)
         defaults.set(lockWithBiometrics, forKey: Keys.lockBiometrics)
     }
 
     private enum Keys {
         static let onboarding = "hasCompletedOnboarding"
         static let displayName = "displayName"
-        static let reminder7 = "reminder7Days"
-        static let reminder1 = "reminder1Day"
-        static let reminder0 = "reminderOnDay"
         static let brightness = "boostBrightness"
         static let shareFamily = "shareNewTicketsWithFamily"
         static let shareReceipts = "shareNewReceiptsWithFamily"
         static let shareCards = "shareNewLoyaltyCardsWithFamily"
+        static let shareExisting = "familyShareExisting"
         static let scanImmediate = "scanOpensImmediately"
         static let language = "appLanguage"
+        static let depositReminders = "depositReminderDays"
+        static let warrantyReminders = "warrantyReminderDays"
+        static let returnReminders = "returnReminderDays"
+        static let reminder7 = "reminder7Days"
+        static let reminder1 = "reminder1Day"
+        static let reminder0 = "reminderOnDay"
         static let warranty30 = "warrantyReminder30"
         static let warranty7 = "warrantyReminder7"
         static let return3 = "returnReminder3"

@@ -57,7 +57,7 @@ final class Ticket {
     var barcodePayload: String = ""
     var barcodeSymbologyRaw: String = BarcodeSymbology.unknown.rawValue
     var ticketNumber: String = ""
-    var photoData: Data?
+    @Attribute(.externalStorage) var photoData: Data?
     var statusRaw: String = TicketLifecycleStatus.active.rawValue
     var redeemedAt: Date?
     var scannedByName: String = ""

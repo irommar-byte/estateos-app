@@ -12,7 +12,7 @@ actor LoyaltyLogoStore {
     static let shared = LoyaltyLogoStore()
 
     private var memory: [String: UIImage] = [:]
-    private let cacheVersion = "LoyaltyLogos-v7"
+    private let cacheVersion = "LoyaltyLogos-v11"
 
     func visual(for program: LoyaltyProgram) async -> LoyaltyVisual {
         let fallback = program.brandColor
@@ -37,24 +37,46 @@ actor LoyaltyLogoStore {
     }
 
     private func realImage(for program: LoyaltyProgram) async -> UIImage? {
-        if let cached = memory[program.id] { return cached }
-        let disk = cacheURL(for: program.id)
-        if FileManager.default.fileExists(atPath: disk.path),
-           let data = try? Data(contentsOf: disk),
-           let image = UIImage(data: data),
-           pixelWidth(image) >= 64 {
-            let trimmed = LogoCropper.trim(image)
-            memory[program.id] = trimmed
-            return trimmed
+        let spec = LoyaltyBrandKit.spec(for: program.id)
+        if let cached = memory[program.id] {
+            if LoyaltyBrandKit.bundledLogo(for: program.id) != nil {
+                return cached
+            }
+            if LogoQuality.looksLikeTile(cached), StoreLogoPolicy.shouldFetchRemote(for: program) {
+                memory[program.id] = nil
+            } else if spec.allowsRemote, LogoQuality.acceptsStoreIcon(cached) == false {
+                memory[program.id] = nil
+            } else {
+                return cached
+            }
         }
+        let disk = cacheURL(for: program.id)
         if let bundled = bundledImage(for: program.id) {
             let trimmed = LogoCropper.trim(bundled)
             memory[program.id] = trimmed
             try? trimmed.pngData()?.write(to: disk, options: .atomic)
             return trimmed
         }
+        if FileManager.default.fileExists(atPath: disk.path),
+           let data = try? Data(contentsOf: disk),
+           let image = UIImage(data: data),
+           pixelWidth(image) >= 64 {
+            let trimmed = LogoCropper.trim(image)
+            let keep = StoreLogoPolicy.shouldFetchRemote(for: program) || spec.allowsRemote
+                ? LogoQuality.acceptsStoreIcon(trimmed)
+                : LogoQuality.looksLikeTile(trimmed) == false
+            if keep {
+                memory[program.id] = trimmed
+                return trimmed
+            }
+            try? FileManager.default.removeItem(at: disk)
+        }
+        guard StoreLogoPolicy.shouldFetchRemote(for: program) || spec.allowsRemote else {
+            return nil
+        }
         guard let image = await bestRemoteLogo(for: program) else { return nil }
         let trimmed = LogoCropper.trim(image)
+        guard LogoQuality.acceptsStoreIcon(trimmed) else { return nil }
         memory[program.id] = trimmed
         try? trimmed.pngData()?.write(to: disk, options: .atomic)
         return trimmed
@@ -79,7 +101,7 @@ actor LoyaltyLogoStore {
         for url in iconURLs(for: program) {
             guard let image = await download(url) else { continue }
             let pixels = pixelWidth(image)
-            guard pixels >= 128 else { continue }
+            guard pixels >= 128, LogoQuality.acceptsStoreIcon(image) else { continue }
             if pixels > bestPixels {
                 best = image
                 bestPixels = pixels
@@ -128,7 +150,10 @@ actor LoyaltyLogoStore {
             try? FileManager.default.removeItem(at: root.appendingPathComponent("LoyaltyLogos-v3", isDirectory: true))
             try? FileManager.default.removeItem(at: root.appendingPathComponent("LoyaltyLogos-v4", isDirectory: true))
             try? FileManager.default.removeItem(at: root.appendingPathComponent("LoyaltyLogos-v5", isDirectory: true))
-            try? FileManager.default.removeItem(at: root.appendingPathComponent("LoyaltyLogos-v6", isDirectory: true))
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("LoyaltyLogos-v7", isDirectory: true))
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("LoyaltyLogos-v8", isDirectory: true))
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("LoyaltyLogos-v9", isDirectory: true))
+            try? FileManager.default.removeItem(at: root.appendingPathComponent("LoyaltyLogos-v10", isDirectory: true))
             didClearStale = true
         }
         let folder = root.appendingPathComponent(cacheVersion, isDirectory: true)
@@ -137,12 +162,24 @@ actor LoyaltyLogoStore {
     }
 }
 
+enum StoreLogoPolicy {
+    /// Receipt / retailer chips may fetch a real store mark when we have no bundled PNG.
+    /// Loyalty cards still ignore remote via `LoyaltyBrandKit.spec.allowsRemote`.
+    static func shouldFetchRemote(for program: LoyaltyProgram) -> Bool {
+        if LoyaltyBrandKit.bundledLogo(for: program.id) != nil { return false }
+        if let extra = program.logoURL, extra.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return true
+        }
+        return program.domain.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
+}
+
 enum LogoCropper {
-    static func trim(_ image: UIImage, knockingOut hex: String? = nil) -> UIImage {
-        knockoutAndCrop(image, backgroundHex: hex)
+    static func trim(_ image: UIImage, knockingOut hex: String? = nil, punchInteriorPaper: Bool = false) -> UIImage {
+        knockoutAndCrop(image, backgroundHex: hex, punchInteriorPaper: punchInteriorPaper)
     }
 
-    static func knockoutAndCrop(_ image: UIImage, backgroundHex: String? = nil) -> UIImage {
+    static func knockoutAndCrop(_ image: UIImage, backgroundHex: String? = nil, punchInteriorPaper: Bool = false) -> UIImage {
         guard let cg = image.cgImage else { return image }
         let width = cg.width
         let height = cg.height
@@ -150,7 +187,6 @@ enum LogoCropper {
         var buffer = [UInt8](repeating: 0, count: width * height * 4)
         let space = CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
-        let brandRGB = backgroundHex.flatMap(rgb(hex:))
         return buffer.withUnsafeMutableBytes { raw -> UIImage in
             guard let data = raw.baseAddress, let ctx = CGContext(
                 data: data,
@@ -165,7 +201,6 @@ enum LogoCropper {
             ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
             let bytes = data.assumingMemoryBound(to: UInt8.self)
 
-            func alpha(_ i: Int) -> Double { Double(bytes[i + 3]) / 255 }
             func luma(_ i: Int) -> Double {
                 let a = Double(bytes[i + 3])
                 guard a > 8 else { return 1 }
@@ -182,11 +217,8 @@ enum LogoCropper {
                 let minc = min(r, g, b)
                 return maxc == 0 ? 0 : (maxc - minc) / maxc
             }
-            func distance(to brand: (r: Double, g: Double, b: Double), at i: Int) -> Double {
-                let r = Double(bytes[i]) / 255
-                let g = Double(bytes[i + 1]) / 255
-                let b = Double(bytes[i + 2]) / 255
-                return hypot(hypot(r - brand.r, g - brand.g), b - brand.b)
+            func alpha(_ i: Int) -> Double {
+                Double(bytes[i + 3]) / 255
             }
 
             let cornerIdx = [
@@ -199,55 +231,183 @@ enum LogoCropper {
             let cornerLuma = opaqueCorners.map(luma)
             let punchWhite = opaqueCorners.count >= 3 && cornerLuma.filter { $0 > 0.9 }.count >= 3
             let punchBlack = opaqueCorners.count >= 3 && cornerLuma.filter { $0 < 0.12 }.count >= 3
-            let punchBrand = brandRGB.flatMap { brand -> (r: Double, g: Double, b: Double)? in
-                guard opaqueCorners.count >= 3 else { return nil }
-                let matches = opaqueCorners.filter { distance(to: brand, at: $0) < 0.24 }.count
-                return matches >= 3 ? brand : nil
+
+            var brand: (r: Double, g: Double, b: Double)?
+            if let hex = backgroundHex {
+                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                UIColor(Color(hex: hex)).getRed(&r, green: &g, blue: &b, alpha: &a)
+                brand = (Double(r), Double(g), Double(b))
             }
 
-            func isBackdrop(_ i: Int) -> Bool {
+            func matchesBrand(_ i: Int) -> Bool {
+                guard let brand, alpha(i) > 0.12 else { return false }
+                let r = Double(bytes[i]) / 255
+                let g = Double(bytes[i + 1]) / 255
+                let b = Double(bytes[i + 2]) / 255
+                return hypot(hypot(r - brand.r, g - brand.g), b - brand.b) < 0.24
+            }
+
+            func isPaper(_ i: Int) -> Bool {
                 let a = Double(bytes[i + 3]) / 255
                 let l = luma(i)
                 let s = sat(i)
-                let brandHit = punchBrand.map { distance(to: $0, at: i) < 0.22 } ?? false
                 return a < 0.08
                     || (l > 0.90 && s < 0.12)
                     || (punchWhite && l > 0.86 && s < 0.18)
                     || (punchBlack && l < 0.14 && s < 0.18)
-                    || brandHit
             }
 
-            var visited = [UInt8](repeating: 0, count: width * height)
-            var queue = [Int]()
-            queue.reserveCapacity(width + height)
-            func enqueue(_ x: Int, _ y: Int) {
-                guard x >= 0, y >= 0, x < width, y < height else { return }
-                let idx = y * width + x
-                if visited[idx] == 1 { return }
-                visited[idx] = 1
-                if isBackdrop(idx * 4) {
-                    queue.append(idx)
+            func flood(_ shouldEat: (Int) -> Bool) {
+                var visited = [UInt8](repeating: 0, count: width * height)
+                var queue = [Int]()
+                queue.reserveCapacity(width + height)
+                func enqueue(_ x: Int, _ y: Int) {
+                    guard x >= 0, y >= 0, x < width, y < height else { return }
+                    let idx = y * width + x
+                    if visited[idx] == 1 { return }
+                    visited[idx] = 1
+                    if shouldEat(idx * 4) {
+                        queue.append(idx)
+                    }
+                }
+                for x in 0..<width {
+                    enqueue(x, 0)
+                    enqueue(x, height - 1)
+                }
+                for y in 0..<height {
+                    enqueue(0, y)
+                    enqueue(width - 1, y)
+                }
+                var q = 0
+                while q < queue.count {
+                    let idx = queue[q]
+                    q += 1
+                    let x = idx % width
+                    let y = idx / width
+                    enqueue(x - 1, y)
+                    enqueue(x + 1, y)
+                    enqueue(x, y - 1)
+                    enqueue(x, y + 1)
+                }
+                for idx in queue {
+                    let i = idx * 4
+                    bytes[i] = 0
+                    bytes[i + 1] = 0
+                    bytes[i + 2] = 0
+                    bytes[i + 3] = 0
                 }
             }
-            for x in 0..<width {
-                enqueue(x, 0)
-                enqueue(x, height - 1)
+
+            flood(isPaper)
+
+            func inkStats() -> (total: Double, other: Double, coverage: Double, edge: Double, edgeBrand: Double, minX: Int, minY: Int, maxX: Int, maxY: Int) {
+                var edgeBrand = 0.0
+                var edgeInk = 0.0
+                var otherInk = 0.0
+                var totalInk = 0.0
+                var minX = width
+                var minY = height
+                var maxX = 0
+                var maxY = 0
+                for y in 0..<height {
+                    for x in 0..<width {
+                        let i = (y * width + x) * 4
+                        guard bytes[i + 3] > 20 else { continue }
+                        minX = min(minX, x)
+                        minY = min(minY, y)
+                        maxX = max(maxX, x)
+                        maxY = max(maxY, y)
+                        let weight = Double(bytes[i + 3]) / 255
+                        totalInk += weight
+                        if matchesBrand(i) == false { otherInk += weight }
+                    }
+                }
+                guard maxX > minX, maxY > minY else {
+                    return (totalInk, otherInk, 0, 0, 0, 0, 0, 0, 0)
+                }
+                func edgePixel(_ x: Int, _ y: Int) {
+                    let i = (y * width + x) * 4
+                    guard bytes[i + 3] > 20 else { return }
+                    let weight = Double(bytes[i + 3]) / 255
+                    edgeInk += weight
+                    if matchesBrand(i) { edgeBrand += weight }
+                }
+                for y in minY...maxY {
+                    edgePixel(minX, y)
+                    edgePixel(maxX, y)
+                }
+                for x in minX...maxX {
+                    edgePixel(x, minY)
+                    edgePixel(x, maxY)
+                }
+                let boxArea = Double(max(1, (maxX - minX + 1) * (maxY - minY + 1)))
+                return (totalInk, otherInk, totalInk / boxArea, edgeInk, edgeBrand, minX, minY, maxX, maxY)
             }
-            for y in 0..<height {
-                enqueue(0, y)
-                enqueue(width - 1, y)
+
+            // Wordmarks on white (Auchan, Żabka, Costa): open letter counters.
+            // Skip when the remaining bitmap is still a solid plate (Decathlon, Orlen).
+            if punchInteriorPaper, inkStats().coverage < 0.72 {
+                for i in stride(from: 0, to: width * height * 4, by: 4) {
+                    if isPaper(i) {
+                        bytes[i] = 0
+                        bytes[i + 1] = 0
+                        bytes[i + 2] = 0
+                        bytes[i + 3] = 0
+                    }
+                }
             }
-            var q = 0
-            while q < queue.count {
-                let idx = queue[q]
-                q += 1
-                let x = idx % width
-                let y = idx / width
-                enqueue(x - 1, y)
-                enqueue(x + 1, y)
-                enqueue(x, y - 1)
-                enqueue(x, y + 1)
+
+            func floodColoredPlate() {
+                let stats = inkStats()
+                guard stats.coverage > 0.72, stats.total > 0, stats.other / stats.total > 0.08 else { return }
+                guard stats.maxX > stats.minX, stats.maxY > stats.minY else { return }
+                var sr = 0.0, sg = 0.0, sb = 0.0, sw = 0.0
+                func sample(_ x: Int, _ y: Int) {
+                    let i = (y * width + x) * 4
+                    let a = Double(bytes[i + 3]) / 255
+                    guard a > 0.2 else { return }
+                    sr += Double(bytes[i]) / 255 * a
+                    sg += Double(bytes[i + 1]) / 255 * a
+                    sb += Double(bytes[i + 2]) / 255 * a
+                    sw += a
+                }
+                for y in stats.minY...stats.maxY {
+                    sample(stats.minX, y)
+                    sample(stats.maxX, y)
+                }
+                for x in stats.minX...stats.maxX {
+                    sample(x, stats.minY)
+                    sample(x, stats.maxY)
+                }
+                guard sw > 0 else { return }
+                let pr = sr / sw, pg = sg / sw, pb = sb / sw
+                let maxc = max(pr, pg, pb)
+                let minc = min(pr, pg, pb)
+                let sat = maxc == 0 ? 0 : (maxc - minc) / maxc
+                let luma = 0.2126 * pr + 0.7152 * pg + 0.0722 * pb
+                // Never flood paper/white — that punches letter fills (Orlen, Decathlon).
+                guard sat > 0.18, luma < 0.82, luma > 0.04 else { return }
+                flood { idx in
+                    guard bytes[idx + 3] > 20 else { return false }
+                    let r = Double(bytes[idx]) / 255
+                    let g = Double(bytes[idx + 1]) / 255
+                    let b = Double(bytes[idx + 2]) / 255
+                    return hypot(hypot(r - pr, g - pg), b - pb) < 0.24
+                }
             }
+
+            if brand != nil {
+                let stats = inkStats()
+                let plate = stats.edge > 0
+                    && stats.edgeBrand / stats.edge > 0.55
+                    && stats.coverage > 0.72
+                    && stats.total > 0
+                    && stats.other / stats.total > 0.08
+                if plate {
+                    flood { matchesBrand($0) && isPaper($0) == false }
+                }
+            }
+            floodColoredPlate()
 
             var minX = width
             var minY = height
@@ -255,14 +415,8 @@ enum LogoCropper {
             var maxY = 0
             for y in 0..<height {
                 for x in 0..<width {
-                    let idx = y * width + x
-                    let i = idx * 4
-                    if visited[idx] == 1 && isBackdrop(i) {
-                        bytes[i] = 0
-                        bytes[i + 1] = 0
-                        bytes[i + 2] = 0
-                        bytes[i + 3] = 0
-                    } else if bytes[i + 3] > 20 {
+                    let i = (y * width + x) * 4
+                    if bytes[i + 3] > 20 {
                         minX = min(minX, x)
                         minY = min(minY, y)
                         maxX = max(maxX, x)
@@ -284,17 +438,72 @@ enum LogoCropper {
             return UIImage(cgImage: cut, scale: image.scale, orientation: image.imageOrientation)
         }
     }
+}
 
-    private static func rgb(hex: String) -> (r: Double, g: Double, b: Double)? {
-        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        guard cleaned.count == 6 else { return nil }
-        var int: UInt64 = 0
-        Scanner(string: cleaned).scanHexInt64(&int)
-        return (
-            Double((int >> 16) & 0xFF) / 255,
-            Double((int >> 8) & 0xFF) / 255,
-            Double(int & 0xFF) / 255
-        )
+enum LogoQuality {
+    /// Favicons and solid tiles never become the card/Wallet mark.
+    static func accepts(_ image: UIImage) -> Bool {
+        let width = image.size.width * image.scale
+        let height = image.size.height * image.scale
+        guard min(width, height) >= 64, max(width, height) >= 96 else { return false }
+        let coverage = PassArtwork.opaqueRatio(image)
+        guard coverage > 0.05, coverage < 0.94 else { return false }
+        if looksLikeTile(image) { return false }
+        return true
+    }
+
+    /// Square store marks (x-kom, MediaMarkt, Dyson) are valid on receipt chips.
+    static func acceptsStoreIcon(_ image: UIImage) -> Bool {
+        let width = image.size.width * image.scale
+        let height = image.size.height * image.scale
+        guard min(width, height) >= 64, max(width, height) >= 96 else { return false }
+        let coverage = PassArtwork.opaqueRatio(image)
+        return coverage > 0.04 && coverage < 0.98
+    }
+
+    /// Solid favicon squares, white plates, and low-variance badges.
+    static func looksLikeTile(_ image: UIImage) -> Bool {
+        let width = image.size.width * image.scale
+        let height = image.size.height * image.scale
+        let aspect = width / max(height, 1)
+        guard aspect > 0.72, aspect < 1.38 else { return false }
+        let coverage = PassArtwork.opaqueRatio(image)
+        if coverage > 0.82 { return true }
+        if coverage > 0.55, variance(image) < 0.045 { return true }
+        return false
+    }
+
+    private static func variance(_ image: UIImage) -> Double {
+        guard let cg = image.cgImage else { return 1 }
+        let width = 16
+        let height = 16
+        var buffer = [UInt8](repeating: 0, count: width * height * 4)
+        let ok = buffer.withUnsafeMutableBytes { raw -> Bool in
+            guard let ctx = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard ok else { return 1 }
+        var samples: [Double] = []
+        for i in stride(from: 0, to: buffer.count, by: 4) {
+            guard buffer[i + 3] > 40 else { continue }
+            let r = Double(buffer[i]) / 255
+            let g = Double(buffer[i + 1]) / 255
+            let b = Double(buffer[i + 2]) / 255
+            samples.append(0.2126 * r + 0.7152 * g + 0.0722 * b)
+        }
+        guard samples.count > 8 else { return 0 }
+        let mean = samples.reduce(0, +) / Double(samples.count)
+        let varsum = samples.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
+        return varsum / Double(samples.count)
     }
 }
 

@@ -58,7 +58,8 @@ struct ScanReviewView: View {
                         }
                         Spacer(minLength: 0)
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
+                    .paragonHairlineRow()
 
                     Menu {
                         ForEach(RetailerCatalog.shared) { item in
@@ -133,7 +134,12 @@ struct ScanReviewView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(maxHeight: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous))
+                            .overlay {
+                                ParagonTheme.passHairline(
+                                    RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                                )
+                            }
                     } else {
                         Text("Brak zdjęcia — przy kasie dostępny będzie tylko kod.")
                             .foregroundStyle(.secondary)

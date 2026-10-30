@@ -232,7 +232,6 @@
       }
     },
     "Dodaj kartę" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -255,6 +254,7 @@
       }
     },
     "Dodaj kartę, żeby pokazać kod przy kasie." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -413,6 +413,9 @@
           }
         }
       }
+    },
+    "iCloud" : {
+
     },
     "Inne" : {
       "extractionState" : "stale",
@@ -1040,6 +1043,12 @@
         }
       }
     },
+    "Od razu aparat karty lojalnościowej." : {
+
+    },
+    "Od razu skaner karty lojalnościowej w ParagonOS™." : {
+
+    },
     "Od razu skaner paragonu w ParagonOS™." : {
 
     },
@@ -1180,9 +1189,6 @@
           }
         }
       }
-    },
-    "ParagonOS" : {
-
     },
     "Paragony" : {
       "extractionState" : "stale",
@@ -1424,6 +1430,7 @@
       }
     },
     "Przy kasie" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1561,7 +1568,6 @@
       }
     },
     "Skanuj" : {
-      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1696,6 +1702,7 @@
       }
     },
     "Skanuj pierwszy kwitek" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1854,9 +1861,6 @@
           }
         }
       }
-    },
-    "Sześć znaczków kart. Puste miejsca wypełniają aktywne kaucje." : {
-
     },
     "Ten miesiąc" : {
       "extractionState" : "stale",
@@ -2271,6 +2275,9 @@
           }
         }
       }
+    },
+    "Znaczki kart. Puste miejsce to skan nowej karty." : {
+
     },
     "Zwiń stos" : {
       "extractionState" : "stale",

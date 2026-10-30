@@ -37,10 +37,10 @@ struct LoyaltyScanReviewView: View {
                         showPicker = true
                     } label: {
                         HStack(spacing: 14) {
-                            LoyaltyLogo(program: draft.program, size: 52)
+                            LoyaltyLogo(program: draft.program, size: 56)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(draft.programName.isEmpty ? "Wybierz sklep" : draft.programName)
-                                    .font(.title3.weight(.bold))
+                                    .font(.title2.weight(.bold))
                                     .foregroundStyle(.primary)
                                 Text(draft.needsProgramPick
                                      ? "Sieć nie została rozpoznana — wybierz z bazy."
@@ -53,8 +53,10 @@ struct LoyaltyScanReviewView: View {
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(.tertiary)
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 6)
                     }
+                    .buttonStyle(ParagonPressStyle())
+                    .paragonHairlineRow()
                 } header: {
                     Text("Program")
                 }
@@ -116,6 +118,7 @@ struct LoyaltyScanReviewView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Zapisz") { save() }
+                        .fontWeight(.semibold)
                         .disabled(draft.canSave == false)
                 }
             }

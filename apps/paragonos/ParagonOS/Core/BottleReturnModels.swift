@@ -60,6 +60,59 @@ enum DistanceFormat {
     }
 }
 
+enum BottleNearbyTeaser {
+    static let visibleRows = 3
+
+    static func displayed<T>(_ items: [T]) -> Array<T>.SubSequence {
+        items.prefix(visibleRows)
+    }
+}
+
+enum BottleMapOverview {
+    struct Camera: Equatable {
+        var latitude: Double
+        var longitude: Double
+        var distance: CLLocationDistance
+        var heading: Double
+        var pitch: Double
+    }
+
+    static func camera(
+        fitting coords: [CLLocationCoordinate2D],
+        pitch: Double = 58,
+        heading: Double = 18
+    ) -> Camera? {
+        guard let first = coords.first else { return nil }
+        var minLat = first.latitude
+        var maxLat = first.latitude
+        var minLon = first.longitude
+        var maxLon = first.longitude
+        for coordinate in coords {
+            minLat = min(minLat, coordinate.latitude)
+            maxLat = max(maxLat, coordinate.latitude)
+            minLon = min(minLon, coordinate.longitude)
+            maxLon = max(maxLon, coordinate.longitude)
+        }
+        let centerLat = (minLat + maxLat) / 2
+        let centerLon = (minLon + maxLon) / 2
+        let north = CLLocation(latitude: maxLat, longitude: centerLon)
+        let south = CLLocation(latitude: minLat, longitude: centerLon)
+        let east = CLLocation(latitude: centerLat, longitude: maxLon)
+        let west = CLLocation(latitude: centerLat, longitude: minLon)
+        let span = max(south.distance(from: north), west.distance(from: east), 420)
+        let padded = span * 1.55
+        let tilt = max(cos(pitch * .pi / 180), 0.35)
+        let distance = max(padded / tilt * 1.15, 850)
+        return Camera(
+            latitude: centerLat,
+            longitude: centerLon,
+            distance: distance,
+            heading: heading,
+            pitch: pitch
+        )
+    }
+}
+
 enum BottleReturnBrand {
     static let filters: [(id: String, name: String)] = [
         ("biedronka", "Biedronka"),

@@ -46,6 +46,38 @@ final class CoffeeTipStore: ObservableObject {
 
     static let shared = CoffeeTipStore()
 
+    private var transactionListener: Task<Void, Never>?
+    private var finishedTransactionIDs: Set<UInt64> = []
+
+    private init() {
+        listenForTransactions()
+    }
+
+    private func listenForTransactions() {
+        transactionListener = Task { [weak self] in
+            for await result in Transaction.updates {
+                await self?.handle(update: result)
+            }
+        }
+    }
+
+    private func handle(update result: VerificationResult<Transaction>) async {
+        do {
+            let transaction = try checkVerified(result)
+            await finishCoffee(transaction, celebrate: true)
+        } catch {}
+    }
+
+    private func finishCoffee(_ transaction: Transaction, celebrate: Bool) async {
+        guard CoffeeSize.allCases.map(\.productID).contains(transaction.productID) else { return }
+        guard finishedTransactionIDs.insert(transaction.id).inserted else { return }
+        await transaction.finish()
+        guard celebrate, transaction.revocationDate == nil else { return }
+        lastThankYouAt = .now
+        QuietPromptStore.markCoffeeSuccess()
+        showThankYou = true
+    }
+
     static var activeScene: UIWindowScene? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         return scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first
@@ -73,7 +105,7 @@ final class CoffeeTipStore: ObservableObject {
     }
 
     func price(for size: CoffeeSize) -> String {
-        product(for: size)?.displayPrice ?? size.fallbackPrice
+        size.fallbackPrice
     }
 
     func purchase(_ size: CoffeeSize) async -> Bool {
@@ -99,10 +131,7 @@ final class CoffeeTipStore: ObservableObject {
             switch result {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
-                await transaction.finish()
-                lastThankYouAt = .now
-                QuietPromptStore.markCoffeeSuccess()
-                showThankYou = true
+                await finishCoffee(transaction, celebrate: true)
                 return true
             case .userCancelled:
                 message = String(localized: "Innym razem.")

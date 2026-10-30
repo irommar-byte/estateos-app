@@ -315,63 +315,21 @@ enum WalletPassBuilder {
             let highlight = UIColor.white.withAlphaComponent(onDark ? 0.12 : 0.28)
             highlight.setFill()
             UIRectFill(CGRect(x: 0, y: 0, width: size.width, height: max(1, size.height * 0.008)))
-            let box = CGSize(width: size.width * 0.70, height: size.height * 0.64)
-            if let mark = stripMark(program: program, logo: logo, onDark: onDark) {
-                let fitted = PassArtwork.fitted(mark, in: box, padding: size.height * 0.04)
-                let origin = CGPoint(
-                    x: (size.width - fitted.size.width) / 2,
-                    y: (size.height - fitted.size.height) / 2
-                )
-                fitted.draw(in: CGRect(origin: origin, size: fitted.size))
-            } else {
-                let text = NSAttributedString(
-                    string: program.name,
-                    attributes: [
-                        .font: UIFont.systemFont(ofSize: size.height * 0.2, weight: .semibold),
-                        .foregroundColor: UIColor(program.onColor),
-                        .kern: size.height * 0.012
-                    ]
-                )
-                let textSize = text.size()
-                text.draw(
-                    at: CGPoint(
-                        x: (size.width - textSize.width) / 2,
-                        y: (size.height - textSize.height) / 2
-                    )
-                )
-            }
+            let face = LoyaltyBrandKit.composeForeground(
+                program: program,
+                logo: logo,
+                size: size,
+                placement: .centered,
+                onBrandField: true,
+                scale: 1
+            )
+            face.draw(in: CGRect(origin: .zero, size: size))
         }
     }
 
     @MainActor
     private static func passStrip(program: LoyaltyProgram, logo: UIImage?, size: CGSize) -> Data {
         stripImage(program: program, logo: logo, size: size).pngData() ?? Data()
-    }
-
-    @MainActor
-    private static func stripMark(program: LoyaltyProgram, logo: UIImage?, onDark: Bool) -> UIImage? {
-        if let logo {
-            let adapted = PassArtwork.adapted(
-                logo,
-                onDarkBackground: onDark,
-                backgroundHex: program.cardColorHex
-            )
-            if PassArtwork.opaqueRatio(adapted) > 0.04 {
-                return adapted
-            }
-        }
-        if LoyaltyBrandArt.hasMark(program.id),
-           let raster = LoyaltyBrandArt.raster(program: program, dimension: 320) {
-            let adapted = PassArtwork.adapted(
-                raster,
-                onDarkBackground: onDark,
-                backgroundHex: program.cardColorHex
-            )
-            if PassArtwork.opaqueRatio(adapted) > 0.04 {
-                return adapted
-            }
-        }
-        return nil
     }
 
     private static func fillBrandStrip(program: LoyaltyProgram, size: CGSize) {
@@ -413,40 +371,93 @@ enum PassArtwork {
         let draw = CGSize(width: image.size.width * scale, height: image.size.height * scale)
         let format = UIGraphicsImageRendererFormat.default()
         format.opaque = false
-        format.scale = 1
+        format.scale = max(image.scale, 1)
+        guard draw.width > 1, draw.height > 1 else { return image }
         let renderer = UIGraphicsImageRenderer(size: draw, format: format)
         return renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: draw))
         }
     }
 
+    /// White or black ring around the original mark so it stays a sticker on the brand field.
+    static func halo(_ image: UIImage, color: UIColor, width: CGFloat) -> UIImage {
+        let stroke = max(1.2, width)
+        let pad = ceil(stroke) + 1
+        let canvas = CGSize(width: image.size.width + pad * 2, height: image.size.height + pad * 2)
+        guard canvas.width > 1, canvas.height > 1 else { return image }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = max(image.scale, 1)
+        let stamp = tinted(image, color: color)
+        let steps = max(20, Int(ceil(stroke * 6)))
+        let renderer = UIGraphicsImageRenderer(size: canvas, format: format)
+        return renderer.image { _ in
+            for i in 0..<steps {
+                let t = (CGFloat(i) / CGFloat(steps)) * 2 * .pi
+                stamp.draw(at: CGPoint(x: pad + cos(t) * stroke, y: pad + sin(t) * stroke))
+            }
+            image.draw(at: CGPoint(x: pad, y: pad))
+        }
+    }
+
+    static func tinted(_ image: UIImage, color: UIColor) -> UIImage {
+        guard image.size.width > 1, image.size.height > 1 else { return image }
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = max(image.scale, 1)
+        let renderer = UIGraphicsImageRenderer(size: image.size, format: format)
+        return renderer.image { _ in
+            color.setFill()
+            UIRectFill(CGRect(origin: .zero, size: image.size))
+            image.draw(in: CGRect(origin: .zero, size: image.size), blendMode: .destinationIn, alpha: 1)
+        }
+    }
+
+    /// Light original marks (white WOG) get a dark ring; red/blue/color marks get a light ring on dark cards.
+    static func strokeInk(for image: UIImage, fieldHex: String) -> UIColor {
+        let fieldDark = Color(hex: fieldHex).relativeLuminance <= 0.55
+        if isMostlyLightInk(image) {
+            return UIColor(white: 0.08, alpha: 1)
+        }
+        return fieldDark ? .white : UIColor(white: 0.08, alpha: 1)
+    }
+
     static func adapted(_ image: UIImage, onDarkBackground: Bool, backgroundHex: String? = nil, forceWhite: Bool = false) -> UIImage {
-        let trimmed = LogoCropper.trim(image, knockingOut: backgroundHex)
+        // Never punch brand-colored ink — that destroys red/blue wordmarks (Auchan, Payback).
+        let trimmed = LogoCropper.trim(image)
         if forceWhite {
+            if opaqueRatio(trimmed) > 0.78 {
+                return trimmed
+            }
             return whiteTemplate(trimmed)
         }
-        if isColorfulBadge(trimmed) {
+        let prepared: UIImage = {
+            if isColorfulBadge(trimmed) {
+                if let hex = backgroundHex, contrastRatio(in: trimmed, againstHex: hex) < 0.18 {
+                    return whiteTemplate(trimmed)
+                }
+                return trimmed
+            }
+            guard onDarkBackground else {
+                if let hex = backgroundHex, contrastRatio(in: trimmed, againstHex: hex) < 0.18 {
+                    return whiteTemplate(trimmed)
+                }
+                return trimmed
+            }
+            let clashes = backgroundHex.map { colorClashes(trimmed, backgroundHex: $0) } ?? false
+            let shares = backgroundHex.map { sharesBackgroundColor(trimmed, backgroundHex: $0) } ?? false
+            if shares || clashes {
+                return whiteTemplate(trimmed)
+            }
+            if isMostlyDarkInk(trimmed) { return whiteTemplate(trimmed) }
             if let hex = backgroundHex, contrastRatio(in: trimmed, againstHex: hex) < 0.18 {
                 return whiteTemplate(trimmed)
             }
             return trimmed
-        }
-        guard onDarkBackground else {
-            if let hex = backgroundHex, contrastRatio(in: trimmed, againstHex: hex) < 0.18 {
-                return whiteTemplate(trimmed)
-            }
-            return trimmed
-        }
-        let clashes = backgroundHex.map { colorClashes(trimmed, backgroundHex: $0) } ?? false
-        let shares = backgroundHex.map { sharesBackgroundColor(trimmed, backgroundHex: $0) } ?? false
-        if shares || clashes {
-            return whiteTemplate(trimmed)
-        }
-        if isMostlyDarkInk(trimmed) { return whiteTemplate(trimmed) }
-        if let hex = backgroundHex, contrastRatio(in: trimmed, againstHex: hex) < 0.18 {
-            return whiteTemplate(trimmed)
-        }
-        return trimmed
+        }()
+        if opaqueRatio(prepared) > 0.04 { return prepared }
+        let fallback = whiteTemplate(trimmed)
+        return opaqueRatio(fallback) > 0.04 ? fallback : trimmed
     }
 
     static func opaqueRatio(_ image: UIImage) -> Double {
@@ -509,6 +520,98 @@ enum PassArtwork {
             if distance > 0.22 { contrast += 1 }
         }
         return total == 0 ? 0 : contrast / total
+    }
+
+    /// Contrast of ink only — transparent pixels do not count (wordmark silhouettes).
+    static func opaqueContrastRatio(in image: UIImage, againstHex hex: String) -> Double {
+        guard let cg = image.cgImage else { return 0 }
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        UIColor(Color(hex: hex)).getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        let width = min(cg.width, 120)
+        let height = min(cg.height, 80)
+        guard width > 2, height > 2 else { return 0 }
+        var buffer = [UInt8](repeating: 0, count: width * height * 4)
+        let ok = buffer.withUnsafeMutableBytes { raw -> Bool in
+            guard let ctx = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            ctx.clear(CGRect(x: 0, y: 0, width: width, height: height))
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard ok else { return 0 }
+        var contrast = 0.0
+        var ink = 0.0
+        for i in stride(from: 0, to: buffer.count, by: 4) {
+            let a = Double(buffer[i + 3]) / 255
+            guard a > 0.18 else { continue }
+            ink += 1
+            let r = Double(buffer[i]) / 255
+            let g = Double(buffer[i + 1]) / 255
+            let b = Double(buffer[i + 2]) / 255
+            let distance = hypot(hypot(r - Double(br), g - Double(bg)), b - Double(bb))
+            if distance > 0.22 { contrast += 1 }
+        }
+        return ink == 0 ? 0 : contrast / ink
+    }
+
+    /// Bounding box of pixels that differ from the brand field — wordmarks are wide, tiles are square.
+    static func contrastingBounds(in image: UIImage, againstHex hex: String) -> CGRect {
+        guard let cg = image.cgImage else { return .zero }
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        UIColor(Color(hex: hex)).getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        let width = min(cg.width, 200)
+        let height = min(cg.height, 80)
+        guard width > 2, height > 2 else { return .zero }
+        var buffer = [UInt8](repeating: 0, count: width * height * 4)
+        let ok = buffer.withUnsafeMutableBytes { raw -> Bool in
+            guard let ctx = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard ok else { return .zero }
+        var minX = width
+        var minY = height
+        var maxX = 0
+        var maxY = 0
+        for y in 0..<height {
+            for x in 0..<width {
+                let i = (y * width + x) * 4
+                let r = Double(buffer[i]) / 255
+                let g = Double(buffer[i + 1]) / 255
+                let b = Double(buffer[i + 2]) / 255
+                let distance = hypot(hypot(r - Double(br), g - Double(bg)), b - Double(bb))
+                if distance > 0.22 {
+                    minX = min(minX, x)
+                    minY = min(minY, y)
+                    maxX = max(maxX, x)
+                    maxY = max(maxY, y)
+                }
+            }
+        }
+        guard maxX > minX, maxY > minY else { return .zero }
+        let scaleX = image.size.width / CGFloat(width)
+        let scaleY = image.size.height / CGFloat(height)
+        return CGRect(
+            x: CGFloat(minX) * scaleX,
+            y: CGFloat(minY) * scaleY,
+            width: CGFloat(maxX - minX + 1) * scaleX,
+            height: CGFloat(maxY - minY + 1) * scaleY
+        )
     }
 
     private static func whiteTemplate(_ image: UIImage) -> UIImage {
@@ -610,6 +713,10 @@ enum PassArtwork {
         return hues.count >= 2 && colored > 4
     }
 
+    static func isColorfulMark(_ image: UIImage) -> Bool {
+        isColorfulBadge(image)
+    }
+
     private static func isMostlyDarkInk(_ image: UIImage) -> Bool {
         guard let cg = image.cgImage else { return false }
         let width = 16
@@ -645,6 +752,40 @@ enum PassArtwork {
             if luma > 0.72 { light += a }
         }
         return ink > light * 1.15 && color < ink * 0.85
+    }
+
+    static func isMostlyLightInk(_ image: UIImage) -> Bool {
+        guard let cg = image.cgImage else { return false }
+        let width = 16
+        let height = 16
+        var buffer = [UInt8](repeating: 0, count: width * height * 4)
+        let ok = buffer.withUnsafeMutableBytes { raw -> Bool in
+            guard let ctx = CGContext(
+                data: raw.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard ok else { return false }
+        var ink = 0.0
+        var light = 0.0
+        for i in stride(from: 0, to: buffer.count, by: 4) {
+            let a = Double(buffer[i + 3]) / 255
+            guard a > 0.2 else { continue }
+            let r = Double(buffer[i]) / 255
+            let g = Double(buffer[i + 1]) / 255
+            let b = Double(buffer[i + 2]) / 255
+            let luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            if luma < 0.38 { ink += a }
+            if luma > 0.72 { light += a }
+        }
+        return light > ink * 1.2 && light > 0.8
     }
 }
 

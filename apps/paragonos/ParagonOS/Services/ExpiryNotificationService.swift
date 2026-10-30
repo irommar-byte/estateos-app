@@ -25,39 +25,48 @@ final class ExpiryNotificationService: NSObject, UNUserNotificationCenterDelegat
         center.setNotificationCategories([category])
     }
 
+    func registerCategoriesIfNeeded() async {}
+
     func requestAuthorization() async {
+        if ParagonUIDemo.isEnabled { return }
         _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
     }
 
     func reschedule(tickets: [Ticket], receipts: [Receipt] = [], settings: NotificationSettings, now: Date = .now) async {
         center.removeAllPendingNotificationRequests()
         let calendar = Calendar.current
-        if settings.reminder7Days || settings.reminder1Day || settings.reminderOnDay {
+        let depositDays = NotificationSettings.normalized(settings.depositReminderDays)
+        if depositDays.isEmpty == false {
             for ticket in tickets {
                 let status = TicketStatusEngine.resolved(stored: ticket.storedStatus, expiresAt: ticket.expiresAt, now: now)
                 guard status == .active, let expiresAt = ticket.expiresAt else { continue }
                 let retailer = RetailerCatalog.policy(id: ticket.retailerID).name
                 let amount = MoneyFormat.string(ticket.amount)
-                if settings.reminder7Days {
-                    await schedule(ticket: ticket, expiresAt: expiresAt, daysBefore: 7, retailer: retailer, amount: amount, calendar: calendar, now: now)
-                }
-                if settings.reminder1Day {
-                    await schedule(ticket: ticket, expiresAt: expiresAt, daysBefore: 1, retailer: retailer, amount: amount, calendar: calendar, now: now)
-                }
-                if settings.reminderOnDay {
-                    await schedule(ticket: ticket, expiresAt: expiresAt, daysBefore: 0, retailer: retailer, amount: amount, calendar: calendar, now: now)
+                for daysBefore in depositDays {
+                    await schedule(
+                        ticket: ticket,
+                        expiresAt: expiresAt,
+                        daysBefore: daysBefore,
+                        retailer: retailer,
+                        amount: amount,
+                        calendar: calendar,
+                        now: now
+                    )
                 }
             }
         }
+        let warrantyDays = NotificationSettings.normalized(settings.warrantyReminderDays)
+        let returnDays = NotificationSettings.normalized(settings.returnReminderDays)
         for receipt in receipts {
-            if settings.warrantyReminder30, let date = receipt.resolvedWarrantyUntil {
-                await scheduleReceipt(receipt, fireDate: date, daysBefore: 30, kind: .warranty, calendar: calendar, now: now)
+            if let date = receipt.resolvedWarrantyUntil {
+                for daysBefore in warrantyDays {
+                    await scheduleReceipt(receipt, fireDate: date, daysBefore: daysBefore, kind: .warranty, calendar: calendar, now: now)
+                }
             }
-            if settings.warrantyReminder7, let date = receipt.resolvedWarrantyUntil {
-                await scheduleReceipt(receipt, fireDate: date, daysBefore: 7, kind: .warranty, calendar: calendar, now: now)
-            }
-            if settings.returnReminder3, let date = receipt.resolvedReturnUntil {
-                await scheduleReceipt(receipt, fireDate: date, daysBefore: 3, kind: .returning, calendar: calendar, now: now)
+            if let date = receipt.resolvedReturnUntil {
+                for daysBefore in returnDays {
+                    await scheduleReceipt(receipt, fireDate: date, daysBefore: daysBefore, kind: .returning, calendar: calendar, now: now)
+                }
             }
         }
     }
@@ -171,19 +180,55 @@ extension Notification.Name {
 }
 
 struct NotificationSettings: Equatable {
-    var reminder7Days: Bool
-    var reminder1Day: Bool
-    var reminderOnDay: Bool
-    var warrantyReminder30: Bool
-    var warrantyReminder7: Bool
-    var returnReminder3: Bool
+    var depositReminderDays: [Int]
+    var warrantyReminderDays: [Int]
+    var returnReminderDays: [Int]
+
+    static let maxPerKind = 4
+    static let maxDaysBefore = 90
 
     static let `default` = NotificationSettings(
-        reminder7Days: true,
-        reminder1Day: true,
-        reminderOnDay: true,
-        warrantyReminder30: true,
-        warrantyReminder7: true,
-        returnReminder3: true
+        depositReminderDays: [7, 1, 0],
+        warrantyReminderDays: [30, 7],
+        returnReminderDays: [3]
     )
+
+    static func normalized(_ days: [Int]) -> [Int] {
+        Array(
+            Set(days.filter { $0 >= 0 && $0 <= maxDaysBefore })
+        )
+        .sorted(by: >)
+        .prefix(maxPerKind)
+        .map { $0 }
+    }
+
+    static let presets = [0, 1, 2, 3, 7, 14, 21, 30, 45, 60, 90]
+
+    static func label(for daysBefore: Int) -> String {
+        switch daysBefore {
+        case 0:
+            return "W dniu terminu"
+        case 1:
+            return "1 dzień przed"
+        default:
+            return "\(daysBefore) dni przed"
+        }
+    }
+
+    static func compactLabel(for daysBefore: Int) -> String {
+        switch daysBefore {
+        case 0:
+            return "w dniu"
+        case 1:
+            return "1 dzień"
+        default:
+            return "\(daysBefore) dni"
+        }
+    }
+
+    static func summary(for days: [Int]) -> String {
+        let items = normalized(days).map { compactLabel(for: $0) }
+        if items.isEmpty { return "Wyłączone" }
+        return items.joined(separator: " · ")
+    }
 }

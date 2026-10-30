@@ -17,7 +17,7 @@ struct AppLovePrompt: View {
                     Spacer()
                 } else {
                     Text("Podoba Ci się ParagonOS?")
-                        .font(.title3.weight(.semibold))
+                        .font(.title2.weight(.semibold))
                         .multilineTextAlignment(.center)
                         .minimumScaleFactor(0.8)
                         .lineLimit(2)
@@ -33,11 +33,11 @@ struct AppLovePrompt: View {
                                     .foregroundStyle(star <= rating ? Color.yellow : Color.secondary.opacity(0.45))
                                     .scaleEffect(star <= rating ? 1.06 : 1)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(ParagonPressStyle())
                             .accessibilityLabel("\(star)")
                         }
                     }
-                    .animation(.spring(response: 0.42, dampingFraction: 0.9), value: rating)
+                    .animation(ParagonTheme.snappy, value: rating)
 
                     if rating > 0 && rating <= 3 {
                         VStack(alignment: .leading, spacing: 8) {
@@ -70,6 +70,7 @@ struct AppLovePrompt: View {
             }
         }
         .presentationDetents([.medium])
+        .presentationCornerRadius(ParagonTheme.passCorner)
         .presentationDragIndicator(.visible)
         .onChange(of: rating) { _, value in
             if value >= 4 {

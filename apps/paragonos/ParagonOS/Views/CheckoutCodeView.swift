@@ -7,9 +7,12 @@ struct CheckoutCodeView: View {
     @EnvironmentObject private var wallet: WalletModel
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var tab: CheckoutTab
     @State private var previousBrightness: CGFloat = UIScreen.main.brightness
     @State private var confirmUsedOnExit = false
+    @State private var codeImage: UIImage?
+    @State private var didBoostBrightness = false
 
     private var policy: RetailerPolicy { RetailerCatalog.policy(id: ticket.retailerID) }
     private var payload: String { ticket.displayBarcode }
@@ -52,10 +55,15 @@ struct CheckoutCodeView: View {
                     } label: {
                         Text("Kasa przyjęła kupon")
                             .font(.headline)
+                            .foregroundStyle(.black)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .frame(height: 50)
+                            .background(
+                                ParagonTheme.osGreen,
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(ParagonPressStyle())
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
                 }
@@ -91,15 +99,21 @@ struct CheckoutCodeView: View {
             }
         }
         .onAppear {
-            UIApplication.shared.isIdleTimerDisabled = true
-            previousBrightness = UIScreen.main.brightness
-            if wallet.settings.boostBrightness {
-                UIScreen.main.brightness = 1
+            if codeImage == nil {
+                codeImage = BarcodePresenter.image(
+                    payload: payload,
+                    symbology: ticket.barcodeSymbology == .unknown ? .code128 : ticket.barcodeSymbology
+                )
+            }
+            boostScreen()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background || phase == .inactive {
+                restoreScreen()
             }
         }
         .onDisappear {
-            UIApplication.shared.isIdleTimerDisabled = false
-            UIScreen.main.brightness = previousBrightness
+            restoreScreen()
         }
         .statusBarHidden(true)
     }
@@ -113,8 +127,10 @@ struct CheckoutCodeView: View {
                 description: Text("Pokaż zdjęcie kwitka albo papier przy kasie.")
             )
         } else {
-            VStack(spacing: 20) {
-                if let image = BarcodePresenter.image(payload: payload, symbology: ticket.barcodeSymbology == .unknown ? .code128 : ticket.barcodeSymbology) {
+            VStack(spacing: 16) {
+                VoucherPassCard(ticket: ticket, foilActive: false)
+                    .padding(.horizontal, 16)
+                if let image = codeImage {
                     Image(uiImage: image)
                         .resizable()
                         .interpolation(.none)
@@ -149,6 +165,25 @@ struct CheckoutCodeView: View {
                 systemImage: "photo",
                 description: Text("Ten kwitek ma tylko kod. Spróbuj zakładki Kod.")
             )
+        }
+    }
+
+    private func boostScreen() {
+        UIApplication.shared.isIdleTimerDisabled = true
+        if didBoostBrightness == false {
+            previousBrightness = UIScreen.main.brightness
+            if wallet.settings.boostBrightness {
+                UIScreen.main.brightness = 1
+                didBoostBrightness = true
+            }
+        }
+    }
+
+    private func restoreScreen() {
+        UIApplication.shared.isIdleTimerDisabled = false
+        if didBoostBrightness {
+            UIScreen.main.brightness = previousBrightness
+            didBoostBrightness = false
         }
     }
 

@@ -17,7 +17,7 @@ struct ReceiptDetailView: View {
                     ReceiptCategoryMark(category: receipt.category, size: 56)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(receipt.merchantName)
-                            .font(.title3.weight(.bold))
+                            .font(.title2.weight(.bold))
                         if receipt.displayItemName.isEmpty == false {
                             Text(receipt.displayItemName)
                                 .font(.footnote)
@@ -30,9 +30,11 @@ struct ReceiptDetailView: View {
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 6)
+                .paragonHairlineRow()
                 Text(MoneyFormat.string(receipt.amount))
                     .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .paragonHairlineRow()
             }
 
             if let data = receipt.photoData, let image = UIImage(data: data) {
@@ -44,9 +46,14 @@ struct ReceiptDetailView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(maxHeight: 220)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous))
+                            .overlay {
+                                ParagonTheme.passHairline(
+                                    RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                                )
+                            }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ParagonPressStyle())
                     ShareLink(
                         item: Image(uiImage: image),
                         preview: SharePreview(receipt.merchantName, image: Image(uiImage: image))
@@ -153,20 +160,17 @@ struct ReceiptDetailView: View {
                 }
             }
 
-            Section("Rodzina") {
-                if receipt.familyShareID == nil {
-                    Button {
-                        Task { await wallet.shareReceiptWithFamily(receipt, context: context) }
-                    } label: {
-                        Label("Udostępnij rodzinie", systemImage: "person.2")
-                    }
-                    .disabled(wallet.family.familyWalletID == nil)
-                } else {
-                    Label("Udostępniony rodzinie", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(ParagonTheme.osGreen)
-                    Button("Przestań udostępniać", role: .destructive) {
-                        Task { await wallet.stopSharingReceipt(receipt, context: context) }
-                    }
+            if wallet.family.familyWalletID != nil {
+                Section {
+                    FamilyShareControl(
+                        isShared: receipt.familyShareID != nil,
+                        onShare: { Task { await wallet.shareReceiptWithFamily(receipt, context: context) } },
+                        onStop: { Task { await wallet.stopSharingReceipt(receipt, context: context) } }
+                    )
+                } header: {
+                    Text("Rodzina")
+                } footer: {
+                    Text("Bliscy widzą sklep, kwotę i zdjęcie. Plik jest lekki i leży raz we wspólnym portfelu.")
                 }
             }
 
@@ -180,8 +184,10 @@ struct ReceiptDetailView: View {
         }
         .navigationTitle(receipt.merchantName)
         .navigationBarTitleDisplayMode(.inline)
+        .paragonHidesTabBar()
+        .paragonTabClearance()
         .onAppear {
-            if ReceiptAnalytics.healMissingDates([receipt]) {
+            if FamilyPhotoCodec.settle(receipt) || ReceiptAnalytics.healMissingDates([receipt]) {
                 try? wallet.persistReceipt(receipt, context: context)
             }
         }

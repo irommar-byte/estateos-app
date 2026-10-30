@@ -135,9 +135,34 @@ final class ReceiptParserTests: XCTestCase {
         let original = image.jpegData(compressionQuality: 0.95)?.count ?? 0
         let compressed = ScanService.compressPhoto(image)
         XCTAssertNotNil(compressed)
-        XCTAssertLessThan(compressed?.count ?? .max, 280_000)
+        XCTAssertLessThan(compressed?.count ?? .max, 160_000)
         XCTAssertLessThan(compressed?.count ?? .max, original)
         XCTAssertNotNil(compressed.flatMap(UIImage.init(data:)))
+    }
+
+    func testRecompressLeavesSmallPhotosAlone() {
+        let tiny = Data(repeating: 7, count: 8_000)
+        XCTAssertEqual(ScanService.recompressStoredPhoto(tiny).count, tiny.count)
+    }
+
+    func testRecompressShrinksCameraOriginals() {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 3000, height: 4000), format: format).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 3000, height: 4000))
+            for y in stride(from: 0, to: 4000, by: 6) {
+                UIColor(hue: CGFloat(y % 360) / 360, saturation: 0.35, brightness: 0.75, alpha: 1).setFill()
+                ctx.fill(CGRect(x: 0, y: y, width: 3000, height: 4))
+            }
+        }
+        let original = image.jpegData(compressionQuality: 0.95) ?? Data()
+        XCTAssertGreaterThan(original.count, 200_000)
+        let shrunk = ScanService.recompressStoredPhoto(original)
+        XCTAssertLessThan(shrunk.count, 160_000)
+        XCTAssertLessThan(shrunk.count, original.count)
+        XCTAssertNotNil(UIImage(data: shrunk))
     }
 
     func testParsesGroceryReceiptAsFood() {

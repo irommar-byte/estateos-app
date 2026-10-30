@@ -31,7 +31,9 @@ struct ReceiptScanReviewView: View {
 
                 Section {
                     TextField("Sklep lub sprzedawca", text: $draft.merchantName)
+                        .font(.title2.weight(.bold))
                         .textInputAutocapitalization(.words)
+                        .paragonHairlineRow()
                     TextField("NIP", text: $draft.merchantNIP)
                         .keyboardType(.numberPad)
                     Picker("Dokument", selection: $draft.documentType) {
@@ -84,11 +86,16 @@ struct ReceiptScanReviewView: View {
                                 .padding(.vertical, 8)
                                 .frame(maxWidth: .infinity)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .fill(draft.category == category ? category.color.opacity(0.18) : Color(.tertiarySystemFill))
+                                    RoundedRectangle(cornerRadius: ParagonTheme.stampCorner, style: .continuous)
+                                        .fill(draft.category == category ? category.color.opacity(0.18) : Color(.secondarySystemGroupedBackground))
+                                        .overlay {
+                                            ParagonTheme.passHairline(
+                                                RoundedRectangle(cornerRadius: ParagonTheme.stampCorner, style: .continuous)
+                                            )
+                                        }
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(ParagonPressStyle())
                             .accessibilityLabel(category.title)
                         }
                     }
@@ -133,7 +140,12 @@ struct ReceiptScanReviewView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(maxHeight: 180)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous))
+                            .overlay {
+                                ParagonTheme.passHairline(
+                                    RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                                )
+                            }
                     } else {
                         Text("Brak zdjęcia — możesz zapisać same dane.")
                             .foregroundStyle(.secondary)

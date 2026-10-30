@@ -20,7 +20,11 @@ enum LoyaltyCatalog {
 
     static func programForRetailer(_ retailerID: String) -> LoyaltyProgram {
         let aliases: [String: String] = [
-            "lidl": "lidlplus"
+            "lidl": "lidlplus",
+            "x-kom": "xkom",
+            "xkom": "xkom",
+            "media-markt": "mediamarkt",
+            "mediamarkt": "mediamarkt"
         ]
         let key = aliases[retailerID] ?? retailerID
         if let found = program(id: key) { return found }

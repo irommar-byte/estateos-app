@@ -22,7 +22,7 @@ WIDGET_RES = (
     if WIDGET_SRC.exists()
     else []
 )
-WIDGET_SHARED = ["Core/HomeSnapshot.swift"]
+WIDGET_SHARED = ["Core/HomeSnapshot.swift", "Core/FamilySyncActivityAttributes.swift"]
 
 RES = []
 res_dir = SRC / "Resources"
@@ -43,10 +43,10 @@ def gid():
 def read_build_number() -> str:
     pbx = ROOT / "ParagonOS.xcodeproj" / "project.pbxproj"
     if pbx.exists():
-        match = re.search(r"CURRENT_PROJECT_VERSION = (\d+);", pbx.read_text())
-        if match:
-            return match.group(1)
-    return "2"
+        nums = [int(n) for n in re.findall(r"CURRENT_PROJECT_VERSION = (\d+);", pbx.read_text())]
+        if nums:
+            return str(max(nums))
+    return "20"
 
 
 BUILD_NUMBER = read_build_number()
@@ -389,7 +389,7 @@ tgt_settings = {
     "INFOPLIST_KEY_LSApplicationCategoryType": '"public.app-category.finance"',
     "IPHONEOS_DEPLOYMENT_TARGET": "18.0",
     "LD_RUNPATH_SEARCH_PATHS": '("$(inherited)", "@executable_path/Frameworks")',
-    "MARKETING_VERSION": "1.0.0",
+    "MARKETING_VERSION": "1.2.1",
     "PRODUCT_BUNDLE_IDENTIFIER": "pl.paragonos.app",
     "PRODUCT_NAME": '"$(TARGET_NAME)"',
     "SWIFT_EMIT_LOC_STRINGS": "YES",
@@ -421,7 +421,7 @@ widget_settings_dict = {
     "INFOPLIST_FILE": "ParagonOSWidgets/Info.plist",
     "IPHONEOS_DEPLOYMENT_TARGET": "18.0",
     "LD_RUNPATH_SEARCH_PATHS": '("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks")',
-    "MARKETING_VERSION": "1.0.0",
+    "MARKETING_VERSION": "1.2.1",
     "PRODUCT_BUNDLE_IDENTIFIER": "pl.paragonos.app.widgets",
     "PRODUCT_NAME": '"$(TARGET_NAME)"',
     "SKIP_INSTALL": "YES",
@@ -450,7 +450,7 @@ o("\t\t\tisa = XCRemoteSwiftPackageReference;")
 o('\t\t\trepositoryURL = "https://github.com/apple/swift-certificates.git";')
 o("\t\t\trequirement = {")
 o("\t\t\t\tkind = upToNextMajorVersion;")
-o("\t\t\t\tminimumVersion = 1.17.1;")
+o("\t\t\t\tminimumVersion = 1.20.0;")
 o("\t\t\t};")
 o("\t\t};")
 o("/* End XCRemoteSwiftPackageReference section */")

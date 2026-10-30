@@ -1,3 +1,4 @@
+import CloudKit
 import Foundation
 import UIKit
 
@@ -44,6 +45,16 @@ final class ParagonSceneDelegate: NSObject, UIWindowSceneDelegate {
         if let shortcut = connectionOptions.shortcutItem {
             capture(shortcut)
         }
+        if let metadata = connectionOptions.cloudKitShareMetadata {
+            CloudKitShareHandoff.accept(metadata)
+        }
+    }
+
+    func windowScene(
+        _ windowScene: UIWindowScene,
+        userDidAcceptCloudKitShareWith cloudKitShareMetadata: CKShare.Metadata
+    ) {
+        CloudKitShareHandoff.accept(cloudKitShareMetadata)
     }
 
     func windowScene(

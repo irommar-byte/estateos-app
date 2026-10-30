@@ -443,6 +443,12 @@ final class LiveScanHUD: ObservableObject {
     var lockedRetailer = false
     var lockedCode = false
 
+    func setIfChanged<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<LiveScanHUD, Value>, _ value: Value) {
+        if self[keyPath: keyPath] != value {
+            self[keyPath: keyPath] = value
+        }
+    }
+
     func caption(for intent: ScanIntent) -> String {
         if isExpired { return "Ten kwitek jest już przeterminowany." }
         if intent == .loyalty {
@@ -556,6 +562,8 @@ struct LiveDataScanner: UIViewControllerRepresentable {
         private var startedAt = Date()
         private var readySince: Date?
         private var watchTask: Task<Void, Never>?
+        private var captureTask: Task<Void, Never>?
+        private var lastPublishAt = Date.distantPast
         private var appliedTorch = false
         var torchBusy = false
         private var firstSide: (image: UIImage?, lines: [String], barcodes: [DetectedBarcode])?
@@ -586,6 +594,7 @@ struct LiveDataScanner: UIViewControllerRepresentable {
 
         func cancel() {
             watchTask?.cancel()
+            captureTask?.cancel()
         }
 
         func syncTorch(_ on: Bool, on scanner: DataScannerViewController) {
@@ -654,8 +663,12 @@ struct LiveDataScanner: UIViewControllerRepresentable {
                 }
             }
             itemBoxes = boxes
-            publish()
-            considerReady()
+            let now = Date()
+            if now.timeIntervalSince(lastPublishAt) >= 0.125 || lastPublishAt == .distantPast {
+                lastPublishAt = now
+                publish()
+                considerReady()
+            }
         }
 
         private func boundsRect(_ item: RecognizedItem) -> CGRect {
@@ -687,28 +700,28 @@ struct LiveDataScanner: UIViewControllerRepresentable {
         private func publish() {
             if intent == .receipt {
                 let draft = parseReceipt()
-                hud.hasRetailer = draft.merchantName.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
-                hud.hasAmount = draft.amount > 0
-                hud.hasDate = draft.issuedWasPrinted
-                hud.hasCode = draft.merchantNIP.isEmpty == false
-                hud.isExpired = false
+                hud.setIfChanged(\.hasRetailer, draft.merchantName.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2)
+                hud.setIfChanged(\.hasAmount, draft.amount > 0)
+                hud.setIfChanged(\.hasDate, draft.issuedWasPrinted)
+                hud.setIfChanged(\.hasCode, draft.merchantNIP.isEmpty == false)
+                hud.setIfChanged(\.isExpired, false)
                 return
             }
             if intent == .loyalty {
                 let draft = LoyaltyParser.parse(lines: Array(lines), barcodes: barcodes)
-                hud.hasRetailer = hud.lockedRetailer || draft.needsProgramPick == false
-                hud.hasAmount = false
-                hud.hasDate = false
-                hud.hasCode = hud.lockedCode || draft.barcodePayload.isEmpty == false
-                hud.isExpired = false
+                hud.setIfChanged(\.hasRetailer, hud.lockedRetailer || draft.needsProgramPick == false)
+                hud.setIfChanged(\.hasAmount, false)
+                hud.setIfChanged(\.hasDate, false)
+                hud.setIfChanged(\.hasCode, hud.lockedCode || draft.barcodePayload.isEmpty == false)
+                hud.setIfChanged(\.isExpired, false)
                 return
             }
             let draft = parseLive()
-            hud.hasRetailer = draft.retailerID != "unknown"
-            hud.hasAmount = draft.amount > 0
-            hud.hasDate = draft.issuedWasPrinted
-            hud.hasCode = draft.barcodePayload.isEmpty == false
-            hud.isExpired = draft.isExpired()
+            hud.setIfChanged(\.hasRetailer, draft.retailerID != "unknown")
+            hud.setIfChanged(\.hasAmount, draft.amount > 0)
+            hud.setIfChanged(\.hasDate, draft.issuedWasPrinted)
+            hud.setIfChanged(\.hasCode, draft.barcodePayload.isEmpty == false)
+            hud.setIfChanged(\.isExpired, draft.isExpired())
         }
 
         private func considerReady() {
@@ -754,11 +767,14 @@ struct LiveDataScanner: UIViewControllerRepresentable {
         private func updateLoyaltyFill() {
             let roi = scanner?.regionOfInterest ?? scanner?.view.bounds ?? .zero
             let metrics = CardScanGate.metrics(boxes: itemBoxes, roi: roi)
-            hud.hasFullCard = CardScanGate.fillsFrame(
-                coverage: metrics.coverage,
-                spreadX: metrics.spreadX,
-                spreadY: metrics.spreadY,
-                boxCount: itemBoxes.count
+            hud.setIfChanged(
+                \.hasFullCard,
+                CardScanGate.fillsFrame(
+                    coverage: metrics.coverage,
+                    spreadX: metrics.spreadX,
+                    spreadY: metrics.spreadY,
+                    boxCount: itemBoxes.count
+                )
             )
         }
 
@@ -793,9 +809,10 @@ struct LiveDataScanner: UIViewControllerRepresentable {
             guard consumed == false else { return }
             consumed = true
             watchTask?.cancel()
+            captureTask?.cancel()
             self.finishAfterThisSide = finishAfterThisSide
-            hud.isCapturing = true
-            Task { @MainActor in
+            hud.setIfChanged(\.isCapturing, true)
+            captureTask = Task { @MainActor in
                 var photo: UIImage?
                 if let scanner {
                     if let image = try? await scanner.capturePhoto() {
@@ -805,6 +822,7 @@ struct LiveDataScanner: UIViewControllerRepresentable {
                     }
                     scanner.stopScanning()
                 }
+                guard Task.isCancelled == false else { return }
                 if intent == .loyalty {
                     await finishLoyaltySide(photo: photo)
                     return
@@ -814,6 +832,7 @@ struct LiveDataScanner: UIViewControllerRepresentable {
                 if let photo, let result = try? await ScanService.analyze(image: photo) {
                     draft = VoucherParser.mergeLive(live, photo: result.draft)
                 }
+                guard Task.isCancelled == false else { return }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 ScanTorch.applyNow(false)
                 onComplete(draft, photo)
@@ -828,8 +847,10 @@ struct LiveDataScanner: UIViewControllerRepresentable {
             }
             consumed = true
             watchTask?.cancel()
-            hud.isCapturing = true
-            Task { @MainActor in
+            captureTask?.cancel()
+            hud.setIfChanged(\.isCapturing, true)
+            captureTask = Task { @MainActor in
+                guard Task.isCancelled == false else { return }
                 scanner?.stopScanning()
                 completeLoyalty(
                     lines: firstSide?.lines ?? [],

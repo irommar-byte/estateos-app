@@ -7,6 +7,7 @@ import TipKit
 struct WalletView: View {
     @EnvironmentObject private var wallet: WalletModel
     @Environment(\.modelContext) private var context
+    @ObservedObject private var cloudSync = CloudSyncMonitor.shared
     @Query(sort: \Ticket.issuedAt, order: .reverse) private var tickets: [Ticket]
     @State private var query = ""
     @State private var isSearching = false
@@ -44,15 +45,21 @@ struct WalletView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 if tickets.isEmpty && query.isEmpty {
                     emptyState
                 } else if tickets.isEmpty == false {
                     summaryCard
                 }
-                if location.isAuthorized, tickets.isEmpty == false {
+                if location.isAuthorized {
+                    if tickets.isEmpty == false {
+                        ParagonTipCard(tip: BottleMapTip.shared)
+                    }
                     mapTeaser
-                } else if location.isAuthorized == false {
+                } else {
+                    if tickets.isEmpty == false {
+                        ParagonTipCard(tip: BottleMapTip.shared)
+                    }
                     locationPrompt
                 }
                 if tickets.isEmpty == false {
@@ -97,6 +104,7 @@ struct WalletView: View {
         .scrollBounceBehavior(.basedOnSize)
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
+        .paragonTabClearance()
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Kaucje")
         .searchable(text: $query, isPresented: $isSearching, prompt: "Sklep lub kwota")
@@ -179,115 +187,101 @@ struct WalletView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label("Brak kaucji", systemImage: "waterbottle")
-        } description: {
-            Text("Skanuj kwitek z butelkomatu, wpisz go ręcznie albo znajdź automat na mapie.")
-        } actions: {
-            Button("Skanuj kaucję") { wallet.openScanner(for: .deposit) }
-                .buttonStyle(.borderedProminent)
-                .popoverTip(FirstScanTip.deposit)
-            Button("Wpisz ręcznie") { wallet.openManualDeposit() }
+        VStack(spacing: 20) {
+            ContentUnavailableView {
+                Label("Brak kaucji", systemImage: "waterbottle")
+            } description: {
+                Text("Skanuj kwitek z butelkomatu, wpisz go ręcznie albo znajdź automat na mapie.")
+            } actions: {
+                Button("Skanuj kaucję") { wallet.openScanner(for: .deposit) }
+                    .buttonStyle(.borderedProminent)
+                Button("Wpisz ręcznie") { wallet.openManualDeposit() }
+            }
+            ParagonTipCard(tip: FirstScanTip.deposit)
         }
     }
 
     private var locationPrompt: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Włącz lokalizację", systemImage: "location.fill")
-                .font(.headline)
-            Text("Wtedy pokażemy butelkomaty w pobliżu — bez zgody nie zgadujemy Warszawy.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            HStack {
-                Button("Włącz") { location.locateOrOpenSettings() }
-                    .buttonStyle(.borderedProminent)
-                Button("Otwórz mapę") { openBottleMap() }
-                    .buttonStyle(.bordered)
+        ParagonSummaryCard {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("Włącz lokalizację", systemImage: "location.fill")
+                    .font(.headline)
+                Text("Wtedy pokażemy butelkomaty w pobliżu — bez zgody nie zgadujemy Warszawy.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Włącz") { location.locateOrOpenSettings() }
+                        .buttonStyle(.borderedProminent)
+                    Button("Otwórz mapę") { openBottleMap() }
+                        .buttonStyle(.bordered)
+                }
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
     }
 
     private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Do odebrania")
-                .font(.subheadline)
+        ParagonSummaryCard {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Do odebrania")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(MoneyFormat.string(activeSum))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                HStack {
+                    Label(PolishDates.kwitekCount(visible.count), systemImage: "ticket")
+                    if let next = nextExpiry, let date = next.expiresAt {
+                        Spacer()
+                        Label(PolishDates.relativeExpiry(date), systemImage: "clock")
+                    }
+                }
+                .font(.footnote)
                 .foregroundStyle(.secondary)
-            Text(MoneyFormat.string(activeSum))
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-            HStack {
-                Label(PolishDates.kwitekCount(visible.count), systemImage: "ticket")
-                if let next = nextExpiry, let date = next.expiresAt {
-                    Spacer()
-                    Label(PolishDates.relativeExpiry(date), systemImage: "clock")
+                if cloudSync.phase == .failed, cloudSync.island == .hidden, let error = cloudSync.errorText {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            if wallet.cloudSync.isInProgress {
-                Label(wallet.cloudSync.statusTitle, systemImage: "icloud")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else if wallet.cloudSync.phase == .failed, let error = wallet.cloudSync.errorText {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
     }
 
     private var mapTeaser: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button {
-                openBottleMap()
-            } label: {
-                HStack {
-                    Label("Butelkomaty w pobliżu", systemImage: "map.fill")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+        ParagonSummaryCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    openBottleMap()
+                } label: {
+                    HStack {
+                        Label("Butelkomaty w pobliżu", systemImage: "map.fill")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Mapa butelkomatów")
+                .buttonStyle(.plain)
+                .accessibilityLabel("Mapa butelkomatów")
 
-            if nearby.isEmpty {
-                Text("Otwórz mapę, żeby znaleźć automat i godziny otwarcia.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(nearby.prefix(5)) { point in
-                        Button {
-                            openDirections(to: point)
-                        } label: {
-                            nearbyRow(point)
+                if nearby.isEmpty {
+                    Text("Otwórz mapę, żeby znaleźć automat i godziny otwarcia.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(Array(BottleNearbyTeaser.displayed(nearby))) { point in
+                            Button {
+                                openDirections(to: point)
+                            } label: {
+                                nearbyRow(point)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
-        )
     }
 
     private func nearbyRow(_ point: BottleReturnPoint) -> some View {
@@ -363,6 +357,6 @@ struct WalletView: View {
             return
         }
         nearbyOrigin = origin
-        nearby = await BottleReturnStore.shared.nearby(from: origin, limit: 8)
+        nearby = await BottleReturnStore.shared.nearby(from: origin, limit: 6)
     }
 }

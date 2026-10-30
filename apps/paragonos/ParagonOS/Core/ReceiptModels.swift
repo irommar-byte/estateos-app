@@ -201,7 +201,7 @@ final class Receipt {
     var documentNumber: String = ""
     var paymentMethod: String = ReceiptPaymentMethod.unknown.rawValue
     var itemName: String = ""
-    var photoData: Data?
+    @Attribute(.externalStorage) var photoData: Data?
     var ocrText: String = ""
     var note: String = ""
     var warrantyUntil: Date?
@@ -268,7 +268,7 @@ final class Receipt {
     }
 
     var displayItemName: String {
-        ReceiptParser.collapsedItemName(itemName)
+        ReceiptParser.collapsedItemName(FamilyPhotoCodec.unpack(itemName).items)
     }
 
     var resolvedWarrantyUntil: Date? {
@@ -358,7 +358,7 @@ struct ReceiptMerchantGroup: Identifiable {
     }
 
     var program: LoyaltyProgram {
-        LoyaltyCatalog.match(ocrText: merchantName, barcode: "") ?? LoyaltyProgram.custom(name: merchantName)
+        ReceiptStoreBrand.program(forMerchant: merchantName)
     }
 
     static func allTime(from receipts: [Receipt]) -> [ReceiptMerchantGroup] {
@@ -394,6 +394,44 @@ struct ReceiptMerchantGroup: Identifiable {
     private static func fold(_ value: String) -> String {
         value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "pl_PL"))
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Unique store identity + domain so receipt chips can load the real logo.
+enum ReceiptStoreBrand {
+    static func program(forMerchant name: String) -> LoyaltyProgram {
+        if let found = LoyaltyCatalog.match(ocrText: name, barcode: "") {
+            return found
+        }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = LoyaltyCatalog.fold(trimmed)
+        let label = trimmed.isEmpty ? "Sklep" : trimmed
+        return LoyaltyProgram(
+            id: "store-\(key.isEmpty ? "unknown" : key)",
+            name: label,
+            programName: label,
+            domain: domainHint(key),
+            color: "#3A3A3C",
+            keywords: [],
+            barcode: BarcodeSymbology.code128.rawValue
+        )
+    }
+
+    static func domainHint(_ folded: String) -> String {
+        let known: [String: String] = [
+            "dyson": "dyson.com",
+            "x-kom": "x-kom.pl",
+            "xkom": "x-kom.pl",
+            "media markt": "mediamarkt.pl",
+            "mediamarkt": "mediamarkt.pl",
+            "house": "housebrand.com",
+            "action": "action.com"
+        ]
+        if let hit = known[folded] { return hit }
+        for (key, domain) in known where folded.contains(key) {
+            return domain
+        }
+        return ""
     }
 }
 

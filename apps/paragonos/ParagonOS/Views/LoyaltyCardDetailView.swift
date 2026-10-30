@@ -12,11 +12,12 @@ struct LoyaltyCardDetailView: View {
     @State private var confirmDelete = false
     @State private var photoTarget: CardPhotoTarget?
     @State private var saveError: String?
+    @State private var persistTask: Task<Void, Never>?
 
     var body: some View {
         List {
             Section {
-                LoyaltyCardPass(card: card, showsBarcode: true)
+                LoyaltyCardPass(card: card, showsBarcode: true, foilActive: true)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
             }
@@ -44,12 +45,12 @@ struct LoyaltyCardDetailView: View {
                 LabeledContent("Program", value: card.displayName)
                 TextField("Właściciel", text: $card.holderName)
                     .textInputAutocapitalization(.words)
-                    .onChange(of: card.holderName) { _, _ in persist() }
+                    .onChange(of: card.holderName) { _, _ in schedulePersist() }
                 TextField("Numer karty", text: $card.barcodePayload, axis: .vertical)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .font(.body.monospaced())
-                    .onChange(of: card.barcodePayload) { _, _ in persist() }
+                    .onChange(of: card.barcodePayload) { _, _ in schedulePersist() }
                 Picker("Typ", selection: barcodeTypeBinding) {
                     ForEach(BarcodeSymbology.userSelectable, id: \.self) { item in
                         Text(item.title).tag(item)
@@ -57,25 +58,23 @@ struct LoyaltyCardDetailView: View {
                 }
                 TextField("Notatka", text: $card.note, axis: .vertical)
                     .lineLimit(2...4)
-                    .onChange(of: card.note) { _, _ in persist() }
+                    .onChange(of: card.note) { _, _ in schedulePersist() }
                 if card.scannedByName.isEmpty == false {
                     LabeledContent("Dodał", value: card.scannedByName)
                 }
             }
 
             if wallet.family.familyWalletID != nil {
-                Section("Rodzina") {
-                    if card.familyShareID == nil {
-                        Button("Udostępnij rodzinie") {
-                            Task { await wallet.shareLoyaltyWithFamily(card, context: context) }
-                        }
-                    } else {
-                        Label("Udostępniona rodzinie", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(ParagonTheme.osGreen)
-                        Button("Przestań udostępniać", role: .destructive) {
-                            Task { await wallet.stopSharingLoyalty(card, context: context) }
-                        }
-                    }
+                Section {
+                    FamilyShareControl(
+                        isShared: card.familyShareID != nil,
+                        onShare: { Task { await wallet.shareLoyaltyWithFamily(card, context: context) } },
+                        onStop: { Task { await wallet.stopSharingLoyalty(card, context: context) } }
+                    )
+                } header: {
+                    Text("Rodzina")
+                } footer: {
+                    Text("Bliscy widzą nazwę i kod. Zdjęcie karty zostaje na tym iPhonie.")
                 }
             }
 
@@ -100,6 +99,8 @@ struct LoyaltyCardDetailView: View {
         }
         .navigationTitle(card.displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .paragonHidesTabBar()
+        .paragonTabClearance()
         .fullScreenCover(isPresented: $showCheckout) {
             LoyaltyCheckoutView(card: card)
                 .environmentObject(wallet)
@@ -144,11 +145,21 @@ struct LoyaltyCardDetailView: View {
     }
 
     private func persist() {
+        persistTask?.cancel()
         do {
             try wallet.persistLoyalty(card, context: context)
             saveError = nil
         } catch {
             saveError = error.localizedDescription
+        }
+    }
+
+    private func schedulePersist() {
+        persistTask?.cancel()
+        persistTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard Task.isCancelled == false else { return }
+            persist()
         }
     }
 

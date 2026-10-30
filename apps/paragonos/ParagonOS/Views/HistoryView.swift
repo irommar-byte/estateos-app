@@ -104,11 +104,7 @@ struct HistoryView: View {
                     signature: chartSignature
                 )
                 .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 12, trailing: 12))
-                .listRowBackground(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(Color(.secondarySystemGroupedBackground))
-                        .padding(.horizontal, 4)
-                )
+                .paragonHairlineRow()
             } header: {
                 Text(scope == .kaucje ? "Kaucje w czasie" : "Wydatki w czasie")
             } footer: {
@@ -141,6 +137,7 @@ struct HistoryView: View {
                             } label: {
                                 historyRow(ticket)
                             }
+                            .buttonStyle(ParagonPressStyle())
                             .swipeActions(edge: .leading, allowsFullSwipe: false) {
                                 Button("Przywróć") { restoreTicket = ticket }
                                     .tint(ParagonTheme.osGreen)
@@ -166,6 +163,7 @@ struct HistoryView: View {
                             } label: {
                                 historyRow(ticket)
                             }
+                            .buttonStyle(ParagonPressStyle())
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button("Usuń", role: .destructive) {
                                     try? wallet.delete(ticket, context: context)
@@ -184,7 +182,7 @@ struct HistoryView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text("\(receipts.count)")
-                                .font(.title3.bold())
+                                .font(.title2.bold())
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -212,6 +210,7 @@ struct HistoryView: View {
                                         .font(.body.weight(.semibold).monospacedDigit())
                                 }
                             }
+                            .buttonStyle(ParagonPressStyle())
                         }
                         if otherStoresTotal > 0 {
                             HStack {
@@ -234,6 +233,7 @@ struct HistoryView: View {
             }
         }
         .navigationTitle("Historia")
+        .paragonTabClearance()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -326,7 +326,7 @@ struct HistoryView: View {
                 .font(.caption)
                 .foregroundStyle(color)
             Text(MoneyFormat.string(value))
-                .font(.title3.bold())
+                .font(.title2.bold())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

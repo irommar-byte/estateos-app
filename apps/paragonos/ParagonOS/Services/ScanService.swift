@@ -1,4 +1,6 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 import UIKit
 import Vision
 
@@ -14,6 +16,12 @@ enum ScanService {
         guard let cgImage = prepared.cgImage else {
             return ([], [])
         }
+        return try await Task.detached(priority: .utility) {
+            try performVision(cgImage: cgImage)
+        }.value
+    }
+
+    nonisolated private static func performVision(cgImage: CGImage) throws -> (lines: [String], barcodes: [DetectedBarcode]) {
         let textRequest = VNRecognizeTextRequest()
         textRequest.recognitionLevel = .accurate
         textRequest.recognitionLanguages = ["pl-PL", "en-US"]
@@ -41,24 +49,27 @@ enum ScanService {
         return (lines, barcodes)
     }
 
+    /// Receipt / ticket photos. HEIC first (same sharpness, much smaller), JPEG fallback.
+    /// Family share sends this blob once — participants read the same asset, they do not
+    /// each get a second iCloud copy from the owner.
     static func compressPhoto(
         _ image: UIImage,
-        maxDimension: CGFloat = 1280,
-        quality: CGFloat = 0.58,
-        maxBytes: Int = 280_000
+        maxDimension: CGFloat = 1400,
+        quality: CGFloat = 0.62,
+        maxBytes: Int = 160_000
     ) -> Data? {
-        let resized = resize(image, maxDimension: maxDimension)
-        var quality = quality
-        var data = resized.jpegData(compressionQuality: quality)
-        let floor = maxBytes > 500_000 ? 0.72 : 0.36
-        while let current = data, current.count > maxBytes, quality > floor {
-            quality -= 0.06
-            data = resized.jpegData(compressionQuality: quality)
+        encodeDocument(image, maxDimension: maxDimension, quality: quality, maxBytes: maxBytes)
+    }
+
+    /// Re-encode only when the stored blob is still a camera original (or an older
+    /// oversized JPEG). Already-small files stay untouched so we do not generationally
+    /// soften text.
+    static func recompressStoredPhoto(_ data: Data, maxBytes: Int = 160_000) -> Data {
+        guard data.count > maxBytes, let image = UIImage(data: data) else { return data }
+        guard let next = compressPhoto(image, maxBytes: maxBytes), next.count < data.count else {
+            return data
         }
-        if maxBytes <= 320_000, let current = data, current.count > 320_000 {
-            data = resize(image, maxDimension: 1024).jpegData(compressionQuality: 0.48)
-        }
-        return data
+        return next
     }
 
     static func compressLoyaltyPhoto(_ image: UIImage) -> Data? {
@@ -71,6 +82,48 @@ enum ScanService {
 
     static func preparedForOCR(_ image: UIImage, maxDimension: CGFloat = 2200) -> UIImage {
         resize(image, maxDimension: maxDimension)
+    }
+
+    private static func encodeDocument(
+        _ image: UIImage,
+        maxDimension: CGFloat,
+        quality: CGFloat,
+        maxBytes: Int
+    ) -> Data? {
+        let resized = resize(image, maxDimension: maxDimension)
+        if maxBytes <= 320_000, let heic = heicData(resized, quality: quality), heic.count <= maxBytes {
+            return heic
+        }
+        var quality = quality
+        var data = heicData(resized, quality: quality) ?? resized.jpegData(compressionQuality: quality)
+        let floor: CGFloat = maxBytes > 500_000 ? 0.72 : 0.38
+        while let current = data, current.count > maxBytes, quality > floor {
+            quality -= 0.06
+            data = heicData(resized, quality: quality) ?? resized.jpegData(compressionQuality: quality)
+        }
+        if let current = data, current.count > maxBytes {
+            let tighter = resize(image, maxDimension: min(maxDimension, 1100))
+            data = heicData(tighter, quality: 0.5) ?? tighter.jpegData(compressionQuality: 0.48)
+        }
+        return data
+    }
+
+    private static func heicData(_ image: UIImage, quality: CGFloat) -> Data? {
+        guard let cgImage = image.cgImage else { return nil }
+        let buffer = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            buffer,
+            UTType.heic.identifier as CFString,
+            1,
+            nil
+        ) else { return nil }
+        CGImageDestinationAddImage(
+            destination,
+            cgImage,
+            [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary
+        )
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return buffer as Data
     }
 
     private static func resize(_ image: UIImage, maxDimension: CGFloat) -> UIImage {

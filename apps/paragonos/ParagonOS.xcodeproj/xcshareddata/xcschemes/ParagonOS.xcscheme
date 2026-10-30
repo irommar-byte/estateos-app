@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A0F5F4AD1CB941729C5E05AB"
+               BlueprintIdentifier = "C0A6726074D34C7F81BB599B"
                BuildableName = "ParagonOS.app"
                BlueprintName = "ParagonOS"
                ReferencedContainer = "container:ParagonOS.xcodeproj">
@@ -33,7 +33,7 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "11CA43F64CCF44A1A6C14C23"
+               BlueprintIdentifier = "44B283EAD9874456A6F61389"
                BuildableName = "ParagonOSTests.xctest"
                BlueprintName = "ParagonOSTests"
                ReferencedContainer = "container:ParagonOS.xcodeproj">
@@ -55,7 +55,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A0F5F4AD1CB941729C5E05AB"
+            BlueprintIdentifier = "C0A6726074D34C7F81BB599B"
             BuildableName = "ParagonOS.app"
             BlueprintName = "ParagonOS"
             ReferencedContainer = "container:ParagonOS.xcodeproj">
@@ -75,7 +75,7 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "A0F5F4AD1CB941729C5E05AB"
+            BlueprintIdentifier = "C0A6726074D34C7F81BB599B"
             BuildableName = "ParagonOS.app"
             BlueprintName = "ParagonOS"
             ReferencedContainer = "container:ParagonOS.xcodeproj">
@@ -97,7 +97,7 @@
                <EnvironmentBuildable>
                   <BuildableReference
                      BuildableIdentifier = "primary"
-                     BlueprintIdentifier = "A0F5F4AD1CB941729C5E05AB"
+                     BlueprintIdentifier = "C0A6726074D34C7F81BB599B"
                      BuildableName = "ParagonOS.app"
                      BlueprintName = "ParagonOS"
                      ReferencedContainer = "container:ParagonOS.xcodeproj">

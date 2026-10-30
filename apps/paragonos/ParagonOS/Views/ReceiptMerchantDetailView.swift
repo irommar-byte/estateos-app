@@ -7,15 +7,17 @@ struct ReceiptMerchantDetailView: View {
         List {
             Section {
                 HStack(spacing: 14) {
-                    LoyaltyLogo(program: group.program, size: 48)
+                    LoyaltyLogo(program: group.program, size: 56)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(group.merchantName)
-                            .font(.headline)
+                            .font(.title2.weight(.bold))
                         Text(group.category.title)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
+                .padding(.vertical, 6)
+                .paragonHairlineRow()
                 LabeledContent("Suma", value: MoneyFormat.string(group.total))
                 if group.merchantNIP.isEmpty == false {
                     LabeledContent("NIP", value: group.merchantNIP)
@@ -29,6 +31,7 @@ struct ReceiptMerchantDetailView: View {
                     } label: {
                         ReceiptRow(receipt: receipt)
                     }
+                    .buttonStyle(ParagonPressStyle())
                 }
             }
         }
@@ -57,8 +60,13 @@ struct ReceiptMerchantChip: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
+                .overlay {
+                    ParagonTheme.passHairline(
+                        RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                    )
+                }
         )
     }
 }

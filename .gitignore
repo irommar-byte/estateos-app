@@ -87,3 +87,10 @@ apps/eos-music/Vendor/*.zip
 apps/eos-music/Vendor/MobileVLCKit.xcframework/
 apps/eos-music/build/
 apps/eos-music/**/xcuserdata/
+
+# ParagonOS agent snap loops
+apps/paragonos/.stamp-snaps/
+apps/paragonos/.coffee-snaps/
+apps/paragonos/.card-snaps/
+
+apps/paragonos/**/xcuserdata/

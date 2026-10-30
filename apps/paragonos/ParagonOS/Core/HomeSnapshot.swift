@@ -15,6 +15,18 @@ enum AppGroup {
     }
 }
 
+enum ParagonWidgetKind {
+    static let home = "ParagonOSHomeWidget"
+    static let lock = "ParagonOSLockWidget"
+    static let tickets = "ParagonOSTicketsWidget"
+    static let cards = "ParagonOSCardsWidget"
+    static let all = [home, lock, tickets, cards]
+    static let stampCorner: CGFloat = 12
+    static let stampInset: CGFloat = 0.11
+    static let artRevision = 5
+    static let canvasHex = "F2F2F7"
+}
+
 struct HomeSnapshot: Codable, Equatable {
     var nextTicket: SnapshotTicket?
     var cards: [SnapshotCard]
@@ -42,30 +54,58 @@ struct HomeSnapshot: Codable, Equatable {
     }
 
     var stampSlots: [WidgetStampSlot] {
-        var slots: [WidgetStampSlot] = cards.prefix(6).map { .card($0) }
-        if slots.count < 6 {
-            for ticket in tickets where slots.count < 6 {
-                if slots.contains(where: { $0.matchesTicket(ticket.id) }) { continue }
-                slots.append(.ticket(ticket))
-            }
-        }
-        while slots.count < 6 {
-            slots.append(.empty(slots.count))
+        cardSlots(count: 6)
+    }
+
+    func cardSlots(count: Int) -> [WidgetStampSlot] {
+        let ordered = Self.orderedCards(cards, lastCardID: lastCardID)
+        var slots: [WidgetStampSlot] = ordered.prefix(count).map { .card($0) }
+        while slots.count < count {
+            slots.append(.empty(slots.count, kind: .loyalty))
         }
         return slots
+    }
+
+    func ticketSlots(count: Int) -> [WidgetStampSlot] {
+        var slots: [WidgetStampSlot] = Array(tickets.prefix(count)).map { .ticket($0) }
+        while slots.count < count {
+            slots.append(.empty(slots.count, kind: .deposit))
+        }
+        return slots
+    }
+
+    static func orderedCards<Item: Identifiable>(_ cards: [Item], lastCardID: UUID?) -> [Item] where Item.ID == UUID {
+        guard let lastCardID, let index = cards.firstIndex(where: { $0.id == lastCardID }) else {
+            return cards
+        }
+        var next = cards
+        let selected = next.remove(at: index)
+        return [selected] + next
+    }
+
+    static func lastDigits(from payload: String) -> String? {
+        let digits = payload.filter(\.isNumber)
+        let source = digits.count >= 4 ? String(digits) : payload.filter { $0.isLetter || $0.isNumber }
+        guard source.count >= 4 else { return nil }
+        return String(source.suffix(4))
     }
 }
 
 enum WidgetStampSlot: Equatable, Identifiable {
+    enum EmptyKind: String, Equatable {
+        case loyalty
+        case deposit
+    }
+
     case card(SnapshotCard)
     case ticket(SnapshotTicket)
-    case empty(Int)
+    case empty(Int, kind: EmptyKind)
 
     var id: String {
         switch self {
         case .card(let card): return "card-\(card.id.uuidString)"
         case .ticket(let ticket): return "ticket-\(ticket.id.uuidString)"
-        case .empty(let index): return "empty-\(index)"
+        case .empty(let index, let kind): return "empty-\(kind)-\(index)"
         }
     }
 
@@ -80,8 +120,8 @@ enum WidgetStampSlot: Equatable, Identifiable {
             return WidgetDeepLink.checkoutCard(card.id).url
         case .ticket(let ticket):
             return WidgetDeepLink.checkoutTicket(ticket.id).url
-        case .empty:
-            return WidgetDeepLink.scanLoyalty.url
+        case .empty(_, let kind):
+            return kind == .deposit ? WidgetDeepLink.scanDeposit.url : WidgetDeepLink.scanLoyalty.url
         }
     }
 }
@@ -126,12 +166,14 @@ struct SnapshotCard: Codable, Equatable, Identifiable {
     var name: String
     var colorHex: String?
     var programID: String?
+    var caption: String?
 
-    init(id: UUID, name: String, colorHex: String? = nil, programID: String? = nil) {
+    init(id: UUID, name: String, colorHex: String? = nil, programID: String? = nil, caption: String? = nil) {
         self.id = id
         self.name = name
         self.colorHex = colorHex
         self.programID = programID
+        self.caption = caption
     }
 
     init(from decoder: Decoder) throws {
@@ -140,6 +182,7 @@ struct SnapshotCard: Codable, Equatable, Identifiable {
         name = try container.decode(String.self, forKey: .name)
         colorHex = try container.decodeIfPresent(String.self, forKey: .colorHex)
         programID = try container.decodeIfPresent(String.self, forKey: .programID)
+        caption = try container.decodeIfPresent(String.self, forKey: .caption)
     }
 }
 
@@ -201,13 +244,17 @@ enum ScanReceiptControlLink {
     static var url: URL { WidgetDeepLink.scanReceipt.url }
 }
 
+enum ScanLoyaltyControlLink {
+    static var url: URL { WidgetDeepLink.scanLoyalty.url }
+}
+
 enum WidgetStampStore {
     static func directory() -> URL? {
         AppGroup.container?.appendingPathComponent(AppGroup.stampsFolder, isDirectory: true)
     }
 
     static func fileURL(id: UUID) -> URL? {
-        directory()?.appendingPathComponent("\(id.uuidString).png")
+        directory()?.appendingPathComponent("\(id.uuidString)-v\(ParagonWidgetKind.artRevision).png")
     }
 
     static func save(id: UUID, png: Data) {

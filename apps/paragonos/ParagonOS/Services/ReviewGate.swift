@@ -4,7 +4,7 @@ import UIKit
 
 enum ReviewGate {
     static var writeReviewURL: URL {
-        URL(string: "itms-apps://itunes.apple.com/app/paragonos?action=write-review")!
+        URL(string: "https://apps.apple.com/us/app/paragonos/id6811380010?action=write-review")!
     }
 
     @MainActor

@@ -1,11 +1,9 @@
-import SwiftData
 import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var wallet: WalletModel
     @EnvironmentObject private var lock: BiometricLock
-    @Query private var tickets: [Ticket]
-    @Query private var receipts: [Receipt]
+    @ObservedObject private var cloudSync = CloudSyncMonitor.shared
 
     var body: some View {
         Form {
@@ -22,82 +20,77 @@ struct SettingsView: View {
             }
 
             Section {
-                LabeledContent("Synchronizacja") {
-                    Text(wallet.cloudSync.statusTitle)
-                }
-                if let last = wallet.cloudSync.lastSuccessText {
-                    LabeledContent("Ostatnio") { Text(last) }
-                }
-                Button("Synchronizuj teraz") {
+                ParagonCloudDevicesRow(cloudSync: cloudSync) {
                     wallet.requestCloudSync()
                 }
             } header: {
                 Text("Twoje urządzenia")
             } footer: {
-                Text("Ten sam Apple ID na iPhonie i iPadzie synchronizuje kaucje, paragony i karty automatycznie. Zaproszenie rodziny jest osobno.")
+                Text("Ten sam Apple ID na iPhonie i iPadzie synchronizuje dane automatycznie. Zaproszenie rodziny ustawiasz w dziale Rodzina.")
             }
 
             Section {
-                Toggle("7 dni przed terminem", isOn: $wallet.settings.reminder7Days)
-                Toggle("1 dzień przed terminem", isOn: $wallet.settings.reminder1Day)
-                Toggle("W dniu wygaśnięcia", isOn: $wallet.settings.reminderOnDay)
-                Toggle("Udostępniaj nowe kaucje rodzinie", isOn: $wallet.settings.shareNewTicketsWithFamily)
-                    .disabled(wallet.family.familyWalletID == nil)
+                reminderLink(
+                    title: "Kaucje",
+                    symbol: "waterbottle.fill",
+                    tint: ParagonSettingsTint.deposit,
+                    days: $wallet.settings.depositReminderDays,
+                    footer: "Przypomnienia o końcu ważności kwitków z butelkomatu."
+                )
+                reminderLink(
+                    title: "Gwarancja",
+                    symbol: "checkmark.seal.fill",
+                    tint: ParagonSettingsTint.warranty,
+                    days: $wallet.settings.warrantyReminderDays,
+                    footer: "Elektronika, RTV i AGD zwykle mają 24 miesiące gwarancji."
+                )
+                reminderLink(
+                    title: "Zwrot",
+                    symbol: "arrow.uturn.left",
+                    tint: ParagonSettingsTint.returning,
+                    days: $wallet.settings.returnReminderDays,
+                    footer: "Ubrania, buty i rozrywka — zwykle 14 dni na zwrot."
+                )
             } header: {
-                Text("Kaucje")
+                Text("Przypomnienia")
             } footer: {
-                Text(wallet.family.familyWalletID == nil
-                     ? "Przypomnienia o końcu ważności kwitków z butelkomatu. Udostępnianie włączysz po zaproszeniu bliskich w dziale Rodzina."
-                     : "Przypomnienia o końcu ważności. Nowe kaucje idą do rodziny osobno od paragonów.")
+                Text("Każdy termin możesz dodać albo usunąć osobno — jak w Kalendarzu.")
             }
 
             Section {
-                Toggle("30 dni przed końcem gwarancji", isOn: $wallet.settings.warrantyReminder30)
-                Toggle("7 dni przed końcem gwarancji", isOn: $wallet.settings.warrantyReminder7)
-                Toggle("3 dni przed końcem zwrotu", isOn: $wallet.settings.returnReminder3)
-                Toggle("Udostępniaj nowe paragony rodzinie", isOn: $wallet.settings.shareNewReceiptsWithFamily)
-                    .disabled(wallet.family.familyWalletID == nil)
-            } header: {
-                Text("Paragony")
-            } footer: {
-                Text(wallet.family.familyWalletID == nil
-                     ? "Elektronika, RTV i AGD dostają 24 miesiące gwarancji. Ubrania, buty i rozrywka — 14 dni na zwrot."
-                     : "Gwarancja i zwroty. Nowe paragony idą do rodziny osobno od kaucji i kart.")
-            }
-
-            Section {
-                Toggle("Udostępniaj nowe karty lojalnościowe rodzinie", isOn: $wallet.settings.shareNewLoyaltyCardsWithFamily)
-                    .disabled(wallet.family.familyWalletID == nil)
-            } header: {
-                Text("Karty")
-            } footer: {
-                Text(wallet.family.familyWalletID == nil
-                     ? "Karty z Twoim Apple ID idą na iPhone’y i iPady przez iCloud. Ten przełącznik jest tylko dla innych osób w Rodzinie."
-                     : "Nowe karty idą do rodziny osobno od kaucji i paragonów.")
-            }
-
-            Section {
-                Toggle(lockToggleTitle, isOn: lockBinding)
-                    .disabled(lock.isAvailable == false)
+                Toggle(isOn: lockBinding) {
+                    settingsLabel(lockToggleTitle, symbol: lock.lockSymbol, tint: ParagonSettingsTint.lock)
+                }
+                .disabled(lock.isAvailable == false)
             } header: {
                 Text("Ochrona")
             } footer: {
                 Text("Po zablokowaniu ekranu \(Brand.displayName) pyta o \(lock.biometryTitle), zanim pokaże kaucje, paragony i karty.")
             }
 
-            Section("Kasa") {
-                Toggle("Maksymalna jasność przy kodzie", isOn: $wallet.settings.boostBrightness)
+            Section {
+                Toggle(isOn: $wallet.settings.boostBrightness) {
+                    settingsLabel("Maksymalna jasność przy kodzie", symbol: "sun.max.fill", tint: ParagonSettingsTint.brightness)
+                }
+            } header: {
+                Text("Kasa")
             }
 
-            Section("Skanowanie") {
-                Toggle("Po plusie od razu włącz aparat", isOn: $wallet.settings.scanOpensImmediately)
+            Section {
+                Toggle(isOn: $wallet.settings.scanOpensImmediately) {
+                    settingsLabel("Po plusie od razu włącz aparat", symbol: "viewfinder", tint: ParagonSettingsTint.scan)
+                }
+            } header: {
+                Text("Skanowanie")
             }
 
-            Section("Język") {
-                Picker("Język", selection: $wallet.settings.language) {
+            Section {
+                Picker(selection: $wallet.settings.language) {
                     ForEach(AppLanguage.allCases) { language in
                         Text(language.title).tag(language)
                     }
+                } label: {
+                    settingsLabel("Język", symbol: "globe", tint: ParagonSettingsTint.language)
                 }
             }
 
@@ -110,35 +103,60 @@ struct SettingsView: View {
             }
 
             Section {
-                Button("Oceń w App Store") {
+                Button {
                     ReviewGate.openWriteReview()
+                } label: {
+                    settingsLabel("Oceń w App Store", symbol: "star.fill", tint: ParagonSettingsTint.review)
                 }
+                .buttonStyle(ParagonPressStyle())
             } header: {
                 Text("Ocena")
             }
 
-            Section("Prywatność") {
-                Text("Zdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section(Brand.displayName) {
+            Section {
                 LabeledContent("Wersja", value: Self.versionLabel)
-                Text(Brand.slogan)
-                Text(Brand.disclaimer)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            } header: {
+                Text(Brand.displayName)
+            } footer: {
+                Text("\(Brand.slogan)\n\n\(Brand.disclaimer)\n\nZdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont.")
             }
         }
         .navigationTitle("Ustawienia")
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: wallet.settings.reminder7Days) { _, _ in refresh() }
-        .onChange(of: wallet.settings.reminder1Day) { _, _ in refresh() }
-        .onChange(of: wallet.settings.reminderOnDay) { _, _ in refresh() }
-        .onChange(of: wallet.settings.warrantyReminder30) { _, _ in refresh() }
-        .onChange(of: wallet.settings.warrantyReminder7) { _, _ in refresh() }
-        .onChange(of: wallet.settings.returnReminder3) { _, _ in refresh() }
+        .paragonHidesTabBar()
+        .onChange(of: wallet.settings.depositReminderDays) { _, _ in refresh() }
+        .onChange(of: wallet.settings.warrantyReminderDays) { _, _ in refresh() }
+        .onChange(of: wallet.settings.returnReminderDays) { _, _ in refresh() }
+    }
+
+    private func reminderLink(
+        title: String,
+        symbol: String,
+        tint: Color,
+        days: Binding<[Int]>,
+        footer: String
+    ) -> some View {
+        NavigationLink {
+            ReminderDaysEditor(title: title, footer: footer, days: days)
+        } label: {
+            HStack(spacing: 12) {
+                ParagonSettingsGlyph(systemName: symbol, background: tint)
+                Text(title)
+                Spacer()
+                Text(NotificationSettings.summary(for: days.wrappedValue))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+        }
+    }
+
+    private func settingsLabel(_ title: String, symbol: String, tint: Color) -> some View {
+        HStack(spacing: 12) {
+            ParagonSettingsGlyph(systemName: symbol, background: tint)
+            Text(title)
+        }
     }
 
     private var lockToggleTitle: String {
@@ -169,7 +187,7 @@ struct SettingsView: View {
     }
 
     private func refresh() {
-        Task { await wallet.refreshNotifications(tickets: tickets, receipts: receipts) }
+        wallet.scheduleRefreshNotifications()
     }
 
     private static var versionLabel: String {
@@ -178,3 +196,118 @@ struct SettingsView: View {
         return "\(version) (\(build))"
     }
 }
+
+private struct ReminderDaysEditor: View {
+    var title: String
+    var footer: String
+    @Binding var days: [Int]
+    @State private var adding = false
+
+    private var normalized: [Int] {
+        NotificationSettings.normalized(days)
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                if normalized.isEmpty {
+                    Text("Brak przypomnień")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(normalized, id: \.self) { day in
+                        Text(NotificationSettings.label(for: day))
+                    }
+                    .onDelete { offsets in
+                        var next = normalized
+                        next.remove(atOffsets: offsets)
+                        days = NotificationSettings.normalized(next)
+                    }
+                }
+                if normalized.count < NotificationSettings.maxPerKind {
+                    Button {
+                        adding = true
+                    } label: {
+                        Label("Dodaj przypomnienie", systemImage: "plus")
+                    }
+                }
+            } footer: {
+                Text(footer)
+            }
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $adding) {
+            ReminderOffsetPicker(title: title, existing: normalized) { day in
+                var next = days
+                next.append(day)
+                days = NotificationSettings.normalized(next)
+            }
+        }
+    }
+}
+
+private struct ReminderOffsetPicker: View {
+    var title: String
+    var existing: [Int]
+    var onPick: (Int) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var available: [Int] {
+        NotificationSettings.presets.filter { existing.contains($0) == false }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(available, id: \.self) { day in
+                    Button {
+                        onPick(day)
+                        dismiss()
+                    } label: {
+                        Text(NotificationSettings.label(for: day))
+                            .foregroundStyle(.primary)
+                    }
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Anuluj") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents(available.count > 6 ? [.medium, .large] : [.medium])
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

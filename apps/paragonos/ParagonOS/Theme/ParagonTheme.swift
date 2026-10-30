@@ -44,12 +44,142 @@ enum ParagonTheme {
     static let warranty = Color(red: 0.22, green: 0.42, blue: 0.78)
     static let returning = Color(red: 0.78, green: 0.30, blue: 0.38)
 
+    static let passCorner: CGFloat = 22
+    static let stampCorner: CGFloat = 12
+    static let springResponse: Double = 0.36
+    static let springDamping: Double = 0.88
+    static let pressScale: CGFloat = 0.985
+    static let overlayMaterial: Material = .ultraThinMaterial
+
+    static var snappy: Animation {
+        UIAccessibility.isReduceMotionEnabled
+            ? .easeOut(duration: 0.12)
+            : .spring(response: springResponse, dampingFraction: springDamping)
+    }
+
+    static var pressAnimation: Animation {
+        .easeOut(duration: 0.10)
+    }
+
+    static func passShadow(_ shape: some View) -> some View {
+        shape.shadow(color: Color.black.opacity(0.18), radius: 12, y: 6)
+    }
+
+    static func passHairline<S: InsettableShape>(_ shape: S) -> some View {
+        shape.strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+    }
+
     static func statusColor(_ status: TicketLifecycleStatus) -> Color {
         switch status {
         case .active: return osGreen
         case .redeemed: return .secondary
         case .expired: return .red
         }
+    }
+}
+
+struct ParagonPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && UIAccessibility.isReduceMotionEnabled == false ? ParagonTheme.pressScale : 1)
+            .animation(ParagonTheme.pressAnimation, value: configuration.isPressed)
+    }
+}
+
+/// iOS Settings glyph: 29 pt rounded square, white symbol.
+struct ParagonSettingsGlyph: View {
+    var systemName: String
+    var background: Color
+
+    var body: some View {
+        Image(systemName: systemName)
+            .font(.footnote.weight(.bold))
+            .foregroundStyle(.white)
+            .frame(width: 29, height: 29)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(background)
+            )
+            .accessibilityHidden(true)
+    }
+}
+
+enum ParagonSettingsTint {
+    static let deposit = Color(red: 0.20, green: 0.68, blue: 0.32)
+    static let receipt = Color(red: 0.22, green: 0.42, blue: 0.78)
+    static let loyalty = Color(red: 0.18, green: 0.40, blue: 0.86)
+    static let warranty = Color(red: 0.22, green: 0.42, blue: 0.78)
+    static let returning = Color(red: 0.78, green: 0.30, blue: 0.38)
+    static let lock = Color(red: 0.18, green: 0.62, blue: 0.62)
+    static let brightness = Color(red: 0.96, green: 0.62, blue: 0.14)
+    static let scan = Color(red: 0.35, green: 0.34, blue: 0.84)
+    static let language = Color(red: 0.35, green: 0.56, blue: 0.96)
+    static let review = Color(red: 0.96, green: 0.72, blue: 0.12)
+}
+
+enum ParagonContactColor {
+    static let palette: [Color] = [
+        Color(red: 0.35, green: 0.56, blue: 0.96),
+        Color(red: 0.42, green: 0.45, blue: 0.91),
+        Color(red: 0.61, green: 0.43, blue: 0.85),
+        Color(red: 0.90, green: 0.37, blue: 0.45),
+        Color(red: 0.91, green: 0.52, blue: 0.22),
+        Color(red: 0.22, green: 0.66, blue: 0.52),
+        Color(red: 0.28, green: 0.62, blue: 0.38)
+    ]
+
+    static func color(for name: String) -> Color {
+        let sum = name.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
+        return palette[abs(sum) % palette.count]
+    }
+}
+
+struct ParagonSummaryCard<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        content
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                    .fill(Color(.secondarySystemGroupedBackground))
+                    .overlay {
+                        ParagonTheme.passHairline(
+                            RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                        )
+                    }
+            }
+    }
+}
+
+struct ParagonHairlineRowBackground: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+            .fill(Color(.secondarySystemGroupedBackground))
+            .overlay {
+                ParagonTheme.passHairline(
+                    RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                )
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+    }
+}
+
+extension View {
+    func paragonHairlineRow() -> some View {
+        listRowBackground(ParagonHairlineRowBackground())
+    }
+
+    /// Extra air under floating Liquid Glass tab bar so rows never draw through it.
+    func paragonTabClearance() -> some View {
+        contentMargins(.bottom, 96, for: .scrollContent)
+    }
+
+    /// Apple Wallet: a pass/detail is full-screen, no tab chrome.
+    func paragonHidesTabBar() -> some View {
+        toolbar(.hidden, for: .tabBar)
     }
 }
 
@@ -112,6 +242,20 @@ enum PolishDates {
         if days == 0 { return "dzisiaj" }
         if days == 1 { return "jutro" }
         return "za \(days) dni"
+    }
+
+    /// Last-sync copy. `Date.FormatStyle.relative` prints English "47 min. ago" even on a Polish iPhone.
+    static func relativePast(_ date: Date, now: Date = .now) -> String {
+        let seconds = now.timeIntervalSince(date)
+        if seconds < 45 {
+            return String(localized: "przed chwilą")
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = AppLocale.current
+        formatter.unitsStyle = .full
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.calendar.locale = AppLocale.current
+        return formatter.localizedString(for: date, relativeTo: now)
     }
 
     static func monthTitle(_ date: Date) -> String {

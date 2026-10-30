@@ -13,7 +13,7 @@ struct CoffeeTipSheet: View {
             .padding(24)
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
-            .presentationBackground(.ultraThinMaterial)
+            .presentationBackground(ParagonTheme.overlayMaterial)
             .presentationCornerRadius(32)
             .task {
                 CoffeeSounds.pour()
@@ -21,7 +21,7 @@ struct CoffeeTipSheet: View {
                 if reduceMotion {
                     appeared = true
                 } else {
-                    withAnimation(.spring(response: 0.58, dampingFraction: 0.84)) {
+                    withAnimation(ParagonTheme.snappy) {
                         appeared = true
                     }
                 }
@@ -48,12 +48,12 @@ struct CoffeeTipSheet: View {
             .offset(y: appeared ? 0 : 16)
             .scaleEffect(appeared ? 1 : 0.96)
 
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 8) {
                 ForEach(Array(CoffeeSize.allCases.enumerated()), id: \.element.id) { index, size in
                     Button {
                         Task { await choose(size) }
                     } label: {
-                        VStack(spacing: 8) {
+                        VStack(spacing: 6) {
                             CoffeeCupView(
                                 size: size,
                                 selected: store.selected == size,
@@ -66,16 +66,16 @@ struct CoffeeTipSheet: View {
                                 .foregroundStyle(store.selected == size ? .secondary : .tertiary)
                                 .minimumScaleFactor(0.75)
                                 .lineLimit(1)
-                                .opacity(store.selected == size ? 1 : 0.55)
+                                .opacity(store.selected == size ? 1 : 0.7)
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ParagonPressStyle())
                     .disabled(store.isPurchasing)
                     .opacity(appeared ? 1 : 0)
                     .offset(y: appeared ? 0 : 22)
                     .animation(
-                        reduceMotion ? nil : .spring(response: 0.58, dampingFraction: 0.84).delay(Double(index) * 0.05),
+                        reduceMotion ? nil : ParagonTheme.snappy.delay(Double(index) * 0.05),
                         value: appeared
                     )
                     .accessibilityLabel(Text(LocalizedStringKey(size.title)))
@@ -132,9 +132,10 @@ struct CoffeeTipSettingsRow: View {
                     selected: true,
                     drinking: false,
                     reduceMotion: reduceMotion,
-                    compact: true
+                    compact: true,
+                    showsCaption: false
                 )
-                .frame(width: 72, height: 80)
+                .frame(width: 68, height: 68)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Może kawa? Nic nie musisz.")
                         .font(.body.weight(.semibold))
@@ -142,14 +143,15 @@ struct CoffeeTipSettingsRow: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 ForEach(CoffeeSize.allCases) { size in
                     Button {
                         Task { await choose(size) }
                     } label: {
-                        VStack(spacing: 2) {
+                        VStack(spacing: 6) {
                             CoffeeCupView(
                                 size: size,
                                 selected: store.selected == size,
@@ -157,14 +159,15 @@ struct CoffeeTipSettingsRow: View {
                                 reduceMotion: reduceMotion,
                                 compact: true
                             )
-                            .frame(height: 86)
                             Text(store.price(for: size))
                                 .font(.caption2.weight(.semibold).monospacedDigit())
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ParagonPressStyle())
                     .disabled(store.isPurchasing)
                     .accessibilityLabel(Text(LocalizedStringKey(size.title)))
                     .accessibilityValue(store.price(for: size))
@@ -177,6 +180,18 @@ struct CoffeeTipSettingsRow: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .padding(16)
+        .background {
+            RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .overlay {
+                    ParagonTheme.passHairline(
+                        RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                    )
+                }
+        }
+        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+        .listRowBackground(Color.clear)
         .task { await store.load() }
     }
 

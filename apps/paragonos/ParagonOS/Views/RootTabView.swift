@@ -7,14 +7,16 @@ struct RootTabView: View {
     @EnvironmentObject private var lock: BiometricLock
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) private var scenePhase
-    @Query(sort: \Ticket.createdAt, order: .reverse) private var tickets: [Ticket]
-    @Query(sort: \Receipt.issuedAt, order: .reverse) private var receipts: [Receipt]
-    @Query(sort: \LoyaltyCard.createdAt, order: .reverse) private var cards: [LoyaltyCard]
     @State private var tab: AppTab = .wallet
     @ObservedObject private var coffeeTips = CoffeeTipStore.shared
 
     var body: some View {
         tabs
+            .overlay(alignment: .top) {
+                ParagonSyncIsland {
+                    wallet.requestCloudSync()
+                }
+            }
             .sheet(isPresented: $wallet.showScanner) {
                 scannerFlow
             }
@@ -43,14 +45,16 @@ struct RootTabView: View {
                     .environmentObject(wallet)
             }
             .task {
-                await wallet.bootstrap(context: context, tickets: tickets, receipts: receipts, cards: cards)
-                if wallet.showOnboarding == false {
+                await wallet.bootstrap(context: context)
+                if wallet.showOnboarding == false, ParagonUIDemo.isEnabled == false {
                     try? Tips.configure()
                 }
             }
             .modifier(RootTabAlerts())
             .onChange(of: wallet.showOnboarding, handleOnboarding)
-            .onChange(of: notificationFingerprint, handleNotifications)
+            .onChange(of: wallet.settings.notificationSettings) { _, _ in
+                wallet.scheduleRefreshNotifications()
+            }
             .onChange(of: wallet.pendingTicketID, handlePendingTicket)
             .onChange(of: wallet.pendingReceiptID) { _, _ in openPendingReceipt() }
             .onChange(of: wallet.pendingLoyaltyID) { _, _ in openPendingCard() }
@@ -82,6 +86,7 @@ struct RootTabView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     wallet.consumePendingLaunch()
+                    wallet.scheduleRefreshNotifications()
                     Task { await wallet.refreshFamilyFromCloud() }
                 }
             }
@@ -117,6 +122,8 @@ struct RootTabView: View {
                 }
             }
         }
+        // Revolut / Liquid Glass: shrink on scroll-up, expand after a short scroll-down.
+        .modifier(TabBarScrollMinimize())
     }
 
     @ViewBuilder
@@ -125,11 +132,7 @@ struct RootTabView: View {
         case .settings:
             SettingsView()
         case .ticket(let id):
-            if let ticket = tickets.first(where: { $0.id == id }) {
-                TicketDetailView(ticket: ticket)
-            } else {
-                ContentUnavailableView("Nie ma już tego kwitka", systemImage: "ticket")
-            }
+            TicketByIDView(id: id)
         case .bottleMap:
             BottleReturnMapView()
         }
@@ -141,17 +144,9 @@ struct RootTabView: View {
         case .settings:
             SettingsView()
         case .receipt(let id):
-            if let receipt = receipts.first(where: { $0.id == id }) {
-                ReceiptDetailView(receipt: receipt)
-            } else {
-                ContentUnavailableView("Nie ma już tego paragonu", systemImage: "doc.text")
-            }
+            ReceiptByIDView(id: id)
         case .merchant(let key):
-            if let group = ReceiptMerchantGroup.allTime(from: receipts).first(where: { $0.merchantKey == key }) {
-                ReceiptMerchantDetailView(group: group)
-            } else {
-                ContentUnavailableView("Nie ma już tego sklepu", systemImage: "storefront")
-            }
+            ReceiptMerchantByKeyView(key: key)
         }
     }
 
@@ -166,30 +161,10 @@ struct RootTabView: View {
         wallet.considerQuietPrompts(blocked: blocked)
     }
 
-    private var notificationFingerprint: String {
-        let ticketIDs = tickets.map(\.id.uuidString).joined()
-        let receiptIDs = receipts.map(\.id.uuidString).joined()
-        let settings = wallet.settings
-        return [
-            ticketIDs,
-            receiptIDs,
-            settings.reminder7Days,
-            settings.reminder1Day,
-            settings.reminderOnDay,
-            settings.warrantyReminder30,
-            settings.warrantyReminder7,
-            settings.returnReminder3
-        ].map(String.init(describing:)).joined(separator: "|")
-    }
-
     private func handleOnboarding(_ old: Bool, _ showing: Bool) {
         if showing == false {
             try? Tips.configure()
         }
-    }
-
-    private func handleNotifications(_ old: String, _ new: String) {
-        Task { await wallet.refreshNotifications(tickets: tickets, receipts: receipts) }
     }
 
     private func handlePendingTicket(_ old: UUID?, _ id: UUID?) {
@@ -297,4 +272,66 @@ enum AppTab: Hashable {
     case cards
     case history
     case family
+}
+
+private struct TicketByIDView: View {
+    let id: UUID
+    @Query private var tickets: [Ticket]
+
+    init(id: UUID) {
+        self.id = id
+        let identifier = id
+        _tickets = Query(filter: #Predicate<Ticket> { $0.id == identifier })
+    }
+
+    var body: some View {
+        if let ticket = tickets.first {
+            TicketDetailView(ticket: ticket)
+        } else {
+            ContentUnavailableView("Nie ma już tego kwitka", systemImage: "ticket")
+        }
+    }
+}
+
+private struct ReceiptByIDView: View {
+    let id: UUID
+    @Query private var receipts: [Receipt]
+
+    init(id: UUID) {
+        self.id = id
+        let identifier = id
+        _receipts = Query(filter: #Predicate<Receipt> { $0.id == identifier })
+    }
+
+    var body: some View {
+        if let receipt = receipts.first {
+            ReceiptDetailView(receipt: receipt)
+        } else {
+            ContentUnavailableView("Nie ma już tego paragonu", systemImage: "doc.text")
+        }
+    }
+}
+
+private struct ReceiptMerchantByKeyView: View {
+    let key: String
+    @Query(sort: \Receipt.issuedAt, order: .reverse) private var receipts: [Receipt]
+
+    var body: some View {
+        if let group = ReceiptMerchantGroup.allTime(from: receipts).first(where: { $0.merchantKey == key }) {
+            ReceiptMerchantDetailView(group: group)
+        } else {
+            ContentUnavailableView("Nie ma już tego sklepu", systemImage: "storefront")
+        }
+    }
+}
+
+/// Native Liquid Glass tab minimize (iOS 26+): shrink while scrolling content up, expand on scroll down.
+private struct TabBarScrollMinimize: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
+        }
+    }
 }

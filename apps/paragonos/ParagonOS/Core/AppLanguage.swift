@@ -50,4 +50,22 @@ enum AppLocale {
     static func apply(_ language: AppLanguage) {
         override = language == .system ? nil : language.locale
     }
+
+    static func string(_ key: String) -> String {
+        let lang: String
+        let id = current.identifier.lowercased()
+        if id.hasPrefix("uk") {
+            lang = "uk"
+        } else if id.hasPrefix("en") {
+            lang = "en"
+        } else {
+            lang = "pl"
+        }
+        if let path = Bundle.main.path(forResource: lang, ofType: "lproj"),
+           let bundle = Bundle(path: path) {
+            let value = bundle.localizedString(forKey: key, value: key, table: nil)
+            if value.isEmpty == false { return value }
+        }
+        return key
+    }
 }

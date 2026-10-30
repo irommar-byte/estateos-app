@@ -15,7 +15,8 @@ actor BottleReturnStore {
     }
 
     func osmSupplement(in region: MKRegionBox, brandID: String?) async -> [BottleReturnPoint] {
-        guard region.showsIndividualPins else { return [] }
+        // Skip OSM when fully clustered (local pack is enough at country scale).
+        guard region.pinDensity != .cluster else { return [] }
         let osm = await osmPoints(in: region.padded)
         return filtered(osm, in: region.padded, brandID: brandID)
     }
@@ -71,7 +72,7 @@ actor BottleReturnStore {
     }
 
     private func osmPoints(in region: MKRegionBox) async -> [BottleReturnPoint] {
-        guard region.showsIndividualPins else { return [] }
+        guard region.pinDensity != .cluster else { return [] }
         let cell = region.cellKey
         if let cached = osmByCell[cell] { return cached }
         if let failed = osmFailedAt[cell], Date().timeIntervalSince(failed) < 20 {
@@ -267,8 +268,12 @@ struct MKRegionBox: Equatable {
         )
     }
 
-    var showsIndividualPins: Bool {
-        latitudeDelta < 1.2 && longitudeDelta < 1.6
+    /// Zoom ladder for Apple-like density (never hide everything).
+    var pinDensity: BottlePinDensity {
+        let span = max(latitudeDelta, longitudeDelta)
+        if span >= 2.2 { return .cluster }
+        if span >= 0.16 { return .thin }
+        return .all
     }
 
     var cellKey: String {
@@ -283,5 +288,81 @@ struct MKRegionBox: Equatable {
             && lhs.center.longitude == rhs.center.longitude
             && lhs.latitudeDelta == rhs.latitudeDelta
             && lhs.longitudeDelta == rhs.longitudeDelta
+    }
+}
+
+enum BottlePinDensity: Equatable {
+    case cluster
+    case thin
+    case all
+}
+
+/// Map markers: singles or clusters — always something on screen, denser when zoomed in.
+enum BottleMapMarker: Identifiable, Hashable {
+    case pin(BottleReturnPoint)
+    case cluster(id: String, latitude: Double, longitude: Double, count: Int, brandID: String?)
+
+    var id: String {
+        switch self {
+        case .pin(let point): return "pin-\(point.id)"
+        case .cluster(let id, _, _, _, _): return "cluster-\(id)"
+        }
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        switch self {
+        case .pin(let point): return point.coordinate
+        case .cluster(_, let lat, let lon, _, _): return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        }
+    }
+}
+
+enum BottleMapLayout {
+    static func markers(from points: [BottleReturnPoint], in box: MKRegionBox) -> [BottleMapMarker] {
+        switch box.pinDensity {
+        case .all:
+            return points.map { .pin($0) }
+        case .thin:
+            return thin(points, minMeters: max(220, box.latitudeDelta * 75_000))
+        case .cluster:
+            return cluster(points, divisions: 7)
+        }
+    }
+
+    private static func thin(_ points: [BottleReturnPoint], minMeters: CLLocationDistance) -> [BottleMapMarker] {
+        var kept: [BottleReturnPoint] = []
+        for point in points.sorted(by: { $0.kind == .machine && $1.kind != .machine }) {
+            if kept.contains(where: { $0.location.distance(from: point.location) < minMeters }) {
+                continue
+            }
+            kept.append(point)
+        }
+        return kept.map { .pin($0) }
+    }
+
+    private static func cluster(_ points: [BottleReturnPoint], divisions: Int) -> [BottleMapMarker] {
+        guard points.isEmpty == false else { return [] }
+        let lats = points.map(\.latitude)
+        let lons = points.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max()
+        else { return [] }
+        let latSpan = max(0.0001, maxLat - minLat)
+        let lonSpan = max(0.0001, maxLon - minLon)
+        var buckets: [String: [BottleReturnPoint]] = [:]
+        for point in points {
+            let row = Int(((point.latitude - minLat) / latSpan) * Double(divisions))
+            let col = Int(((point.longitude - minLon) / lonSpan) * Double(divisions))
+            buckets["\(min(row, divisions))-\(min(col, divisions))", default: []].append(point)
+        }
+        return buckets.compactMap { key, group in
+            guard let first = group.first else { return nil }
+            if group.count == 1 { return .pin(first) }
+            let lat = group.map(\.latitude).reduce(0, +) / Double(group.count)
+            let lon = group.map(\.longitude).reduce(0, +) / Double(group.count)
+            let brandCounts = Dictionary(grouping: group, by: \.brandID).mapValues(\.count)
+            let dominant = brandCounts.max(by: { $0.value < $1.value })?.key
+            return .cluster(id: key, latitude: lat, longitude: lon, count: group.count, brandID: dominant)
+        }
     }
 }

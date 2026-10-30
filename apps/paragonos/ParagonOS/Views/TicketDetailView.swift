@@ -49,7 +49,7 @@ struct TicketDetailView: View {
                 TextField("Np. który automat, która kasa…", text: $ticket.note, axis: .vertical)
                     .lineLimit(2...4)
                     .onChange(of: ticket.note) { _, _ in
-                        try? wallet.persistTicket(ticket, context: context)
+                        wallet.schedulePersistTicket(ticket, context: context)
                     }
             }
 
@@ -85,20 +85,16 @@ struct TicketDetailView: View {
             }
 
             if wallet.family.familyWalletID != nil {
-                Section("Rodzina") {
-                    if ticket.familyWalletID == nil {
-                        Button {
-                            Task { await wallet.shareTicketWithFamily(ticket, context: context) }
-                        } label: {
-                            Label("Udostępnij rodzinie", systemImage: "person.2")
-                        }
-                    } else {
-                        Label("Udostępniony rodzinie", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(ParagonTheme.osGreen)
-                        Button("Przestań udostępniać", role: .destructive) {
-                            Task { await wallet.stopSharingTicket(ticket, context: context) }
-                        }
-                    }
+                Section {
+                    FamilyShareControl(
+                        isShared: ticket.familyWalletID != nil,
+                        onShare: { Task { await wallet.shareTicketWithFamily(ticket, context: context) } },
+                        onStop: { Task { await wallet.stopSharingTicket(ticket, context: context) } }
+                    )
+                } header: {
+                    Text("Rodzina")
+                } footer: {
+                    Text("Bliscy widzą kod i kwotę. Zdjęcie zostaje na tym iPhonie.")
                 }
             }
 
@@ -112,6 +108,8 @@ struct TicketDetailView: View {
         }
         .navigationTitle(policy.name)
         .navigationBarTitleDisplayMode(.inline)
+        .paragonHidesTabBar()
+        .paragonTabClearance()
         .fullScreenCover(isPresented: $showCheckout) {
             CheckoutCodeView(ticket: ticket)
                 .environmentObject(wallet)

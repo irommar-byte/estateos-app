@@ -40,7 +40,8 @@ final class QuietPromptTests: XCTestCase {
     func testHighStarsWouldRequestReviewAndLowWouldNot() {
         XCTAssertTrue((4...5).contains(5))
         XCTAssertFalse((4...5).contains(2))
-        XCTAssertEqual(ReviewGate.writeReviewURL.scheme, "itms-apps")
+        XCTAssertEqual(ReviewGate.writeReviewURL.host, "apps.apple.com")
+        XCTAssertTrue(ReviewGate.writeReviewURL.absoluteString.contains("id6811380010"))
     }
 
     func testCoffeeCooldownAndThreeRefusals() {

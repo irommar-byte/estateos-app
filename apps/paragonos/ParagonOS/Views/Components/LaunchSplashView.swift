@@ -18,6 +18,7 @@ struct LaunchSplashView: View {
     @State private var openPortal = false
     @State private var fadeOut = false
     @State private var bits: [ScatterBit] = []
+    @State private var splashTask: Task<Void, Never>?
 
     var body: some View {
         if style == .none {
@@ -38,6 +39,31 @@ struct LaunchSplashView: View {
                     endRadius: max(geo.size.width, geo.size.height)
                 )
                 .ignoresSafeArea()
+                if #available(iOS 18.0, *) {
+                    MeshGradient(
+                        width: 3,
+                        height: 3,
+                        points: [
+                            .init(0, 0), .init(0.5, 0), .init(1, 0),
+                            .init(0, 0.5), .init(0.52, 0.48), .init(1, 0.5),
+                            .init(0, 1), .init(0.5, 1), .init(1, 1)
+                        ],
+                        colors: [
+                            Color(red: 0.05, green: 0.18, blue: 0.07),
+                            Color(red: 0.04, green: 0.12, blue: 0.05),
+                            Color.black,
+                            Color(red: 0.08, green: 0.24, blue: 0.08),
+                            Color(red: 0.12, green: 0.32, blue: 0.10),
+                            Color.black,
+                            Color.black,
+                            Color(red: 0.03, green: 0.10, blue: 0.04),
+                            Color.black
+                        ]
+                    )
+                    .opacity(0.72)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                }
 
                 ForEach(bits) { bit in
                     ScatterGlyph(bit: bit)
@@ -73,7 +99,11 @@ struct LaunchSplashView: View {
             }
             .onAppear {
                 bits = ScatterBit.make(in: geo.size)
-                run()
+                splashTask = Task { await run() }
+            }
+            .onDisappear {
+                splashTask?.cancel()
+                splashTask = nil
             }
         }
         .ignoresSafeArea()
@@ -82,7 +112,7 @@ struct LaunchSplashView: View {
         }
     }
 
-    private func run() {
+    private func run() async {
         if style == .none {
             onFinished()
             return
@@ -90,14 +120,14 @@ struct LaunchSplashView: View {
         if style == .brief || UIAccessibility.isReduceMotionEnabled {
             showWordmark = true
             spin = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    fadeOut = true
-                }
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard Task.isCancelled == false else { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                fadeOut = true
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
-                onFinished()
-            }
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard Task.isCancelled == false else { return }
+            onFinished()
             return
         }
         LaunchSounds.prepare()
@@ -108,30 +138,30 @@ struct LaunchSplashView: View {
         withAnimation(.spring(duration: 0.68, bounce: 0.18).delay(0.18)) {
             showWordmark = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.spring(duration: 1.18, bounce: 0.34)) {
-                burst = true
-            }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        guard Task.isCancelled == false else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(duration: 1.18, bounce: 0.34)) {
+            burst = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.88) {
-            LaunchSounds.cashRegister()
-            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-            }
-            withAnimation(.easeIn(duration: 0.62)) {
-                openPortal = true
-            }
+        try? await Task.sleep(nanoseconds: 1_380_000_000)
+        guard Task.isCancelled == false else { return }
+        LaunchSounds.cashRegister()
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        try? await Task.sleep(nanoseconds: 120_000_000)
+        guard Task.isCancelled == false else { return }
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+        withAnimation(.easeIn(duration: 0.62)) {
+            openPortal = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.48) {
-            withAnimation(.easeOut(duration: 0.22)) {
-                fadeOut = true
-            }
+        try? await Task.sleep(nanoseconds: 480_000_000)
+        guard Task.isCancelled == false else { return }
+        withAnimation(.easeOut(duration: 0.22)) {
+            fadeOut = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.7) {
-            onFinished()
-        }
+        try? await Task.sleep(nanoseconds: 220_000_000)
+        guard Task.isCancelled == false else { return }
+        onFinished()
     }
 }
 
@@ -158,24 +188,63 @@ private struct RecyclingMark: View {
     var pulsing: Bool
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: spinning == false)) { timeline in
+        TimelineView(.animation(minimumInterval: 1 / 24, paused: spinning == false && pulsing == false)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
             let turn = spinning
-                ? timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.4) / 2.4
+                ? t.truncatingRemainder(dividingBy: 2.4) / 2.4
                 : 0
+            let pulse = spinning || pulsing == false
+                ? 1
+                : 1 + 0.045 * sin(t * 2.4)
             ZStack {
                 Circle()
                     .fill(ParagonTheme.osGreen.opacity(0.12))
                 Circle()
-                    .stroke(ParagonTheme.osGreen.opacity(0.28), lineWidth: 9)
-                Image(systemName: "arrow.3.trianglehead.clockwise")
-                    .font(.system(size: 58, weight: .semibold))
-                    .foregroundStyle(ParagonTheme.osGreen)
-                    .symbolRenderingMode(.hierarchical)
-                    .rotationEffect(.degrees(turn * 360))
-                    .scaleEffect(pulsing ? 1.06 : 0.94)
+                    .stroke(ParagonTheme.osGreen.opacity(0.28), lineWidth: 8)
+                RecyclingArrows()
+                    .stroke(ParagonTheme.osGreen, style: StrokeStyle(lineWidth: 5.2, lineCap: .round, lineJoin: .round))
+                    .padding(22)
+                    .rotationEffect(.degrees(spinning ? turn * 360 : 0))
+                    .scaleEffect(pulse)
             }
         }
-        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulsing)
+    }
+}
+
+private struct RecyclingArrows: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) * 0.42
+        for index in 0..<3 {
+            let start = Double(index) * 120.0
+            let end = start + 78
+            let startRad = (start - 90) * .pi / 180
+            path.move(
+                to: CGPoint(
+                    x: center.x + cos(startRad) * radius,
+                    y: center.y + sin(startRad) * radius
+                )
+            )
+            path.addArc(
+                center: center,
+                radius: radius,
+                startAngle: .degrees(start - 90),
+                endAngle: .degrees(end - 90),
+                clockwise: false
+            )
+            let heading = (end - 90) * .pi / 180
+            let tip = CGPoint(
+                x: center.x + cos(heading) * radius,
+                y: center.y + sin(heading) * radius
+            )
+            let left = heading + .pi * 0.78
+            let right = heading - .pi * 0.78
+            path.move(to: CGPoint(x: tip.x + cos(left) * 7, y: tip.y + sin(left) * 7))
+            path.addLine(to: tip)
+            path.addLine(to: CGPoint(x: tip.x + cos(right) * 7, y: tip.y + sin(right) * 7))
+        }
+        return path
     }
 }
 

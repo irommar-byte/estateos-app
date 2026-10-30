@@ -88,15 +88,25 @@ struct ReceiptsHomeView: View {
     var body: some View {
         Group {
             if receipts.isEmpty && query.isEmpty && focus == .all {
-                ContentUnavailableView {
-                    Label("Brak paragonów", systemImage: "doc.text.viewfinder")
-                } description: {
-                    Text("Zeskanuj paragon lub fakturę — \(Brand.displayName) rozpozna sklep, kwotę, NIP i kategorię.")
-                } actions: {
-                    Button("Skanuj paragon") { wallet.openScanner(for: .receipt) }
-                        .buttonStyle(.borderedProminent)
-                        .popoverTip(FirstScanTip.receipt)
+                ScrollView {
+                    VStack(spacing: 20) {
+                        ContentUnavailableView {
+                            Label("Brak paragonów", systemImage: "doc.text.viewfinder")
+                        } description: {
+                            Text("Zeskanuj paragon lub fakturę — \(Brand.displayName) rozpozna sklep, kwotę, NIP i kategorię.")
+                        } actions: {
+                            Button("Skanuj paragon") { wallet.openScanner(for: .receipt) }
+                                .buttonStyle(.borderedProminent)
+                        }
+                        ParagonTipCard(tip: FirstScanTip.receipt)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 28)
                 }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.hidden)
+                .paragonTabClearance()
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
@@ -145,6 +155,7 @@ struct ReceiptsHomeView: View {
                 .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)
                 .scrollBounceBehavior(.basedOnSize)
+                .paragonTabClearance()
             }
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
@@ -198,7 +209,7 @@ struct ReceiptsHomeView: View {
                         } label: {
                             ReceiptMerchantChip(group: group)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ParagonPressStyle())
                     }
                 }
                 .padding(.horizontal, 2)
@@ -264,10 +275,15 @@ struct ReceiptsHomeView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+        .background {
+            RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
-        )
+                .overlay {
+                    ParagonTheme.passHairline(
+                        RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                    )
+                }
+        }
     }
 
     private var warrantyBadgeSubtitle: String {
@@ -363,7 +379,7 @@ struct ReceiptsHomeView: View {
                     .fill(selected ? color : color.opacity(0.12))
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ParagonPressStyle())
         .accessibilityLabel("\(title), \(count)")
         .accessibilityAddTraits(.isButton)
     }

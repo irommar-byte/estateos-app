@@ -4,12 +4,6 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>pl</string>
-	<key>CFBundleLocalizations</key>
-	<array>
-		<string>pl</string>
-		<string>en</string>
-		<string>uk</string>
-	</array>
 	<key>CFBundleDisplayName</key>
 	<string>ParagonOS™</string>
 	<key>CFBundleExecutable</key>
@@ -18,6 +12,12 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>pl</string>
+		<string>en</string>
+		<string>uk</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>ParagonOS</string>
 	<key>CFBundlePackageType</key>
@@ -38,69 +38,73 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>12</string>
+	<string>29</string>
+	<key>CKSharingSupported</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.finance</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ParagonOS™ używa kamery, żeby zeskanować kwitek z butelkomatu, paragon albo kartę lojalnościową.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>ParagonOS™ używa Face ID, żeby chronić kaucje, paragony i karty na tym iPhonie.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>ParagonOS™ używa lokalizacji, żeby pokazać butelkomaty i sklepy z kaucją w pobliżu. Położenie zostaje na tym iPhonie.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ParagonOS™ wczytuje zdjęcie kwitka, paragonu albo karty z galerii, gdy skaner na żywo jest niedostępny.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>ParagonOS™ przypomina o końcu ważności kaucji, gwarancji i terminie zwrotu.</string>
 	<key>UIApplicationShortcutItems</key>
 	<array>
 		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>scan.deposit</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Skanuj kwitek</string>
-			<key>UIApplicationShortcutItemSubtitle</key>
-			<string>Po butelkomacie</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
 			<string>waterbottle.fill</string>
+			<key>UIApplicationShortcutItemSubtitle</key>
+			<string>Po butelkomacie</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Skanuj kwitek</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>scan.deposit</string>
 		</dict>
 		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>scan.receipt</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Skanuj paragon</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
 			<string>doc.text.viewfinder</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Skanuj paragon</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>scan.receipt</string>
 		</dict>
 		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>scan.loyalty</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Skanuj kartę</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
 			<string>creditcard.viewfinder</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Skanuj kartę</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>scan.loyalty</string>
 		</dict>
 		<dict>
-			<key>UIApplicationShortcutItemType</key>
-			<string>map</string>
-			<key>UIApplicationShortcutItemTitle</key>
-			<string>Butelkomaty</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
 			<string>map.fill</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Butelkomaty</string>
+			<key>UIApplicationShortcutItemType</key>
+			<string>map</string>
 		</dict>
 	</array>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.finance</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>NSFaceIDUsageDescription</key>
-	<string>ParagonOS™ używa Face ID, żeby chronić kaucje, paragony i karty na tym iPhonie.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>ParagonOS™ używa kamery, żeby zeskanować kwitek z butelkomatu, paragon albo kartę lojalnościową.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>ParagonOS™ wczytuje zdjęcie kwitka, paragonu albo karty z galerii, gdy skaner na żywo jest niedostępny.</string>
-	<key>NSUserNotificationsUsageDescription</key>
-	<string>ParagonOS™ przypomina o końcu ważności kaucji, gwarancji i terminie zwrotu.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>ParagonOS™ używa lokalizacji, żeby pokazać butelkomaty i sklepy z kaucją w pobliżu. Położenie zostaje na tym iPhonie.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

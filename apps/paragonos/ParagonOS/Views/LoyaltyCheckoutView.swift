@@ -5,8 +5,11 @@ struct LoyaltyCheckoutView: View {
     let card: LoyaltyCard
     @EnvironmentObject private var wallet: WalletModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var previousBrightness: CGFloat = UIScreen.main.brightness
     @State private var shownSymbology: BarcodeSymbology
+    @State private var codeImage: UIImage?
+    @State private var didBoostBrightness = false
 
     init(card: LoyaltyCard) {
         self.card = card
@@ -73,12 +76,7 @@ struct LoyaltyCheckoutView: View {
                         systemImage: "barcode.viewfinder",
                         description: Text("Wpisz numer karty w szczegółach.")
                     )
-                } else if let image = BarcodePresenter.image(
-                    payload: payload,
-                    symbology: shownSymbology,
-                    width: shownSymbology == .qr || shownSymbology == .aztec ? 640 : 900,
-                    height: shownSymbology == .qr || shownSymbology == .aztec ? 640 : 240
-                ) {
+                } else if let image = codeImage {
                     Image(uiImage: image)
                         .resizable()
                         .interpolation(.none)
@@ -105,16 +103,48 @@ struct LoyaltyCheckoutView: View {
         .preferredColorScheme(.light)
         .statusBarHidden(true)
         .onAppear {
-            UIApplication.shared.isIdleTimerDisabled = true
+            refreshCodeImage()
+            boostScreen()
+            wallet.rememberCheckoutCard(card.id)
+        }
+        .onChange(of: shownSymbology) { _, _ in
+            refreshCodeImage()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background || phase == .inactive {
+                restoreScreen()
+            }
+        }
+        .onDisappear {
+            restoreScreen()
+        }
+    }
+
+    private func refreshCodeImage() {
+        codeImage = BarcodePresenter.image(
+            payload: payload,
+            symbology: shownSymbology,
+            width: shownSymbology == .qr || shownSymbology == .aztec ? 640 : 900,
+            height: shownSymbology == .qr || shownSymbology == .aztec ? 640 : 240
+        )
+    }
+
+    private func boostScreen() {
+        UIApplication.shared.isIdleTimerDisabled = true
+        if didBoostBrightness == false {
             previousBrightness = UIScreen.main.brightness
             if wallet.settings.boostBrightness {
                 UIScreen.main.brightness = 1
+                didBoostBrightness = true
             }
-            wallet.rememberCheckoutCard(card.id)
         }
-        .onDisappear {
-            UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    private func restoreScreen() {
+        UIApplication.shared.isIdleTimerDisabled = false
+        if didBoostBrightness {
             UIScreen.main.brightness = previousBrightness
+            didBoostBrightness = false
         }
     }
 }

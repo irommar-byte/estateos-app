@@ -4,6 +4,16 @@
     "·" : {
 
     },
+    "%@\n\n%@\n\nZdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont." : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@\n\n%2$@\n\nZdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont."
+          }
+        }
+      }
+    },
     "%@ · %@" : {
       "localizations" : {
         "pl" : {
@@ -23,12 +33,32 @@
     "%@ vs poprzedni miesiąc" : {
 
     },
+    "%@, %@" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
     "%@, %lld" : {
       "localizations" : {
         "pl" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@, %2$lld"
+          }
+        }
+      }
+    },
+    "%@, Ty, %@" : {
+      "localizations" : {
+        "pl" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, Ty, %2$@"
           }
         }
       }
@@ -46,12 +76,6 @@
 
     },
     "0,00 zł" : {
-
-    },
-    "1 dzień przed terminem" : {
-
-    },
-    "3 dni przed końcem zwrotu" : {
 
     },
     "5, 10 albo 20 zł. Arkusz Apple, bez presji." : {
@@ -76,17 +100,34 @@
         }
       }
     },
-    "7 dni przed końcem gwarancji" : {
-
-    },
-    "7 dni przed terminem" : {
-
-    },
-    "30 dni przed końcem gwarancji" : {
+    "Action" : {
 
     },
     "Adres albo sieć" : {
 
+    },
+    "Aktualne" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up to date"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualne"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Актуально"
+          }
+        }
+      }
     },
     "Aktywne" : {
 
@@ -142,6 +183,9 @@
     "Apple Wallet" : {
 
     },
+    "Auchan" : {
+
+    },
     "Automat" : {
 
     },
@@ -168,6 +212,18 @@
       }
     },
     "Bliscy stracą dostęp do wspólnego portfela. Twoje kaucje, paragony i karty zostaną na tym iPhonie." : {
+
+    },
+    "Bliscy widzą kaucje, paragony i karty, które włączysz. Ty decydujesz, czy tylko nowe, czy też to, co już masz." : {
+
+    },
+    "Bliscy widzą kod i kwotę. Zdjęcie zostaje na tym iPhonie." : {
+
+    },
+    "Bliscy widzą nazwę i kod. Zdjęcie karty zostaje na tym iPhonie." : {
+
+    },
+    "Bliscy widzą sklep, kwotę i zdjęcie. Plik jest lekki i leży raz we wspólnym portfelu." : {
 
     },
     "Brak aktywnych kwitków" : {
@@ -245,6 +301,9 @@
         }
       }
     },
+    "Brak konta iCloud. Kaucje, paragony i karty zostają na tym urządzeniu." : {
+
+    },
     "Brak paragonów" : {
       "localizations" : {
         "en" : {
@@ -267,6 +326,12 @@
         }
       }
     },
+    "Brak przypomnień" : {
+
+    },
+    "Brak sieci. Synchronizacja wróci, gdy będzie internet." : {
+
+    },
     "Brak sklepów" : {
 
     },
@@ -280,6 +345,9 @@
 
     },
     "Brak zdjęcia — przy kasie dostępny będzie tylko kod." : {
+
+    },
+    "Butelkomat" : {
 
     },
     "Butelkomaty" : {
@@ -334,6 +402,12 @@
           }
         }
       }
+    },
+    "Część danych jeszcze się dogrywa w iCloud. Sprawdź sieć i naciśnij Synchronizuj teraz." : {
+
+    },
+    "Członek rodziny" : {
+
     },
     "Członkowie" : {
 
@@ -438,6 +512,12 @@
         }
       }
     },
+    "Dodaj osobę" : {
+
+    },
+    "Dodaj przypomnienie" : {
+
+    },
     "Dodaj tył" : {
 
     },
@@ -498,7 +578,14 @@
         }
       }
     },
+    "dyson" : {
+
+    },
+    "Dziękuję" : {
+
+    },
     "Dziękuję że jesteś." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -542,10 +629,10 @@
         }
       }
     },
-    "Elektronika, RTV i AGD dostają 24 miesiące gwarancji. Ubrania, buty i rozrywka — 14 dni na zwrot." : {
+    "Gotowe" : {
 
     },
-    "Gotowe" : {
+    "Grupa %lld punktów" : {
 
     },
     "Gwarancja" : {
@@ -555,9 +642,6 @@
 
     },
     "Gwarancja do" : {
-
-    },
-    "Gwarancja i zwroty. Nowe paragony idą do rodziny osobno od kaucji i kart." : {
 
     },
     "Historia" : {
@@ -582,7 +666,22 @@
         }
       }
     },
+    "HOUSE" : {
+
+    },
     "iCloud" : {
+
+    },
+    "iCloud jest zajęty. Spróbuj ponownie za chwilę." : {
+
+    },
+    "iCloud nie dokończył synchronizacji. Sprawdź sieć i konto Apple." : {
+
+    },
+    "iCloud nie ma miejsca. Zwolnij miejsce w iCloud i spróbuj ponownie." : {
+
+    },
+    "iCloud nie przyjął zapisu. Spróbuj ponownie za chwilę." : {
 
     },
     "IKEA" : {
@@ -641,10 +740,8 @@
         }
       }
     },
-    "iPhone i iPad z Twoim Apple ID dostają kaucje, paragony i karty same — jak Notatki. Zaproszenie jest tylko dla innych osób. Przy zaproszeniu zostaw „Może wprowadzać zmiany”, żeby mogli też dodawać." : {
-
-    },
     "Język" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -737,9 +834,6 @@
           }
         }
       }
-    },
-    "Karty z Twoim Apple ID idą na iPhone’y i iPady przez iCloud. Ten przełącznik jest tylko dla innych osób w Rodzinie." : {
-
     },
     "Kasa" : {
       "localizations" : {
@@ -890,6 +984,9 @@
         }
       }
     },
+    "Każdy termin możesz dodać albo usunąć osobno — jak w Kalendarzu." : {
+
+    },
     "Kod" : {
 
     },
@@ -942,13 +1039,11 @@
     "L" : {
 
     },
-    "Łączenie z iCloud…" : {
-
-    },
     "Ładuję punkty…" : {
 
     },
     "Maksymalna jasność przy kodzie" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1174,6 +1269,29 @@
         }
       }
     },
+    "Nie udało się" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t sync"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не вдалося"
+          }
+        }
+      }
+    },
     "Nie udało się otworzyć płatności Apple." : {
       "localizations" : {
         "en" : {
@@ -1195,6 +1313,9 @@
           }
         }
       }
+    },
+    "Nie udało się włączyć iCloud na tym urządzeniu. Dane zostają lokalnie." : {
+
     },
     "Nie, zostaw aktywny" : {
 
@@ -1227,9 +1348,6 @@
     "Nowa karta" : {
 
     },
-    "Nowe karty idą do rodziny osobno od kaucji i paragonów." : {
-
-    },
     "Np. który automat, która kasa…" : {
 
     },
@@ -1249,6 +1367,7 @@
 
     },
     "Oceń w App Store" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1310,6 +1429,29 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Захист"
+          }
+        }
+      }
+    },
+    "Oczekuje" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Waiting"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oczekuje"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Очікує"
           }
         }
       }
@@ -1414,10 +1556,14 @@
     "Opuścić rodzinę?" : {
 
     },
+    "Organizator" : {
+
+    },
     "OS" : {
 
     },
     "Ostatnio" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1440,6 +1586,7 @@
       }
     },
     "Otwiera kartę" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1461,6 +1608,9 @@
         }
       }
     },
+    "Otwiera kartę. Przytrzymaj i przeciągnij, aby zmienić kolejność." : {
+
+    },
     "Otwiera skaner kart lojalnościowych w ParagonOS™." : {
 
     },
@@ -1474,6 +1624,9 @@
 
     },
     "Otwórz mapę, żeby znaleźć automat i godziny otwarcia." : {
+
+    },
+    "Otwórz mapę, żeby zobaczyć automaty w okolicy." : {
 
     },
     "Oznacz jako wykorzystany" : {
@@ -1532,6 +1685,9 @@
     "Paragony zostają w zakładce Paragony. Tu widać sumy w czasie." : {
 
     },
+    "Payback" : {
+
+    },
     "Płatność" : {
 
     },
@@ -1580,6 +1736,7 @@
       }
     },
     "Po plusie od razu włącz aparat" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1610,6 +1767,29 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Po zablokowaniu ekranu %1$@ pyta o %2$@, zanim pokaże kaucje, paragony i karty."
+          }
+        }
+      }
+    },
+    "Pobieranie…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Downloading…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pobieranie…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завантаження…"
           }
         }
       }
@@ -1667,6 +1847,9 @@
         }
       }
     },
+    "Pokaż wszystkie w okolicy" : {
+
+    },
     "Pokaż zdjęcie kwitka albo papier przy kasie." : {
 
     },
@@ -1686,6 +1869,7 @@
 
     },
     "Prywatność" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1707,10 +1891,29 @@
         }
       }
     },
-    "Przelicz terminy z kategorii" : {
-
+    "przed chwilą" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Just now"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "przed chwilą"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Щойно"
+          }
+        }
+      }
     },
-    "Przestań udostępniać" : {
+    "Przelicz terminy z kategorii" : {
 
     },
     "Przesuń, żeby zobaczyć %@." : {
@@ -1807,16 +2010,10 @@
     "Przy kasie pokażesz kod z karty albo dodasz ją do Apple Wallet." : {
 
     },
-    "Przy kasie pokazujesz kod z karty albo dodajesz ją do Apple Wallet." : {
+    "Przypomnienia" : {
 
     },
-    "Przybliż, żeby zobaczyć punkty" : {
-
-    },
-    "Przypomnienia o końcu ważności kwitków z butelkomatu. Udostępnianie włączysz po zaproszeniu bliskich w dziale Rodzina." : {
-
-    },
-    "Przypomnienia o końcu ważności. Nowe kaucje idą do rodziny osobno od paragonów." : {
+    "Przytrzymaj i przeciągnij kartę, aby zmienić kolejność." : {
 
     },
     "Przywróć" : {
@@ -1901,6 +2098,7 @@
 
     },
     "Rozsuń karty" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2063,7 +2261,7 @@
         }
       }
     },
-    "Skanuj kwitek z butelkomatu" : {
+    "Skanuj kwitek kaucji" : {
 
     },
     "Skanuj kwitek z butelkomatu, wpisz go ręcznie albo znajdź automat na mapie." : {
@@ -2243,6 +2441,7 @@
       }
     },
     "Synchronizacja" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2265,6 +2464,7 @@
       }
     },
     "Synchronizuj teraz" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2286,10 +2486,16 @@
         }
       }
     },
+    "Synchronizuje kaucje, paragony i karty z iCloud." : {
+
+    },
     "Szczegóły" : {
 
     },
     "Szukaj sklepu" : {
+
+    },
+    "Ta wersja nie dokończy synchronizacji. Zaktualizuj ParagonOS i spróbuj ponownie." : {
 
     },
     "Tak, wykorzystany" : {
@@ -2330,7 +2536,10 @@
         }
       }
     },
-    "Ten sam Apple ID na iPhonie i iPadzie synchronizuje kaucje, paragony i karty automatycznie. Zaproszenie rodziny jest osobno." : {
+    "Ten sam Apple ID na iPhonie i iPadzie synchronizuje dane automatycznie. Zaproszenie rodziny ustawiasz w dziale Rodzina." : {
+
+    },
+    "Ten sam Apple ID na Twoich iPhone’ach idzie sam. Rodzina — zaproszeniem." : {
 
     },
     "Termin minął %@. Kasa takiego kuponu nie przyjmie." : {
@@ -2395,6 +2604,9 @@
         }
       }
     },
+    "Ty" : {
+
+    },
     "Tylko jeśli masz ochotę. Trzy łyki dla twórcy." : {
       "localizations" : {
         "en" : {
@@ -2420,40 +2632,25 @@
     "Tylko kadr z ramki — przód i tył, jeśli obie strony były skanowane." : {
 
     },
+    "Tylko nowe" : {
+
+    },
     "Typ" : {
 
     },
     "Typ kodu" : {
 
     },
-    "Udostępniaj nowe karty" : {
+    "Udostępnianie" : {
 
     },
-    "Udostępniaj nowe karty lojalnościowe rodzinie" : {
+    "Udostępnić wszystko?" : {
 
     },
-    "Udostępniaj nowe kaucje" : {
-
-    },
-    "Udostępniaj nowe kaucje rodzinie" : {
-
-    },
-    "Udostępniaj nowe paragony" : {
-
-    },
-    "Udostępniaj nowe paragony rodzinie" : {
-
-    },
-    "Udostępnij rodzinie" : {
+    "Udostępnij" : {
 
     },
     "Udostępnij zdjęcie" : {
-
-    },
-    "Udostępniona rodzinie" : {
-
-    },
-    "Udostępniony rodzinie" : {
 
     },
     "Ustawienia" : {
@@ -2547,9 +2744,6 @@
     "VAT" : {
 
     },
-    "W dniu wygaśnięcia" : {
-
-    },
     "Ważny był do %@. Możesz go zapisać — trafi do historii, kasa go nie przyjmie." : {
 
     },
@@ -2584,10 +2778,13 @@
     "Widok" : {
 
     },
+    "Widzisz wspólny portfel organizatora. Nowe skany możesz dodawać, jeśli masz uprawnienie do edycji." : {
+
+    },
     "Włącz" : {
 
     },
-    "Włącz iCloud, aby zapraszać bliskich." : {
+    "Włącz iCloud w Ustawieniach iPhone’a, żeby zapraszać bliskich." : {
 
     },
     "Włącz latarkę" : {
@@ -2600,7 +2797,27 @@
 
     },
     "Włączony" : {
-
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "On"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Włączony"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Увімкнено"
+          }
+        }
+      }
     },
     "Właściciel" : {
 
@@ -2631,6 +2848,9 @@
       }
     },
     "Wskazówki" : {
+
+    },
+    "Wspólny portfel" : {
 
     },
     "Wstecz" : {
@@ -2680,6 +2900,9 @@
           }
         }
       }
+    },
+    "Wszystko" : {
+
     },
     "Wtedy pokażemy butelkomaty w pobliżu — bez zgody nie zgadujemy Warszawy." : {
 
@@ -2812,9 +3035,6 @@
     "Wyłącz latarkę" : {
 
     },
-    "Wyłączony" : {
-
-    },
     "Wypiszesz się ze wspólnego portfela. Kopie na tym iPhonie zostaną." : {
 
     },
@@ -2844,6 +3064,32 @@
 
     },
     "Wystawiono" : {
+
+    },
+    "Wysyłanie…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uploading…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wysyłanie…"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Надсилання…"
+          }
+        }
+      }
+    },
+    "x-kom" : {
 
     },
     "za %lld dni" : {
@@ -2880,6 +3126,9 @@
     "Zakupy nie mogą być niższe niż kwota kuponu." : {
 
     },
+    "Zaloguj się do iCloud w Ustawieniach iPhone’a." : {
+
+    },
     "Zamknij" : {
 
     },
@@ -2890,6 +3139,9 @@
 
     },
     "Zaproś bliskich" : {
+
+    },
+    "Zaproś kolejną osobę" : {
 
     },
     "Zatrzymać udostępnianie?" : {
@@ -2907,9 +3159,6 @@
     "Zdjęcia karty" : {
 
     },
-    "Zdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont." : {
-
-    },
     "Zdjęcie" : {
 
     },
@@ -2917,6 +3166,9 @@
 
     },
     "Zdjęcie karty" : {
+
+    },
+    "że jesteś." : {
 
     },
     "Zeskanował" : {
@@ -2929,6 +3181,9 @@
 
     },
     "Zlokalizuj mnie" : {
+
+    },
+    "Znajdź butelkomaty na mapie" : {
 
     },
     "Zostaw aktywny" : {
@@ -2947,6 +3202,7 @@
 
     },
     "Zwiń stos" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
