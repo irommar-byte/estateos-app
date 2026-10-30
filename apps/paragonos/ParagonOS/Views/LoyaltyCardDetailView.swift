@@ -16,6 +16,8 @@ struct LoyaltyCardDetailView: View {
     @Environment(CardFlight.self) private var flight: CardFlight?
 
     private var flown: Bool { flight?.presentedID == card.id }
+    @State private var putBackArmed = false
+    private static let putBackDistance: CGFloat = 110
 
     var body: some View {
         List {
@@ -25,6 +27,7 @@ struct LoyaltyCardDetailView: View {
                         if flown { flight?.reportTarget(rect) }
                     }
                     .opacity(flown && flight?.phase != .open ? 0 : 1)
+                    .highPriorityGesture(putBackDrag, including: flown ? .all : .none)
                     .paragonReadableWidth(560)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
@@ -158,6 +161,30 @@ struct LoyaltyCardDetailView: View {
         } message: {
             Text("Karta zniknie z tego iPhone’a. Jeśli była udostępniona, zniknie też u rodziny.")
         }
+    }
+
+    /// Pull the card down with a finger; past the line it goes back into the stack.
+    private var putBackDrag: some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .onChanged { value in
+                let dy = value.translation.height
+                // Downward follows the finger; upward resists like a rubber band.
+                let offset = dy > 0 ? dy : -pow(-dy, 0.7)
+                flight?.dragChanged(offset)
+                let armed = dy > Self.putBackDistance
+                if armed != putBackArmed {
+                    putBackArmed = armed
+                    UIImpactFeedbackGenerator(style: armed ? .rigid : .soft).impactOccurred()
+                }
+            }
+            .onEnded { value in
+                let commit = value.translation.height > Self.putBackDistance
+                    || value.predictedEndTranslation.height > Self.putBackDistance * 2.6
+                putBackArmed = false
+                flight?.dragEnded(commit: commit) {
+                    if wallet.loyaltyPath.isEmpty == false { wallet.loyaltyPath.removeLast() }
+                }
+            }
     }
 
     /// Back: the card flips to its front, flies down and drops into its slot in the stack.

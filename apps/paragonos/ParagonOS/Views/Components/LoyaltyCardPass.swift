@@ -605,6 +605,8 @@ struct LoyaltyPassStack: View {
     @State private var swapAnchor: CGFloat = 0
     @State private var slotTick: Int = 0
     @State private var didReorder = false
+    @State private var dragStartOrder: [UUID] = []
+    @State private var pullOutArmed = false
 
     private var cardByID: [UUID: LoyaltyCard] {
         Dictionary(cards.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -777,7 +779,7 @@ struct LoyaltyPassStack: View {
                     )
             }
         }
-        .scaleEffect(lifted ? 1.03 : (openingID == card.id ? 1.015 : 1), anchor: .top)
+        .scaleEffect(lifted ? (pullOutArmed ? 1.07 : 1.03) : (openingID == card.id ? 1.015 : 1), anchor: .top)
         .matchedTransitionSource(id: card.id, in: zoomNamespace)
         .opacity(flight?.hiddenID == card.id ? 0 : 1)
         .frame(height: LoyaltyPassStackMetrics.cardHeight, alignment: .top)
@@ -828,10 +830,44 @@ struct LoyaltyPassStack: View {
         dragTranslation = 0
         swapAnchor = 0
         didReorder = false
+        dragStartOrder = displayOrder
+        pullOutArmed = false
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
+    /// Lifted this far above the top of the pile, the card comes out on release.
+    private static let pullOutDistance: CGFloat = 70
+
+    private func updatePullOut(translation: CGFloat) {
+        let top = LoyaltyPassStackMetrics.yOffset(index: dragHomeIndex, spread: liveSpread) + translation
+        let armed = top < -Self.pullOutDistance
+        guard armed != pullOutArmed else { return }
+        withAnimation(PassStackMotion.slideOut) { pullOutArmed = armed }
+        UIImpactFeedbackGenerator(style: armed ? .rigid : .soft).impactOccurred()
+    }
+
+    /// Released above the pile: it flies out from under the finger; the pile keeps its order.
+    private func pullOut(_ id: UUID) {
+        guard let card = cards.first(where: { $0.id == id }) else { return }
+        openingID = id
+        onOpen(card)
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) {
+            displayOrder = dragStartOrder
+            draggingID = nil
+            dragTranslation = 0
+            swapAnchor = 0
+            pullOutArmed = false
+        }
+        didReorder = false
+    }
+
     private func endReorder() {
+        if pullOutArmed, let id = draggingID {
+            pullOut(id)
+            return
+        }
         let order = displayOrder
         let changed = didReorder
         withAnimation(PassStackMotion.reorder) {
@@ -848,6 +884,7 @@ struct LoyaltyPassStack: View {
     /// Finger-locked drag; swap at most one adjacent slot when past hysteresis threshold.
     private func applyDrag(translation: CGFloat) {
         dragTranslation = translation
+        updatePullOut(translation: translation)
         guard let id = draggingID,
               let current = displayOrder.firstIndex(of: id)
         else { return }
@@ -1187,13 +1224,15 @@ enum BrandHeaderLayout: Equatable {
 @MainActor
 @Observable
 final class CardFlight {
-    enum Phase { case idle, opening, open, closing }
+    enum Phase { case idle, opening, open, dragging, closing }
 
     private(set) var card: LoyaltyCard?
     private(set) var phase: Phase = .idle
     private(set) var source: CGRect = .zero
     private(set) var target: CGRect = .zero
     var progress: Double = 0
+    /// Finger offset while the open card is pulled down to put it back.
+    var dragOffset: CGFloat = 0
     @ObservationIgnored private var stackFrames: [UUID: CGRect] = [:]
     @ObservationIgnored private var landed: (() -> Void)?
     @ObservationIgnored private var started = false
@@ -1202,7 +1241,7 @@ final class CardFlight {
     var presentedID: UUID? { phase == .idle ? nil : card?.id }
     /// The real card stays invisible in the stack and the detail while its double flies.
     var hiddenID: UUID? { card?.id }
-    var isFlying: Bool { phase == .opening || phase == .closing }
+    var isFlying: Bool { phase == .opening || phase == .dragging || phase == .closing }
 
     /// Twice as slow as a standard push, with a springy landing (slight overshoot, settle).
     static var opening: Animation { .spring(response: 1.2, dampingFraction: 0.72) }
@@ -1266,6 +1305,29 @@ final class CardFlight {
         }
     }
 
+    /// The open card follows the finger above everything (bars included).
+    func dragChanged(_ offset: CGFloat) {
+        guard phase == .open || phase == .dragging, target.width > 0 else { return }
+        phase = .dragging
+        progress = 1
+        dragOffset = offset
+    }
+
+    /// Far enough: it flies home from where it was let go. Not enough: springs back.
+    func dragEnded(commit: Bool, pop: () -> Void) {
+        guard phase == .dragging else { return }
+        if commit {
+            target = target.offsetBy(dx: 0, dy: dragOffset)
+            dragOffset = 0
+            phase = .open
+            close(pop: pop)
+        } else {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.62)) { dragOffset = 0 } completion: {
+                if self.phase == .dragging { self.phase = .open }
+            }
+        }
+    }
+
     func finish() {
         let done = landed
         card = nil
@@ -1273,6 +1335,7 @@ final class CardFlight {
         progress = 0
         target = .zero
         landed = nil
+        dragOffset = 0
         done?()
     }
 }
@@ -1283,7 +1346,7 @@ struct CardFlightOverlay: View {
 
     var body: some View {
         if let flight, flight.isFlying, let card = flight.card, flight.target.width > 0, flight.source.width > 0 {
-            FlyingCard(card: card, source: flight.source, target: flight.target, progress: flight.progress)
+            FlyingCard(card: card, source: flight.source, target: flight.target, progress: flight.progress, drag: flight.dragOffset)
                 .allowsHitTesting(false)
         }
     }
@@ -1294,10 +1357,11 @@ private struct FlyingCard: View, Animatable {
     let source: CGRect
     let target: CGRect
     var progress: Double
+    var drag: CGFloat
 
-    var animatableData: Double {
-        get { progress }
-        set { progress = newValue }
+    var animatableData: AnimatablePair<Double, CGFloat> {
+        get { AnimatablePair(progress, drag) }
+        set { progress = newValue.first; drag = newValue.second }
     }
 
     var body: some View {
@@ -1320,11 +1384,11 @@ private struct FlyingCard: View, Animatable {
             alignment: .top
         )
         .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.42)
-        .scaleEffect(1 + 0.06 * arc)
+        .scaleEffect(1 + 0.06 * arc - min(max(drag, 0), 240) / 240 * 0.06)
         .shadow(color: .black.opacity(0.16 + 0.24 * arc), radius: 10 + 22 * arc, y: 8 + 16 * arc)
         .position(
             x: source.midX + (target.midX - source.midX) * p,
-            y: source.midY + (target.midY - source.midY) * p - 48 * arc
+            y: source.midY + (target.midY - source.midY) * p - 48 * arc + drag
         )
     }
 }
