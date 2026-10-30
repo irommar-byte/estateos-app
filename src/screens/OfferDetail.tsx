@@ -2488,6 +2488,9 @@ export default function OfferDetail({ route, navigation }: any) {
                 : null
             }
             scanMeta={parsedFloorPlanScanMeta}
+            offerId={offer?.id ?? null}
+            photos={realImages}
+            onOpenPhoto={openGallery}
             theme={theme}
             editable={Boolean(isOwner && !isSamplePreview)}
             onChangeMeta={isOwner && !isSamplePreview ? persistFloorPlanScanMeta : undefined}

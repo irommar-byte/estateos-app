@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  ScrollView,
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +42,52 @@ function absolutePlanAssetUrl(uri?: string | null): string | undefined {
 }
 
 /** Pomiary z LiDAR-u w kafelkach: szerokość, długość, wysokość, metraż, kubatura, okna, drzwi. */
+/** Ścieżka zdjęcia niezależna od domeny — tak samo jak na www (łączy zdjęcie z pomieszczeniem). */
+function photoKey(url: string): string {
+  const raw = String(url || '').trim();
+  const m = raw.match(/^[a-z]+:\/\/[^/]+(\/[^?#]*)/i);
+  try {
+    return decodeURIComponent(m ? m[1] : raw.split('?')[0]).slice(0, 500);
+  } catch {
+    return (m ? m[1] : raw.split('?')[0]).slice(0, 500);
+  }
+}
+const sameRoom = (a?: string | null, b?: string | null) =>
+  Boolean(a && b) && String(a).trim().toLocaleLowerCase('pl') === String(b).trim().toLocaleLowerCase('pl');
+
+const OBJECT_PL: Record<string, [string, string]> = {
+  storage: ['szafa', 'szafy'],
+  refrigerator: ['lodówka', 'lodówki'],
+  stove: ['kuchenka', 'kuchenki'],
+  bed: ['łóżko', 'łóżka'],
+  sink: ['zlew / umywalka', 'zlewy / umywalki'],
+  washerDryer: ['pralka', 'pralki'],
+  toilet: ['WC', 'WC'],
+  bathtub: ['wanna', 'wanny'],
+  oven: ['piekarnik', 'piekarniki'],
+  dishwasher: ['zmywarka', 'zmywarki'],
+  table: ['stół', 'stoły'],
+  sofa: ['sofa', 'sofy'],
+  chair: ['krzesło', 'krzesła'],
+  fireplace: ['kominek', 'kominki'],
+  television: ['telewizor', 'telewizory'],
+  stairs: ['schody', 'schody'],
+};
+
+/** „2 łóżka · wanna · 4 szafy” zamiast listy angielskich etykiet z powtórzeniami. */
+function furnitureSummary(objects: Array<{ category?: string; label?: string }>): string {
+  const counts = new Map<string, number>();
+  for (const obj of objects) {
+    const key = String(obj.category || '').trim();
+    if (!OBJECT_PL[key]) continue;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, n]) => (n > 1 ? `${n} ${OBJECT_PL[key][1]}` : OBJECT_PL[key][0]))
+    .join(' · ');
+}
+
 function PlanSpecGrid({ specs, isDark }: { specs: PlanSpec[]; isDark?: boolean }) {
   if (!specs.length) return null;
   return (
@@ -118,7 +165,14 @@ export default function FloorPlanViewer({
   theme,
   editable,
   onChangeMeta,
+  offerId,
+  photos,
+  onOpenPhoto,
 }: {
+  offerId?: number | string | null;
+  /** Zdjęcia galerii oferty (pełne URL-e) — pokazujemy je przy pomieszczeniach planu. */
+  photos?: string[];
+  onOpenPhoto?: (index: number) => void;
   imageUrl?: string | null;
   model3dUrl?: string | null;
   scanMeta?: FloorPlanScanMeta | null;
@@ -136,6 +190,29 @@ export default function FloorPlanViewer({
   const displayRooms = useMemo(() => roomsFromScanMeta(scanMeta || null), [scanMeta]);
   const roomScans = displayRooms;
   const [planKey, setPlanKey] = useState<'whole' | string>('whole');
+  // Zdjęcia przypisane do pomieszczeń (te same co na www: /api/offers/:id/photo-rooms).
+  const [photoRoomByKey, setPhotoRoomByKey] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!offerId) return;
+    let alive = true;
+    fetch(`${API_URL}/api/offers/${offerId}/photo-rooms`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!alive || !Array.isArray(json?.items)) return;
+        setPhotoRoomByKey(Object.fromEntries((json.items as Array<{ url: string; room: string }>).map((it) => [photoKey(it.url), it.room])));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [offerId]);
+  const roomPhotos = useMemo(
+    () =>
+      (photos || [])
+        .map((url, index) => ({ url, index, room: photoRoomByKey[photoKey(url)] || '' }))
+        .filter((p) => p.room),
+    [photos, photoRoomByKey],
+  );
   const [editingRoom, setEditingRoom] = useState<PropertyRoomScan | null>(null);
   const [rescanRoom, setRescanRoom] = useState<PropertyRoomScan | null>(null);
   const canScan = isRoomScanSupportedOnDevice();
@@ -552,17 +629,18 @@ export default function FloorPlanViewer({
               </Pressable>
             </View>
 
+            <ScrollView contentContainerStyle={{ paddingBottom: 12 }} showsVerticalScrollIndicator={false}>
               {roomScans.length > 0 ? (
                 <View style={styles.modalChipRow}>
                   <Pressable
                     onPress={() => setPlanKey('whole')}
                     style={[
                       styles.planChip,
+                      isDark && { borderColor: 'rgba(255,255,255,0.12)', backgroundColor: '#2C2C2E' },
                       planKey === 'whole' && styles.planChipActive,
-                      isDark && { borderColor: 'rgba(255,255,255,0.12)' },
                     ]}
                   >
-                    <Text style={[styles.planChipText, planKey === 'whole' && styles.planChipTextActive]}>
+                    <Text style={[styles.planChipText, isDark && { color: '#F5F5F7' }, planKey === 'whole' && styles.planChipTextActive]}>
                       {t('offer.detail.floorPlan.wholeHome')}
                     </Text>
                   </Pressable>
@@ -572,12 +650,16 @@ export default function FloorPlanViewer({
                       onPress={() => setPlanKey(room.id)}
                       style={[
                         styles.planChip,
+                        isDark && { borderColor: 'rgba(255,255,255,0.12)', backgroundColor: '#2C2C2E' },
                         planKey === room.id && styles.planChipActive,
-                        isDark && { borderColor: 'rgba(255,255,255,0.12)' },
                       ]}
                     >
-                      <Text style={[styles.planChipText, planKey === room.id && styles.planChipTextActive]}>
+                      <Text style={[styles.planChipText, isDark && { color: '#F5F5F7' }, planKey === room.id && styles.planChipTextActive]}>
                         {room.name}
+                        {(() => {
+                          const n = roomPhotos.filter((p) => sameRoom(p.room, room.name)).length;
+                          return n ? `  📷 ${n}` : '';
+                        })()}
                       </Text>
                     </Pressable>
                   ))}
@@ -616,29 +698,70 @@ export default function FloorPlanViewer({
                 </View>
               </View>
 
+              {(() => {
+                const list = selectedRoom ? roomPhotos.filter((p) => sameRoom(p.room, selectedRoom.name)) : roomPhotos;
+                if (!list.length) return null;
+                return (
+                  <View style={{ marginBottom: 6 }}>
+                    <Text style={[styles.furnitureTitle, { marginLeft: 20, marginBottom: 8 }]}>
+                      {selectedRoom ? `Zdjęcia · ${selectedRoom.name}` : 'Zdjęcia pomieszczeń'}
+                    </Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingHorizontal: 16 }}>
+                      {list.map((p) => (
+                        <Pressable
+                          key={`${p.index}-${p.url}`}
+                          onPress={() => {
+                            if (!onOpenPhoto) return;
+                            Haptics.selectionAsync().catch(() => undefined);
+                            const roomOfPhoto = roomScans.find((r) => sameRoom(r.name, p.room));
+                            if (!selectedRoom && roomOfPhoto) {
+                              setPlanKey(roomOfPhoto.id);
+                              return;
+                            }
+                            closeModal();
+                            setTimeout(() => onOpenPhoto(p.index), 380);
+                          }}
+                          style={({ pressed }) => ({ transform: [{ scale: pressed ? 0.97 : 1 }] })}
+                        >
+                          <Image source={{ uri: p.url }} style={{ width: 132, height: 96, borderRadius: 14, backgroundColor: isDark ? '#2C2C2E' : '#E5E7EB' }} />
+                          {!selectedRoom ? (
+                            <View style={{ position: 'absolute', left: 6, bottom: 6, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 8, paddingVertical: 3 }}>
+                              <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{p.room}</Text>
+                            </View>
+                          ) : null}
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  </View>
+                );
+              })()}
+
               <View style={{ paddingHorizontal: 16 }}>
                 <PlanSpecGrid specs={specs} isDark={isDark} />
               </View>
 
-              {furniture.length > 0 ? (
+              {furnitureSummary(furniture) ? (
                 <View style={styles.modalFurniture}>
-                  {furniture.map((obj) => (
-                    <View key={obj.id} style={[styles.furnitureChip, isDark && { backgroundColor: '#1f2937' }]}>
-                      <Text style={[styles.furnitureChipText, isDark && { color: '#e2e8f0' }]}>{obj.label}</Text>
-                    </View>
-                  ))}
+                  <Text style={[styles.furnitureTitle, { marginBottom: 4 }]}>Wykryte wyposażenie</Text>
+                  <Text style={{ color: isDark ? '#A1A1AA' : '#475569', fontSize: 13, lineHeight: 19, fontWeight: '500' }}>
+                    {furnitureSummary(furniture)}
+                  </Text>
                 </View>
               ) : null}
 
               <View style={styles.modalActions}>
                 {hasVectorPlan && activeMeta ? (
-                  <Pressable onPress={sharePdf} style={styles.modalPdfBtn} disabled={exportingPdf}>
+                  <Pressable
+                    onPress={sharePdf}
+                    style={[styles.modalPdfBtn, { backgroundColor: isDark ? '#2C2C2E' : '#E5E7EB' }]}
+                    disabled={exportingPdf}
+                  >
                     {exportingPdf ? (
-                      <ActivityIndicator color="#0f172a" />
+                      <ActivityIndicator color={isDark ? '#F5F5F7' : '#0f172a'} />
                     ) : (
                       <>
-                        <Ionicons name="document-text-outline" size={16} color="#0f172a" />
-                        <Text style={styles.modalWalkthroughText}>{t('offer.detail.floorPlan.exportPdf')}</Text>
+                        <Ionicons name="document-text-outline" size={16} color={isDark ? '#F5F5F7' : '#0f172a'} />
+                        <Text style={[styles.modalWalkthroughText, { color: isDark ? '#F5F5F7' : '#0f172a' }]}>{t('offer.detail.floorPlan.exportPdf')}</Text>
                       </>
                     )}
                   </Pressable>
@@ -650,6 +773,7 @@ export default function FloorPlanViewer({
                   </Pressable>
                 ) : null}
               </View>
+            </ScrollView>
           </View>
         </Modal>
       ) : null}
@@ -920,7 +1044,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  imageContainer: { flex: 1, paddingHorizontal: 16, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
+  imageContainer: { paddingHorizontal: 16, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
   planCard: {
     borderRadius: 22,
     overflow: 'hidden',
@@ -936,10 +1060,8 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   modalFurniture: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
+    paddingTop: 12,
     paddingBottom: 4,
   },
   fullImage: { width: '100%', height: '100%', borderRadius: 12 },
