@@ -12,6 +12,8 @@ export const MARKET_PROPERTY_TYPES: Array<{ id: MarketPropertyFilter; label: str
 
 export type MarketOfferRow = {
   price?: unknown;
+  pricePln?: unknown;
+  transactionType?: string | null;
   area?: unknown;
   district?: string | null;
   city?: string | null;
@@ -55,9 +57,56 @@ function canonPropertyType(raw: unknown): MarketPropertyFilter | null {
   return null;
 }
 
-function parsePrice(price: unknown): number {
-  const n = Number(String(price ?? '').replace(/\D/g, ''));
+/**
+ * Cena z bazy przychodzi jako liczba albo tekst („899000.00”, „1 250 000 zł”, „1.250.000”).
+ * Dawniej wycinaliśmy wszystko poza cyframi — „899000.00” stawało się 89 900 000 zł i zawyżało zł/m² stokrotnie.
+ */
+function parseMoney(raw: unknown): number {
+  if (typeof raw === 'number') return Number.isFinite(raw) && raw > 0 ? raw : 0;
+  let s = String(raw ?? '').replace(/[\s\u00a0]/g, '').replace(/zł|pln/gi, '');
+  if (!s) return 0;
+  // „1.250.000” / „1,250,000” — separatory tysięcy; „899000.00” / „899000,50” — część dziesiętna.
+  if (/^\d{1,3}([.,]\d{3})+$/.test(s)) s = s.replace(/[.,]/g, '');
+  else s = s.replace(',', '.');
+  const n = Number(s.replace(/[^\d.]/g, ''));
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function parsePrice(offer: MarketOfferRow): number {
+  return parseMoney(offer.pricePln) || parseMoney(offer.price);
+}
+
+/** Realne widełki zł/m² dla sprzedaży — poza nimi to literówka w cenie lub metrażu, nie rynek. */
+const PPSM_RANGE: Record<Exclude<MarketPropertyFilter, 'ALL'>, [number, number]> = {
+  FLAT: [3_000, 80_000],
+  HOUSE: [1_500, 60_000],
+  PLOT: [20, 15_000],
+  COMMERCIAL: [1_500, 90_000],
+};
+
+function isSale(offer: MarketOfferRow) {
+  const t = String(offer.transactionType || 'SELL').toUpperCase();
+  return !(t.includes('RENT') || t.includes('WYNAJ') || t.includes('LEASE'));
+}
+
+/** zł/m² oferty albo null, gdy oferta nie nadaje się do statystyki cen. */
+function offerPpsm(offer: MarketOfferRow): number | null {
+  if (!isSale(offer)) return null;
+  const price = parsePrice(offer);
+  const area = parseArea(offer.area);
+  if (price <= 0 || area <= 0) return null;
+  const ppsm = price / area;
+  const type = canonPropertyType(offer.propertyType);
+  const [min, max] = type && type !== 'ALL' ? PPSM_RANGE[type] : [500, 90_000];
+  if (ppsm < min || ppsm > max) return null;
+  return ppsm;
+}
+
+function median(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return Math.round(sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2);
 }
 
 function parseArea(area: unknown): number {
@@ -98,52 +147,43 @@ function aggregateBuckets(
   pickKey: (o: MarketOfferRow) => string,
   pickLabel: (o: MarketOfferRow, key: string) => string,
 ): MarketBucket[] {
-  const map = new Map<string, { label: string; totalPrice: number; totalArea: number; count: number }>();
+  const map = new Map<string, { label: string; ppsm: number[]; totalPrice: number }>();
 
   for (const o of offers) {
-    const price = parsePrice(o.price);
-    const area = parseArea(o.area);
-    if (price <= 0 || area <= 0) continue;
+    const ppsm = offerPpsm(o);
+    if (ppsm == null) continue;
     const key = pickKey(o);
-    const row = map.get(key) ?? { label: pickLabel(o, key), totalPrice: 0, totalArea: 0, count: 0 };
-    row.totalPrice += price;
-    row.totalArea += area;
-    row.count += 1;
+    const row = map.get(key) ?? { label: pickLabel(o, key), ppsm: [], totalPrice: 0 };
+    row.ppsm.push(ppsm);
+    row.totalPrice += parsePrice(o);
     map.set(key, row);
   }
 
-  const totalCount = Array.from(map.values()).reduce((s, r) => s + r.count, 0);
+  const totalCount = Array.from(map.values()).reduce((s, r) => s + r.ppsm.length, 0);
   return Array.from(map.entries())
     .map(([key, data]) => ({
       key,
       label: data.label,
-      avgSqm: data.totalArea > 0 ? Math.round(data.totalPrice / data.totalArea) : 0,
-      count: data.count,
-      sharePct: totalCount > 0 ? Math.round((data.count / totalCount) * 100) : 0,
+      avgSqm: median(data.ppsm),
+      count: data.ppsm.length,
+      sharePct: totalCount > 0 ? Math.round((data.ppsm.length / totalCount) * 100) : 0,
       totalPrice: data.totalPrice,
     }))
     .filter((b) => b.count > 0)
     .sort((a, b) => b.avgSqm - a.avgSqm);
 }
 
+/** Podsumowanie: mediana zł/m² (pole `avgSqm` zostaje dla zgodności z widokiem). */
 export function summarizeOffers(offers: MarketOfferRow[]) {
+  const values: number[] = [];
   let totalPrice = 0;
-  let totalArea = 0;
-  let count = 0;
   for (const o of offers) {
-    const price = parsePrice(o.price);
-    const area = parseArea(o.area);
-    if (price <= 0 || area <= 0) continue;
-    totalPrice += price;
-    totalArea += area;
-    count += 1;
+    const ppsm = offerPpsm(o);
+    if (ppsm == null) continue;
+    values.push(ppsm);
+    totalPrice += parsePrice(o);
   }
-  return {
-    avgSqm: totalArea > 0 ? Math.round(totalPrice / totalArea) : 0,
-    count,
-    totalPrice,
-    totalArea,
-  };
+  return { avgSqm: median(values), count: values.length, totalPrice, totalArea: 0 };
 }
 
 export function buildMarketView(offers: MarketOfferRow[], propertyFilter: MarketPropertyFilter, path: MarketDrillPath) {
@@ -189,9 +229,7 @@ export function countOffersByPropertyType(offers: MarketOfferRow[]): Record<Mark
   };
   for (const o of offers) {
     if (String(o.status || '').toUpperCase() === 'REJECTED') continue;
-    const price = parsePrice(o.price);
-    const area = parseArea(o.area);
-    if (price <= 0 || area <= 0) continue;
+    if (offerPpsm(o) == null) continue;
     counts.ALL += 1;
     const canon = canonPropertyType(o.propertyType);
     if (canon) counts[canon] += 1;

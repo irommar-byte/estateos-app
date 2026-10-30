@@ -173,7 +173,7 @@ export default function AdminMarketSection({ offers, colors }: Props) {
           ) : null}
         </View>
         <View style={styles.summaryBox}>
-          <Text style={[styles.summaryLabel, { color: colors.secondary }]}>Średnia</Text>
+          <Text style={[styles.summaryLabel, { color: colors.secondary }]}>Mediana</Text>
           <Text style={[styles.summaryValue, { color: colors.text }]}>
             {view.summary.avgSqm > 0 ? view.summary.avgSqm.toLocaleString('pl-PL') : '—'}
           </Text>
@@ -220,11 +220,11 @@ export default function AdminMarketSection({ offers, colors }: Props) {
           />
         </View>
         <View style={[styles.chartCard, { backgroundColor: colors.cardSecondary }]}>
-          <Text style={[styles.chartTitle, { color: colors.secondary }]}>Średnia PLN/m²</Text>
+          <Text style={[styles.chartTitle, { color: colors.secondary }]}>Mediana PLN/m²</Text>
           <MarketDonut
             data={priceChartData}
             size={130}
-            centerLabel="Średnia"
+            centerLabel="Mediana"
             centerValue={view.summary.avgSqm > 0 ? view.summary.avgSqm.toLocaleString('pl-PL') : '—'}
             emptyColor={colors.tertiary}
             textColor={colors.text}
