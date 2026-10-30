@@ -663,3 +663,32 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 
 .crmx .crmx-deal__why { margin-top: 8px; padding: 7px 9px; border-radius: 9px; background: var(--x-gold-soft); color: var(--x-ink-2); font-size: 11.5px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .crmx .crmx-deal__why b { color: var(--x-gold-ink); font-weight: 700; }
+
+/* Okno transakcji (lejek) */
+.crmx-dealsheet { padding: 22px 22px 32px; display: flex; flex-direction: column; gap: 16px; }
+.crmx-dealsheet__head { display: flex; align-items: center; gap: 14px; }
+.crmx-dealsheet__title { font-family: var(--eos-font-display); font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: var(--x-ink); }
+.crmx-dealsheet__close { width: 34px; height: 34px; border-radius: 99px; display: grid; place-items: center; color: var(--x-ink-2); background: var(--x-surface-2); border: 1px solid var(--x-line); flex-shrink: 0; }
+.crmx-dealsheet .crmx-deal__why { margin-top: 0; -webkit-line-clamp: unset; display: block; }
+.crmx-dealsheet__phases { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; list-style: none; margin: 0; padding: 0; }
+.crmx-dealsheet__phases li { display: flex; flex-direction: column; gap: 6px; padding: 9px 8px; border-radius: 10px; border: 1px solid var(--x-line); background: var(--x-surface); color: var(--x-ink-3); }
+.crmx-dealsheet__phases li[data-done] { color: var(--x-ink-2); }
+.crmx-dealsheet__phases li[data-current] { border-color: var(--x-gold); color: var(--x-ink); box-shadow: 0 0 0 3px var(--x-gold-soft); }
+.crmx-dealsheet__phases li[data-skipped] { opacity: 0.5; }
+.crmx-dealsheet__dot { width: 18px; height: 18px; border-radius: 99px; display: grid; place-items: center; border: 1.5px solid var(--x-line-strong); }
+.crmx-dealsheet__phases li[data-done] .crmx-dealsheet__dot { background: var(--x-gold); border-color: var(--x-gold); color: #fff; }
+.crmx-dealsheet__phases li[data-current] .crmx-dealsheet__dot { border-color: var(--x-gold); }
+.crmx-dealsheet__step { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.crmx-dealsheet__steptitle { font-family: var(--eos-font-display); font-size: 17px; font-weight: 600; color: var(--x-ink); }
+.crmx-dealsheet__form { display: flex; flex-direction: column; gap: 9px; }
+.crmx-dealsheet__hint { font-size: 12.5px; line-height: 1.5; color: var(--x-ink-2); }
+.crmx-dealsheet__check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--x-ink-2); cursor: pointer; }
+.crmx-dealsheet__check input { accent-color: var(--x-gold); width: 15px; height: 15px; }
+.crmx-dealsheet__row { display: flex; flex-wrap: wrap; gap: 8px; }
+.crmx-dealsheet .crmx-btn { justify-content: center; }
+.crmx-dealsheet__msg { font-size: 12.5px; font-weight: 600; }
+.crmx-dealsheet__msg.is-ok { color: var(--x-good); }
+.crmx-dealsheet__msg.is-bad { color: var(--x-bad); }
+.crmx-dealsheet__lost { align-self: flex-start; font-size: 12px; font-weight: 600; color: var(--x-ink-3); text-decoration: underline; text-underline-offset: 3px; }
+.crmx-dealsheet__lost:hover { color: var(--x-bad); }
+.crmx .crmx-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--x-gold-ink); }

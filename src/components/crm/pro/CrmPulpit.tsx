@@ -43,7 +43,16 @@ export type ProDeal = {
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
   turn: { side: string | null; label: string; deadline: string | null };
   nextAction: string;
-  presentation: { startsAt: string; status: string } | null;
+  presentation: {
+    startsAt: string;
+    status: string;
+    proposedBy?: 'agent' | 'client';
+    proposedSlots?: string[];
+    heldAt?: string | null;
+    past?: boolean;
+  } | null;
+  phases?: Array<{ id: string; label: string; done: boolean; current: boolean; skipped: boolean; summary: string | null }>;
+  feedback?: { sentiment: 'like' | 'maybe' | 'dislike'; note: string | null; by: string; at: string | null } | null;
   updatedAt: string;
 };
 
@@ -56,12 +65,16 @@ export function useAgentDeals() {
   const [deals, setDeals] = useState<ProDeal[] | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch('/api/crm/offer-buyers?scope=all', { credentials: 'include', cache: 'no-store' })
-      .then((r) => r.json())
-      .then((d) => alive && setDeals(Array.isArray(d?.deals) ? d.deals : []))
-      .catch(() => alive && setDeals([]));
+    const load = () =>
+      fetch('/api/crm/offer-buyers?scope=all', { credentials: 'include', cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => alive && setDeals(Array.isArray(d?.deals) ? d.deals : []))
+        .catch(() => alive && setDeals([]));
+    void load();
+    window.addEventListener('crm-deals-refresh', load);
     return () => {
       alive = false;
+      window.removeEventListener('crm-deals-refresh', load);
     };
   }, []);
   return deals;

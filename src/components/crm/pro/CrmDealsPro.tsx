@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Clock, Search } from 'lucide-react';
 import { buyerName, STAGE_SHORT, useAgentDeals, type ProDeal } from './CrmPulpit';
 import { pln, relative } from './format';
+import CrmDealSheet from './CrmDealSheet';
 
 const COLUMNS: Array<{ id: string; label: string; stages: string[] }> = [
   { id: 'lead', label: 'Zainteresowani', stages: ['interested', 'scheduling'] },
@@ -47,11 +48,9 @@ export default function CrmDealsPro({
   const done = filtered.filter((d) => d.status === 'WON' || d.status === 'LOST');
   const myMoves = (deals || []).filter((d) => d.status === 'ACTIVE' && d.turn.side === 'agent').length;
 
-  const open = (d: ProDeal) => {
-    if (d.buyer.kind === 'client') return onOpenClient(d.buyer.clientId);
-    if (d.seller) return onOpenClient(d.seller.clientId);
-    onOpenOffer(d.offerId);
-  };
+  const [openId, setOpenId] = useState<number | null>(null);
+  const openDeal = (deals || []).find((d) => d.id === openId) || null;
+  const open = (d: ProDeal) => setOpenId(d.id);
 
   const card = (d: ProDeal) => {
     const dl = d.turn.side ? deadlineLabel(d.turn.deadline) : null;
@@ -84,6 +83,18 @@ export default function CrmDealsPro({
 
   return (
     <div className="space-y-4">
+      <CrmDealSheet
+        deal={openDeal}
+        onClose={() => setOpenId(null)}
+        onOpenClient={(id) => {
+          setOpenId(null);
+          onOpenClient(id);
+        }}
+        onOpenOffer={(id) => {
+          setOpenId(null);
+          onOpenOffer(id);
+        }}
+      />
       <div className="flex flex-wrap items-center gap-2.5">
         <label className="crmx-input" style={{ flex: '1 1 240px', maxWidth: 380 }}>
           <Search />
