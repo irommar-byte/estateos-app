@@ -629,3 +629,5 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-desk__d.is-off:not(.is-sel) { color: var(--x-red); }
 .crmx-desk__d.is-holiday:not(.is-sel) { font-weight: 800; background: color-mix(in srgb, var(--x-red) 8%, transparent); }
 .crmx-desk__wd:nth-child(6), .crmx-desk__wd:nth-child(7) { color: var(--x-red); opacity: 0.75; }
+.crmx-peek__holiday { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14.5px; font-weight: 650; color: var(--x-red); }
+.crmx-peek__holiday span { flex-basis: 100%; font-size: 11.5px; font-weight: 500; color: var(--x-ink-3); padding-left: 20px; }

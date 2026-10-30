@@ -342,7 +342,7 @@ export function DeskCalendar({ desk }: { desk: Desk }) {
           const hol = holidayName(dt);
           const cls = ['crmx-desk__d', isWeekend(dt) || hol ? 'is-off' : '', hol ? 'is-holiday' : '', key === todayKey ? 'is-today' : '', key === selected ? 'is-sel' : ''].join(' ');
           return (
-            <button key={i} type="button" className={cls} title={hol || undefined} onClick={() => setSelected(key)} {...peek.bind(key, notes.find((n) => n.date === key)?.text)}>
+            <button key={i} type="button" className={cls} onClick={() => setSelected(key)} {...peek.bind(key, notes.find((n) => n.date === key)?.text, hol)}>
               {d}
               <span className="crmx-desk__marks">
                 {eventDays.has(key) ? <i className="ev" /> : null}
