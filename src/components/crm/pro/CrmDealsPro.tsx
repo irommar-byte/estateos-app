@@ -64,6 +64,12 @@ export default function CrmDealsPro({
             <p className="truncate text-[11.5px] crmx-muted">{d.offer.title}</p>
           </div>
         </div>
+        {d.entry && (d.stage === 'interested' || d.stage === 'scheduling') ? (
+          <p className="crmx-deal__why" title={d.entry.reason}>
+            <b>Dlaczego tutaj:</b> {d.entry.reason}
+            {d.entry.at ? <span className="crmx-muted"> · {relative(d.entry.at)}</span> : null}
+          </p>
+        ) : null}
         <p className="mt-2 text-[12px] leading-snug" style={{ color: 'var(--x-ink-2)' }}>{d.nextAction}</p>
         <div className="mt-2 flex flex-wrap items-center gap-1">
           <span className="crmx-chip">{STAGE_SHORT[d.stage] || d.stage}</span>

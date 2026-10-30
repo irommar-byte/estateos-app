@@ -35,6 +35,7 @@ export type ProDeal = {
   stage: string;
   source: string;
   sourceLabel: string;
+  entry?: { reason: string; at: string | null; qualified: boolean };
   offer: { id: number; title: string; address: string; price: number | null; imageUrl: string | null };
   seller: { clientId: number; name: string } | null;
   buyer:

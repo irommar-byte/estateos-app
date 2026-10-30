@@ -127,6 +127,8 @@ export type DealView = {
     | { kind: 'client'; clientId: number; name: string; phone: string | null; email: string | null }
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
   stage: DealStage;
+  /** Dlaczego kupujący pojawił się w lejku — konkretna akcja i kiedy. */
+  entry: { reason: string; at: string | null; qualified: boolean };
   phases: Array<{
     id: PhaseId;
     label: string;
@@ -169,7 +171,7 @@ function attendanceSigned(deal: { attendanceUrl: string | null }, rows: Activity
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  radar: 'Wysłana z radaru',
+  radar: 'Reakcja na ofertę z radaru',
   presentation: 'Umówiona prezentacja',
   inquiry: 'Zapytanie z portalu',
   listing_request: 'Prośba innej agencji',
@@ -284,15 +286,21 @@ export async function syncOfferBuyerDeals(agencyUserId: number, offerId: number)
   const rows: NewDeal[] = [];
   const base = { agencyUserId, offerId, sellerClientId: seller?.id ?? null };
 
+  // Z radaru do lejka trafia tylko kupujący, który zareagował (nie odmową): „Chcę obejrzeć”, „Do przemyślenia”, ulubione.
   const matches = await prisma.agencyClientMatch.findMany({
     where: {
       offerId,
-      OR: [{ notifiedAt: { not: null } }, { sharedAt: { not: null } }, { clientFavorite: true }],
+      OR: [{ clientFeedback: { not: null } }, { clientFavorite: true }],
       client: { agencyUserId, type: 'BUYER', status: 'ACTIVE' },
     },
-    select: { clientId: true },
+    select: { clientId: true, clientFeedback: true, clientFavorite: true },
   });
-  for (const match of matches) rows.push({ ...base, buyerClientId: match.clientId, source: 'radar' });
+  for (const match of matches) {
+    const sentiment = parseClientOfferFeedback(match.clientFeedback).sentiment;
+    if (sentiment === 'like' || sentiment === 'maybe' || match.clientFavorite) {
+      rows.push({ ...base, buyerClientId: match.clientId, source: 'radar' });
+    }
+  }
 
   const activities = await prisma.agencyClientActivity.findMany({
     where: { offerId, kind: { in: TRACKED_KINDS } },
@@ -555,7 +563,7 @@ function buildTimeline(
 
 type Context = {
   activities: ActivityRow[];
-  matches: Array<{ clientId: number; offerId: number; clientFeedback: string | null; clientFeedbackAt: Date | null }>;
+  matches: Array<{ clientId: number; offerId: number; clientFeedback: string | null; clientFeedbackAt: Date | null; clientFavorite: boolean; favoriteAt: Date | null }>;
   clients: Map<number, { firstName: string; lastName: string; phone: string | null; email: string | null }>;
   offers: Map<number, { id: number; title: string; street: string | null; district: string; city: string; price: number; images: string | null }>;
   agencies: Map<number, string>;
@@ -607,6 +615,76 @@ export function negotiationTurn(offers: NegotiationOffer[], agreed: boolean, has
   return { side: other, label: `Czekamy na ${otherName} (${pln(open.amount)})`, deadline, offerId: open.id };
 }
 
+function clip(text: unknown, max = 110): string {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
+
+/** Konkretny powód, dla którego kupujący jest w lejku. qualified=false → sama wysyłka bez reakcji albo odmowa. */
+function dealEntry(
+  deal: DealRow,
+  rows: ActivityRow[],
+  slot: ScheduleSlot | null,
+  match: Context['matches'][number] | undefined,
+  parsed: ReturnType<typeof parseClientOfferFeedback>,
+): DealView['entry'] {
+  const note = parsed.note ? ` — „${clip(parsed.note, 80)}”` : '';
+  const feedbackAt = iso(match?.clientFeedbackAt) || null;
+  const firstSchedule = rows.find((row) => SCHEDULE_KINDS.includes(row.kind)) || null;
+  const scheduleEntry = (): DealView['entry'] | null =>
+    firstSchedule
+      ? {
+          reason:
+            slot?.proposedBy === 'client'
+              ? 'Kupujący sam zaproponował termin prezentacji'
+              : 'Prezentacja umówiona przez agenta',
+          at: iso(firstSchedule.createdAt) || null,
+          qualified: true,
+        }
+      : null;
+
+  switch (deal.source) {
+    case 'radar': {
+      if (parsed.sentiment === 'like') {
+        return { reason: `Kliknął „Chcę obejrzeć” przy ofercie od agenta poszukiwań${note}`, at: feedbackAt, qualified: true };
+      }
+      if (parsed.sentiment === 'maybe') {
+        return { reason: `Odpowiedział „Do przemyślenia” na ofertę od agenta poszukiwań${note}`, at: feedbackAt, qualified: true };
+      }
+      if (match?.clientFavorite) {
+        return { reason: 'Dodał ofertę do ulubionych w panelu klienta', at: iso(match.favoriteAt) || null, qualified: true };
+      }
+      const viaSchedule = scheduleEntry();
+      if (viaSchedule) return viaSchedule;
+      if (parsed.sentiment === 'dislike') return { reason: `Odpowiedział „Nie pasuje”${note}`, at: feedbackAt, qualified: false };
+      return { reason: 'Oferta wysłana z radaru — bez reakcji', at: null, qualified: false };
+    }
+    case 'inquiry': {
+      const lead = rows.find((row) => row.kind === 'EXTERNAL_PORTAL_LEAD');
+      const text = clip(lead?.body || lead?.title);
+      return { reason: text ? `Zapytanie z portalu: „${text}”` : 'Wysłał zapytanie z portalu', at: iso(lead?.createdAt) || iso(deal.createdAt) || null, qualified: true };
+    }
+    case 'listing_request': {
+      const req = rows.find((row) => row.kind === JOURNEY_ACTIVITY.LISTING_SHOWING_REQUESTED) || rows[0];
+      return { reason: 'Agent innej agencji poprosił o prezentację dla swojego kupującego', at: iso(req?.createdAt) || iso(deal.createdAt) || null, qualified: true };
+    }
+    case 'guest_agency':
+      return {
+        reason: `${deal.externalAgency || 'Inna agencja'} umawia prezentację dla swojego kupującego`,
+        at: iso(firstSchedule?.createdAt) || iso(deal.createdAt) || null,
+        qualified: true,
+      };
+    case 'presentation':
+      return scheduleEntry() || { reason: 'Prezentacja przy tej ofercie', at: iso(deal.createdAt) || null, qualified: true };
+    case 'manual':
+      return { reason: 'Dodany ręcznie przez agenta', at: iso(deal.createdAt) || null, qualified: true };
+    case 'dealroom':
+      return { reason: 'Rozpoczął transakcję w Dealroomie (portal)', at: iso(deal.createdAt) || null, qualified: true };
+    default:
+      return { reason: SOURCE_LABELS[deal.source] || 'Kupujący przy ofercie', at: iso(deal.createdAt) || null, qualified: true };
+  }
+}
+
 function shapeDeal(deal: DealRow, ctx: Context): DealView {
   const now = Date.now();
   const rows = activitiesForDeal(deal, ctx.activities.filter((row) => row.offerId === deal.offerId));
@@ -638,11 +716,16 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
   // Opinia: najnowsza z trzech źródeł — panel kupującego, podsumowanie wizyty na tablecie, wpis agenta.
   const candidates: NonNullable<DealView['feedback']>[] = [];
   let matchFeedback: { text: string; at: string } | null = null;
+  const match = deal.buyerClientId
+    ? ctx.matches.find((row) => row.clientId === deal.buyerClientId && row.offerId === deal.offerId)
+    : undefined;
+  const matchParsed = parseClientOfferFeedback(match?.clientFeedback);
   if (deal.buyerClientId) {
-    const match = ctx.matches.find((row) => row.clientId === deal.buyerClientId && row.offerId === deal.offerId);
-    const parsed = parseClientOfferFeedback(match?.clientFeedback);
-    if (parsed.sentiment) {
-      const at = iso(match?.clientFeedbackAt) || null;
+    const parsed = matchParsed;
+    const at = iso(match?.clientFeedbackAt) || null;
+    // Reakcja przed prezentacją („Chcę obejrzeć”) to powód wejścia do lejka, a nie opinia po obejrzeniu.
+    const afterViewing = Boolean(heldAt && (!at || new Date(at).getTime() >= new Date(heldAt).getTime()));
+    if (parsed.sentiment && afterViewing) {
       const note = [parsed.liked, parsed.disliked, parsed.phrases.join(', '), parsed.note].filter(Boolean).join(' · ') || null;
       candidates.push({ sentiment: parsed.sentiment, note, by: 'buyer', at });
       if (at) matchFeedback = { at, text: `Opinia w panelu: ${SENTIMENT_LABEL[parsed.sentiment]}${note ? ` — ${note}` : ''}` };
@@ -759,6 +842,8 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     return 'Klient kupuje? Przejdź do negocjacji';
   })();
 
+  const entry = dealEntry(deal, rows, slot, match, matchParsed);
+
   const offer = ctx.offers.get(deal.offerId);
   const sellerRow = deal.sellerClientId ? ctx.clients.get(deal.sellerClientId) : null;
   const buyerRow = deal.buyerClientId ? ctx.clients.get(deal.buyerClientId) : null;
@@ -798,6 +883,7 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
             email: deal.externalEmail,
           },
     stage,
+    entry,
     phases,
     presentation,
     attendance,
@@ -832,7 +918,7 @@ async function buildContext(deals: DealRow[]): Promise<Context> {
     buyerIds.length
       ? prisma.agencyClientMatch.findMany({
           where: { clientId: { in: buyerIds }, offerId: { in: offerIds } },
-          select: { clientId: true, offerId: true, clientFeedback: true, clientFeedbackAt: true },
+          select: { clientId: true, offerId: true, clientFeedback: true, clientFeedbackAt: true, clientFavorite: true, favoriteAt: true },
         })
       : [],
     clientIds.length
@@ -931,7 +1017,8 @@ export async function listAgentDeals(agencyUserId: number): Promise<DealView[]> 
     orderBy: { updatedAt: 'desc' },
     take: 300,
   });
-  return sortDeals(shapeAll(deals, await buildContext(deals)));
+  const views = shapeAll(deals, await buildContext(deals));
+  return sortDeals(views.filter((view) => view.entry.qualified || view.stage !== 'interested'));
 }
 
 /** Nieruchomości, przy których kupujący jest w procesie (karta kupującego). Samo wysłanie z radaru pomijamy. */
