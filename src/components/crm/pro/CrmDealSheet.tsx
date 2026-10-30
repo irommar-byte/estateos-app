@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowLeft, CalendarClock, Check, ExternalLink, Mail, Maximize2, Phone, User, X, Home, MessageSquareQuote } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarClock, RotateCcw, Trash2, Check, ExternalLink, Mail, Maximize2, Phone, User, X, Home, MessageSquareQuote } from 'lucide-react';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { buyerName, STAGE_SHORT, type ProDeal, type ProGuide } from './CrmPulpit';
 import { pln, relative } from './format';
@@ -354,6 +354,9 @@ function SheetBody({
   const [agreed, setAgreed] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [intentNote, setIntentNote] = useState('');
+  const [confirmLost, setConfirmLost] = useState(false);
+  const [searchOther, setSearchOther] = useState(false);
+  const [searchNote, setSearchNote] = useState('');
 
   const client = deal.buyer.kind === 'client' ? deal.buyer : null;
   const phone = deal.buyer.phone;
@@ -477,7 +480,7 @@ function SheetBody({
             <button type="button" className="crmx-btn crmx-btn--gold" disabled={busy} onClick={() => void dealAction('confirm_intent', { note: intentNote }, 'Zapisane — teraz ustal termin z właścicielem.')}>
               <Check size={15} /> Chce obejrzeć
             </button>
-            <button type="button" className="crmx-btn" disabled={busy} onClick={() => void dealAction('set_status', { status: 'LOST' }, 'Zamknięte — kupujący nie jest zainteresowany.')}>
+            <button type="button" className="crmx-btn crmx-btn--danger-soft" disabled={busy} onClick={() => { setConfirmLost(true); window.setTimeout(() => document.querySelector('.crmx-danger')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60); }}>
               Nie jest zainteresowany
             </button>
           </div>
@@ -693,15 +696,55 @@ function SheetBody({
       </div>
 
       {deal.status === 'ACTIVE' || deal.status === 'PAUSED' ? (
-        <button
-          type="button"
-          className="crmx-dealsheet__lost"
-          disabled={busy}
-          onClick={() => void dealAction('set_status', { status: 'LOST' }, 'Zamknięte — kupujący nie jest już zainteresowany.')}
-        >
-          Kupujący zrezygnował — zamknij
+        confirmLost ? (
+          <section className="crmx-danger" role="alertdialog" aria-label="Potwierdź zamknięcie">
+            <p className="crmx-danger__title"><AlertTriangle size={17} /> Na pewno zamknąć transakcję: {buyerName(deal)}?</p>
+            <ul className="crmx-danger__list">
+              <li>Kupujący <b>zniknie z lejka</b> i ze wszystkich kolumn — trafi do „Zakończone”.</li>
+              <li>Przepadną przypomnienia i podpowiedzi następnych kroków dla tej oferty.</li>
+              <li>Ani kupujący, ani właściciel nie dostaną żadnej wiadomości.</li>
+              <li>Historia zostaje zapisana. Przez 90 dni możesz przywrócić go z „Zakończone”, potem przestanie być widoczny.</li>
+            </ul>
+            {client ? (
+              <label className="crmx-dealsheet__check">
+                <input type="checkbox" checked={searchOther} onChange={(e) => setSearchOther(e.target.checked)} />
+                Szukamy dla niego czegoś innego
+              </label>
+            ) : null}
+            {client && searchOther ? (
+              <label className="crmx-input">
+                <input value={searchNote} onChange={(e) => setSearchNote(e.target.value)} placeholder="Co mu nie pasowało / czego szukać? (trafi do notatek)" />
+              </label>
+            ) : null}
+            <div className="crmx-dealsheet__row">
+              <button
+                type="button"
+                className="crmx-btn crmx-btn--danger"
+                disabled={busy}
+                onClick={() =>
+                  void dealAction(
+                    'set_status',
+                    { status: 'LOST', ...(client ? { searchOther, searchNote: searchOther ? searchNote : null } : {}) },
+                    'Zamknięte — przeniesione do „Zakończone”.',
+                  ).then(() => setConfirmLost(false))
+                }
+              >
+                <Trash2 size={15} /> Tak, zamknij transakcję
+              </button>
+              <button type="button" className="crmx-btn" onClick={() => setConfirmLost(false)}>Anuluj — zostaw w lejku</button>
+            </div>
+          </section>
+        ) : (
+          <button type="button" className="crmx-dealsheet__lost" disabled={busy} onClick={() => { setConfirmLost(true); window.setTimeout(() => document.querySelector('.crmx-danger')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60); }}>
+            <Trash2 size={14} /> Kupujący zrezygnował — zamknij transakcję
+          </button>
+        )
+      ) : deal.status === 'LOST' ? (
+        <button type="button" className="crmx-btn" disabled={busy} onClick={() => void dealAction('set_status', { status: 'ACTIVE' }, 'Przywrócone do lejka — wraca na swój etap.')}>
+          <RotateCcw size={15} /> Przywróć do lejka
         </button>
       ) : null}
+      {msg && !deal.guide && !(deal.status === 'ACTIVE' || deal.status === 'PAUSED') ? <p className={`crmx-dealsheet__msg ${msg.ok ? 'is-ok' : 'is-bad'}`}>{msg.text}</p> : null}
     </div>
   );
 }

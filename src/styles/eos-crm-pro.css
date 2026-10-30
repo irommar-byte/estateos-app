@@ -689,8 +689,6 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-dealsheet__msg { font-size: 12.5px; font-weight: 600; }
 .crmx-dealsheet__msg.is-ok { color: var(--x-good); }
 .crmx-dealsheet__msg.is-bad { color: var(--x-bad); }
-.crmx-dealsheet__lost { align-self: flex-start; font-size: 12px; font-weight: 600; color: var(--x-ink-3); text-decoration: underline; text-underline-offset: 3px; }
-.crmx-dealsheet__lost:hover { color: var(--x-bad); }
 .crmx .crmx-eyebrow { font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--x-gold-ink); }
 
 .crmx-dealsheet__guide { padding: 18px; display: flex; flex-direction: column; gap: 10px; }
@@ -723,3 +721,16 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-facts b { font-size: 13.5px; font-weight: 600; color: var(--x-ink); }
 .crmx-linkrow { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--x-line); background: var(--x-surface); text-align: left; font-size: 13px; color: var(--x-ink); }
 .crmx-linkrow:hover { border-color: var(--x-gold); }
+
+/* Akcje nieodwracalne — wyglądem mówią, że niszczą */
+.crmx-dealsheet__lost { margin-top: 6px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 14px; border-radius: 12px; font-size: 13px; font-weight: 700; color: #b42318; background: rgba(217, 45, 32, 0.07); border: 1px dashed rgba(217, 45, 32, 0.55); transition: background .15s, color .15s; }
+.crmx-dealsheet__lost:hover { color: #fff; background: #d92d20; border-style: solid; border-color: #b42318; }
+html:not(.light) .crmx .crmx-dealsheet__lost { color: #ff8a80; background: rgba(255, 82, 82, 0.1); border-color: rgba(255, 110, 100, 0.55); }
+html:not(.light) .crmx .crmx-dealsheet__lost:hover { color: #fff; background: #d92d20; }
+.crmx .crmx-btn--danger { background: linear-gradient(180deg, #e5483b, #c22a1f); color: #fff; border-color: #a8231a; }
+.crmx .crmx-btn--danger:hover { filter: brightness(1.05); }
+.crmx .crmx-btn--danger-soft { color: #b42318; border-color: rgba(217, 45, 32, 0.45); }
+.crmx-danger { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 14px; border: 1.5px solid #d92d20; background: rgba(217, 45, 32, 0.06); box-shadow: 0 0 0 4px rgba(217, 45, 32, 0.08); }
+.crmx-danger__title { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 700; color: #b42318; }
+html:not(.light) .crmx .crmx-danger__title { color: #ff8a80; }
+.crmx-danger__list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; line-height: 1.45; color: var(--x-ink-2); list-style: disc; }
