@@ -55,6 +55,7 @@ import { type ClientNextStep } from "@/lib/crm/clientNextStep";
 import type { BuyerAgentTask } from "@/lib/crm/buyerAgentTasks";
 import type { ShowingCard } from "@/lib/crm/showingKind";
 import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
+import CrmClientsList, { type ClientTypeFilter } from "@/components/crm/pro/CrmClientsList";
 import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
 import MatchImportAgentMeta, { type MatchImportBrief } from "@/components/crm/MatchImportAgentMeta";
 import CrmSellerCollaborationPanel from "@/components/crm/CrmSellerCollaborationPanel";
@@ -323,6 +324,7 @@ export default function CrmClientsWorkspace() {
   const [allowResend, setAllowResend] = useState(false);
   const [query, setQuery] = useState("");
   const [onlyAttention, setOnlyAttention] = useState(false);
+  const [typeFilter, setTypeFilter] = useState<ClientTypeFilter>("ALL");
   const [sortBy, setSortBy] = useState<"recent" | "name" | "match">("recent");
   const [cardBusyId, setCardBusyId] = useState<number | null>(null);
   const [toast, setToast] = useState("");
@@ -611,6 +613,7 @@ export default function CrmClientsWorkspace() {
         (client.email || "").toLowerCase().includes(q) ||
         (client.phone || "").toLowerCase().includes(q);
       if (!textHit) return false;
+      if (typeFilter !== "ALL" && client.type !== typeFilter) return false;
       if (!onlyAttention) return true;
       return clientNeedsContactVerification(client) || client.matchCount === 0;
     });
@@ -625,7 +628,7 @@ export default function CrmClientsWorkspace() {
       }
       return +new Date(b.updatedAt) - +new Date(a.updatedAt);
     });
-  }, [clients, onlyAttention, query, sortBy]);
+  }, [clients, onlyAttention, query, sortBy, typeFilter]);
 
   const personRows = useMemo(() => groupCrmClientsByPerson(filtered), [filtered]);
 
@@ -1030,13 +1033,6 @@ export default function CrmClientsWorkspace() {
         </div>
       ) : null}
 
-      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="crmx-sub">Lampki przy kliencie: e-mail · telefon · konto · dopasowanie. Spotkanie pozyskania pokazuje odliczanie.</p>
-        <button type="button" onClick={() => setFormOpen(true)} className="crmx-btn crmx-btn--primary shrink-0">
-          <UserPlus className="size-4" />
-          {cl.addClient}
-        </button>
-      </div>
 
       {toast ? (
         <p className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700">
@@ -1045,244 +1041,57 @@ export default function CrmClientsWorkspace() {
       ) : null}
 
       <div className={`eos-crm-split ${selectedId ? "is-open" : ""}`}>
-        <div className="eos-crm-split__list min-w-0 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/85 p-3 shadow-[0_20px_50px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)]">
-          <div className="mb-3 grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-            <label className="flex min-w-0 items-center gap-2 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/50 px-3 py-2 shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]">
-              <Search className="size-4 shrink-0 text-[var(--eos-muted)]" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Szukaj: imię, e-mail, telefon"
-                className="min-w-0 w-full bg-transparent text-sm text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-muted)]"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => setOnlyAttention((prev) => !prev)}
-              className={`inline-flex items-center justify-center gap-1 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-wider ${
-                onlyAttention
-                  ? "border-amber-500/50 bg-amber-500/15 text-amber-700"
-                  : "border-[var(--eos-border)] text-[var(--eos-muted)]"
-              }`}
-            >
-              <SlidersHorizontal className="size-3.5 shrink-0" />
-              Priorytet
-            </button>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as "recent" | "name" | "match")}
-              className="min-w-0 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 px-3 py-2 text-xs font-semibold text-[var(--eos-text)] outline-none"
-            >
-              <option value="recent">Sort: ostatnia aktywność</option>
-              <option value="name">Sort: nazwa A-Z</option>
-              <option value="match">Sort: najwyższe dopasowanie</option>
-            </select>
-          </div>
+        <div className="eos-crm-split__list min-w-0">
           {selectedClientIds.size > 0 ? (
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/8 px-3 py-2">
-              <span className="text-xs font-semibold text-[var(--eos-text)]">
-                Zaznaczono: {selectedClientIds.size}
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedClientIds(new Set())}
-                className={eosBtn("ghost", { size: "sm" })}
-              >
-                Wyczyść
-              </button>
-              <button
-                type="button"
-                onClick={() => setArchiveConfirmOpen(true)}
-                className={eosBtn("danger", { size: "sm" })}
-              >
-                <Archive className="size-3.5" />
-                Archiwizuj
+            <div className="crmx-card mb-3 flex flex-wrap items-center gap-2 px-4 py-2.5">
+              <span className="text-[13px] font-semibold">Zaznaczono: {selectedClientIds.size}</span>
+              <button type="button" onClick={() => setSelectedClientIds(new Set())} className="crmx-btn crmx-btn--sm">Wyczyść</button>
+              <button type="button" onClick={() => setArchiveConfirmOpen(true)} className="crmx-btn crmx-btn--sm" style={{ color: "var(--x-bad)" }}>
+                <Archive className="size-3.5" /> Archiwizuj
               </button>
             </div>
           ) : null}
           {loading ? (
-            <p className="text-sm text-[var(--eos-muted)]">{cl.loading}</p>
+            <div className="crmx-card crmx-empty">{cl.loading}</div>
           ) : loadError ? (
-            <div className="rounded-[1.25rem] border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 px-4 py-8 text-center sm:p-10">
-              <p className="break-words text-lg font-semibold text-[var(--eos-text)]">{loadError}</p>
-              <button
-                type="button"
-                className="mt-4 text-sm font-semibold text-emerald-600 underline"
-                onClick={() => void loadClients()}
-              >
-                Spróbuj ponownie
-              </button>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="rounded-[1.25rem] border border-dashed border-[var(--eos-border)] bg-[var(--eos-card)]/50 px-4 py-8 text-center sm:p-10">
-              <p className="break-words text-lg font-semibold text-[var(--eos-text)]">{cl.emptyTitle}</p>
-              <p className="mt-2 break-words text-sm leading-relaxed text-[var(--eos-muted)]">{cl.emptyBody}</p>
+            <div className="crmx-card crmx-empty">
+              <p className="font-semibold" style={{ color: "var(--x-ink)" }}>{loadError}</p>
+              <button type="button" className="crmx-btn crmx-btn--sm mt-3" onClick={() => void loadClients()}>Spróbuj ponownie</button>
             </div>
           ) : (
-            <div className="w-full overflow-x-visible">
-              <table className="eos-crm-clients-table w-full table-fixed text-left">
-                <thead>
-                  <tr className="border-b border-[var(--eos-border)] text-[10px] uppercase tracking-[0.14em] text-[var(--eos-muted)]">
-                    <th className="w-10 px-2 py-2">
-                      <button
-                        type="button"
-                        onClick={toggleAllFiltered}
-                        disabled={personRows.length === 0}
-                        aria-label="Zaznacz wszystkich widocznych klientów"
-                        className={`flex h-7 w-7 items-center justify-center rounded-lg border transition disabled:opacity-30 ${
-                          personRows.length > 0 && personRows.every((group) => group.ids.every((id) => selectedClientIds.has(id)))
-                            ? "border-emerald-500 bg-emerald-500"
-                            : "border-[var(--eos-border)] hover:border-emerald-500/40"
-                        }`}
-                      >
-                        {personRows.length > 0 && personRows.every((group) => group.ids.every((id) => selectedClientIds.has(id))) ? (
-                          <Check className="size-3.5 text-black" />
-                        ) : null}
-                      </button>
-                    </th>
-                    <th className="w-[34%] px-3 py-2">Klient</th>
-                    <th className="w-[18%] px-3 py-2">Status</th>
-                    <th className="w-[28%] px-3 py-2">Kontakt</th>
-                    <th className="w-[16%] px-3 py-2 text-right">Wizytówka</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {personRows.map((group) => {
-                    const client = group.primary;
-                    const selectedInGroup = group.ids.some((id) => selectedClientIds.has(id));
-                    const active = selectedId != null && group.ids.includes(selectedId);
-                    return (
-                    <tr
-                      key={group.key}
-                      onClick={() => setSelectedId(client.id)}
-                      className={`cursor-pointer border-b border-[var(--eos-border)]/60 text-sm transition hover:bg-[var(--eos-input)]/60 ${
-                        active ? "bg-emerald-500/10" : ""
-                      } ${selectedInGroup ? "bg-rose-500/5" : ""}`}
-                    >
-                      <td className="px-2 py-3 align-top" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const allSelected = group.ids.every((id) => selectedClientIds.has(id));
-                            setSelectedClientIds((prev) => {
-                              const next = new Set(prev);
-                              group.ids.forEach((id) => {
-                                if (allSelected) next.delete(id);
-                                else next.add(id);
-                              });
-                              return next;
-                            });
-                          }}
-                          aria-label={`Zaznacz ${client.firstName} ${client.lastName}`}
-                          className={`flex h-7 w-7 items-center justify-center rounded-lg border transition ${
-                            selectedInGroup
-                              ? "border-emerald-500 bg-emerald-500"
-                              : "border-[var(--eos-border)] hover:border-emerald-500/40"
-                          }`}
-                        >
-                          {selectedInGroup ? <Check className="size-3.5 text-black" /> : null}
-                        </button>
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <p className="break-words font-semibold text-[var(--eos-text)]">
-                          {client.firstName} {client.lastName}
-                          <span className="ml-2 text-[11px] font-bold tracking-wide text-[var(--eos-muted)]">ID {client.id}</span>
-                        </p>
-                        <p className="mt-1 break-all text-xs text-[var(--eos-muted)]">{client.email || "—"}{client.phone ? ` · ${client.phone}` : ""}</p>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                          <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${
-                            group.types.length > 1
-                              ? "bg-amber-500/15 text-amber-800"
-                              : "bg-[var(--eos-input)] text-[var(--eos-muted)]"
-                          }`}>
-                            {formatCrmRoleLabel(group.types)}
-                          </span>
-                          {group.ids.length > 1 ? (
-                            <span className="rounded-full bg-[var(--eos-input)] px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[var(--eos-muted)]">
-                              {group.ids.length} sprawy
-                            </span>
-                          ) : null}
-                          {client.type === "BUYER" && client.matchCount > 0 ? (
-                            <span className="inline-flex rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
-                              {client.matchCount} dopasowań{client.topMatchScore ? ` · ${client.topMatchScore}%` : ""}
-                            </span>
-                          ) : null}
-                          {client.linkedUserId ? (
-                            <span className={`text-[9px] font-black uppercase tracking-wider ${
-                              client.linkedUserLastLoginAt && Date.now() - new Date(client.linkedUserLastLoginAt).getTime() <= 10 * 60 * 1000
-                                ? "text-emerald-600"
-                                : "text-[var(--eos-muted)]"
-                            }`}>
-                              {client.linkedUserLastLoginAt && Date.now() - new Date(client.linkedUserLastLoginAt).getTime() <= 10 * 60 * 1000
-                                ? "Online"
-                                : "Konto"}
-                            </span>
-                          ) : (
-                            <span className="text-[9px] font-black uppercase tracking-wider text-amber-700">Brak konta</span>
-                          )}
-                          <span className="text-[9px] font-semibold text-[var(--eos-muted)]">
-                            {new Date(client.updatedAt).toLocaleDateString("pl-PL")}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        {clientHasUpcomingMeeting(client) && client.upcomingMeetingStartsAt ? (
-                          <CrmClientMeetingCountdown
-                            startsAt={client.upcomingMeetingStartsAt}
-                            location={client.upcomingMeetingLocation}
-                          />
-                        ) : (
-                          <CrmClientStatusLamps client={client} />
-                        )}
-                      </td>
-                      <td className="px-3 py-3 align-top">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {client.phone ? (
-                            <a
-                              href={`tel:${client.phone}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 rounded-lg border border-[var(--eos-border)] px-2 py-1 text-xs hover:border-emerald-500/40"
-                            >
-                              <PhoneCall className="size-3" />
-                              Zadzwoń
-                            </a>
-                          ) : null}
-                          {client.email ? (
-                            <a
-                              href={`mailto:${client.email}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 rounded-lg border border-[var(--eos-border)] px-2 py-1 text-xs hover:border-emerald-500/40"
-                            >
-                              <Mail className="size-3" />
-                              E-mail
-                            </a>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 align-top text-right">
-                        <button
-                          type="button"
-                          disabled={!client.email || cardBusyId === client.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void sendBusinessCard(client.id);
-                          }}
-                          title={client.email ? "Wyślij wizytówkę e-mailem" : "Brak e-maila klienta"}
-                          className={eosBtn("secondary", {
-                            size: "sm",
-                            className: "disabled:opacity-40",
-                          })}
-                        >
-                          <IdCard className="size-3.5" />
-                          {cardBusyId === client.id ? "…" : "Wyślij"}
-                        </button>
-                      </td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <CrmClientsList
+              groups={personRows}
+              total={clients.length}
+              counts={{
+                ALL: groupCrmClientsByPerson(clients).length,
+                BUYER: clients.filter((x) => x.type === "BUYER").length,
+                SELLER: clients.filter((x) => x.type === "SELLER").length,
+                attention: clients.filter((x) => clientNeedsContactVerification(x) || x.matchCount === 0).length,
+              }}
+              typeFilter={typeFilter}
+              onTypeFilter={setTypeFilter}
+              query={query}
+              onQuery={setQuery}
+              onlyAttention={onlyAttention}
+              onOnlyAttention={setOnlyAttention}
+              sortBy={sortBy}
+              onSortBy={setSortBy}
+              selectedId={selectedId}
+              onOpen={(id) => setSelectedId(id)}
+              selectedIds={selectedClientIds}
+              onToggleSelect={(ids) =>
+                setSelectedClientIds((prev) => {
+                  const next = new Set(prev);
+                  const all = ids.every((id) => next.has(id));
+                  ids.forEach((id) => (all ? next.delete(id) : next.add(id)));
+                  return next;
+                })
+              }
+              onAdd={() => setFormOpen(true)}
+              onSendCard={(id) => void sendBusinessCard(id)}
+              cardBusyId={cardBusyId}
+              compact={selectedId != null}
+            />
           )}
         </div>
 
