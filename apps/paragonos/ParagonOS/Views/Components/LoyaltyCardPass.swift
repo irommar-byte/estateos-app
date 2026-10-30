@@ -893,7 +893,7 @@ struct LoyaltyPassStack: View {
         }
         .scaleEffect(lifted ? (pullOutArmed ? 1.07 : 1.03) : 1, anchor: .top)
         .matchedTransitionSource(id: card.id, in: zoomNamespace)
-        .opacity(flight?.hiddenID == card.id ? 0 : 1)
+        .opacity(flight?.hiddenID == card.id || (flight?.stackShown == false && openingID != card.id) ? 0 : 1)
         .frame(height: LoyaltyPassStackMetrics.cardHeight, alignment: .top)
         .allowsHitTesting(false)
         .overlay(alignment: .top) {
@@ -907,8 +907,9 @@ struct LoyaltyPassStack: View {
                         onOpen(card)
                         return
                     }
-                    // Pull the card up out of its pocket, then open it.
+                    // Pull the card up out of its pocket while the rest of the pile fades, then open it.
                     withAnimation(PassStackMotion.slideOut) { openingID = card.id }
+                    flight?.fadeStackOut()
                     DispatchQueue.main.asyncAfter(deadline: .now() + PassStackMotion.slideOutPause) { onOpen(card) }
                 },
                 onBeginReorder: {
@@ -962,6 +963,7 @@ struct LoyaltyPassStack: View {
     private func pullOut(_ id: UUID) {
         guard let card = cards.first(where: { $0.id == id }) else { return }
         openingID = id
+        flight?.fadeStackOut()
         onOpen(card)
         var instant = Transaction()
         instant.disablesAnimations = true
@@ -1348,6 +1350,15 @@ final class CardFlight {
     var progress: Double = 0
     /// Finger offset while the open card is pulled down to put it back.
     var dragOffset: CGFloat = 0
+    /// The rest of the pile fades out while a card is out and fades back as it returns.
+    var stackShown = true
+
+    static var stackFadeOut: Animation { .easeOut(duration: 0.2) }
+    static var stackFadeIn: Animation { .easeInOut(duration: 0.6) }
+
+    func fadeStackOut() {
+        withAnimation(Self.stackFadeOut) { stackShown = false }
+    }
     @ObservationIgnored private var stackFrames: [UUID: CGRect] = [:]
     @ObservationIgnored private var landed: (() -> Void)?
     @ObservationIgnored private var started = false
@@ -1371,6 +1382,7 @@ final class CardFlight {
 
     func open(_ card: LoyaltyCard, push: () -> Void, landed: @escaping () -> Void) {
         guard UIAccessibility.isReduceMotionEnabled == false, let frame = stackFrames[card.id] else {
+            stackShown = true
             push()
             landed()
             return
@@ -1418,6 +1430,7 @@ final class CardFlight {
         instant.disablesAnimations = true
         withTransaction(instant) { pop() }
         DispatchQueue.main.async {
+            withAnimation(Self.stackFadeIn) { self.stackShown = true }
             withAnimation(Self.closing) { self.progress = 0 } completion: { self.finish() }
         }
     }
@@ -1453,6 +1466,7 @@ final class CardFlight {
         target = .zero
         landed = nil
         dragOffset = 0
+        stackShown = true
         done?()
     }
 }
