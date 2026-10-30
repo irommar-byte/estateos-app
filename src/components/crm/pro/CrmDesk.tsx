@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
 
@@ -22,8 +22,13 @@ function isoWeek(d: Date): number {
   return Math.ceil(((t.getTime() - y.getTime()) / 86_400_000 + 1) / 7);
 }
 
-/** Zegar analogowy w stylu zegarka mechanicznego — płynna wskazówka sekundowa, złote indeksy, okienko daty. */
+/**
+ * Zegarek jak prawdziwy: koperta z polerowanego złota (wielowarstwowe gradienty i odblaski), radełkowana luneta,
+ * koronka, tarcza z promienistym szlifem, nakładane fazowane indeksy, fazowane wskazówki z cieniem, wypukłe szkło.
+ */
 function DeskWatch() {
+  const uid = useId().replace(/:/g, '');
+  const id = (n: string) => `${n}-${uid}`;
   const h = useRef<SVGGElement>(null);
   const m = useRef<SVGGElement>(null);
   const s = useRef<SVGGElement>(null);
@@ -35,9 +40,9 @@ function DeskWatch() {
       const sec = n.getSeconds() + n.getMilliseconds() / 1000;
       const min = n.getMinutes() + sec / 60;
       const hr = (n.getHours() % 12) + min / 60;
-      h.current?.setAttribute('transform', `rotate(${hr * 30} 100 100)`);
-      m.current?.setAttribute('transform', `rotate(${min * 6} 100 100)`);
-      s.current?.setAttribute('transform', `rotate(${sec * 6} 100 100)`);
+      h.current?.setAttribute('transform', `rotate(${hr * 30} 120 120)`);
+      m.current?.setAttribute('transform', `rotate(${min * 6} 120 120)`);
+      s.current?.setAttribute('transform', `rotate(${sec * 6} 120 120)`);
       if (n.getDate() !== day) setDay(n.getDate());
       raf = requestAnimationFrame(tick);
     };
@@ -45,60 +50,162 @@ function DeskWatch() {
     return () => cancelAnimationFrame(raf);
   }, [day]);
 
+  // fazowany indeks: jasna i ciemna połowa
+  const baton = (deg: number, double = false) => {
+    const w = double ? 3.2 : 4.2;
+    const xs = double ? [-4.2, 4.2] : [0];
+    return (
+      <g key={deg} transform={`rotate(${deg} 120 120)`} filter={`url(#${id('idx')})`}>
+        {xs.map((dx) => (
+          <g key={dx}>
+            <rect x={120 + dx - w / 2} y={29} width={w / 2} height={17} rx={0.6} fill={`url(#${id('goldL')})`} />
+            <rect x={120 + dx} y={29} width={w / 2} height={17} rx={0.6} fill={`url(#${id('goldD')})`} />
+          </g>
+        ))}
+      </g>
+    );
+  };
+
   return (
-    <svg viewBox="0 0 200 200" className="crmx-watch" aria-hidden>
+    <svg viewBox="0 0 240 240" className="crmx-watch" aria-hidden>
       <defs>
-        <radialGradient id="crmxDial" cx="50%" cy="38%" r="70%">
-          <stop offset="0%" stopColor="var(--x-dial-hi)" />
-          <stop offset="100%" stopColor="var(--x-dial-lo)" />
+        {/* złoto koperty */}
+        <linearGradient id={id('case')} x1="0.15" y1="0.05" x2="0.85" y2="0.95">
+          <stop offset="0" stopColor="#fff4d6" />
+          <stop offset="0.18" stopColor="#e9c98a" />
+          <stop offset="0.42" stopColor="#b8893f" />
+          <stop offset="0.58" stopColor="#f3dca4" />
+          <stop offset="0.78" stopColor="#9c6f2c" />
+          <stop offset="1" stopColor="#5e3f14" />
+        </linearGradient>
+        <linearGradient id={id('caseSheen')} x1="1" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0" />
+          <stop offset="0.45" stopColor="#fff" stopOpacity="0.55" />
+          <stop offset="0.52" stopColor="#fff" stopOpacity="0" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id={id('bevelIn')} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#5a3c12" />
+          <stop offset="0.5" stopColor="#c9a25e" />
+          <stop offset="1" stopColor="#fff1cf" />
+        </linearGradient>
+        <radialGradient id={id('dial')} cx="0.42" cy="0.36" r="0.75">
+          <stop offset="0" stopColor="var(--x-dial-hi)" />
+          <stop offset="1" stopColor="var(--x-dial-lo)" />
         </radialGradient>
-        <linearGradient id="crmxBezel" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#e9dcc2" />
-          <stop offset="45%" stopColor="#b8955c" />
-          <stop offset="100%" stopColor="#7d5f2e" />
+        <radialGradient id={id('dialShade')} cx="0.5" cy="0.62" r="0.55">
+          <stop offset="0.78" stopColor="#000" stopOpacity="0" />
+          <stop offset="1" stopColor="#000" stopOpacity="0.28" />
+        </radialGradient>
+        <linearGradient id={id('goldL')} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff6dc" />
+          <stop offset="1" stopColor="#d9b46c" />
         </linearGradient>
-        <linearGradient id="crmxHand" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stopColor="#f3e7cf" />
-          <stop offset="100%" stopColor="#a8844c" />
+        <linearGradient id={id('goldD')} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#c99a4e" />
+          <stop offset="1" stopColor="#7c5520" />
         </linearGradient>
-        <filter id="crmxShadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="1.2" stdDeviation="1.2" floodOpacity="0.35" />
+        <linearGradient id={id('crown')} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff1cf" />
+          <stop offset="0.5" stopColor="#b8893f" />
+          <stop offset="1" stopColor="#5e3f14" />
+        </linearGradient>
+        <radialGradient id={id('cap')} cx="0.35" cy="0.3" r="0.8">
+          <stop offset="0" stopColor="#fffaf0" />
+          <stop offset="0.5" stopColor="#d6ad62" />
+          <stop offset="1" stopColor="#6b4a18" />
+        </radialGradient>
+        <linearGradient id={id('glass')} x1="0.2" y1="0" x2="0.6" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.55" />
+          <stop offset="0.35" stopColor="#fff" stopOpacity="0.08" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <filter id={id('drop')} x="-30%" y="-30%" width="160%" height="170%">
+          <feGaussianBlur in="SourceAlpha" stdDeviation="7" />
+          <feOffset dy="9" />
+          <feComponentTransfer><feFuncA type="linear" slope="0.42" /></feComponentTransfer>
+          <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
+        <filter id={id('idx')} x="-50%" y="-20%" width="200%" height="150%">
+          <feDropShadow dx="0.8" dy="1.4" stdDeviation="0.7" floodColor="#2a1a05" floodOpacity="0.45" />
+        </filter>
+        <filter id={id('hand')} x="-50%" y="-20%" width="200%" height="140%">
+          <feDropShadow dx="1.6" dy="2.6" stdDeviation="1.6" floodColor="#1a1003" floodOpacity="0.4" />
+        </filter>
+        <clipPath id={id('dialClip')}><circle cx="120" cy="120" r="94" /></clipPath>
       </defs>
-      <circle cx="100" cy="100" r="98" fill="url(#crmxBezel)" />
-      <circle cx="100" cy="100" r="91" fill="url(#crmxDial)" />
-      <circle cx="100" cy="100" r="91" fill="none" stroke="rgba(0,0,0,0.25)" strokeWidth="0.8" />
-      {Array.from({ length: 60 }, (_, i) => {
-        const major = i % 5 === 0;
-        return (
-          <line
-            key={i}
-            x1="100"
-            y1={major ? 15 : 16}
-            x2="100"
-            y2={major ? 29 : 20}
-            stroke={major ? 'var(--x-gold)' : 'var(--x-tick)'}
-            strokeWidth={major ? (i % 15 === 0 ? 3.2 : 2.2) : 0.8}
-            strokeLinecap="round"
-            transform={`rotate(${i * 6} 100 100)`}
-          />
-        );
-      })}
-      <text x="100" y="62" textAnchor="middle" className="crmx-watch__brand">ESTATEOS</text>
-      <text x="100" y="140" textAnchor="middle" className="crmx-watch__sub">AUTOMATIC</text>
-      <rect x="137" y="92" width="22" height="16" rx="2.5" fill="var(--x-dial-lo)" stroke="var(--x-gold)" strokeWidth="0.8" />
-      <text x="148" y="104" textAnchor="middle" className="crmx-watch__date">{day}</text>
-      <g ref={h} filter="url(#crmxShadow)">
-        <path d="M97 104 L98.4 52 Q100 47 101.6 52 L103 104 Z" fill="url(#crmxHand)" />
+
+      <g filter={`url(#${id('drop')})`}>
+        {/* koronka */}
+        <g>
+          <rect x="226" y="108" width="12" height="24" rx="3" fill={`url(#${id('crown')})`} />
+          {Array.from({ length: 7 }, (_, i) => (
+            <line key={i} x1="227.5" x2="236.5" y1={111 + i * 3} y2={111 + i * 3} stroke="#4a300c" strokeOpacity="0.45" strokeWidth="0.8" />
+          ))}
+          <rect x="220" y="112" width="8" height="16" rx="2" fill={`url(#${id('crown')})`} />
+        </g>
+        {/* koperta */}
+        <circle cx="120" cy="120" r="114" fill={`url(#${id('case')})`} />
+        <circle cx="120" cy="120" r="114" fill={`url(#${id('caseSheen')})`} />
+        <circle cx="120" cy="120" r="113.2" fill="none" stroke="#fff3d2" strokeOpacity="0.7" strokeWidth="0.8" />
+        {/* radełkowana luneta */}
+        {Array.from({ length: 120 }, (_, i) => (
+          <line key={i} x1="120" y1="8.5" x2="120" y2="14.5" stroke={i % 2 ? '#3d2808' : '#fff4d6'} strokeOpacity={i % 2 ? 0.28 : 0.35} strokeWidth="1.1" transform={`rotate(${i * 3} 120 120)`} />
+        ))}
+        {/* wpuszczony stopień do tarczy */}
+        <circle cx="120" cy="120" r="102" fill="none" stroke={`url(#${id('bevelIn')})`} strokeWidth="9" />
+        <circle cx="120" cy="120" r="97.5" fill="#3a2608" />
       </g>
-      <g ref={m} filter="url(#crmxShadow)">
-        <path d="M98.2 106 L99.1 30 Q100 26 100.9 30 L101.8 106 Z" fill="url(#crmxHand)" />
+
+      {/* tarcza */}
+      <circle cx="120" cy="120" r="96.5" fill={`url(#${id('dial')})`} />
+      <g clipPath={`url(#${id('dialClip')})`} opacity="0.55">
+        {Array.from({ length: 180 }, (_, i) => (
+          <line key={i} x1="120" y1="120" x2="120" y2="20" stroke={i % 2 ? '#ffffff' : '#000000'} strokeOpacity={i % 2 ? 0.07 : 0.035} strokeWidth="1.8" transform={`rotate(${i * 2} 120 120)`} />
+        ))}
       </g>
-      <g ref={s} filter="url(#crmxShadow)">
-        <line x1="100" y1="118" x2="100" y2="24" stroke="#c0392b" strokeWidth="1" strokeLinecap="round" />
-        <circle cx="100" cy="118" r="3" fill="#c0392b" />
+      <circle cx="120" cy="120" r="96.5" fill={`url(#${id('dialShade')})`} />
+
+      {/* podziałka minutowa */}
+      {Array.from({ length: 60 }, (_, i) =>
+        i % 5 ? (
+          <line key={i} x1="120" y1="25" x2="120" y2="28.5" stroke="var(--x-tick)" strokeWidth="0.9" transform={`rotate(${i * 6} 120 120)`} />
+        ) : null,
+      )}
+      {/* nakładane indeksy */}
+      {Array.from({ length: 12 }, (_, i) => baton(i * 30, i === 0))}
+
+      <text x="120" y="78" textAnchor="middle" className="crmx-watch__brand">ESTATEOS</text>
+      <text x="120" y="88" textAnchor="middle" className="crmx-watch__sub">WARSZAWA · AUTOMATIC</text>
+      <text x="120" y="168" textAnchor="middle" className="crmx-watch__sub">CHRONOMETER</text>
+
+      {/* okienko daty z ramką */}
+      <rect x="160" y="111" width="23" height="18" rx="2.4" fill={`url(#${id('goldD')})`} />
+      <rect x="161.2" y="112.2" width="20.6" height="15.6" rx="1.8" fill="#fffdf7" />
+      <rect x="161.2" y="112.2" width="20.6" height="4" rx="1.8" fill="#000" fillOpacity="0.08" />
+      <text x="171.5" y="124.4" textAnchor="middle" className="crmx-watch__date">{day}</text>
+
+      {/* wskazówka godzinowa — fazowana */}
+      <g ref={h} filter={`url(#${id('hand')})`}>
+        <path d="M120 64 L114.6 124 L120 131 Z" fill={`url(#${id('goldL')})`} />
+        <path d="M120 64 L125.4 124 L120 131 Z" fill={`url(#${id('goldD')})`} />
       </g>
-      <circle cx="100" cy="100" r="4.2" fill="#e9dcc2" stroke="#7d5f2e" strokeWidth="0.8" />
+      {/* wskazówka minutowa */}
+      <g ref={m} filter={`url(#${id('hand')})`}>
+        <path d="M120 30 L116 124 L120 132 Z" fill={`url(#${id('goldL')})`} />
+        <path d="M120 30 L124 124 L120 132 Z" fill={`url(#${id('goldD')})`} />
+      </g>
+      {/* sekundnik z przeciwwagą */}
+      <g ref={s} filter={`url(#${id('hand')})`}>
+        <line x1="120" y1="146" x2="120" y2="26" stroke="#8a1c1c" strokeWidth="1.2" strokeLinecap="round" />
+        <circle cx="120" cy="140" r="3.6" fill="#8a1c1c" />
+      </g>
+      <circle cx="120" cy="120" r="6.2" fill={`url(#${id('cap')})`} />
+      <circle cx="120" cy="120" r="2" fill="#5e3f14" />
+
+      {/* wypukłe szkło szafirowe */}
+      <path d="M44 96 A80 80 0 0 1 160 42 A96 96 0 0 0 44 96 Z" fill={`url(#${id('glass')})`} opacity="0.9" />
+      <circle cx="120" cy="120" r="96.5" fill="none" stroke="#fff" strokeOpacity="0.35" strokeWidth="0.8" />
     </svg>
   );
 }

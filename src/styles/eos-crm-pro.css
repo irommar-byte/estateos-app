@@ -343,10 +343,10 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 @media (min-width: 900px) { .crmx-desk > * + * { border-left: 1px solid var(--x-line); } }
 @media (max-width: 899px) { .crmx-desk > * + * { border-top: 1px solid var(--x-line); } }
 .crmx-desk__clock { display: flex; align-items: center; gap: 22px; }
-.crmx-watch { width: 132px; height: 132px; flex-shrink: 0; filter: drop-shadow(0 14px 24px rgba(60, 40, 10, 0.22)); }
-.crmx-watch__brand { font: 700 7px var(--eos-font-display); letter-spacing: 0.32em; fill: var(--x-ink-2); }
-.crmx-watch__sub { font: 600 5px var(--eos-font-display); letter-spacing: 0.3em; fill: var(--x-gold); }
-.crmx-watch__date { font: 700 9px var(--eos-font-display); fill: var(--x-ink); font-variant-numeric: tabular-nums; }
+.crmx-watch { width: 150px; height: 150px; flex-shrink: 0; overflow: visible; }
+.crmx-watch__brand { font: 700 9px var(--eos-font-display); letter-spacing: 0.34em; fill: var(--x-ink); }
+.crmx-watch__sub { font: 600 5px var(--eos-font-display); letter-spacing: 0.28em; fill: #9c6f2c; }
+.crmx-watch__date { font: 700 10.5px var(--eos-font-display); fill: #18160f; font-variant-numeric: tabular-nums; }
 .crmx-desk__time { font-family: var(--eos-font-display); font-size: 46px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
 .crmx-desk__time span { margin-left: 4px; font-size: 18px; font-weight: 500; color: var(--x-gold-ink); vertical-align: top; }
 .crmx-desk__day { margin-top: 8px; font-size: 17px; font-weight: 650; text-transform: capitalize; }
@@ -413,7 +413,7 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 
 /* Zegar pionowo w kolumnie biurka */
 .crmx-desk--band .crmx-desk__clock { flex-direction: column; justify-content: center; text-align: center; gap: 16px; }
-.crmx-desk--band .crmx-watch { width: 168px; height: 168px; }
+.crmx-desk--band .crmx-watch { width: 196px; height: 196px; }
 
 /* Biurko v2 — spójne nagłówki kolumn, puls rynku w stylu CRM */
 .crmx-desk__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; min-height: 30px; }
