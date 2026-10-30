@@ -11,7 +11,6 @@ import {
 } from '@/lib/crm/planningCalendar';
 import { DeskNotes, useDesk } from './CrmDesk';
 import { useNotePeek } from './NotePeek';
-import { holidayName, isWeekend } from './holidays';
 
 const WEEKDAYS = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'];
 type Contact = { id?: number; name?: string; email?: string; phone?: string; image?: string };
@@ -102,22 +101,18 @@ export default function CrmPlanner({
             const isToday = isSameCalendarDay(d, today);
             const isSel = isSameCalendarDay(d, sel);
             const hasNote = desk.notes.some((n) => n.date === key(d) && n.text?.trim());
-            const hol = holidayName(d);
-            const off = isWeekend(d) || !!hol;
             return (
               <button
                 key={d.toISOString()}
                 type="button"
                 onClick={() => pick(d)}
                 {...peek.bind(key(d), desk.notes.find((n) => n.date === key(d))?.text)}
-                title={hol || undefined}
-                className={`crmx-planner__day ${off ? 'is-off' : ''} ${inMonth ? '' : 'is-out'} ${isToday ? 'is-today' : ''} ${isSel ? 'is-sel' : ''}`}
+                className={`crmx-planner__day ${inMonth ? '' : 'is-out'} ${isToday ? 'is-today' : ''} ${isSel ? 'is-sel' : ''}`}
               >
                 <span className="crmx-planner__num">
                   {d.getDate()}
                   {hasNote ? <i className="crmx-planner__note" title="Notatka" /> : null}
                 </span>
-                {hol ? <span className="crmx-planner__hol">{hol}</span> : null}
                 <span className="crmx-planner__items">
                   {apps.slice(0, 2).map((a) => {
                     const k = kindOf(a);
