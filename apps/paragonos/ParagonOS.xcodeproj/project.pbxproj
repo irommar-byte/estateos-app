@@ -26,7 +26,6 @@
 		300A0025A2084840B78A41D1 /* BottleReturnTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F974354230C844E5ADD6AD3D /* BottleReturnTests.swift */; };
 		30EED02AF2424684B32C82F0 /* RetailerLogo.swift in Sources */ = {isa = PBXBuildFile; fileRef = B195AA0DFAF246219153ED8F /* RetailerLogo.swift */; };
 		32A00A5FCB164FC5AD4C02DA /* auchan.png in Resources */ = {isa = PBXBuildFile; fileRef = 882DED9FCFC244A7AD8AE091 /* auchan.png */; };
-		36875358ECA24BD8830A8335 /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 7284B3C1761145E6AAC90561 /* X509 */; };
 		3788E1DD56AE41779678D9CF /* VoucherParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11B29B09FAD64428AF6B60EB /* VoucherParserTests.swift */; };
 		39E4AD8E0DAA4867989A2BBB /* ScanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69A4495512A24D72B1F50011 /* ScanService.swift */; };
 		3B163F201027402BA8287FB0 /* CheckoutCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D23C954F2C245A1ACA39F2F /* CheckoutCodeView.swift */; };
@@ -125,7 +124,6 @@
 		DE7532B611C943C0BA590EDA /* ReceiptMerchantDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14B2A8B26FF8419BBD7CDAC3 /* ReceiptMerchantDetailView.swift */; };
 		DF8742380E1E481B80A0739F /* ReceiptParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3C274E7FC224B0DB64D7C89 /* ReceiptParser.swift */; };
 		E01E30D096704F63A81ABDDB /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 79A413AC0B23407DA7EB4F03 /* InfoPlist.xcstrings */; };
-		E09156B1408946C581AC6F41 /* PassCMSSigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504BBA5C04504DF2A07E06F0 /* PassCMSSigner.swift */; };
 		E2D3E03E3BDD4D97B8341EC0 /* allegro.png in Resources */ = {isa = PBXBuildFile; fileRef = 0739C38694BD47D596A0902D /* allegro.png */; };
 		E39388566F064D4198FD6546 /* payback.png in Resources */ = {isa = PBXBuildFile; fileRef = 408592D1242B4E6D9D1A0B8E /* payback.png */; };
 		E6C76CB5C74246B394EEA3B3 /* ParagonOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99B0F62EA2CC4395AEB1DE1C /* ParagonOSApp.swift */; };
@@ -212,7 +210,6 @@
 		45093E61DEFB404D92199F1A /* TicketStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketStatus.swift; sourceTree = "<group>"; };
 		49751DC8DD1C41F9BEFACF0E /* CoffeeCupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoffeeCupView.swift; sourceTree = "<group>"; };
 		4DA94658EDE14A5483C56B96 /* starbucks.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = starbucks.png; sourceTree = "<group>"; };
-		504BBA5C04504DF2A07E06F0 /* PassCMSSigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PassCMSSigner.swift; sourceTree = "<group>"; };
 		5113F1D9D13D4FF09547CEDC /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 		54F627330D054E09B9BEE2F7 /* ParagonOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ParagonOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		557731B6F1754D56A9728331 /* WalletModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletModel.swift; sourceTree = "<group>"; };
@@ -319,7 +316,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				36875358ECA24BD8830A8335 /* X509 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -419,7 +415,6 @@
 				76ED39E463BF4028B82033C1 /* LaunchSounds.swift */,
 				99A6A2F2567B42DD9E7C1388 /* LocationProvider.swift */,
 				5D85A644D2F8488387602FC5 /* LoyaltyLogoStore.swift */,
-				504BBA5C04504DF2A07E06F0 /* PassCMSSigner.swift */,
 				7A1EEB5D47FF4E4FA32A737F /* QuietPromptStore.swift */,
 				6964E848A98244FC87EF2C76 /* ReviewGate.swift */,
 				69A4495512A24D72B1F50011 /* ScanService.swift */,
@@ -651,7 +646,6 @@
 			);
 			name = ParagonOS;
 			packageProductDependencies = (
-				7284B3C1761145E6AAC90561 /* X509 */,
 			);
 			productName = ParagonOS;
 			productReference = 54F627330D054E09B9BEE2F7 /* ParagonOS.app */;
@@ -676,7 +670,6 @@
 			);
 			mainGroup = C816545600FC4E28AC64B43A;
 			packageReferences = (
-				FDF721677E5F4C6ABDAB75C4 /* XCRemoteSwiftPackageReference "swift-certificates" */,
 			);
 			productRefGroup = E0DDDD0D7DC74D2B93090C2B /* Products */;
 			projectDirPath = "";
@@ -816,7 +809,6 @@
 				B10F4BB8A2D945D097C1CE6D /* LaunchSounds.swift in Sources */,
 				DE4FEBBE057C40CDBA6A8B96 /* LocationProvider.swift in Sources */,
 				2DFED84E991D46BFBDCAFB4F /* LoyaltyLogoStore.swift in Sources */,
-				E09156B1408946C581AC6F41 /* PassCMSSigner.swift in Sources */,
 				C461881AC76D44B3AAB756D6 /* QuietPromptStore.swift in Sources */,
 				9906678A3AE149FC9E4EC100 /* ReviewGate.swift in Sources */,
 				39E4AD8E0DAA4867989A2BBB /* ScanService.swift in Sources */,
@@ -1103,24 +1095,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		FDF721677E5F4C6ABDAB75C4 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-certificates.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.20.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		7284B3C1761145E6AAC90561 /* X509 */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = FDF721677E5F4C6ABDAB75C4 /* XCRemoteSwiftPackageReference "swift-certificates" */;
-			productName = X509;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A1FAB9D45F51449BBEF958DE /* Project object */;
 }

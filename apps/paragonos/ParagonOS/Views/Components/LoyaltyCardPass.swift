@@ -259,10 +259,8 @@ struct LoyaltyCardPass: View {
                     EmbossedMetalText(
                         text: LoyaltyCardPass.groupedCode(card.barcodePayload),
                         fontSize: 17,
-                        gyroSheen: true
+                        gyroSheen: false
                     )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
                 }
             }
             .padding(.horizontal, 16)
@@ -738,7 +736,6 @@ struct LoyaltyPassStack: View {
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
             flight?.updateStackFrame(card.id, rect)
         }
-        .compositingGroup()
         .overlay(alignment: .top) {
             if index > 0, isDragging == false {
                 VStack(spacing: 0) {
@@ -768,15 +765,17 @@ struct LoyaltyPassStack: View {
             }
         }
         .background {
-            // Shadow comes from a plain shape: cheap to blur while the stack moves.
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.black)
-                .shadow(
-                    color: .black.opacity(lifted ? 0.46 : 0.38 + min(0.16, depth * 0.02)),
-                    radius: lifted ? 22 : 16,
-                    y: lifted ? 12 : 8
-                )
-                .shadow(color: .black.opacity(0.22), radius: 3, y: 1.5)
+            // Cards under it hide most of a card's shadow, and the top-edge gradient already
+            // draws the shade cast on the card above. Blur only where it shows.
+            if lifted || index == count - 1 || liveSpread > 0.05 || openingID == card.id {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.black)
+                    .shadow(
+                        color: .black.opacity(lifted ? 0.46 : 0.36 + min(0.14, depth * 0.02)),
+                        radius: lifted ? 22 : 14,
+                        y: lifted ? 12 : 8
+                    )
+            }
         }
         .scaleEffect(lifted ? 1.03 : (openingID == card.id ? 1.015 : 1), anchor: .top)
         .matchedTransitionSource(id: card.id, in: zoomNamespace)
@@ -796,7 +795,7 @@ struct LoyaltyPassStack: View {
                     }
                     // Pull the card up out of its pocket, then open it.
                     withAnimation(PassStackMotion.slideOut) { openingID = card.id }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { onOpen(card) }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + PassStackMotion.slideOutPause) { onOpen(card) }
                 },
                 onBeginReorder: {
                     guard draggingID == nil else { return }
@@ -1070,12 +1069,14 @@ struct StackChevron: View {
 
 enum PassStackMotion {
     /// How far a tapped card rises out of the stack before it opens.
-    static let slideOutLift: CGFloat = 28
+    static let slideOutLift: CGFloat = 34
 
-    static var slideOut: Animation { .spring(response: 0.3, dampingFraction: 0.74) }
+    /// The card pops up out of its pocket with a visible bounce.
+    static var slideOut: Animation { .spring(response: 0.6, dampingFraction: 0.58) }
+    static let slideOutPause: Double = 0.34
 
-    /// Back into its slot after the detail closes — slower, with a soft landing.
-    static var slideIn: Animation { .spring(response: 0.5, dampingFraction: 0.8).delay(0.08) }
+    /// Back into its slot: drops in and settles with a springy bounce.
+    static var slideIn: Animation { .spring(response: 0.9, dampingFraction: 0.6) }
 
     static var response: Double { ParagonTheme.springResponse }
     static var damping: Double { ParagonTheme.springDamping }
@@ -1203,8 +1204,9 @@ final class CardFlight {
     var hiddenID: UUID? { card?.id }
     var isFlying: Bool { phase == .opening || phase == .closing }
 
-    static var opening: Animation { .spring(response: 0.62, dampingFraction: 0.84) }
-    static var closing: Animation { .spring(response: 0.5, dampingFraction: 0.88) }
+    /// Twice as slow as a standard push, with a springy landing (slight overshoot, settle).
+    static var opening: Animation { .spring(response: 1.2, dampingFraction: 0.72) }
+    static var closing: Animation { .spring(response: 1.05, dampingFraction: 0.76) }
 
     func updateStackFrame(_ id: UUID, _ rect: CGRect) {
         stackFrames[id] = rect
@@ -1228,7 +1230,7 @@ final class CardFlight {
         instant.disablesAnimations = true
         withTransaction(instant) { push() }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.8))
+            try? await Task.sleep(for: .seconds(1.2))
             if self.phase == .opening, self.started == false { self.phase = .open }
         }
     }
@@ -1300,7 +1302,7 @@ private struct FlyingCard: View, Animatable {
 
     var body: some View {
         let p = CGFloat(progress)
-        let arc = CGFloat(sin(Double.pi * progress))
+        let arc = CGFloat(sin(Double.pi * min(1, max(0, progress))))
         // The flip happens mid-flight, eased, so the card turns while it travels.
         let t = min(1, max(0, (progress - 0.12) / 0.7))
         let angle = 180 * t * t * (3 - 2 * t)

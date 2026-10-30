@@ -115,7 +115,10 @@ struct LoyaltyHomeView: View {
                 .onScrollGeometryChange(for: CGFloat.self) { geo in
                     geo.contentOffset.y
                 } action: { _, new in
-                    scrollOffsetY = new
+                    // Only overscroll matters (the pull-to-fan); normal scrolling must not
+                    // re-render the screen 120 times a second.
+                    let pull = min(0, new)
+                    if pull != scrollOffsetY { scrollOffsetY = pull }
                 }
                 .task {
                     wallet.dedupeFamilyLocals(in: context)

@@ -95,3 +95,4 @@ apps/paragonos/.card-snaps/
 
 apps/paragonos/**/xcuserdata/
 apps/paragonos/**/*.key
+apps/paragonos/__pycache__/
