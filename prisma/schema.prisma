@@ -865,6 +865,9 @@ model RadarPreference {
 
   maxPrice Float?
   minArea  Float?
+  maxArea  Float?
+  minRooms Int?
+  maxRooms Int?
   minYear  Int?
 
   requireBalcony   Boolean @default(false)
@@ -875,9 +878,10 @@ model RadarPreference {
 
   pushNotifications Boolean @default(true)
 
-  lat    Float?
-  lng    Float?
-  radius Float?
+  lat           Float?
+  lng           Float?
+  radius        Float?
+  searchPolygon Json?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

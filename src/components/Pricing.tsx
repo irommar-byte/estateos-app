@@ -682,7 +682,7 @@ export default function Pricing() {
                 <button
                   type="button"
                   onClick={() => {
-                    window.location.href = "/szukaj";
+                    window.location.href = "/szukam";
                   }}
                   className="flex flex-col items-center text-center gap-4 p-8 bg-[var(--eos-card)] border border-[var(--eos-border)] hover:border-emerald-500/50 hover:bg-emerald-500/5 rounded-[2rem] transition-all group"
                 >

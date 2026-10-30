@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { getAgencyClientForUser, getAgencyClientLiteForUser, requireAgencyUserId } from '@/lib/agencyClientAuth';
 import {
   buyerPrefToWebRadarFilters,
+  explainOfferForBuyerPref,
   shapeClientListItem,
   webRadarFiltersToBuyerPrefCreate,
 } from '@/lib/agencyClientShape';
@@ -357,6 +358,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
         client.matches.map((m) => ({
           id: m.id,
           score: m.score,
+          reasons: explainOfferForBuyerPref(client.buyerPreference, m.offer as Record<string, unknown>).reasons,
           notifiedAt: m.notifiedAt?.toISOString() ?? null,
           sharedAt: m.sharedAt?.toISOString() ?? null,
           clientFeedback: m.clientFeedback,

@@ -15,6 +15,7 @@ import {
   type ClientOfferSentiment,
 } from "@/lib/crm/clientPortalFeedback";
 import { usePortalLocale } from "@/components/portal/PortalLocale";
+import MatchReasonChips, { type MatchReason } from "@/components/search/MatchReasonChips";
 
 type Match = {
   id: number;
@@ -25,6 +26,7 @@ type Match = {
   intelligenceSent?: boolean;
   intelligenceReason?: string | null;
   clientWhy?: string | null;
+  reasons?: MatchReason[] | null;
   offer: {
     id: number;
     title: string;
@@ -188,6 +190,7 @@ export default function ClientPortalMatchCard({
               {(match as { favoriteBadge?: string | null }).favoriteBadge}
             </span>
           ) : null}
+          {match.reasons?.length ? <MatchReasonChips reasons={match.reasons} max={3} className="mt-2" /> : null}
           {match.clientWhy ? (
             <p className="mt-2 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-[var(--eos-text)]/90">{match.clientWhy}</p>
           ) : null}
@@ -238,6 +241,9 @@ export default function ClientPortalMatchCard({
                 <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${Math.max(8, Math.min(100, match.score))}%` }} />
               </div>
             </div>
+            {match.reasons && match.reasons.length > 3 ? (
+              <MatchReasonChips reasons={match.reasons} className="mt-3" />
+            ) : null}
             <Link href={href} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[var(--lux-accent)] hover:underline">
               {t("Otwórz ogłoszenie")} <ExternalLink className="size-3" />
             </Link>

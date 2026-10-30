@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { canonicalizeCity, canonicalizeDistrict, getDistrictsForCity, isStrictCity } from '@/lib/location/locationCatalog';
 import { requireMobileAdmin, parseUserIdFromMobileJwt, extractBearerToken } from '@/lib/mobileAdminAuth';
 import { resolveWebUserId } from '@/lib/webSessionAuth';
@@ -106,6 +107,18 @@ export async function POST(req: Request) {
     const mapLng = hasMap ? Number(lng) : null;
     const mapRadius = hasMap ? Number(radius) : null;
 
+    const num = (v: unknown) => (v != null && v !== '' && Number(v) > 0 ? Number(v) : null);
+    // Pola wspólnego profilu — zapisujemy tylko te, które klient faktycznie przysłał
+    // (starsza aplikacja ich nie zna i nie może ich kasować).
+    const profileExtras: Record<string, unknown> = {};
+    if ('maxArea' in body) profileExtras.maxArea = num(body.maxArea);
+    if ('minRooms' in body) profileExtras.minRooms = num(body.minRooms) != null ? Math.round(Number(body.minRooms)) : null;
+    if ('maxRooms' in body) profileExtras.maxRooms = num(body.maxRooms) != null ? Math.round(Number(body.maxRooms)) : null;
+    if ('searchPolygon' in body) {
+      profileExtras.searchPolygon =
+        Array.isArray(body.searchPolygon) && body.searchPolygon.length >= 3 ? body.searchPolygon : Prisma.JsonNull;
+    }
+
     const pref = await prisma.radarPreference.upsert({
       where: { userId: targetUserId },
       update: {
@@ -126,6 +139,7 @@ export async function POST(req: Request) {
         lat: mapLat,
         lng: mapLng,
         radius: mapRadius,
+        ...profileExtras,
       },
       create: {
         userId: targetUserId,
@@ -146,6 +160,7 @@ export async function POST(req: Request) {
         lat: mapLat,
         lng: mapLng,
         radius: mapRadius,
+        ...profileExtras,
       }
     });
 

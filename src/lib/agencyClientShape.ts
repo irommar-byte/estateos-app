@@ -1,6 +1,6 @@
 import type { AgencyClient, AgencyClientBuyerPreference, PropertyType } from '@prisma/client';
 import type { WebRadarFilters } from '@/lib/radarCalibrationWeb';
-import { calculateRadarMatchScore, radarMatchThreshold } from '@/lib/radarMatchScore';
+import { calculateRadarMatchScore, explainRadarMatch, radarMatchThreshold } from '@/lib/radarMatchScore';
 
 export type AgencyClientListItem = {
   id: number;
@@ -47,6 +47,8 @@ export function buyerPrefToRadarRecord(pref: AgencyClientBuyerPreference | null)
     maxArea: pref.maxArea,
     minYear: pref.minYear,
     minRooms: pref.minRooms,
+    maxRooms: pref.maxRooms,
+    searchPolygon: pref.searchPolygon,
     requireBalcony: pref.requireBalcony,
     requireGarden: pref.requireGarden,
     requireElevator: pref.requireElevator,
@@ -216,6 +218,13 @@ export function scoreOfferForBuyerPref(
   offer: Record<string, unknown>,
 ): number {
   return calculateRadarMatchScore(buyerPrefToRadarRecord(pref), offer);
+}
+
+export function explainOfferForBuyerPref(
+  pref: AgencyClientBuyerPreference | null,
+  offer: Record<string, unknown>,
+) {
+  return explainRadarMatch(buyerPrefToRadarRecord(pref), offer);
 }
 
 export function passesBuyerThreshold(

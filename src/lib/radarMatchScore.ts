@@ -6,6 +6,7 @@ import {
 } from '@/lib/location/locationCatalog';
 import { getCanonicalOfferPricePln } from '@/lib/money/offerPrice';
 import { offerHasAmenityFromBrain, type IntelligenceAmenityField } from '@/lib/intelligenceAmenityBrain';
+import { offerInsideSearchPolygon } from '@/lib/geo/searchPolygon';
 
 function clampScore(value: number): number {
   return Math.max(0, Math.min(100, value));
@@ -192,6 +193,8 @@ function passesStructuralGate(pref: Record<string, unknown>, offer: Record<strin
   const rooms = Number(offer.rooms ?? 0);
   const minRooms = Number(pref.minRooms || 0);
   if (minRooms > 0 && Number.isFinite(rooms) && rooms > 0 && rooms < minRooms) return false;
+  const maxRooms = Number(pref.maxRooms || 0);
+  if (maxRooms > 0 && Number.isFinite(rooms) && rooms > 0 && rooms > maxRooms) return false;
 
   const area = Number(offer.area ?? 0);
   const maxArea = Number(pref.maxArea || 0);
@@ -210,6 +213,7 @@ function passesStructuralGate(pref: Record<string, unknown>, offer: Record<strin
 /** Parity z aplikacją mobilną (`RadarHomeScreen.radarMatchScore`). Zwraca 0–100. */
 export function calculateRadarMatchScore(pref: Record<string, unknown>, offer: Record<string, unknown>): number {
   if (!passesLocationGate(pref, offer)) return 0;
+  if (pref.searchPolygon && !offerInsideSearchPolygon(pref.searchPolygon, offer)) return 0;
   if (!passesAmenityGate(offer, pref)) return 0;
   if (!passesStructuralGate(pref, offer)) return 0;
 
@@ -243,4 +247,116 @@ export function calculateRadarMatchScore(pref: Record<string, unknown>, offer: R
 
 export function radarMatchThreshold(pref: Record<string, unknown>): number {
   return Math.max(50, Math.min(100, Number(pref.minMatchThreshold ?? 70)));
+}
+
+/* ------------------------------------------------------------------ */
+/* Jeden silnik: wynik + powody (czytelne dla klienta i agenta).        */
+/* ------------------------------------------------------------------ */
+
+export type MatchReasonTone = 'good' | 'warn' | 'bad';
+export type MatchReason = { tone: MatchReasonTone; label: string };
+export type MatchExplanation = { score: number; reasons: MatchReason[] };
+
+const AMENITY_LABELS: Array<[string, IntelligenceAmenityField | 'twoLevel', string]> = [
+  ['requireBalcony', 'hasBalcony', 'Balkon'],
+  ['requireGarden', 'hasGarden', 'Ogród'],
+  ['requireElevator', 'hasElevator', 'Winda'],
+  ['requireParking', 'hasParking', 'Parking'],
+  ['requireFurnished', 'isFurnished', 'Umeblowane'],
+  ['requireTwoLevel', 'twoLevel', 'Dwupoziomowe'],
+];
+
+function plRooms(n: number): string {
+  if (n === 1) return '1 pokój';
+  if (n >= 2 && n <= 4) return `${n} pokoje`;
+  return `${n} pokoi`;
+}
+
+function fmtPln(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 2).replace('.', ',')} mln zł`;
+  if (v >= 1000) return `${Math.round(v / 1000)} tys. zł`;
+  return `${Math.round(v)} zł`;
+}
+
+/**
+ * Wynik 0–100 (ten sam co `calculateRadarMatchScore`) plus krótkie powody.
+ * Kolejność: najpierw to, co się zgadza, potem kompromisy.
+ */
+export function explainRadarMatch(
+  pref: Record<string, unknown>,
+  offer: Record<string, unknown>,
+): MatchExplanation {
+  const score = Math.round(calculateRadarMatchScore(pref, offer));
+  const good: MatchReason[] = [];
+  const warn: MatchReason[] = [];
+  const bad: MatchReason[] = [];
+
+  // Lokalizacja
+  if (isMapMode(pref)) {
+    const c = offerCoords(offer);
+    if (c) {
+      const d = distanceKm(Number(pref.lat), Number(pref.lng), c.lat, c.lng);
+      const r = Math.max(0.1, Number(pref.radius));
+      const txt = d < 1 ? `${Math.round(d * 1000)} m od wskazanego miejsca` : `${d.toFixed(1).replace('.', ',')} km od wskazanego miejsca`;
+      (d <= r ? good : warn).push({ tone: d <= r ? 'good' : 'warn', label: txt });
+    }
+  } else if (pref.searchPolygon && offerInsideSearchPolygon(pref.searchPolygon, offer)) {
+    good.push({ tone: 'good', label: 'W zaznaczonym obszarze' });
+  } else {
+    const districts = parseDistricts(pref);
+    const od = offerDistrictNormalized(pref, offer);
+    const district = String(offer.district || '').trim();
+    if (districts.length && od && districts.includes(od)) {
+      good.push({ tone: 'good', label: district ? `Dzielnica ${district}` : 'Wybrana dzielnica' });
+    } else if (districts.length) {
+      warn.push({ tone: 'warn', label: district ? `Poza wybranymi dzielnicami (${district})` : 'Dzielnica do potwierdzenia' });
+    } else if (pref.city && offer.city && citiesMatch(pref.city, offer.city)) {
+      good.push({ tone: 'good', label: String(offer.city) });
+    }
+  }
+
+  // Cena
+  const price = getCanonicalOfferPricePln(offer);
+  const maxPrice = Number(pref.maxPrice || 0);
+  if (maxPrice > 0 && price > 0) {
+    const diff = (price - maxPrice) / maxPrice;
+    if (diff <= -0.03) good.push({ tone: 'good', label: `${Math.round(-diff * 100)}% poniżej budżetu` });
+    else if (diff <= 0) good.push({ tone: 'good', label: 'Mieści się w budżecie' });
+    else bad.push({ tone: diff > 0.05 ? 'bad' : 'warn', label: `${fmtPln(price - maxPrice)} ponad budżet` });
+  }
+
+  // Metraż
+  const area = Number(offer.area ?? 0);
+  const minArea = Number(pref.minArea || 0);
+  const maxArea = Number(pref.maxArea || 0);
+  if (area > 0 && (minArea > 0 || maxArea > 0)) {
+    if (minArea > 0 && area < minArea) warn.push({ tone: 'warn', label: `${Math.round(minArea - area)} m² mniej niż w kryteriach` });
+    else good.push({ tone: 'good', label: `${Math.round(area)} m²` });
+  }
+
+  // Pokoje
+  const rooms = Number(offer.rooms ?? 0);
+  const minRooms = Number(pref.minRooms || 0);
+  const maxRooms = Number(pref.maxRooms || 0);
+  if (rooms > 0 && (minRooms > 0 || maxRooms > 0)) {
+    const ok = (!minRooms || rooms >= minRooms) && (!maxRooms || rooms <= maxRooms);
+    (ok ? good : warn).push({ tone: ok ? 'good' : 'warn', label: plRooms(rooms) });
+  }
+
+  // Rok budowy
+  const yr = offer.yearBuilt != null ? parseInt(String(offer.yearBuilt), 10) : NaN;
+  const minYear = Number(pref.minYear || 0);
+  if (minYear > 1900 && Number.isFinite(yr)) {
+    (yr >= minYear ? good : warn).push({ tone: yr >= minYear ? 'good' : 'warn', label: `Rok budowy ${yr}` });
+  }
+
+  // Udogodnienia
+  for (const [key, field, label] of AMENITY_LABELS) {
+    if (!pref[key]) continue;
+    const has = field === 'twoLevel' ? !!(offer.isTwoLevel || offer.isDuplex) : amenityOn(offer, field);
+    if (has) good.push({ tone: 'good', label });
+    else bad.push({ tone: 'bad', label: `Brak: ${label.toLowerCase()}` });
+  }
+
+  return { score, reasons: [...good, ...warn, ...bad].slice(0, 6) };
 }

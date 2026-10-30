@@ -9,7 +9,7 @@ import { loadPresentationOfferPreview } from '@/lib/crm/presentationOfferPreview
 import { absolutizeMediaUrl } from '@/lib/offerShareLanding';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { resolveSellerPersonName } from '@/lib/sellerDisplay';
-import { buyerPrefToWebRadarFilters } from '@/lib/agencyClientShape';
+import { buyerPrefToWebRadarFilters, explainOfferForBuyerPref } from '@/lib/agencyClientShape';
 import { formatRadarSummary } from '@/lib/radarCalibrationWeb';
 import { formatAgentTitle } from '@/lib/agentProfile';
 import type { AgencyClientBuyerPreference } from '@prisma/client';
@@ -305,6 +305,9 @@ export async function GET(_req: Request, ctx: RouteCtx) {
               hasParking: true,
               hasElevator: true,
               hasGarden: true,
+              isFurnished: true,
+              pricePln: true,
+              propertyType: true,
               floorPlanUrl: true,
               createdAt: true,
             },
@@ -766,6 +769,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
         ? portalMatches.map((m) => ({
             id: m.id,
             score: m.score,
+            reasons: explainOfferForBuyerPref(client.buyerPreference, m.offer as Record<string, unknown>).reasons,
             notifiedAt: m.notifiedAt?.toISOString() ?? null,
             clientFeedback: m.clientFeedback,
             clientFeedbackAt: m.clientFeedbackAt?.toISOString() ?? null,

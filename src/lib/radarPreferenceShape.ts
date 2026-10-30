@@ -7,6 +7,10 @@ export type RadarPreferenceDto = {
   selectedDistricts: string[];
   maxPrice: number | null;
   minArea: number | null;
+  maxArea: number | null;
+  minRooms: number | null;
+  maxRooms: number | null;
+  searchPolygon: unknown;
   minYear: number | null;
   requireBalcony: boolean;
   requireGarden: boolean;
@@ -61,6 +65,10 @@ export function shapeRadarPreference(
     selectedDistricts: parseDistricts(pref.districts),
     maxPrice: pref.maxPrice ?? null,
     minArea: pref.minArea ?? null,
+    maxArea: pref.maxArea ?? null,
+    minRooms: pref.minRooms ?? null,
+    maxRooms: pref.maxRooms ?? null,
+    searchPolygon: pref.searchPolygon ?? null,
     minYear: pref.minYear ?? null,
     requireBalcony: !!pref.requireBalcony,
     requireGarden: !!pref.requireGarden,
