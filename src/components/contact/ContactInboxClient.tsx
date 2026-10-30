@@ -544,30 +544,38 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           }`}
         >
           {!activeThread ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-white/50">
-              <MessageCircle className="size-10 text-emerald-500/50" />
-              <p className="text-sm">Wybierz rozmowę z listy lub znajdź użytkownika po ID.</p>
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
+              <div className="relative flex size-20 items-center justify-center rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-[var(--eos-shadow-soft)]">
+                <span className="absolute inset-0 animate-ping rounded-[1.75rem] bg-emerald-500/10 [animation-duration:2.6s]" />
+                <MessageCircle className="relative size-8 text-emerald-500" />
+              </div>
+              <div>
+                <p className="text-base font-bold tracking-tight text-[var(--eos-text)]">Twoje rozmowy</p>
+                <p className="mt-1 max-w-xs text-sm leading-relaxed text-[var(--eos-muted)]">
+                  Wybierz rozmowę z listy albo wpisz ID użytkownika, aby napisać nową wiadomość.
+                </p>
+              </div>
             </div>
           ) : (
             <>
-              <div className="shrink-0 border-b border-white/10 px-4 py-3 md:px-5">
+              <div className="shrink-0 border-b border-[var(--eos-border)] px-4 py-3 md:px-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 flex-1 items-start gap-2">
                     <button
                       type="button"
                       onClick={handleMobileChatBack}
-                      className="mt-0.5 shrink-0 rounded-full p-1.5 text-white/70 hover:bg-white/10 md:hidden"
+                      className="mt-0.5 shrink-0 rounded-full p-1.5 text-[var(--eos-muted)] hover:bg-[var(--eos-input)] md:hidden"
                       aria-label="Wróć do listy rozmów"
                     >
                       <ArrowLeft className="size-5" />
                     </button>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-black text-white">{activeThread.peerUserName}</p>
+                      <p className="truncate text-sm font-black text-[var(--eos-text)]">{activeThread.peerUserName}</p>
                       <p
                         className={`text-[10px] font-semibold uppercase tracking-widest ${
                           activeThread.peerIsOnline ?? activeThread.peer?.isOnline
-                            ? "text-emerald-400"
-                            : "text-white/40"
+                            ? "text-emerald-500"
+                            : "text-[var(--eos-subtle)]"
                         }`}
                       >
                         {(() => {
@@ -586,13 +594,13 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="hidden items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400 sm:flex">
+                    <span className="hidden items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-500 sm:flex">
                       <ShieldCheck className="size-3.5" /> Contact
                     </span>
                     <button
                       type="button"
                       onClick={() => void handleDeleteThread()}
-                      className="rounded-full p-2 text-white/40 hover:bg-red-500/10 hover:text-red-400"
+                      className="rounded-full p-2 text-[var(--eos-subtle)] hover:bg-red-500/10 hover:text-red-400"
                       aria-label="Usuń rozmowę"
                     >
                       <Trash2 className="size-4" />
@@ -602,18 +610,18 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
 
                 <DiscoveryContactWhisper
                   beforeContact={false}
-                  className="mt-3 border-white/10 bg-white/[0.04] text-white/80 [&_a]:text-emerald-300/90 [&_p]:text-white/70"
+                  className="mt-3 border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-text)] [&_a]:text-emerald-600 [&_p]:text-[var(--eos-muted)]"
                 />
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <div className="min-w-[180px] flex-1">
-                    <div className="mb-1 flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-white/45">
+                    <div className="mb-1 flex items-center justify-between text-[9px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                       <span>Załączniki rozmowy</span>
                       <span>
                         {formatContactBytes(usageBytes)} / {formatContactBytes(limitBytes)}
                       </span>
                     </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-[var(--eos-input)]">
                       <div
                         className={`h-full rounded-full transition-all ${
                           usagePct > 90 ? "bg-red-500" : usagePct > 70 ? "bg-amber-400" : "bg-emerald-500"
@@ -621,7 +629,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                         style={{ width: `${usagePct}%` }}
                       />
                     </div>
-                    <p className="mt-1 text-[9px] text-white/30">
+                    <p className="mt-1 text-[9px] text-[var(--eos-subtle)]">
                       Max {formatContactBytes(MAX_CONTACT_FILE_BYTES)} na plik · pozostało{" "}
                       {formatContactBytes(Math.max(0, limitBytes - usageBytes))}
                     </p>
@@ -629,7 +637,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                   <button
                     type="button"
                     onClick={() => setAttachmentsOpen((v) => !v)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white/80 transition hover:bg-white/10"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)] transition hover:bg-[var(--eos-input)]"
                   >
                     <Paperclip className="size-3.5" />
                     Pokaż załączniki
@@ -648,11 +656,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                   >
                     <div className="max-h-44 overflow-y-auto px-4 py-3 custom-scrollbar md:px-5">
                       {loadingAttachments ? (
-                        <div className="flex items-center gap-2 text-xs text-white/40">
+                        <div className="flex items-center gap-2 text-xs text-[var(--eos-subtle)]">
                           <Loader2 className="size-4 animate-spin" /> Ładowanie…
                         </div>
                       ) : !attachmentsInfo?.attachments?.length ? (
-                        <p className="text-xs text-white/35">Brak załączników w tej rozmowie.</p>
+                        <p className="text-xs text-[var(--eos-subtle)]">Brak załączników w tej rozmowie.</p>
                       ) : (
                         <div className="grid gap-2 sm:grid-cols-2">
                           {attachmentsInfo.attachments.map((att) => (
@@ -661,14 +669,14 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                               href={att.url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 transition hover:bg-white/10"
+                              className="flex items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 transition hover:bg-[var(--eos-input)]"
                             >
-                              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
+                              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-500">
                                 <FileText className="size-4" />
                               </div>
                               <div className="min-w-0">
-                                <p className="truncate text-xs font-semibold text-white">{att.name}</p>
-                                <p className="text-[10px] text-white/40">
+                                <p className="truncate text-xs font-semibold text-[var(--eos-text)]">{att.name}</p>
+                                <p className="text-[10px] text-[var(--eos-subtle)]">
                                   {formatContactBytes(att.size)} ·{" "}
                                   {new Date(att.createdAt).toLocaleDateString("pl-PL")}
                                 </p>
@@ -710,17 +718,17 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                               }`}
                             >
                               {!isMe ? (
-                                <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-gradient-to-b from-[#222] to-[#111]">
-                                  <span className="text-[10px] font-black text-white/50">
+                                <div className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                                  <span className="text-[10px] font-black text-[var(--eos-muted)]">
                                     {activeThread.peerUserName?.charAt(0) || "👤"}
                                   </span>
                                 </div>
                               ) : null}
                               <div
-                                className={`px-5 py-3.5 shadow-xl ${
+                                className={`px-4 py-3 ${
                                   isMe
-                                    ? "rounded-[1.6rem] rounded-br-md bg-gradient-to-b from-emerald-500 to-emerald-600 text-black"
-                                    : "rounded-[1.6rem] rounded-bl-md border border-white/10 bg-white/5 text-white/90 backdrop-blur-md"
+                                    ? "rounded-[1.4rem] rounded-br-md bg-gradient-to-b from-emerald-400 to-emerald-600 text-black shadow-[0_10px_28px_-12px_rgba(16,185,129,0.65)]"
+                                    : "rounded-[1.4rem] rounded-bl-md border border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)]"
                                 }`}
                               >
                                 {text ? (
@@ -738,12 +746,12 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                                     <CheckCheck className="size-3" /> Odczytano
                                   </span>
                                 ) : (
-                                  <span className="flex items-center gap-1 text-[9px] font-bold text-white/40">
+                                  <span className="flex items-center gap-1 text-[9px] font-bold text-[var(--eos-subtle)]">
                                     <Check className="size-3" /> Dostarczono
                                   </span>
                                 )
                               ) : null}
-                              <span className="text-[9px] font-bold uppercase tracking-widest text-white/25">
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
                                 {new Date(msg.createdAt).toLocaleTimeString("pl-PL", {
                                   hour: "2-digit",
                                   minute: "2-digit",
@@ -755,18 +763,18 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       })}
                       {isTyping ? (
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-end gap-3">
-                          <div className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-white/5">
-                            <span className="text-[10px] font-black text-white/50">
+                          <div className="flex size-8 items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)]">
+                            <span className="text-[10px] font-black text-[var(--eos-muted)]">
                               {activeThread.peerUserName?.charAt(0) || "👤"}
                             </span>
                           </div>
-                          <div className="flex gap-1.5 rounded-[1.4rem] border border-white/10 bg-white/5 px-4 py-3">
+                          <div className="flex gap-1.5 rounded-[1.4rem] border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3">
                             {[0, 0.2, 0.4].map((delay) => (
                               <motion.div
                                 key={delay}
                                 animate={{ y: [0, -4, 0] }}
                                 transition={{ duration: 0.6, repeat: Infinity, delay }}
-                                className="size-1.5 rounded-full bg-white/40"
+                                className="size-1.5 rounded-full bg-emerald-500/70"
                               />
                             ))}
                           </div>
@@ -784,9 +792,9 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 8 }}
                       onClick={handleJumpToBottom}
-                      className="sticky bottom-4 left-1/2 z-10 mx-auto flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-[#111]/95 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-white shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition hover:bg-[#1a1a1a]"
+                      className="sticky bottom-4 left-1/2 z-10 mx-auto flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-text)] shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition hover:bg-[#1a1a1a]"
                     >
-                      <ArrowDown className="size-3.5 text-emerald-400" />
+                      <ArrowDown className="size-3.5 text-emerald-500" />
                       Na dół
                     </motion.button>
                   ) : null}
@@ -795,14 +803,14 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
 
               <form
                 onSubmit={handleSend}
-                className="shrink-0 border-t border-white/10 bg-gradient-to-t from-[#080808] to-transparent p-4 md:p-5"
+                className="shrink-0 border-t border-[var(--eos-border)] bg-[var(--eos-card)] p-4 md:p-5"
               >
                 {pendingFile ? (
                   <div className="mx-auto mb-3 flex max-w-3xl items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5">
-                    <Paperclip className="size-4 shrink-0 text-emerald-400" />
+                    <Paperclip className="size-4 shrink-0 text-emerald-500" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-semibold text-white">{pendingFile.name}</p>
-                      <p className="text-[10px] text-white/45">{formatContactBytes(pendingFile.size)}</p>
+                      <p className="truncate text-xs font-semibold text-[var(--eos-text)]">{pendingFile.name}</p>
+                      <p className="text-[10px] text-[var(--eos-muted)]">{formatContactBytes(pendingFile.size)}</p>
                     </div>
                     <button
                       type="button"
@@ -810,7 +818,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                         setPendingFile(null);
                         if (fileInputRef.current) fileInputRef.current.value = "";
                       }}
-                      className="rounded-full p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
+                      className="rounded-full p-1.5 text-[var(--eos-muted)] hover:bg-[var(--eos-input)] hover:text-[var(--eos-text)]"
                       aria-label="Usuń załącznik"
                     >
                       <X className="size-4" />
@@ -818,7 +826,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                   </div>
                 ) : null}
 
-                <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-[2rem] border border-white/10 bg-[#111] p-2 shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-emerald-500/40">
+                <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2 shadow-[var(--eos-shadow-soft)] focus-within:border-emerald-500/40">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -832,7 +840,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending || uploading}
-                    className="flex size-11 shrink-0 items-center justify-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-emerald-400 disabled:opacity-40"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full text-[var(--eos-muted)] transition hover:bg-[var(--eos-input)] hover:text-emerald-500 disabled:opacity-40"
                     aria-label="Dodaj załącznik"
                   >
                     {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}
@@ -842,7 +850,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     value={draft}
                     onChange={(e) => onDraftChange(e.target.value)}
                     placeholder="Napisz wiadomość…"
-                    className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm text-white outline-none placeholder:text-white/30"
+                    className="min-w-0 flex-1 bg-transparent px-2 py-3 text-sm text-[var(--eos-text)] outline-none placeholder:text-[var(--eos-subtle)]"
                   />
                   <button
                     type="submit"
