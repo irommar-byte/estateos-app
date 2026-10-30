@@ -15,7 +15,7 @@ import {
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { dayLabel, daysSince, initials, pln, relative, timeHM } from './format';
 import type { CrmProTab } from './CrmProRail';
-import { DeskCalendar, DeskClock, DeskNotes, useDesk } from './CrmDesk';
+import { DeskCalendar, DeskClock, DeskNoteSearch, DeskNotes, useDesk } from './CrmDesk';
 import CrmMarketPulse from './CrmMarketPulse';
 
 type TodayPayload = {
@@ -221,7 +221,9 @@ export default function CrmPulpit({
       </section>
 
       <div className="crmx-row2">
-        <section className="crmx-card crmx-slot-empty" aria-hidden />
+        <section className="crmx-card crmx-desk--notes">
+          <DeskNoteSearch desk={desk} />
+        </section>
         <section className="crmx-card">
           <header className="crmx-card__head">
             <h3 className="crmx-card__title"><CheckCircle2 /> Czeka na Twój ruch</h3>

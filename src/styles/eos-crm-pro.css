@@ -644,3 +644,19 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-desk__calnote .crmx-desk__textarea { height: 76px; min-height: 0; resize: none; }
 .crmx-desk__calnote .crmx-desk__events, .crmx-desk__calnote .crmx-desk__free { margin: 6px 0 8px; }
 .crmx-slot-empty { min-height: 160px; background: transparent; border-style: dashed; box-shadow: none; }
+/* Wyszukiwarka notatek */
+.crmx-nsearch__input { position: relative; height: 42px; }
+.crmx-nsearch__clear { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 99px; color: var(--x-ink-3); background: var(--x-surface-2); }
+.crmx-nsearch__label { margin: 12px 0 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--x-ink-3); }
+.crmx-nsearch__list { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; margin: 0 -6px; padding: 0 6px; }
+.crmx-nsearch__item { width: 100%; display: flex; align-items: flex-start; gap: 11px; padding: 8px 9px; border-radius: 12px; text-align: left; transition: background 0.15s; }
+.crmx-nsearch__item.is-active { background: var(--x-surface-2); box-shadow: inset 0 0 0 1px var(--x-line); }
+.crmx-nsearch__date { flex-shrink: 0; width: 40px; padding: 4px 0; border-radius: 10px; display: flex; flex-direction: column; align-items: center; background: var(--x-surface-2); border: 1px solid var(--x-line); }
+.crmx-nsearch__date b { font-size: 15px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.crmx-nsearch__date small { font-size: 9.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--x-ink-3); }
+.crmx-nsearch__date.is-future { background: var(--x-gold-soft); border-color: transparent; }
+.crmx-nsearch__date.is-future b { color: var(--x-gold-ink); }
+.crmx-nsearch__text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.crmx-nsearch__when { font-size: 11px; font-weight: 650; text-transform: capitalize; color: var(--x-ink-3); }
+.crmx-nsearch__snip { font-size: 12.5px; line-height: 1.4; color: var(--x-ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.crmx-nsearch__snip mark { background: var(--x-gold-soft); color: var(--x-gold-ink); font-weight: 700; border-radius: 4px; padding: 0 2px; }

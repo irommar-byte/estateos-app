@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Check, StickyNote } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, Search, StickyNote, X } from 'lucide-react';
 import type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
 import { createPortal } from 'react-dom';
 import { useNotePeek } from './NotePeek';
@@ -503,5 +503,127 @@ function QuickNote({
       </div>
     </div>,
     document.body,
+  );
+}
+
+function fold(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ł/g, 'l');
+}
+
+/** Wyszukiwarka notatek: szuka we wszystkich notatkach (bez polskich znaków), podświetla trafienie, klik przenosi do dnia. */
+export function DeskNoteSearch({ desk }: { desk: Desk }) {
+  const [all, setAll] = useState<Note[]>([]);
+  const [q, setQ] = useState('');
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/user/notes', { credentials: 'include', cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows) => Array.isArray(rows) && setAll(rows))
+      .catch(() => null);
+  }, []);
+  // zmiany zapisane w kalendarzu od razu trafiają do wyszukiwarki
+  useEffect(() => {
+    setAll((prev) => {
+      const map = new Map(prev.map((n) => [n.date, n]));
+      const month = `${desk.y}-${String(desk.mo + 1).padStart(2, '0')}`;
+      for (const k of [...map.keys()]) if (k.startsWith(month) && !desk.notes.some((n) => n.date === k)) map.delete(k);
+      for (const n of desk.notes) map.set(n.date, n);
+      return [...map.values()];
+    });
+  }, [desk.notes, desk.y, desk.mo]);
+
+  const query = fold(q.trim());
+  const today = iso(new Date());
+  const results = useMemo(() => {
+    const withText = all.filter((n) => n.text?.trim());
+    if (!query) {
+      const upcoming = withText.filter((n) => n.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
+      const recent = withText.filter((n) => n.date < today).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
+      return [...upcoming, ...recent];
+    }
+    const words = query.split(/\s+/).filter(Boolean);
+    return withText
+      .map((n) => {
+        const hay = fold(n.text);
+        if (!words.every((w) => hay.includes(w))) return null;
+        const at = hay.indexOf(words[0]);
+        return { n, at };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b!.n.date.localeCompare(a!.n.date))
+      .slice(0, 8)
+      .map((r) => ({ ...r!.n, _at: r!.at }) as Note & { _at: number });
+  }, [all, query, today]);
+
+  useEffect(() => setActive(0), [query]);
+
+  const open = (n: Note) => {
+    const [yy, mm] = n.date.split('-').map(Number);
+    const now = new Date();
+    desk.setMonthOffset((yy - now.getFullYear()) * 12 + (mm - 1 - now.getMonth()));
+    desk.setSelected(n.date);
+  };
+
+  const snippet = (n: Note & { _at?: number }) => {
+    const text = n.text.replace(/\s+/g, ' ').trim();
+    if (!query) return <>{text.slice(0, 90)}{text.length > 90 ? '…' : ''}</>;
+    const word = query.split(/\s+/)[0];
+    const at = n._at ?? 0;
+    const start = Math.max(0, at - 28);
+    const pre = (start > 0 ? '…' : '') + text.slice(start, at);
+    const hit = text.slice(at, at + word.length);
+    const post = text.slice(at + word.length, at + word.length + 60);
+    return <>{pre}<mark>{hit}</mark>{post}{at + word.length + 60 < text.length ? '…' : ''}</>;
+  };
+
+  return (
+    <div className="crmx-nsearch">
+      <div className="crmx-desk__head">
+        <p className="crmx-desk__month"><Search size={15} style={{ color: 'var(--x-gold)' }} /> Notatki</p>
+        <span className="crmx-desk__hint">{all.filter((n) => n.text?.trim()).length} zapisanych</span>
+      </div>
+      <label className="crmx-input crmx-nsearch__input">
+        <Search />
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Szukaj w notatkach — słowo, nazwisko, ulica…"
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(results.length - 1, a + 1)); }
+            if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }
+            if (e.key === 'Enter' && results[active]) open(results[active]);
+            if (e.key === 'Escape') setQ('');
+          }}
+        />
+        {q ? <button type="button" className="crmx-nsearch__clear" onClick={() => setQ('')} aria-label="Wyczyść"><X size={13} /></button> : null}
+      </label>
+      <p className="crmx-nsearch__label">{query ? (results.length ? `Znalezione · ${results.length}` : 'Nic nie znaleziono') : 'Nadchodzące i ostatnie'}</p>
+      <ul className="crmx-nsearch__list">
+        {results.map((n, i) => {
+          const d = new Date(`${n.date}T12:00:00`);
+          const future = n.date >= today;
+          return (
+            <li key={n.date}>
+              <button
+                type="button"
+                className={`crmx-nsearch__item ${i === active ? 'is-active' : ''}`}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => open(n)}
+              >
+                <span className={`crmx-nsearch__date ${future ? 'is-future' : ''}`}>
+                  <b>{d.getDate()}</b>
+                  <small>{d.toLocaleDateString('pl-PL', { month: 'short' }).replace('.', '')}</small>
+                </span>
+                <span className="crmx-nsearch__text">
+                  <span className="crmx-nsearch__when">{n.date === today ? 'Dziś' : d.toLocaleDateString('pl-PL', { weekday: 'long', year: d.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined })}</span>
+                  <span className="crmx-nsearch__snip">{snippet(n as Note & { _at?: number })}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
