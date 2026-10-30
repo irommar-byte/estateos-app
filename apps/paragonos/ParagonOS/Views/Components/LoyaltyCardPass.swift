@@ -266,6 +266,8 @@ struct LoyaltyCardPass: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
             .padding(.bottom, 18)
+            // Never wider than the card: content shrinks, the card doesn't grow.
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: Self.stackHeight, alignment: .top)
@@ -306,6 +308,7 @@ struct LoyaltyCardPass: View {
             .padding(.horizontal, 18)
             .padding(.top, 16)
             .padding(.bottom, 18)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
@@ -510,36 +513,31 @@ struct EmbossedMetalText: View {
     }
 
     var body: some View {
-        Group {
-            if gyroSheen {
-                // Open card only: UIKit metal with a light streak that follows the tilt.
-                MetalPANLabel(text: text, fontSize: fitted, gyroActive: true)
-            } else {
-                // Everywhere else (stack, flight): plain SwiftUI, safe under 3D transforms.
-                Text(text)
-                    .font(.system(size: fitted, weight: .semibold, design: .rounded).monospacedDigit())
-                    .lineLimit(1)
-                    .foregroundStyle(
-                        LinearGradient(
-                            stops: [
-                                .init(color: Color(red: 0.92, green: 0.91, blue: 0.87), location: 0),
-                                .init(color: Color(red: 1.0, green: 0.99, blue: 0.96), location: 0.22),
-                                .init(color: Color(red: 0.55, green: 0.54, blue: 0.51), location: 0.52),
-                                .init(color: Color(red: 0.95, green: 0.93, blue: 0.88), location: 0.76),
-                                .init(color: Color(red: 0.66, green: 0.64, blue: 0.59), location: 1)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .shadow(color: .black.opacity(0.45), radius: 0, x: 0, y: 1)
-                    .shadow(color: .white.opacity(0.35), radius: 0, x: 0, y: -0.5)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: fontSize * 1.35)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-        .accessibilityHidden(true)
+        // Native SwiftUI metal everywhere: it always fits the width it is given and is safe
+        // under 3D flips. The tilt sheen on the open card comes from the card's foil overlay.
+        Text(text)
+            .font(.system(size: fitted, weight: .semibold, design: .rounded).monospacedDigit())
+            .lineLimit(1)
+            .minimumScaleFactor(0.4)
+            .foregroundStyle(
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(red: 0.92, green: 0.91, blue: 0.87), location: 0),
+                        .init(color: Color(red: 1.0, green: 0.99, blue: 0.96), location: 0.22),
+                        .init(color: Color(red: 0.55, green: 0.54, blue: 0.51), location: 0.52),
+                        .init(color: Color(red: 0.95, green: 0.93, blue: 0.88), location: 0.76),
+                        .init(color: Color(red: 0.66, green: 0.64, blue: 0.59), location: 1)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .shadow(color: .black.opacity(0.45), radius: 0, x: 0, y: 1)
+            .shadow(color: .white.opacity(0.35), radius: 0, x: 0, y: -0.5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(height: fontSize * 1.35)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .accessibilityHidden(true)
     }
 }
 
