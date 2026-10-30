@@ -388,3 +388,24 @@ extension Color {
         )
     }
 }
+
+/// Keeps cards at card proportions when the window is wide (iPhone Duo inner display, iPad,
+/// landscape): content stays centred at a comfortable width instead of stretching edge to edge.
+extension View {
+    func paragonReadableWidth(_ maxWidth: CGFloat = 620) -> some View {
+        frame(maxWidth: maxWidth).frame(maxWidth: .infinity)
+    }
+}
+
+/// The display the app is actually on. iPhone Duo has two, so never assume `UIScreen.main`.
+enum ActiveDisplay {
+    @MainActor static var screen: UIScreen? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        return (scenes.first { $0.activationState == .foregroundActive } ?? scenes.first)?.screen
+    }
+
+    @MainActor static var brightness: CGFloat {
+        get { screen?.brightness ?? 0.5 }
+        set { screen?.brightness = newValue }
+    }
+}

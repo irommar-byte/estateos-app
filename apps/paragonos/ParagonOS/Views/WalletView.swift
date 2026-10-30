@@ -98,6 +98,7 @@ struct WalletView: View {
                 }
             }
             .padding(.horizontal, 16)
+            .paragonReadableWidth()
             .padding(.top, 8)
             .padding(.bottom, 28)
         }

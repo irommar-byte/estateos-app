@@ -64,6 +64,7 @@ struct LoyaltyHomeView: View {
                         ParagonTipCard(tip: FirstScanTip.loyalty)
                     }
                     .padding(.horizontal, 16)
+                    .paragonReadableWidth()
                     .padding(.top, 8)
                     .padding(.bottom, 28)
                 }
@@ -93,6 +94,7 @@ struct LoyaltyHomeView: View {
                         }
                     )
                     .padding(.horizontal, 16)
+                    .paragonReadableWidth()
                     .padding(.top, 2)
                     .padding(.bottom, 12)
                     .id("loyalty-wallet-stack")

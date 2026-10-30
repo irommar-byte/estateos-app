@@ -18,6 +18,7 @@ struct LoyaltyCardDetailView: View {
         List {
             Section {
                 LoyaltyCardPass(card: card, showsBarcode: true, foilActive: true)
+                    .paragonReadableWidth(560)
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
             }

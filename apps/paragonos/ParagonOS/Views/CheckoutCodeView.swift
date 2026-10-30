@@ -9,7 +9,7 @@ struct CheckoutCodeView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: CheckoutTab
-    @State private var previousBrightness: CGFloat = UIScreen.main.brightness
+    @State private var previousBrightness: CGFloat = 0.5
     @State private var confirmUsedOnExit = false
     @State private var codeImage: UIImage?
     @State private var didBoostBrightness = false
@@ -171,9 +171,9 @@ struct CheckoutCodeView: View {
     private func boostScreen() {
         UIApplication.shared.isIdleTimerDisabled = true
         if didBoostBrightness == false {
-            previousBrightness = UIScreen.main.brightness
+            previousBrightness = ActiveDisplay.brightness
             if wallet.settings.boostBrightness {
-                UIScreen.main.brightness = 1
+                ActiveDisplay.brightness = 1
                 didBoostBrightness = true
             }
         }
@@ -182,7 +182,7 @@ struct CheckoutCodeView: View {
     private func restoreScreen() {
         UIApplication.shared.isIdleTimerDisabled = false
         if didBoostBrightness {
-            UIScreen.main.brightness = previousBrightness
+            ActiveDisplay.brightness = previousBrightness
             didBoostBrightness = false
         }
     }

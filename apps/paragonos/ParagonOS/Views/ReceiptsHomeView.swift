@@ -101,6 +101,7 @@ struct ReceiptsHomeView: View {
                         ParagonTipCard(tip: FirstScanTip.receipt)
                     }
                     .padding(.horizontal, 16)
+                    .paragonReadableWidth()
                     .padding(.top, 8)
                     .padding(.bottom, 28)
                 }
@@ -149,6 +150,7 @@ struct ReceiptsHomeView: View {
                         }
                     }
                     .padding(.horizontal, 16)
+                    .paragonReadableWidth()
                     .padding(.top, 8)
                     .padding(.bottom, 28)
                 }
