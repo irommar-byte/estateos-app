@@ -554,3 +554,25 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 .crmx-ppulse__empty { display: flex; height: 100%; align-items: center; font-size: 12px; color: var(--x-ink-3); }
 .crmx-ppulse__note { margin-top: 8px; font-size: 11.5px; color: var(--x-ink-2); }
 .crmx-ppulse .crmx-seg button { height: 26px; font-size: 11.5px; padding: 0 6px; }
+/* Modal w stylu CRM */
+.crmx-modal-scrim { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: flex-start; justify-content: center; overflow-y: auto; padding: 6vh 16px; background: rgba(14, 12, 9, 0.34); backdrop-filter: blur(6px); }
+.crmx-modal { width: min(640px, 100%); padding: 26px 26px 22px; border-radius: 24px; background: var(--x-bg); border: 1px solid var(--x-line-strong); box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.45); }
+/* Podgląd notatki */
+.crmx-peek {
+  position: fixed; z-index: 10050; width: 280px; margin-left: -140px; pointer-events: none;
+  padding: 14px 16px 12px; border-radius: 16px;
+  background: color-mix(in srgb, var(--x-surface) 94%, transparent);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid var(--x-line-strong);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.7) inset, 0 24px 50px -18px rgba(30, 20, 5, 0.38);
+  translate: 0 -100%;
+}
+.crmx-peek[data-below] { translate: 0 0; }
+.crmx-peek::after {
+  content: ""; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px; margin-left: -6px; rotate: 45deg;
+  background: var(--x-surface); border-right: 1px solid var(--x-line-strong); border-bottom: 1px solid var(--x-line-strong);
+}
+.crmx-peek[data-below]::after { bottom: auto; top: -6px; rotate: 225deg; }
+.crmx-peek__head { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--x-gold-ink); }
+.crmx-peek__text { overflow-wrap: anywhere; margin-top: 8px; font-size: 13.5px; line-height: 1.5; color: var(--x-ink); white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 7; -webkit-box-orient: vertical; overflow: hidden; }
+.crmx-peek__foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--x-line); font-size: 11px; color: var(--x-ink-3); }

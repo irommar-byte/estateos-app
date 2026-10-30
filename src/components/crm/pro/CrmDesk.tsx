@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
+import { useNotePeek } from './NotePeek';
 
 type Note = { date: string; text: string };
 
@@ -317,8 +318,10 @@ export function DeskCalendar({ desk }: { desk: Desk }) {
   const todayKey = iso(now);
   const eventDays = new Set(events.map((e) => warsawKey(e.startsAt)));
   const noteDays = new Set(notes.filter((n) => n.text?.trim()).map((n) => n.date));
+  const peek = useNotePeek();
   return (
     <div className="crmx-desk__cal">
+      {peek.layer}
       <div className="crmx-desk__head">
         <p className="crmx-desk__month">{view.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}</p>
         <div className="flex gap-1">
@@ -336,7 +339,7 @@ export function DeskCalendar({ desk }: { desk: Desk }) {
           const key = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
           const cls = ['crmx-desk__d', key === todayKey ? 'is-today' : '', key === selected ? 'is-sel' : ''].join(' ');
           return (
-            <button key={i} type="button" className={cls} onClick={() => setSelected(key)}>
+            <button key={i} type="button" className={cls} onClick={() => setSelected(key)} {...peek.bind(key, notes.find((n) => n.date === key)?.text)}>
               {d}
               <span className="crmx-desk__marks">
                 {eventDays.has(key) ? <i className="ev" /> : null}

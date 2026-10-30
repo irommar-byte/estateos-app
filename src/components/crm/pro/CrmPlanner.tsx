@@ -10,6 +10,7 @@ import {
   isSameCalendarDay,
 } from '@/lib/crm/planningCalendar';
 import { DeskNotes, useDesk } from './CrmDesk';
+import { useNotePeek } from './NotePeek';
 
 const WEEKDAYS = ['Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob', 'Ndz'];
 type Contact = { id?: number; name?: string; email?: string; phone?: string; image?: string };
@@ -49,6 +50,7 @@ export default function CrmPlanner({
   const [m, setM] = useState(today.getMonth());
   const [sel, setSel] = useState<Date>(today);
   const desk = useDesk();
+  const peek = useNotePeek();
 
   const grid = useMemo(() => buildMonthGrid(y, m), [y, m]);
   const enrich = (a: PlanningAppointment) => enrichAppointmentForUi(a, currentUserId, contacts);
@@ -75,6 +77,7 @@ export default function CrmPlanner({
 
   return (
     <div className="crmx-planner">
+      {peek.layer}
       <section className="crmx-card crmx-planner__month">
         <header className="crmx-planner__bar">
           <div className="flex items-center gap-1.5">
@@ -103,6 +106,7 @@ export default function CrmPlanner({
                 key={d.toISOString()}
                 type="button"
                 onClick={() => pick(d)}
+                {...peek.bind(key(d), desk.notes.find((n) => n.date === key(d))?.text)}
                 className={`crmx-planner__day ${inMonth ? '' : 'is-out'} ${isToday ? 'is-today' : ''} ${isSel ? 'is-sel' : ''}`}
               >
                 <span className="crmx-planner__num">

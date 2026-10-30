@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Activity, X } from "lucide-react";
 import { formatPpsm, formatSignedPct } from "@/lib/market/format";
@@ -400,6 +401,103 @@ export default function PricePulseWidget({ locale = "pl", variant = "default" }:
     </>
   );
 
+  const crmModal =
+    typeof document !== "undefined"
+      ? createPortal(
+          <div className="crmx">
+            <AnimatePresence>
+              {open && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="crmx-modal-scrim"
+                  onClick={() => setOpen(false)}
+                >
+                  <motion.div
+                    initial={{ y: 16, opacity: 0, scale: 0.98 }}
+                    animate={{ y: 0, opacity: 1, scale: 1 }}
+                    exit={{ y: 10, opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                    onClick={(event) => event.stopPropagation()}
+                    className="crmx-modal"
+                    role="dialog"
+                    aria-label={copy.title}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="crmx-kicker">{copy.title}</p>
+                        <h3 className="crmx-display crmx-h2 mt-1.5">{copy.city}</h3>
+                      </div>
+                      <button type="button" onClick={() => setOpen(false)} className="crmx-btn crmx-btn--sm crmx-btn--icon" aria-label={copy.close}>
+                        <X size={15} />
+                      </button>
+                    </div>
+
+                    <div className="crmx-card crmx-card--pad mt-5">
+                      <div className="flex flex-wrap items-end justify-between gap-3">
+                        <div>
+                          <p className="crmx-kpi__label">{copy.heroDeed} · {periodCaption}</p>
+                          <p className="crmx-display mt-1" style={{ fontSize: 36, color: heroPct == null ? "var(--x-ink-3)" : trendTone === "up" ? "var(--x-good)" : trendTone === "down" ? "var(--x-bad)" : "var(--x-gold-ink)" }}>
+                            {heroPct == null ? "—" : pct}
+                          </p>
+                        </div>
+                        <p className="crmx-sub max-w-[60%] text-right" style={{ fontSize: 12.5 }}>{data && win ? narrative(locale, data, win) : copy.empty}</p>
+                      </div>
+                      <svg viewBox="0 0 640 160" className="mt-4 h-40 w-full" preserveAspectRatio="none">
+                        <path d={dual.b} fill="none" stroke="#a8844c" strokeWidth="2.2" vectorEffect="non-scaling-stroke" />
+                        <path d={dual.a} fill="none" stroke="var(--x-ink)" strokeOpacity="0.75" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+                      </svg>
+                      <div className="mt-2 flex gap-4 text-[11.5px]" style={{ color: "var(--x-ink-2)" }}>
+                        <span className="flex items-center gap-1.5"><span className="h-[3px] w-4 rounded-full" style={{ background: "var(--x-ink)" }} />{copy.listings}</span>
+                        <span className="flex items-center gap-1.5"><span className="h-[3px] w-4 rounded-full" style={{ background: "#a8844c" }} />{copy.deeds}</span>
+                      </div>
+                    </div>
+
+                    <div className="crmx-seg mt-4">
+                      {([["d7", copy.days7], ["d30", copy.days30], ["d90", copy.days90]] as const).map(([k, label]) => (
+                        <button key={k} type="button" aria-pressed={windowKey === k} onClick={() => setWindowKey(k)}>{label}</button>
+                      ))}
+                    </div>
+
+                    <div className="crmx-pulse__pair mt-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                      {[
+                        [copy.listings, win?.listingPpsm ? formatPpsm(win.listingPpsm) : "—", `${formatSignedPct(win?.listingChangePct ?? null)} · ${win?.listingCount ?? 0} ofert`],
+                        [copy.deeds, win?.deedPpsm ? formatPpsm(win.deedPpsm) : "—", `${formatSignedPct(win?.deedChangePct ?? null)} · ${win?.deedCount ?? 0} aktów`],
+                      ].map(([label, value, hint]) => (
+                        <div key={label}>
+                          <span>{label}</span>
+                          <b>{value}</b>
+                          <small className="crmx-muted" style={{ fontSize: 11.5 }}>{hint}</small>
+                        </div>
+                      ))}
+                    </div>
+
+                    {data?.districts?.length ? (
+                      <div className="crmx-card mt-4">
+                        <header className="crmx-card__head"><h4 className="crmx-card__title">{copy.districts}</h4></header>
+                        <div className="crmx-list max-h-56 overflow-y-auto">
+                          {data.districts.map((row) => (
+                            <div key={row.district} className="crmx-row" style={{ padding: "9px 20px" }}>
+                              <span className="crmx-row__main crmx-row__title">{row.district}</span>
+                              <span className="crmx-num text-[12px] crmx-muted">{formatPpsm(row.listingPpsm)}</span>
+                              <span className={`crmx-chip ${row.vsDeedsPct > 1.5 ? "crmx-chip--bad" : row.vsDeedsPct < -1.5 ? "crmx-chip--good" : ""}`}>{formatSignedPct(row.vsDeedsPct)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <p className="mt-4 text-[11px] leading-relaxed crmx-muted">{data?.lagNote || data?.disclaimer}</p>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>,
+          document.body,
+        )
+      : null;
+
   if (variant === "crm") {
     const crmTone = trendTone === "up" ? "var(--x-good)" : trendTone === "down" ? "var(--x-bad)" : "var(--x-gold)";
     return (
@@ -440,7 +538,7 @@ export default function PricePulseWidget({ locale = "pl", variant = "default" }:
           </div>
           <p className="crmx-ppulse__note">{data ? boughtLabel : copy.tap}</p>
         </div>
-        {modal}
+        {crmModal}
       </>
     );
   }
