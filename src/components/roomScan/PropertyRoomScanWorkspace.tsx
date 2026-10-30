@@ -135,6 +135,7 @@ export default function PropertyRoomScanWorkspace({
   autoOpen,
 }: Props) {
   const [newRoomName, setNewRoomName] = useState('Salon');
+  const [wholePreviewW, setWholePreviewW] = useState(0);
   const [customRoomName, setCustomRoomName] = useState('');
   const [activeScan, setActiveScan] = useState<ActiveScan | null>(null);
   const [showCoachmark, setShowCoachmark] = useState(Boolean(autoOpen));
@@ -716,6 +717,7 @@ export default function PropertyRoomScanWorkspace({
         {wholeScan ? (
           <View style={styles.wholePreview}>
             <Pressable
+              onLayout={(e) => setWholePreviewW(Math.round(e.nativeEvent.layout.width))}
               accessibilityRole="button"
               accessibilityLabel="Otwórz podgląd planu całej nieruchomości"
               onPress={() => {
@@ -735,8 +737,8 @@ export default function PropertyRoomScanWorkspace({
                 <FloorPlanScanArtboard
                   walls={wholeScan.scanMeta.walls}
                   meta={wholeScan.scanMeta}
-                  width={280}
-                  height={180}
+                  width={wholePreviewW || 280}
+                  height={260}
                   hideDimensions
                 />
               ) : (
@@ -890,7 +892,7 @@ const styles = StyleSheet.create({
   wholeTitle: { fontSize: 15, fontWeight: '900' },
   wholeSubtitle: { fontSize: 10.5, lineHeight: 15, marginTop: 2 },
   wholePreview: { marginTop: 12 },
-  wholeImageButton: { width: '100%', height: 190, borderRadius: 14, overflow: 'hidden', backgroundColor: '#fff' },
+  wholeImageButton: { width: '100%', height: 260, borderRadius: 16, overflow: 'hidden', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
   wholeImage: { width: '100%', height: '100%', backgroundColor: '#fff' },
   wholeExpandBadge: {
     position: 'absolute',

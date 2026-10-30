@@ -2490,6 +2490,14 @@ export default function OfferDetail({ route, navigation }: any) {
             scanMeta={parsedFloorPlanScanMeta}
             offerId={offer?.id ?? null}
             photos={realImages}
+            photoKeys={(() => {
+              try {
+                const raw = typeof offer?.images === 'string' ? JSON.parse(offer.images) : offer?.images;
+                return Array.isArray(raw) ? raw.map(String) : undefined;
+              } catch {
+                return undefined;
+              }
+            })()}
             onOpenPhoto={openGallery}
             theme={theme}
             editable={Boolean(isOwner && !isSamplePreview)}

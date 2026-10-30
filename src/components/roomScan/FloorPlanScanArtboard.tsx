@@ -21,6 +21,7 @@ import {
   prepareArchitecturalDimensionChains,
 } from '../../lib/roomScan/floorPlanArchitectural';
 import { ArchitecturalFurnitureSymbol } from '../../lib/roomScan/floorPlanFurnitureSymbols';
+import { detectPlanRooms, planLabelSpot, type PlacedPlanObject } from '../../lib/roomScan/planNormalize';
 import { formatRoomScanRoomCount } from '../../lib/roomScan/roomScanLabels';
 import { t } from '../../i18n';
 
@@ -386,13 +387,40 @@ export default forwardRef<Svg, Props>(function FloorPlanScanArtboard(
     if (!architectural) return [];
     const avoid = architecturalAvoidPoints(mappedObjects, dimensionLabelPoints);
     if (mappedSections.length > 1) {
-      return layoutArchitecturalSectionLabels(mappedSections, avoid, {
+      const base = layoutArchitecturalSectionLabels(mappedSections, avoid, {
         nameFontSize: roomNameFontSize,
         nameLineHeight: roomNameLineHeight,
         nameAreaGap: Math.max(4, roomNameFontSize * 0.16),
         areaFontSize,
         areaLineHeight,
       });
+      // Podpis stawiamy w wolnym miejscu podłogi danego pokoju (nie na łóżku, blacie czy ścianie) — jak na www.
+      try {
+        const rooms = detectPlanRooms(plan.meta);
+        const furniture: PlacedPlanObject[] = (plan.meta.objects || []).map((o) => ({
+          ...o,
+          widthM: o.widthM || 0.6,
+          depthM: o.depthM || 0.6,
+          rotationDeg: Math.round((o.rotationDeg || 0) / 90) * 90,
+        }));
+        const norm = (v: string) => v.trim().toLocaleLowerCase('pl');
+        const used = new Set<string>();
+        return base.map((label, index) => {
+          const name = norm(mappedSections[index]?.label || label.nameLines.join(' '));
+          const room = rooms.find((r) => !used.has(r.id) && norm(r.label || '') === name);
+          if (!room) return label;
+          used.add(room.id);
+          const wM = (Math.max(...label.nameLines.map((l) => l.length), (label.areaText || '').length, 4) * roomNameFontSize * 0.55 + 10) / viewport.scale;
+          const hM = (roomNameLineHeight * label.nameLines.length + areaLineHeight + 8) / viewport.scale;
+          const spot = planLabelSpot(room, wM, hM, furniture);
+          const px = mapFloorPlanPoint(spot.x, spot.z, plan.meta.bounds, viewport);
+          const centerY = (label.nameStartY + label.areaY) / 2;
+          const dy = px.y - centerY;
+          return { ...label, x: px.x, nameStartY: label.nameStartY + dy, areaY: label.areaY + dy };
+        });
+      } catch {
+        return base;
+      }
     }
     return layoutArchitecturalCenterLabel(mappedSections, plan.meta, roomCenter, avoid, {
       roomRect: {

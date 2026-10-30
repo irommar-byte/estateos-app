@@ -15,6 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { exportFloorPlanPdfFromMeta, shareFloorPlanPdf } from '../lib/roomScan/exportFloorPlanPdf';
+import { WebView } from 'react-native-webview';
 import { useI18n } from '../i18n';
 import { getSafeQuickLook } from '../utils/safeQuickLook';
 import FloorPlanScanArtboard from './roomScan/FloorPlanScanArtboard';
@@ -167,8 +168,11 @@ export default function FloorPlanViewer({
   onChangeMeta,
   offerId,
   photos,
+  photoKeys,
   onOpenPhoto,
 }: {
+  /** Oryginalne ścieżki zdjęć (do dopasowania z pomieszczeniami — wyświetlany URL bywa wersją HDR). */
+  photoKeys?: string[];
   offerId?: number | string | null;
   /** Zdjęcia galerii oferty (pełne URL-e) — pokazujemy je przy pomieszczeniach planu. */
   photos?: string[];
@@ -189,6 +193,20 @@ export default function FloorPlanViewer({
   const isDark = theme?.glass === 'dark' || theme?.dark;
   const displayRooms = useMemo(() => roomsFromScanMeta(scanMeta || null), [scanMeta]);
   const roomScans = displayRooms;
+  // Dwa pokoje o tej samej nazwie („Przedpokój”, „Przedpokój”) → „Przedpokój”, „Przedpokój 2”.
+  const roomLabel = useMemo(() => {
+    const seen = new Map<string, number>();
+    const out: Record<string, string> = {};
+    for (const room of displayRooms) {
+      const key = String(room.name || '').trim().toLocaleLowerCase('pl');
+      const n = (seen.get(key) || 0) + 1;
+      seen.set(key, n);
+      out[room.id] = n > 1 ? `${room.name} ${n}` : room.name;
+    }
+    return out;
+  }, [displayRooms]);
+  const [model3d, setModel3d] = useState<{ room: string | null } | null>(null);
+  const [thumbW, setThumbW] = useState(0);
   const [planKey, setPlanKey] = useState<'whole' | string>('whole');
   // Zdjęcia przypisane do pomieszczeń (te same co na www: /api/offers/:id/photo-rooms).
   const [photoRoomByKey, setPhotoRoomByKey] = useState<Record<string, string>>({});
@@ -209,9 +227,13 @@ export default function FloorPlanViewer({
   const roomPhotos = useMemo(
     () =>
       (photos || [])
-        .map((url, index) => ({ url, index, room: photoRoomByKey[photoKey(url)] || '' }))
+        .map((url, index) => ({
+          url: absolutePlanAssetUrl(url) || url,
+          index,
+          room: photoRoomByKey[photoKey(photoKeys?.[index] || url)] || photoRoomByKey[photoKey(url)] || '',
+        }))
         .filter((p) => p.room),
-    [photos, photoRoomByKey],
+    [photos, photoKeys, photoRoomByKey],
   );
   const [editingRoom, setEditingRoom] = useState<PropertyRoomScan | null>(null);
   const [rescanRoom, setRescanRoom] = useState<PropertyRoomScan | null>(null);
@@ -257,6 +279,19 @@ export default function FloorPlanViewer({
   const closeModal = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setIsOpen(false);
+  };
+
+  /** Model 3D jak na www (obrót palcem) — osadzony widok; AR/QuickLook tylko gdy oferta nie ma skanu. */
+  const open3d = (roomName: string | null, fallbackModelUri?: string | null) => {
+    if (offerId && (scanMeta?.walls?.length || roomScans.length)) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+      if (isOpen) {
+        setIsOpen(false);
+        setTimeout(() => setModel3d({ room: roomName }), 380);
+      } else setModel3d({ room: roomName });
+      return;
+    }
+    void openWalkthrough(fallbackModelUri);
   };
 
   const openWalkthrough = async (modelUri?: string | null) => {
@@ -335,17 +370,20 @@ export default function FloorPlanViewer({
   };
 
   const renderRoomThumb = (room: PropertyRoomScan) => {
-    const cropped = cropScanMetaToRoom(scanMeta, room);
-    if (cropped?.walls?.length) {
+    // Miniatura to prawdziwy rzut pomieszczenia: rysunek z RoomPlan albo plan ze skanu (ściany, drzwi, meble).
+    if (room.floorPlanPngUri) {
       return (
-        <View style={styles.roomScanImage}>
-          <FloorPlanScanArtboard walls={cropped.walls} meta={cropped} width={88} height={72} compact />
+        <View style={[styles.roomScanImage, { backgroundColor: '#fff' }]}>
+          <Image source={{ uri: absolutePlanAssetUrl(room.floorPlanPngUri) }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
         </View>
       );
     }
-    if (room.floorPlanPngUri) {
+    const own = room.scanMeta?.walls?.length ? room.scanMeta : cropScanMetaToRoom(scanMeta, room);
+    if (own?.walls?.length) {
       return (
-        <Image source={{ uri: absolutePlanAssetUrl(room.floorPlanPngUri) }} style={styles.roomScanImage} resizeMode="cover" />
+        <View style={[styles.roomScanImage, { backgroundColor: '#fff' }]}>
+          <FloorPlanScanArtboard walls={own.walls} meta={own} width={104} height={84} hideDimensions />
+        </View>
       );
     }
     return (
@@ -375,9 +413,14 @@ export default function FloorPlanViewer({
       {hasPlan ? (
         <>
           <View
+            onLayout={(e) => setThumbW(Math.round(e.nativeEvent.layout.width))}
             style={[
               styles.thumbnailWrapper,
-              { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' },
+              {
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+                height: Math.round(Math.min(420, Math.max(240, (thumbW || screenW) * 0.62))),
+                backgroundColor: '#FFFFFF',
+              },
             ]}
           >
             <Pressable onPress={openModal} style={StyleSheet.absoluteFill} pointerEvents={editable ? 'box-none' : 'auto'}>
@@ -385,8 +428,8 @@ export default function FloorPlanViewer({
                 <FloorPlanScanArtboard
                   walls={activeMeta.walls}
                   meta={activeMeta}
-                  width={Math.min(screenW - 40, 360)}
-                  height={180}
+                  width={thumbW || Math.min(screenW - 40, 360)}
+                  height={Math.round(Math.min(420, Math.max(240, (thumbW || screenW) * 0.62)))}
                   onSectionPress={
                     editable
                       ? (index) => {
@@ -455,25 +498,19 @@ export default function FloorPlanViewer({
                   ]}
                 >
                   <Text style={[styles.planChipText, planKey === room.id && styles.planChipTextActive]}>
-                    {room.name}
+                    {roomLabel[room.id] || room.name}
                   </Text>
                 </Pressable>
               ))}
             </View>
           ) : null}
 
-          {furniture.length > 0 ? (
+          {furnitureSummary(furniture) ? (
             <View style={styles.furnitureBlock}>
-              <Text style={[styles.furnitureTitle, isDark && { color: '#cbd5e1' }]}>
-                {t('offer.detail.floorPlan.furniture')}
+              <Text style={[styles.furnitureTitle, isDark && { color: '#cbd5e1' }]}>Wykryte wyposażenie</Text>
+              <Text style={{ color: isDark ? '#A1A1AA' : '#475569', fontSize: 13, lineHeight: 19, fontWeight: '500' }}>
+                {furnitureSummary(furniture)}
               </Text>
-              <View style={styles.furnitureWrap}>
-                {furniture.map((obj) => (
-                  <View key={obj.id} style={[styles.furnitureChip, isDark && { backgroundColor: '#242427' }]}>
-                    <Text style={[styles.furnitureChipText, isDark && { color: '#e2e8f0' }]}>{obj.label}</Text>
-                  </View>
-                ))}
-              </View>
             </View>
           ) : null}
 
@@ -497,23 +534,21 @@ export default function FloorPlanViewer({
                 >
                   {renderRoomThumb(room)}
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.roomScanName, isDark && { color: '#f8fafc' }]}>{room.name}</Text>
+                    <Text style={[styles.roomScanName, isDark && { color: '#f8fafc' }]}>{roomLabel[room.id] || room.name}</Text>
                     <Text style={[styles.roomScanMeta, isDark && { color: '#94a3b8' }]}>
                       {[room.widthM && room.lengthM ? `${room.widthM} × ${room.lengthM} m` : null, room.areaM2 ? `${room.areaM2} m²` : null, room.heightM ? `H ${room.heightM} m` : null]
                         .filter(Boolean)
                         .join(' · ')}
                     </Text>
-                    {room.floorPlan3dUri && Platform.OS === 'ios' ? (
-                      <Pressable onPress={() => void openWalkthrough(absolutePlanAssetUrl(room.floorPlan3dUri))} style={styles.roomScan3dBtn}>
+                    {(offerId || (room.floorPlan3dUri && Platform.OS === 'ios')) ? (
+                      <Pressable onPress={() => open3d(room.name, absolutePlanAssetUrl(room.floorPlan3dUri))} style={styles.roomScan3dBtn}>
                         <Ionicons name="cube-outline" size={15} color="#0ea5e9" />
-                        <Text style={styles.roomScan3dText}>{t('offer.detail.floorPlan.walkthrough3d')}</Text>
+                        <Text style={styles.roomScan3dText}>Model 3D</Text>
                       </Pressable>
                     ) : null}
                     {(room.scanMeta?.objects || cropScanMetaToRoom(scanMeta, room)?.objects || []).length > 0 ? (
                       <Text style={[styles.roomScanMeta, isDark && { color: '#94a3b8' }]} numberOfLines={2}>
-                        {(room.scanMeta?.objects || cropScanMetaToRoom(scanMeta, room)?.objects || [])
-                          .map((obj) => obj.label)
-                          .join(' · ')}
+                        {furnitureSummary(room.scanMeta?.objects || cropScanMetaToRoom(scanMeta, room)?.objects || [])}
                       </Text>
                     ) : null}
                   </View>
@@ -532,17 +567,17 @@ export default function FloorPlanViewer({
           ) : null}
 
           <View style={styles.actionRow}>
-            {has3d && Platform.OS === 'ios' ? (
-              <Pressable onPress={() => void openWalkthrough(absolutePlanAssetUrl(active3dUrl))} style={[styles.walkthroughBtn, isDark && styles.walkthroughBtnDark]}>
+            {(offerId && hasVectorPlan) || (has3d && Platform.OS === 'ios') ? (
+              <Pressable onPress={() => open3d(selectedRoom?.name || null, absolutePlanAssetUrl(active3dUrl))} style={[styles.walkthroughBtn, isDark && styles.walkthroughBtnDark]}>
                 <View style={styles.walkthroughIcon}>
                   <Ionicons name="cube-outline" size={18} color="#0ea5e9" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.walkthroughTitle, isDark && { color: '#f8fafc' }]}>
-                    {t('offer.detail.floorPlan.walkthrough3d')}
+                    Model 3D
                   </Text>
                   <Text style={[styles.walkthroughHint, isDark && { color: '#94a3b8' }]}>
-                    {t('offer.detail.floorPlan.walkthrough3dHint')}
+                    Obracaj palcem całe mieszkanie i każde pomieszczenie
                   </Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color="#64748b" />
@@ -655,7 +690,7 @@ export default function FloorPlanViewer({
                       ]}
                     >
                       <Text style={[styles.planChipText, isDark && { color: '#F5F5F7' }, planKey === room.id && styles.planChipTextActive]}>
-                        {room.name}
+                        {roomLabel[room.id] || room.name}
                         {(() => {
                           const n = roomPhotos.filter((p) => sameRoom(p.room, room.name)).length;
                           return n ? `  📷 ${n}` : '';
@@ -766,10 +801,10 @@ export default function FloorPlanViewer({
                     )}
                   </Pressable>
                 ) : null}
-                {has3d && Platform.OS === 'ios' ? (
-                  <Pressable onPress={() => void openWalkthrough(absolutePlanAssetUrl(active3dUrl))} style={styles.modalWalkthroughBtn}>
+                {(offerId && hasVectorPlan) || (has3d && Platform.OS === 'ios') ? (
+                  <Pressable onPress={() => open3d(selectedRoom?.name || null, absolutePlanAssetUrl(active3dUrl))} style={styles.modalWalkthroughBtn}>
                     <Ionicons name="cube-outline" size={16} color="#0f172a" />
-                    <Text style={styles.modalWalkthroughText}>{t('offer.detail.floorPlan.walkthrough3d')}</Text>
+                    <Text style={styles.modalWalkthroughText}>Model 3D</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -777,6 +812,46 @@ export default function FloorPlanViewer({
           </View>
         </Modal>
       ) : null}
+
+      <Modal visible={Boolean(model3d)} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setModel3d(null)}>
+        <View style={{ flex: 1, backgroundColor: isDark ? '#0d0e10' : '#eef2f6' }}>
+          {model3d && offerId ? (
+            <WebView
+              source={{
+                uri: `${API_URL}/embed/plan3d/${offerId}?theme=${isDark ? 'dark' : 'light'}${model3d.room ? `&room=${encodeURIComponent(model3d.room)}` : ''}`,
+              }}
+              style={{ flex: 1, backgroundColor: 'transparent' }}
+              originWhitelist={['*']}
+              bounces={false}
+              scrollEnabled={false}
+              allowsInlineMediaPlayback
+              startInLoadingState
+              renderLoading={() => (
+                <View style={{ ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' }}>
+                  <ActivityIndicator color="#0ea5e9" />
+                </View>
+              )}
+            />
+          ) : null}
+          <Pressable
+            onPress={() => setModel3d(null)}
+            hitSlop={12}
+            style={{
+              position: 'absolute',
+              top: insets.top + 10,
+              right: 16,
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)',
+            }}
+          >
+            <Ionicons name="close" size={20} color={isDark ? '#F5F5F7' : '#111827'} />
+          </Pressable>
+        </View>
+      </Modal>
 
       <RoomScanParamsSheet
         visible={Boolean(editingRoom)}
@@ -927,7 +1002,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(14,165,233,0.55)',
     backgroundColor: 'rgba(224,242,254,0.7)',
   },
-  roomScanImage: { width: 88, height: 72, borderRadius: 10, overflow: 'hidden', backgroundColor: '#e2e8f0' },
+  roomScanImage: { width: 104, height: 84, borderRadius: 12, overflow: 'hidden', backgroundColor: '#e2e8f0', alignItems: 'center', justifyContent: 'center' },
   roomScanPlaceholder: { alignItems: 'center', justifyContent: 'center' },
   roomScanName: { color: '#0f172a', fontSize: 13, fontWeight: '900' },
   roomScanMeta: { color: '#64748b', fontSize: 10.5, fontWeight: '600', marginTop: 3 },

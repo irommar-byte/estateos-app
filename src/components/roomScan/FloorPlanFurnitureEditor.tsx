@@ -46,6 +46,8 @@ export default function FloorPlanFurnitureEditor({
   disabled,
 }: Props) {
   const [adding, setAdding] = useState(false);
+  // Domyślnie zwinięte: jedna linia podsumowania zamiast długiej listy — edycja po rozwinięciu.
+  const [expanded, setExpanded] = useState(false);
   const objects = useMemo(() => dedupeDetectedObjects(meta.objects || []), [meta.objects]);
 
   const commit = (nextObjects: RoomScanDetectedObject[]) => {
@@ -77,8 +79,18 @@ export default function FloorPlanFurnitureEditor({
   return (
     <View style={styles.wrap}>
       <View style={styles.head}>
-        <Text style={[styles.title, { color: secondaryColor }]}>MEBLE I AGD</Text>
-        {disabled ? null : (
+        <Pressable
+          onPress={() => {
+            void Haptics.selectionAsync();
+            setExpanded((v) => !v);
+          }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 }}
+          hitSlop={6}
+        >
+          <Text style={[styles.title, { color: secondaryColor }]}>WYPOSAŻENIE · {objects.length}</Text>
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={secondaryColor} />
+        </Pressable>
+        {disabled || !expanded ? null : (
           <Pressable
             onPress={() => {
               void Haptics.selectionAsync();
@@ -109,13 +121,34 @@ export default function FloorPlanFurnitureEditor({
         </View>
       ) : null}
 
-      {objects.length === 0 ? (
+      {!expanded ? (
+        objects.length ? (
+          <Pressable onPress={() => setExpanded(true)}>
+            <Text style={{ color: textColor, fontSize: 13, lineHeight: 19, fontWeight: '500' }}>
+              {(() => {
+                const counts = new Map<string, number>();
+                for (const o of objects) {
+                  const name = getRoomScanObjectLabel(o.category);
+                  counts.set(name, (counts.get(name) || 0) + 1);
+                }
+                return Array.from(counts.entries())
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([name, n]) => (n > 1 ? `${name} ×${n}` : name))
+                  .join(' · ');
+              })()}
+            </Text>
+            <Text style={{ color: accent, fontSize: 12, fontWeight: '700', marginTop: 4 }}>Edytuj wyposażenie</Text>
+          </Pressable>
+        ) : (
+          <Text style={[styles.empty, { color: secondaryColor }]}>Brak wykrytych mebli.</Text>
+        )
+      ) : objects.length === 0 ? (
         <Text style={[styles.empty, { color: secondaryColor }]}>Brak mebli — dodaj albo zeskanuj ponownie.</Text>
       ) : (
         objects.map((obj) => (
           <View key={obj.id} style={[styles.row, { borderColor }]}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={[styles.chipText, { color: textColor }]}>{obj.label || getRoomScanObjectLabel(obj.category)}</Text>
+              <Text style={[styles.chipText, { color: textColor }]}>{getRoomScanObjectLabel(obj.category)}</Text>
               <View style={styles.cats}>
                 {CATEGORIES.slice(0, 8).map((category) => {
                   const active = obj.category === category;
