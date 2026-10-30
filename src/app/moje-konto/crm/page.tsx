@@ -26,8 +26,13 @@ import { buildReviewsModalPayload, EMPTY_REVIEWS_MODAL, type ReviewsModalPayload
 import { getBestUserAvatarUrl } from "@/lib/userAvatar";
 import { resolveProfileHeadlines, isAgentOrAgencySeller } from "@/lib/sellerDisplay";
 import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
-import CrmSectionTabBar, { type CrmSectionTabId } from "@/components/crm/CrmSectionTabBar";
 import CrmMyOffersBoard from "@/components/crm/CrmMyOffersBoard";
+import CrmProRail, { type CrmProTab } from "@/components/crm/pro/CrmProRail";
+import CrmPulpit from "@/components/crm/pro/CrmPulpit";
+import CrmDesk from "@/components/crm/pro/CrmDesk";
+import CrmListingsPro from "@/components/crm/pro/CrmListingsPro";
+import CrmDealsPro from "@/components/crm/pro/CrmDealsPro";
+import { greeting as crmGreeting } from "@/components/crm/pro/format";
 import {
   classifyListingSection,
   groupListingsBySection,
@@ -40,7 +45,6 @@ import DelegatedOffersPanel from "@/components/crm/DelegatedOffersPanel";
 import AgencyTransferModal from "@/components/crm/AgencyTransferModal";
 import { type AgencyMembershipUi } from "@/components/crm/ProfileAgencyOfficeCard";
 import CrmIdentityHeader from "@/components/crm/CrmIdentityHeader";
-import CrmDayBrief from "@/components/crm/CrmDayBrief";
 import AgencyGrowthBanner from "@/components/crm/AgencyGrowthBanner";
 import PortalImportProfileGuide from "@/components/onboarding/PortalImportProfileGuide";
 import type { PartnerGrowthInsight } from "@/lib/partnerGrowth";
@@ -62,7 +66,7 @@ import { parseDealEvent } from "@/components/crm/dealRoomUtils";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
 
-type CrmTab = "klienci" | "radar" | "my_offers" | "offers" | "planowanie" | "transakcje";
+type CrmTab = "pulpit" | "klienci" | "radar" | "my_offers" | "offers" | "planowanie" | "transakcje";
 
 const WowOverlay = ({
   type,
@@ -462,7 +466,8 @@ export default function CRMDashboard() {
      }
   }, [crmData]);
 
-  const [activeTab, setActiveTab] = useState<CrmTab>("radar");
+  const [activeTab, setActiveTab] = useState<CrmTab>("pulpit");
+  const [focusOfferId, setFocusOfferId] = useState<number | null>(null);
   const [offerSectionFilter, setOfferSectionFilter] = useState<ListingSection>('ACTIVE');
   const [deals, setDeals] = useState<any[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<number | null>(null);
@@ -811,11 +816,14 @@ export default function CRMDashboard() {
 
   useEffect(() => {
     if (!currentUser) return;
-    if (!isAgencyWorkspace) return;
+    if (!isAgencyWorkspace) {
+      if (activeTab === "pulpit") setActiveTab("radar");
+      return;
+    }
     const sParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     const t = sParams?.get("tab");
     if (t === "radar" || (!t && activeTab === "radar")) {
-      setActiveTab("klienci");
+      setActiveTab("pulpit");
     }
   }, [currentUser, isAgencyWorkspace, activeTab]);
 
@@ -824,7 +832,7 @@ export default function CRMDashboard() {
     const sParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     if (sParams && sParams.get('tab')) {
         const t = sParams.get('tab');
-        if (['klienci', 'radar', 'my_offers', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
+        if (['pulpit', 'klienci', 'radar', 'my_offers', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
             setActiveTab(t as CrmTab);
         }
     }
@@ -1084,6 +1092,24 @@ export default function CRMDashboard() {
     window.location.href = "/dodaj-oferte";
   };
 
+  const openClientFromAnywhere = (clientId: number) => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('clientId', String(clientId));
+      url.searchParams.set('tab', 'klienci');
+      window.history.replaceState(null, '', url.toString());
+    } catch {
+      /* ignore */
+    }
+    handleTabSwitch('klienci');
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent('crm-open-client', { detail: { clientId } })), 120);
+  };
+
+  const openOfferFromAnywhere = (offerId: number) => {
+    setFocusOfferId(offerId);
+    handleTabSwitch('my_offers');
+  };
+
   const handleTabSwitch = (tab: CrmTab) => {
     if (tab === activeTab) return;
     const currentY = typeof window !== 'undefined' ? window.scrollY : 0;
@@ -1172,11 +1198,11 @@ export default function CRMDashboard() {
 
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
   const profileTabs: CrmTab[] = isAgencyWorkspace
-    ? ["klienci", "my_offers", "offers", "planowanie", "transakcje"]
+    ? ["pulpit", "klienci", "my_offers", "transakcje", "planowanie", "offers"]
     : ["radar", "my_offers", "offers", "planowanie", "transakcje"];
 
   return (
-    <div className="theme-aware-dashboard crm-dashboard-shell eos-page-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
+    <div className="crmx theme-aware-dashboard crm-dashboard-shell eos-page-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
       {currentUser?.id ? (
         <Suspense fallback={null}>
           <PortalImportProfileGuide profileUserId={Number(currentUser.id)} />
@@ -1229,251 +1255,130 @@ export default function CRMDashboard() {
           <AgencyGrowthBanner insight={agencyGrowthInsight} compact />
         ) : null}
 
-        <CrmIdentityHeader
-          personName={personName}
-          accountPrimary={accountHeadlines.primary}
-          accountSecondary={accountHeadlines.secondary}
-          avatarSrc={avatarSrc}
-          avatarInitial={avatarInitial}
-          currentUser={currentUser}
-          userId={currentUser?.id}
-          isDarkTheme={isDarkTheme}
-          verificationStatus={verificationStatus}
-          verificationLabels={{
-            verifiedBadge: c.verification.verifiedBadge,
-            confirmEmail: c.verification.confirmEmail,
-            confirmPhone: c.verification.confirmPhone,
-            seeProfile: c.seeProfile,
-            reviewsNone: c.reviewsNone,
-            userIdLabel: c.userIdLabel,
-          }}
-          reviewsData={reviewsData}
-          reviewsLoading={reviewsLoading}
-          onOpenReviews={() => setIsReviewsModalOpen(true)}
-          membership={agencyMembership}
-          isAgencyWorkspace={!!isAgencyWorkspace}
-          onPasskeyRefresh={refreshCurrentUserFromBackend}
-        />
-
-
-        {isPremium ? (
-          <ProWidget
-            currentUser={currentUser}
-            activeOffers={activeOffersForProTools}
-            onProToolsChanged={() => {
-              if (currentUser?.id) void fetchData(currentUser.id);
-            }}
-          />
-        ) : (
-          <div className="mb-8 grid max-w-md grid-cols-1 gap-4">
-            <OpenHouseProCard
-              activeOffers={activeOffersForProTools}
-              onChanged={() => {
-                if (currentUser?.id) void fetchData(currentUser.id);
-              }}
-            />
+        <header className="crmx-topbar">
+          <div className="min-w-0">
+            <p className="crmx-kicker">EstateOS™ CRM · {new Date().toLocaleDateString("pl-PL", { weekday: "long", day: "numeric", month: "long" })}</p>
+            <h1 className="crmx-display crmx-h1 mt-2">
+              {crmGreeting()}, <em>{String(personName || "").split(/\s+/)[0] || "witaj"}</em>
+            </h1>
+            <p className="crmx-sub mt-1.5">
+              {accountHeadlines.primary}
+              {accountHeadlines.secondary ? ` · ${accountHeadlines.secondary}` : ""}
+            </p>
           </div>
-        )}
+          <div className="flex flex-wrap items-center gap-2">
+            {isAgencyWorkspace ? (
+              <button
+                type="button"
+                className="crmx-btn"
+                onClick={() => {
+                  handleTabSwitch("klienci" as CrmTab);
+                  window.setTimeout(() => window.dispatchEvent(new Event("crm-open-add-client")), 80);
+                }}
+              >
+                <Users size={15} /> Nowy klient
+              </button>
+            ) : null}
+            <button type="button" className="crmx-btn crmx-btn--primary" onClick={goToAddOffer}>
+              <Plus size={15} /> Nowe ogłoszenie
+            </button>
+          </div>
+        </header>
 
-        <CrmDayBrief
-          personName={personName}
-          onAddClient={() => {
-            handleTabSwitch('klienci' as CrmTab);
-            window.setTimeout(() => window.dispatchEvent(new Event('crm-open-add-client')), 50);
+        <div className="crmx-layout">
+        <CrmProRail
+          active={activeTab as CrmProTab}
+          tabs={profileTabs as CrmProTab[]}
+          counts={{
+            my_offers: (crmData.offers || []).filter((o: any) => classifyListingSection(o) === "ACTIVE").length,
+            offers: favoriteOffers.length,
           }}
-          onOpenClients={() => handleTabSwitch('klienci' as CrmTab)}
-          onOpenPlanning={() => handleTabSwitch('planowanie' as CrmTab)}
-        />
-
-        <div className="eos-crm-stage">
-        <CrmSectionTabBar
-          embedded
-          tabs={profileTabs as CrmSectionTabId[]}
-          activeTab={activeTab as CrmSectionTabId}
-          labels={crmTabLabels}
           onChange={(tab) => handleTabSwitch(tab as CrmTab)}
         />
 
-        <div className="eos-crm-stage__body">
-        <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={activeTab}
-          initial={{ opacity: 0, y: 18, height: "auto" }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -10 }}
-          transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-          className="space-y-5 sm:space-y-6"
-        >
-        <div className="eos-crm-section-hero flex flex-col items-center gap-5 sm:flex-row sm:gap-7">
-          <div
-            className={`eos-crm-section-hero__icon
-            ${isEmeraldTab ? "ring-1 ring-emerald-500/25" :
-              (activeTab === "offers" || activeTab === "my_offers") ? "ring-1 ring-sky-500/25" :
-              activeTab === "planowanie" ? "ring-1 ring-[rgba(196,163,90,0.35)]" :
-              "ring-1 ring-amber-500/30"
-            }`}
-          >
-            {activeTab === "klienci" ? (
-              <div className="relative flex h-full w-full items-center justify-center">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/15 to-transparent shadow-[inset_0_0_18px_rgba(16,185,129,0.2)]" />
-                <Users size={34} className="relative z-10 text-emerald-600 drop-shadow-[0_0_12px_rgba(16,185,129,0.35)]" strokeWidth={1.55} />
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 18, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1 rounded-full border-2 border-transparent border-t-emerald-500/45 border-b-emerald-500/10" />
-              </div>
-            ) : null}
-
-            {activeTab === "radar" ? (
-              showDualRadarPro ? (
-                <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full">
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/20 via-transparent to-amber-500/15 shadow-[inset_0_0_18px_rgba(16,185,129,0.18)]" />
-                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.6, repeat: Infinity, ease: "linear" }} className="absolute inset-0 rounded-full">
-                    <div className="h-full w-full bg-[conic-gradient(from_0deg,transparent_72%,rgba(16,185,129,0.55)_100%)]" />
-                    <div className="absolute right-1/2 top-0 h-1/2 w-[2px] origin-bottom bg-emerald-400 shadow-[0_0_10px_2px_rgba(16,185,129,0.9)]" />
-                  </motion.div>
-                  <motion.div animate={{ rotate: -360 }} transition={{ duration: 3.4, repeat: Infinity, ease: "linear" }} className="absolute inset-3 rounded-full">
-                    <div className="h-full w-full bg-[conic-gradient(from_180deg,transparent_72%,rgba(251,146,60,0.5)_100%)]" />
-                    <div className="absolute bottom-0 right-1/2 h-1/2 w-[2px] origin-top bg-amber-400 shadow-[0_0_10px_2px_rgba(251,146,60,0.85)]" />
-                  </motion.div>
-                  <div className="relative z-10 flex items-center" style={{ marginLeft: -2 }}>
-                    <Radar size={24} className="-mr-1.5 text-emerald-600 drop-shadow-[0_0_8px_rgba(16,185,129,0.55)]" strokeWidth={1.55} />
-                    <Radar size={24} className="text-amber-600 drop-shadow-[0_0_8px_rgba(251,146,60,0.55)]" strokeWidth={1.55} />
-                  </div>
-                  <motion.div animate={{ rotate: -360 }} transition={{ duration: 14, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute inset-1 rounded-full border border-dashed border-emerald-500/30" />
-                </div>
-              ) : (
-                <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full">
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/20 to-transparent shadow-[inset_0_0_18px_rgba(16,185,129,0.22)]" />
-                  <Radar size={30} className="relative z-10 text-emerald-600 drop-shadow-[0_0_10px_rgba(16,185,129,0.55)]" strokeWidth={1.55} />
-                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }} className="absolute inset-0 rounded-full">
-                    <div className="h-full w-full bg-[conic-gradient(from_0deg,transparent_70%,rgba(16,185,129,0.62)_100%)]" />
-                    <div className="absolute right-1/2 top-0 h-1/2 w-[2px] origin-bottom bg-emerald-400 shadow-[0_0_12px_2px_rgba(16,185,129,1)]" />
-                  </motion.div>
-                  <motion.div animate={{ rotate: -360 }} transition={{ duration: 15, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute inset-1 rounded-full border border-dashed border-emerald-500/35" />
-                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 10, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1 rounded-full border-2 border-transparent border-t-emerald-500/55 border-b-emerald-500/10" />
-                </div>
-              )
-            ) : null}
-
-            {(activeTab === "offers" || activeTab === "my_offers") ? (
-              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full" style={{ perspective: 800 }}>
-                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-sky-500/18 to-transparent shadow-[inset_0_0_18px_rgba(14,165,233,0.2)]" />
-                <motion.div animate={{ y: [-3, 3, -3], rotateX: [0, 12, 0], rotateY: [-8, 8, -8] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="relative z-10">
-                  {isFavoritesTab ? (
-                    <Wallet size={34} className="text-sky-600 drop-shadow-[0_8px_12px_rgba(14,165,233,0.35)]" strokeWidth={1.55} />
-                  ) : (
-                    <LayoutGrid size={34} className="text-sky-600 drop-shadow-[0_8px_12px_rgba(14,165,233,0.35)]" strokeWidth={1.55} />
-                  )}
-                </motion.div>
-                <motion.div animate={{ scale: [1, 1.12, 1], opacity: [0.25, 0.75, 0.25] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }} className="pointer-events-none absolute -inset-0.5 rounded-full border border-sky-500/40" />
-                <motion.div animate={{ rotate: 180 }} transition={{ duration: 8, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1.5 rounded-full border-2 border-transparent border-l-sky-500/45 border-r-sky-500/45" />
-              </div>
-            ) : null}
-
-            {activeTab === "planowanie" ? (
-              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[rgba(196,163,90,0.22)] to-transparent shadow-[inset_0_0_18px_rgba(196,163,90,0.18)]" />
-                <motion.div animate={{ rotateY: [-5, 5, -5] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }} className="relative z-10 flex h-11 w-11 flex-col items-center rounded-md border border-[rgba(196,163,90,0.45)] bg-gradient-to-b from-[#fbfaf7] to-[#e8e0d0] pt-1 shadow-[0_6px_14px_rgba(26,27,30,0.12)]">
-                  <div className="mb-1 flex gap-1.5">
-                    <div className="h-1.5 w-1.5 rounded-full bg-[#c4a35a] shadow-[0_0_5px_rgba(196,163,90,0.7)]" />
-                    <div className="h-1.5 w-1.5 rounded-full bg-[#c4a35a] shadow-[0_0_5px_rgba(196,163,90,0.7)]" />
-                  </div>
-                  <motion.div animate={{ rotateX: [0, 0, -110, -110], opacity: [1, 1, 0, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute bottom-0 z-20 flex h-[70%] w-full origin-top items-center justify-center overflow-hidden rounded-b border-t border-[rgba(196,163,90,0.28)] bg-gradient-to-b from-[#f5efe3] to-[#e8dfc8]">
-                    <motion.svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-emerald-600">
-                      <motion.path initial={{ pathLength: 0 }} animate={{ pathLength: [0, 1, 1, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} d="M20 6L9 17l-5-5" />
-                    </motion.svg>
-                  </motion.div>
-                  <div className="absolute bottom-0 z-10 flex h-[70%] w-full items-center justify-center rounded-b border-t border-[rgba(196,163,90,0.2)] bg-[#f3f1ec]">
-                    <span className="text-[11px] font-black text-[#7a6230]">24</span>
-                  </div>
-                </motion.div>
-                <motion.div animate={{ x: [10, -2, 6, 12, 10], y: [-10, -2, 3, -6, -10], rotateZ: [-10, -28, -10, 8, -10] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute z-30 text-amber-500 drop-shadow-[0_4px_6px_rgba(0,0,0,0.15)]">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="rotate-[-45deg] fill-amber-500/30">
-                    <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                    <path d="m15 5 4 4" />
-                  </svg>
-                </motion.div>
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1 rounded-full border-2 border-transparent border-t-[rgba(196,163,90,0.45)] border-b-[rgba(196,163,90,0.12)]" />
-              </div>
-            ) : null}
-
-            {activeTab === "transakcje" ? (
-              <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full" style={{ perspective: 800 }}>
-                <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-amber-500/18 to-transparent shadow-[inset_0_0_18px_rgba(245,158,11,0.18)]" />
-                <motion.div animate={{ rotateY: [-10, 10, -10], y: [-2, 2, -2] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="relative z-10">
-                  <Briefcase size={34} className="text-amber-600 drop-shadow-[0_0_12px_rgba(245,158,11,0.4)]" strokeWidth={1.55} />
-                </motion.div>
-                <motion.div animate={{ rotate: 360 }} transition={{ duration: 15, repeat: Infinity, ease: "linear" }} className="pointer-events-none absolute -inset-1 rounded-full border-2 border-transparent border-t-amber-500/45 border-b-amber-500/10" />
-              </div>
-            ) : null}
+        <div className="min-w-0">
+        <div key={activeTab} className="crmx-fade space-y-5 sm:space-y-6">
+        {activeTab !== "pulpit" ? (
+          <div className="crmx-section-head">
+            <div>
+              <p className="crmx-kicker">
+                {activeTab === "klienci" && "Klienci"}
+                {activeTab === "radar" && "Radar"}
+                {activeTab === "my_offers" && "Ogłoszenia"}
+                {activeTab === "offers" && "Ulubione"}
+                {activeTab === "planowanie" && "Planowanie"}
+                {activeTab === "transakcje" && "Transakcje"}
+              </p>
+              <h2 className="crmx-display crmx-h2 mt-1.5">
+                {activeTab === "klienci" && <>Kupujący i <em>sprzedający</em></>}
+                {activeTab === "radar" && <>Radar <em>inwestycji</em></>}
+                {activeTab === "my_offers" && <>Twoje <em>nieruchomości</em></>}
+                {activeTab === "offers" && <>Zapisane <em>oferty</em></>}
+                {activeTab === "planowanie" && <>Kalendarz <em>spotkań</em></>}
+                {activeTab === "transakcje" && <>Lejek <em>transakcji</em></>}
+              </h2>
+              <p className="crmx-sub mt-1 max-w-2xl">
+                {activeTab === "klienci" && "Karty klientów, dopasowania, prezentacje i komunikacja — wszystko przy jednej osobie."}
+                {activeTab === "radar" && (showDualRadarPro ? c.radarDescPro : c.radarDesc)}
+                {activeTab === "my_offers" && "Każde ogłoszenie z ceną, zasięgiem i kupującymi w procesie. Kliknij wiersz, żeby zobaczyć szczegóły i działać."}
+                {activeTab === "offers" && "Oferty z rynku, które zapisałeś — gotowe do wysłania klientom."}
+                {activeTab === "planowanie" && "Prezentacje, spotkania pozyskania i terminy w jednym kalendarzu."}
+                {activeTab === "transakcje" && "Każdy kupujący przy każdej ofercie — od zainteresowania po akt notarialny. Rozmowy z Dealroomu trafiają tu automatycznie."}
+              </p>
+            </div>
           </div>
+        ) : null}
 
-          <div className="relative z-10 min-w-0 flex-1 text-center sm:text-left">
-            <p className="eos-portal-label eos-portal-label--ok mb-2">
-              {activeTab === "klienci" && c.tabClients}
-              {activeTab === "radar" && "Radar"}
-              {activeTab === "my_offers" && c.tabMyOffers}
-              {activeTab === "offers" && c.tabFavorites}
-              {activeTab === "planowanie" && c.tabPlanning}
-              {activeTab === "transakcje" && c.tabDeals}
-            </p>
-            <h2
-              className={
-                activeTab === "klienci"
-                  ? "eos-crm-clients-hero-title mb-2"
-                  : "mb-2 text-2xl font-black tracking-tight text-[var(--eos-text)] sm:text-3xl"
-              }
-            >
-              {activeTab === "klienci" && (
-                <>
-                  {c.clientsTitle}{" "}
-                  <span className="eos-crm-clients-hero-title__accent">{c.clientsTitleHighlight}</span>
-                </>
-              )}
-              {activeTab === "radar" && (
-                showDualRadarPro ? (
-                  <>
-                    {c.radarTitle} <span className="text-amber-600">{c.radarTitlePro}</span>
-                  </>
-                ) : locale === "en" ? (
-                  <>
-                    {c.radarTitle} <span className="text-emerald-600">Radar</span>
-                  </>
-                ) : (
-                  <>
-                    Radar <span className="text-emerald-600">inwestycji</span>
-                  </>
-                )
-              )}
-              {activeTab === "my_offers" && (
-                <>
-                  {c.myOffersTitle} <span className="text-sky-600">{c.myOffersTitleHighlight}</span>
-                </>
-              )}
-              {activeTab === "offers" && (
-                <>
-                  {c.favoritesTitle} <span className="text-sky-600">{c.favoritesTitleHighlight}</span>
-                </>
-              )}
-              {activeTab === "planowanie" && (
-                <>
-                  {c.planningTitle} <span className="text-[#7a6230]">{c.planningTitleHighlight}</span>
-                </>
-              )}
-              {activeTab === "transakcje" && (
-                <>
-                  {c.dealsTitle} <span className="text-amber-600">{c.dealsTitleHighlight}</span>
-                </>
-              )}
-            </h2>
-            <p className="max-w-2xl text-xs leading-relaxed text-[var(--eos-muted)] sm:text-sm">
-              {activeTab === "klienci" && c.clientsDesc}
-              {activeTab === "radar" && (showDualRadarPro ? c.radarDescPro : c.radarDesc)}
-              {activeTab === "my_offers" && c.myOffersDesc}
-              {activeTab === "offers" && c.favoritesDesc}
-              {activeTab === "planowanie" && c.planningDesc}
-              {activeTab === "transakcje" && c.dealsDesc}
-            </p>
+        {activeTab === 'pulpit' && (
+          <div className="space-y-8">
+            <CrmDesk />
+            <CrmPulpit
+              offers={crmData.offers || []}
+              clientsCount={null}
+              onNavigate={(tab) => handleTabSwitch(tab as CrmTab)}
+              onOpenClient={openClientFromAnywhere}
+              onOpenOffer={openOfferFromAnywhere}
+            />
+            <section>
+              <p className="crmx-kicker mb-3">Narzędzia i profil</p>
+              <div className="space-y-5">
+                <CrmIdentityHeader
+                  personName={personName}
+                  accountPrimary={accountHeadlines.primary}
+                  accountSecondary={accountHeadlines.secondary}
+                  avatarSrc={avatarSrc}
+                  avatarInitial={avatarInitial}
+                  currentUser={currentUser}
+                  userId={currentUser?.id}
+                  isDarkTheme={isDarkTheme}
+                  verificationStatus={verificationStatus}
+                  verificationLabels={{
+                    verifiedBadge: c.verification.verifiedBadge,
+                    confirmEmail: c.verification.confirmEmail,
+                    confirmPhone: c.verification.confirmPhone,
+                    seeProfile: c.seeProfile,
+                    reviewsNone: c.reviewsNone,
+                    userIdLabel: c.userIdLabel,
+                  }}
+                  reviewsData={reviewsData}
+                  reviewsLoading={reviewsLoading}
+                  onOpenReviews={() => setIsReviewsModalOpen(true)}
+                  membership={agencyMembership}
+                  isAgencyWorkspace={!!isAgencyWorkspace}
+                  onPasskeyRefresh={refreshCurrentUserFromBackend}
+                />
+                <div className="grid max-w-md grid-cols-1 gap-4">
+                  <OpenHouseProCard
+                    activeOffers={activeOffersForProTools}
+                    onChanged={() => {
+                      if (currentUser?.id) void fetchData(currentUser.id);
+                    }}
+                  />
+                </div>
+              </div>
+            </section>
           </div>
-        </div>
+        )}
 
         {activeTab === 'klienci' && <CrmClientsWorkspace />}
 
@@ -1679,30 +1584,15 @@ export default function CRMDashboard() {
         )}
 
         {(activeTab === 'offers' || activeTab === 'my_offers') && (
-          <CrmMyOffersBoard
-            offers={offersVisibleInSection}
-            offersBySection={isListingsTab ? offersBySection : undefined}
+          <CrmListingsPro
+            key={activeTab}
+            mode={isListingsTab ? 'listings' : 'favorites'}
+            offers={baseOffersForView}
             bids={crmData?.bids || []}
-            sectionFilter={offerSectionFilter}
-            onSectionFilter={setOfferSectionFilter}
-            sectionCounts={{
-              ACTIVE: offersBySection.ACTIVE.length,
-              PENDING: offersBySection.PENDING.length,
-              COMPLETED: offersBySection.COMPLETED.length,
-            }}
-            isListingsTab={isListingsTab}
-            isFavoritesTab={isFavoritesTab}
-            isAgencyWorkspace={isAgencyWorkspace}
-            showAddTile={showAddOfferTile}
-            copy={{
-              ...c.offers,
-              sale: c.sale,
-              rent: c.rent,
-              deposit: c.radar?.deposit,
-              favoritesEmpty: c.favoritesEmpty,
-              favoritesDiscoverMarket: c.favoritesDiscoverMarket,
-            }}
-            filterLabels={c.offerFilter}
+            classify={classifyOfferSection}
+            isAwaitingReview={isOfferAwaitingReview}
+            focusOfferId={isListingsTab ? focusOfferId : null}
+            onFocusConsumed={() => setFocusOfferId(null)}
             onAdd={goToAddOffer}
             onRefresh={handleRefreshOffer}
             onArchive={setOfferToArchive}
@@ -1712,106 +1602,74 @@ export default function CRMDashboard() {
             onPriceSaved={(offerId, price) => {
               setCrmData((prev: any) => ({
                 ...prev,
-                offers: (prev.offers || []).map((o: any) =>
-                  Number(o.id) === offerId ? { ...o, price } : o,
-                ),
+                offers: (prev.offers || []).map((o: any) => (Number(o.id) === offerId ? { ...o, price } : o)),
               }));
             }}
-            isOfferAwaitingReview={isOfferAwaitingReview}
-            classifyOfferSection={classifyOfferSection}
           />
         )}
         {/* --- TRANSAKCJE / DEAL ROOMY --- */}
+        {activeTab === 'transakcje' && !selectedDealId && (
+          <div className="mb-8">
+            <CrmDealsPro onOpenClient={openClientFromAnywhere} onOpenOffer={openOfferFromAnywhere} />
+            <p className="crmx-kicker mt-10 mb-3">Rozmowy w Dealroomie</p>
+          </div>
+        )}
         {activeTab === 'transakcje' && (
           <div className="flex flex-col gap-6">
             {selectedDealId ? (
         <div className="animate-in fade-in zoom-in-95 duration-500">
           <button
             onClick={() => setSelectedDealId(null)}
-            className="mb-6 px-5 py-2.5 bg-[#111] border border-[var(--eos-border)] rounded-full text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-white hover:border-amber-500/50 transition-all flex items-center gap-2 w-fit shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+            className="crmx-btn mb-6"
           >
             {c.deals.back}
           </button>
           <DealRoom dealId={selectedDealId} currentUserId={currentUser?.id} />
         </div>
       ) : isolatedDeals.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 border border-dashed border-[var(--eos-border)] rounded-[2.5rem] bg-[var(--eos-bg-elevated)] relative overflow-hidden shadow-[inset_0_0_50px_rgba(0,0,0,0.8)]">
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent to-amber-900/5 pointer-events-none" />
-                <p className="text-[var(--eos-subtle)] font-bold uppercase tracking-widest text-sm mb-4 relative z-10">{c.deals.emptyTitle}</p>
-                <p className="text-[var(--eos-subtle)] text-xs text-center max-w-sm relative z-10">{c.deals.emptyDesc}</p>
+              <div className="crmx-card crmx-empty" style={{ padding: '40px 20px' }}>
+                <p className="font-semibold" style={{ color: 'var(--x-ink)' }}>{c.deals.emptyTitle}</p>
+                <p className="mt-1">{c.deals.emptyDesc}</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {sortedIsolatedDeals.map((deal: any) => (
-                  <div key={deal.dealId} onClick={() => setSelectedDealId(deal.dealId)} className="cursor-pointer block">
-                    <div className="bg-gradient-to-br from-[#111] to-[#0a0a0a] border border-[var(--eos-border)] hover:border-amber-500/30 rounded-[2rem] p-6 transition-all duration-300 group cursor-pointer shadow-xl hover:shadow-[0_10px_30px_rgba(245,158,11,0.1)]">
-                      <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="flex gap-4 items-center min-w-0">
-                          <div className="w-14 h-14 rounded-2xl overflow-hidden shrink-0 border border-[var(--eos-border)] group-hover:border-amber-500/50 transition-colors">
-                            <img src={resolveOfferPrimaryImage(deal.offer) || '/placeholder.jpg'} className="w-full h-full object-cover" alt={deal.offer?.title || c.deals.fallbackTitle} />
-                          </div>
-                          <div className="flex flex-col justify-center min-w-0">
-                            <p className="text-white font-bold text-sm leading-snug break-words">{deal.offer?.title || c.deals.fallbackTitle}</p>
-                            <p className="text-emerald-500 font-black text-xs">{Number(String(deal.offer?.price || 0).replace(/\D/g,'')).toLocaleString('pl-PL')} PLN</p>
-                            <p className="text-[9px] text-white/35 uppercase tracking-widest font-black mt-1">{c.deals.dealId.replace('{id}', String(deal.dealId))}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {deal.unreadCount > 0 && (
-                            <span className="px-2 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
-                              {c.deals.unread.replace('{n}', String(deal.unreadCount))}
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); togglePinDeal(Number(deal.dealId)); }}
-                            className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
-                              pinnedDealIds.includes(Number(deal.dealId))
-                                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                                : 'bg-white/5 border-[var(--eos-border)] text-[var(--eos-subtle)] hover:text-white/80'
-                            }`}
-                          >
-                            {pinnedDealIds.includes(Number(deal.dealId)) ? c.deals.pinned : c.deals.pin}
-                          </button>
-                        </div>
+              <div className="crmx-card overflow-hidden">
+                <div className="crmx-list">
+                {sortedIsolatedDeals.map((deal: any) => {
+                  const pinned = pinnedDealIds.includes(Number(deal.dealId));
+                  const img = resolveOfferPrimaryImage(deal.offer);
+                  return (
+                  <div key={deal.dealId} role="button" tabIndex={0} onClick={() => setSelectedDealId(deal.dealId)} className="crmx-row cursor-pointer">
+                    {img ? <img src={img} alt="" className="crmx-thumb" style={{ width: 56, height: 56 }} /> : <span className="crmx-thumb" style={{ width: 56, height: 56 }} />}
+                    <div className="crmx-row__main">
+                      <div className="flex items-center gap-2">
+                        <p className="crmx-row__title">{deal.offer?.title || c.deals.fallbackTitle}</p>
+                        <span className="crmx-chip crmx-muted shrink-0">#{deal.dealId}</span>
                       </div>
-                      <div className="bg-black/50 rounded-xl p-4 border border-[var(--eos-border)] relative overflow-hidden">
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-500/50 group-hover:bg-amber-500 transition-colors" />
-                        <p className="text-[9px] text-amber-500 font-black uppercase tracking-widest mb-1 ml-2">
-                          {c.deals.lastMessage} {deal.lastMessageSenderName ? `• ${deal.lastMessageSenderName}` : ''}
-                        </p>
-                        <p className="text-white/70 text-xs leading-relaxed break-words ml-2">{formatDealLastMessage(deal.lastMessage)}</p>
-                        <div className="mt-2 ml-2 flex items-center gap-2 text-[9px] text-[var(--eos-subtle)] uppercase tracking-widest font-black">
-                          <span>{new Date(deal.lastMessageAt || deal.updatedAt || deal.createdAt).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                          {(deal.pendingBidCount > 0 || deal.pendingAppointmentCount > 0) && (
-                            <span className="text-emerald-400">
-                              {deal.pendingBidCount > 0 ? c.deals.pendingBids.replace('{n}', String(deal.pendingBidCount)) : ''}{deal.pendingBidCount > 0 && deal.pendingAppointmentCount > 0 ? ' • ' : ''}{deal.pendingAppointmentCount > 0 ? c.deals.pendingAppointments.replace('{n}', String(deal.pendingAppointmentCount)) : ''}
-                            </span>
-                          )}
-                        </div>
+                      <p className="crmx-row__sub">
+                        {deal.otherParty?.name ? <b className="font-semibold" style={{ color: 'var(--x-ink)' }}>{deal.otherParty.name}: </b> : null}
+                        {formatDealLastMessage(deal.lastMessage)}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="crmx-chip crmx-chip--gold">{Number(String(deal.offer?.price || 0).replace(/\D/g,'')).toLocaleString('pl-PL')} zł</span>
+                        {deal.unreadCount > 0 ? <span className="crmx-chip crmx-chip--good">{c.deals.unread.replace('{n}', String(deal.unreadCount))}</span> : null}
+                        {deal.pendingBidCount > 0 ? <span className="crmx-chip crmx-chip--bad">{c.deals.pendingBids.replace('{n}', String(deal.pendingBidCount))}</span> : null}
+                        {deal.pendingAppointmentCount > 0 ? <span className="crmx-chip crmx-chip--warn">{c.deals.pendingAppointments.replace('{n}', String(deal.pendingAppointmentCount))}</span> : null}
+                        <span className="text-[11.5px] crmx-muted">{new Date(deal.lastMessageAt || deal.updatedAt || deal.createdAt).toLocaleString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
-                      {deal.otherParty?.id && (
-                        <div className="mt-3 flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); openUserProfileModal(deal.otherParty); }}
-                            className="text-[10px] uppercase tracking-widest font-black text-blue-300 hover:text-white transition-colors flex items-center gap-2"
-                          >
-                            <span>{c.deals.profile.replace('{name}', deal.otherParty.name)}</span>
-                            <EliteStatusBadges subject={deal.otherParty} isDark compact />
-                          </button>
-                          <Link
-                            href={`/profil/${deal.otherParty.id}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-[10px] uppercase tracking-widest font-black text-[var(--eos-muted)] hover:text-white transition-colors"
-                          >
-                            {c.deals.openProfile}
-                          </Link>
-                        </div>
-                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {deal.otherParty?.id ? (
+                        <button type="button" className="crmx-btn crmx-btn--sm" onClick={(e) => { e.stopPropagation(); openUserProfileModal(deal.otherParty); }}>Profil</button>
+                      ) : null}
+                      <button type="button" className={`crmx-btn crmx-btn--sm ${pinned ? 'crmx-btn--gold' : ''}`} onClick={(e) => { e.stopPropagation(); togglePinDeal(Number(deal.dealId)); }}>
+                        {pinned ? c.deals.pinned : c.deals.pin}
+                      </button>
+                      <span className="crmx-btn crmx-btn--sm crmx-btn--primary">Otwórz</span>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
+                </div>
               </div>
             )}
           </div>
@@ -1837,8 +1695,7 @@ export default function CRMDashboard() {
             />
           </motion.div>
         )}
-        </motion.div>
-        </AnimatePresence>
+        </div>
         </div>
         </div>
 </div>

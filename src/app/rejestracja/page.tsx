@@ -36,7 +36,7 @@ function RejestracjaPageInner() {
             <h1 className="text-5xl font-bold leading-tight tracking-tighter md:text-7xl">
               {t.registerPageTitle}
               <br />
-              <span className="italic text-emerald-500">{t.registerPageTitleHighlight}</span>
+              <span className=" text-emerald-500">{t.registerPageTitleHighlight}</span>
             </h1>
           </div>
 

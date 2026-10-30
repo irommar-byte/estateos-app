@@ -520,7 +520,7 @@ export default function AgencjePage() {
                             {review.comment ? (
                               <p className="text-sm leading-relaxed text-[var(--eos-muted)]">{review.comment}</p>
                             ) : (
-                              <p className="text-xs italic text-[var(--eos-subtle)]">Bez komentarza tekstowego.</p>
+                              <p className="text-xs  text-[var(--eos-subtle)]">Bez komentarza tekstowego.</p>
                             )}
                           </div>
                         ))}

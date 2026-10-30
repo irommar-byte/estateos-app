@@ -1018,65 +1018,21 @@ export default function CrmClientsWorkspace() {
 
   return (
     <div className="min-w-0 max-w-full space-y-6 overflow-x-clip">
-      {showOverview ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: cl.statsBuyers, value: report?.buyers ?? "—", icon: ShoppingBag },
-          { label: cl.statsSellers, value: report?.sellers ?? "—", icon: Home },
-          { label: cl.statsMatches, value: report?.totalMatches ?? "—", icon: Target },
-          { label: cl.statsOutreach, value: report?.outreachLast30Days ?? "—", icon: Send },
-        ].map((card) => (
-          <motion.div
-            key={card.label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="min-w-0 rounded-[1.5rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/90 p-5 shadow-[0_18px_48px_rgba(0,0,0,0.12),0_4px_14px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl"
-          >
-            <card.icon className="mb-3 size-5 text-emerald-500 drop-shadow-[0_4px_10px_rgba(16,185,129,0.35)]" />
-            <p className="text-2xl font-black tabular-nums text-[var(--eos-text)]">{card.value}</p>
-            <p className="mt-1 break-words text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--eos-muted)]">
-              {card.label}
-            </p>
-          </motion.div>
-        ))}
-      </div> : null}
-
-      {showOverview ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: "Weryfikacja e-mail", value: `${analytics.emailPct}%` },
-          { label: "Weryfikacja telefonu", value: `${analytics.phonePct}%` },
-          { label: "Klienci z dopasowaniami", value: `${analytics.matchPct}%` },
-          { label: "Do dokończenia", value: analytics.pendingVerification },
-        ].map((card) => (
-          <div
-            key={card.label}
-            className="rounded-2xl border border-[var(--eos-border)] bg-gradient-to-b from-[var(--eos-card)] to-[var(--eos-input)]/40 p-4 shadow-[0_12px_32px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.05)]"
-          >
-            <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--eos-muted)]">{card.label}</p>
-            <p className="mt-2 text-2xl font-black text-[var(--eos-text)]">{card.value}</p>
-          </div>
-        ))}
-      </div> : null}
-
-      {showOverview ? <div className="min-w-0 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/70 p-4 text-xs text-[var(--eos-muted)] shadow-[0_10px_28px_rgba(0,0,0,0.06)]">
-        <p className="font-bold text-[var(--eos-text)]">Jak czytać analitykę CRM:</p>
-        <p className="mt-1 break-words leading-relaxed">
-          % e-mail/telefon = udział klientów ze zweryfikowanym kontaktem. % dopasowań = udział klientów z min. 1 aktywnym match-em.
-          Status online liczony jest po ostatnim logowaniu klienta (aktywność w ciągu 10 min): teraz online {onlineCount}/{clients.length}.
-        </p>
-      </div> : null}
-
-      <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="min-w-0">
-          <p className="eos-crm-clients-section-kicker">Moi klienci</p>
-          <p className="mt-1 text-sm text-[var(--eos-muted)]">
-            Lampki: e-mail · telefon · konto · dopasowanie. Spotkanie pozyskania ma odliczanie zamiast lampek.
-          </p>
+      {showOverview ? (
+        <div className="crmx-strip" title={`% e-mail/telefon = udział klientów ze zweryfikowanym kontaktem. % dopasowań = udział klientów z min. 1 aktywnym dopasowaniem. Online teraz: ${onlineCount}/${clients.length}.`}>
+          <div><b>{report?.buyers ?? "—"}</b><span>Kupujący</span></div>
+          <div><b>{report?.sellers ?? "—"}</b><span>Sprzedający</span></div>
+          <div><b>{report?.totalMatches ?? "—"}</b><span>Dopasowania</span></div>
+          <div><b>{report?.outreachLast30Days ?? "—"}</b><span>Kontakt 30 dni</span></div>
+          <div><b>{analytics.matchPct}%</b><span>Z dopasowaniami</span></div>
+          <div><b>{analytics.emailPct}% · {analytics.phonePct}%</b><span>E-mail · telefon</span></div>
+          <div><b>{onlineCount}</b><span>Online teraz</span></div>
         </div>
-        <button
-          type="button"
-          onClick={() => setFormOpen(true)}
-          className={eosBtn("home", { className: "w-full shrink-0 shadow-[0_12px_32px_rgba(16,185,129,0.28)] sm:w-auto" })}
-        >
+      ) : null}
+
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="crmx-sub">Lampki przy kliencie: e-mail · telefon · konto · dopasowanie. Spotkanie pozyskania pokazuje odliczanie.</p>
+        <button type="button" onClick={() => setFormOpen(true)} className="crmx-btn crmx-btn--primary shrink-0">
           <UserPlus className="size-4" />
           {cl.addClient}
         </button>

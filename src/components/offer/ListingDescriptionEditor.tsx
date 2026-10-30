@@ -178,7 +178,7 @@ export default function ListingDescriptionEditor({ value, onChange, placeholder,
           {previewHtml ? (
             <OfferDescriptionBody description={value} />
           ) : (
-            <p className="text-[16px] font-light italic leading-relaxed text-zinc-500">
+            <p className="text-[16px] font-light  leading-relaxed text-zinc-500">
               {placeholder || 'Podgląd sformatowanego opisu pojawi się tutaj.'}
             </p>
           )}

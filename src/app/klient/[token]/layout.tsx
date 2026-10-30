@@ -1,13 +1,5 @@
 import type { Metadata } from 'next';
-import { Fraunces } from 'next/font/google';
 import ClientPortalShell from '@/components/portal/ClientPortalShell';
-
-const luxSerif = Fraunces({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500', '600'],
-  variable: '--font-lux-serif',
-  display: 'swap',
-});
 
 type LayoutProps = {
   children: React.ReactNode;
@@ -29,5 +21,5 @@ export async function generateMetadata({ params }: LayoutProps): Promise<Metadat
 }
 
 export default function ClientPortalLayout({ children }: LayoutProps) {
-  return <ClientPortalShell fontClassName={luxSerif.variable}>{children}</ClientPortalShell>;
+  return <ClientPortalShell fontClassName="">{children}</ClientPortalShell>;
 }

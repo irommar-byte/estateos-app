@@ -64,7 +64,7 @@ html.dark .kei-lux {
 }
 
 .k-serif {
-  font-family: var(--font-lux-serif, 'Iowan Old Style'), 'Iowan Old Style', Georgia, serif;
+  font-family: var(--eos-font-display);
   letter-spacing: -0.01em;
 }
 .k-kicker {

@@ -33,7 +33,45 @@ const CRM_OFFER_CARD_SELECT = {
   adminFee: true,
   legalCheckStatus: true,
   userId: true,
+  totalFloors: true,
+  yearBuilt: true,
+  plotArea: true,
+  condition: true,
+  managementStatus: true,
+  officeReviewStatus: true,
+  promotedUntil: true,
+  floorPlanUrl: true,
+  floorPlan3dUrl: true,
+  videoUrl: true,
+  hasBalcony: true,
+  hasElevator: true,
+  hasParking: true,
+  hasGarden: true,
 } as const;
+
+/** Statystyki CRM dla listy ogłoszeń: zasięg, kupujący w procesie, wysłane do klientów, ulubione. */
+async function offerCrmStats(offerIds: number[]) {
+  if (!offerIds.length) return new Map<number, Record<string, number>>();
+  const [views, buyers, sent, favs] = await Promise.all([
+    prisma.offerViewLog.groupBy({ by: ['offerId'], where: { offerId: { in: offerIds } }, _count: { _all: true } }).catch(() => []),
+    prisma.offerBuyerDeal.groupBy({ by: ['offerId'], where: { offerId: { in: offerIds }, status: { in: ['ACTIVE', 'PAUSED'] } }, _count: { _all: true } }).catch(() => []),
+    prisma.agencyClientMatch.groupBy({ by: ['offerId'], where: { offerId: { in: offerIds }, notifiedAt: { not: null } }, _count: { _all: true } }).catch(() => []),
+    prisma.favoriteOffer.groupBy({ by: ['offerId'], where: { offerId: { in: offerIds } }, _count: { _all: true } }).catch(() => []),
+  ]);
+  const out = new Map<number, Record<string, number>>();
+  const put = (rows: Array<{ offerId: number; _count: { _all: number } }>, key: string) => {
+    for (const r of rows) {
+      const cur = out.get(r.offerId) || {};
+      cur[key] = r._count._all;
+      out.set(r.offerId, cur);
+    }
+  };
+  put(views as never, 'views');
+  put(buyers as never, 'buyersInProcess');
+  put(sent as never, 'sentToClients');
+  put(favs as never, 'favorites');
+  return out;
+}
 
 export async function GET(req: Request) {
   try {
@@ -253,7 +291,10 @@ export async function GET(req: Request) {
       appointments: allAppointments,
       bids,
       leads,
-      offers: myOffers,
+      offers: await (async () => {
+        const stats = await offerCrmStats(myOffers.map((o) => o.id));
+        return myOffers.map((o) => ({ ...o, ...(stats.get(o.id) || {}) }));
+      })(),
       contacts: contactsData,
       
     });

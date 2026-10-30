@@ -757,7 +757,7 @@ export default function DiscoveryPulse() {
             ) : null}
 
             {(pulseView.knows?.lastNotes?.length || pulseView.lastNotes?.length) ? (
-              <p className="relative mt-2 text-[11px] italic leading-snug text-white/45">
+              <p className="relative mt-2 text-[11px]  leading-snug text-white/45">
                 „{(pulseView.knows?.lastNotes || pulseView.lastNotes || [])[0]}”
               </p>
             ) : null}

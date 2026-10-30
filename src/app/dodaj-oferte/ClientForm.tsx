@@ -3071,7 +3071,7 @@ export default function ClientForm({
                    <span className="text-blue-200 font-bold tracking-[0.3em] uppercase text-xs">{ao.plusReachBadge}</span>
                 </motion.div>
                 <div className="relative mb-6 overflow-visible">
-                  <h1 className="text-[60px] md:text-[110px] font-black tracking-tighter italic text-transparent bg-clip-text bg-gradient-to-b from-blue-100 via-white to-blue-500 drop-shadow-[0_0_80px_rgba(59,130,246,0.8)] p-4" style={{ lineHeight: 1 }}>
+                  <h1 className="text-[60px] md:text-[110px] font-black tracking-tighter  text-transparent bg-clip-text bg-gradient-to-b from-blue-100 via-white to-blue-500 drop-shadow-[0_0_80px_rgba(59,130,246,0.8)] p-4" style={{ lineHeight: 1 }}>
                     OFERTA <span className="text-transparent bg-clip-text bg-gradient-to-br from-blue-400 to-cyan-300">PLUS+</span>
                   </h1>
                 </div>

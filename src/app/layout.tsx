@@ -2,7 +2,6 @@ import ModeTransition from '@/components/ui/ModeTransition';
 import UpgradeModal from '@/components/ui/UpgradeModal';
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import OpenInSystemBrowserGate from "@/components/layout/OpenInSystemBrowserGate";
@@ -26,7 +25,6 @@ import EcosystemAmbientBackground from "@/components/ecosystem/EcosystemAmbientB
 import { LOCALE_COOKIE, resolveLocale } from "@/i18n/config";
 import { ESTATEOS_SITE_URL, ESTATEOS_TAGLINE_PL } from "@/lib/estateOsPublicFacts";
 import { FREE_LISTING_KEYWORDS } from "@/lib/seo/freeListingContent";
-const inter = Inter({ subsets: ["latin", "latin-ext"], display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL(ESTATEOS_SITE_URL),
@@ -98,7 +96,7 @@ export default async function RootLayout({
 
   return (
     <html suppressHydrationWarning lang={locale}>
-      <body suppressHydrationWarning className={inter.className}>
+      <body suppressHydrationWarning>
         <EstateOsStructuredData />
         <ThemeInitScript />
         <ThemeProvider>

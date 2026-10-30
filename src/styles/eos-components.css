@@ -2515,7 +2515,7 @@ html body .portal-lux {
   color-scheme: light;
 }
 html body .portal-lux .lux-serif {
-  font-family: var(--font-lux-serif), Georgia, serif;
+  font-family: var(--eos-font-display);
   letter-spacing: -0.01em;
 }
 html body .portal-lux .eos-lux-panel,
@@ -3092,7 +3092,7 @@ html body .portal-lux .listing-path-stack__kicker {
   font-weight: 700;
 }
 html body .portal-lux .listing-path-stack__title {
-  font-family: var(--font-lux-serif), Georgia, serif;
+  font-family: var(--eos-font-display);
   font-weight: 500;
   font-size: 21px;
   letter-spacing: -0.01em;
@@ -3173,7 +3173,7 @@ html body .portal-lux .marketing-channel-brand__word {
   margin-top: 1.1rem;
 }
 .promo-board__title {
-  font-family: var(--font-lux-serif), Georgia, serif;
+  font-family: var(--eos-font-display);
   font-size: 20px;
   line-height: 1.25;
   color: var(--lux-ink);
@@ -3380,7 +3380,7 @@ html.dark .portal-lux .eos-tone--slate { background: rgba(255, 255, 255, 0.07); 
   margin-top: 1.2rem;
 }
 .reach-card__title {
-  font-family: var(--font-lux-serif), Georgia, serif;
+  font-family: var(--eos-font-display);
   font-size: 22px;
   line-height: 1.2;
   color: var(--lux-ink);
@@ -3418,7 +3418,7 @@ html.dark .portal-lux .eos-tone--slate { background: rgba(255, 255, 255, 0.07); 
   margin-bottom: 6px;
 }
 .reach-tile__value {
-  font-family: var(--font-lux-serif), Georgia, serif;
+  font-family: var(--eos-font-display);
   font-size: 28px;
   line-height: 1.05;
   font-variant-numeric: tabular-nums;
@@ -3575,8 +3575,8 @@ html .buyer-intake-shell.buyer-intake-shell .bi-accent-ink,
 html .buyer-intake-shell.buyer-intake-shell .bi-expand-btn { color: var(--bi-gold-ink); }
 html .buyer-intake-shell.buyer-intake-shell .bi-accent {
   color: var(--bi-gold-ink);
-  font-family: var(--font-lux-serif), Georgia, serif;
-  font-style: italic;
+  font-family: var(--eos-font-display);
+  font-style: normal;
   font-weight: 500;
 }
 
@@ -3740,9 +3740,9 @@ html.light .buyer-intake-shell.buyer-intake-shell .bi-welcome__mark {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 24px 48px -20px rgba(120, 95, 55, 0.5);
 }
 html .buyer-intake-shell.buyer-intake-shell .bi-welcome__mark-text {
-  font-family: var(--font-lux-serif), Georgia, serif;
+  font-family: var(--eos-font-display);
   font-size: 30px;
-  font-style: italic;
+  font-style: normal;
   letter-spacing: 0.02em;
   background: linear-gradient(180deg, #f1e3c4 0%, #c9a96e 55%, #a8864a 100%);
   -webkit-background-clip: text;

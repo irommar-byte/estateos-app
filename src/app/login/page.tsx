@@ -375,7 +375,7 @@ function LoginPageInner() {
               <Lock size={32} />
             </div>
             <h1 className="text-5xl md:text-7xl font-bold tracking-tighter leading-tight text-[var(--eos-text)]">
-              {view === 'login' ? <>{t.loginTitle} <br/><span className="text-[var(--eos-muted)] italic">{t.loginTitleMuted}</span></> : <>{t.recoverTitle} <br/><span className="text-emerald-500 italic">{t.recoverTitleHighlight}</span></>}
+              {view === 'login' ? <>{t.loginTitle} <br/><span className="text-[var(--eos-muted)] ">{t.loginTitleMuted}</span></> : <>{t.recoverTitle} <br/><span className="text-emerald-500 ">{t.recoverTitleHighlight}</span></>}
             </h1>
           </div>
 

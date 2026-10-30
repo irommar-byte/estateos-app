@@ -125,7 +125,7 @@ export default function AppointmentManager({ appointment, onClose }: any) {
                   <div className="bg-[#151515] p-3 md:p-4 rounded-2xl border border-[var(--eos-border)] relative">
                      <MessageSquare className="absolute top-4 right-4 text-[var(--eos-subtle)]" size={24} />
                      <p className="text-[9px] text-[var(--eos-subtle)] font-bold uppercase tracking-widest mb-1">Message:</p>
-                     <p className="text-xs text-[var(--eos-muted)] leading-relaxed italic relative z-10">"{appointment.message}"</p>
+                     <p className="text-xs text-[var(--eos-muted)] leading-relaxed  relative z-10">"{appointment.message}"</p>
                   </div>
                 )}
 

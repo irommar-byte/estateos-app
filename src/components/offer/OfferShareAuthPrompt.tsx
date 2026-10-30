@@ -75,7 +75,7 @@ export default function OfferShareAuthPrompt({
         ) : null}
 
         {messagePreview ? (
-          <blockquote className="rounded-2xl border border-black/8 bg-white/70 px-4 py-3 text-sm italic text-[#5c5c66] dark:border-white/10 dark:bg-white/5 dark:text-[#9a9aa8]">
+          <blockquote className="rounded-2xl border border-black/8 bg-white/70 px-4 py-3 text-sm  text-[#5c5c66] dark:border-white/10 dark:bg-white/5 dark:text-[#9a9aa8]">
             „{messagePreview.length > 140 ? `${messagePreview.slice(0, 140)}…` : messagePreview}”
           </blockquote>
         ) : null}

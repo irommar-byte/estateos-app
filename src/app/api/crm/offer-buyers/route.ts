@@ -12,6 +12,7 @@ import {
   informSellerAboutDeal,
   listBuyerClientDeals,
   listOfferBuyerDeals,
+  listAgentDeals,
   markDealViewed,
   requestBuyerFeedback,
   scheduleExternalViewing,
@@ -61,6 +62,9 @@ export async function GET(req: Request) {
   const offerId = Number(url.searchParams.get('offerId') || 0);
   const buyerClientId = Number(url.searchParams.get('buyerClientId') || 0);
 
+  if (url.searchParams.get('scope') === 'all') {
+    return NextResponse.json({ success: true, deals: await listAgentDeals(agencyUserId) });
+  }
   if (dealId) {
     const deal = await getDeal(agencyUserId, dealId);
     return deal ? NextResponse.json({ success: true, deal }) : fail('Nie znaleziono kupującego przy tej ofercie.', 404);

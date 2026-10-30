@@ -908,6 +908,32 @@ export async function listOfferBuyerDeals(agencyUserId: number, offerId: number)
   return sortDeals(shapeAll(deals, await buildContext(deals)));
 }
 
+/**
+ * Cały lejek transakcji agenta (zakładka Transakcje): aktywne ścieżki kupujących + zakończone z ostatnich 90 dni.
+ * Najpierw dociąga Dealroom i nowych kupujących dla ofert, przy których coś się dzieje.
+ */
+export async function listAgentDeals(agencyUserId: number): Promise<DealView[]> {
+  const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  const touched = await prisma.deal.findMany({
+    where: { updatedAt: { gte: since }, offer: { userId: agencyUserId } },
+    select: { offerId: true },
+    distinct: ['offerId'],
+    take: 60,
+  });
+  for (const row of touched) {
+    await syncOfferBuyerDeals(agencyUserId, row.offerId).catch(() => null);
+  }
+  const deals = await prisma.offerBuyerDeal.findMany({
+    where: {
+      agencyUserId,
+      OR: [{ status: { in: ['ACTIVE', 'PAUSED'] } }, { updatedAt: { gte: since } }],
+    },
+    orderBy: { updatedAt: 'desc' },
+    take: 300,
+  });
+  return sortDeals(shapeAll(deals, await buildContext(deals)));
+}
+
 /** Nieruchomości, przy których kupujący jest w procesie (karta kupującego). Samo wysłanie z radaru pomijamy. */
 export async function listBuyerClientDeals(agencyUserId: number, buyerClientId: number): Promise<DealView[]> {
   await syncBuyerClientDeals(agencyUserId, buyerClientId);

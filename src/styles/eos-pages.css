@@ -3285,7 +3285,7 @@ html:not(.light) .eos-crm-section-hero__icon {
 
 /* —— CRM Moi klienci —— */
 .eos-crm-clients-hero-title {
-  font-family: var(--eos-crm-font, "Fraunces", Georgia, serif);
+  font-family: var(--eos-font-display);
   font-size: clamp(2.15rem, 5vw, 3.5rem);
   font-weight: 800;
   letter-spacing: -0.035em;
@@ -3302,7 +3302,7 @@ html:not(.light) .eos-crm-section-hero__icon {
 }
 
 .eos-crm-clients-section-kicker {
-  font-family: var(--eos-crm-font, "Fraunces", Georgia, serif);
+  font-family: var(--eos-font-display);
   font-size: clamp(1.35rem, 2.8vw, 1.85rem);
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -4780,7 +4780,7 @@ html:not(.light) .eos-engraved-cta--car {
 
 .eos-intel-ledger {
   margin-top: 0.85rem;
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-family: var(--eos-font-display);
 }
 
 .eos-intel-ledger__title {
@@ -4839,7 +4839,7 @@ html:not(.light) .eos-engraved-cta--car {
 }
 
 .eos-intel-ledger__vs {
-  font-style: italic;
+  font-style: normal;
   color: #047857;
 }
 
@@ -4860,7 +4860,7 @@ html:not(.light) .eos-intel-ledger__vs {
 }
 
 .eos-intel-console li {
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-family: var(--eos-font-display);
   font-size: 0.8rem;
   line-height: 1.4;
 }

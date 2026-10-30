@@ -104,11 +104,11 @@ export default function CrmShowingComposer({
                 {[showing.street, showing.city].filter(Boolean).join(", ")}
               </p>
               {quote ? (
-                <p className="mt-2 rounded-xl bg-white/60 px-3 py-2 text-sm italic text-[var(--eos-text)]">
+                <p className="mt-2 rounded-xl bg-white/60 px-3 py-2 text-sm  text-[var(--eos-text)]">
                   „{quote}”
                 </p>
               ) : pinnedMatch ? (
-                <p className="mt-2 text-sm italic text-[var(--eos-text)]">Klient kliknął „Chcę oglądać”.</p>
+                <p className="mt-2 text-sm  text-[var(--eos-text)]">Klient kliknął „Chcę oglądać”.</p>
               ) : null}
             </div>
           </div>

@@ -456,7 +456,7 @@ export default function Pricing() {
                     <Check className="text-[var(--eos-subtle)] shrink-0" size={20} />
                     <span>{p.basicF3}</span>
                   </li>
-                  <li className="flex items-start gap-3 text-[var(--eos-muted)] text-sm italic">
+                  <li className="flex items-start gap-3 text-[var(--eos-muted)] text-sm ">
                     <Zap className="text-[var(--eos-subtle)] shrink-0" size={20} />
                     <span>{p.basicF4}</span>
                   </li>

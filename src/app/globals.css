@@ -2,6 +2,7 @@
 @import "../styles/eos-tokens.css";
 @import "../styles/eos-reset.css";
 @import "../styles/eos-components.css";
+@import "../styles/eos-crm-pro.css";
 @import "../styles/eos-pages.css";
 @import "../styles/eos-kei-lux.css";
 
@@ -10,5 +11,19 @@ html, body {
 }
 
 @theme {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
 }
+
+/* Jedna czcionka w stylu Apple na całej stronie: SF Pro na Apple, najbliższy systemowy odpowiednik gdzie indziej. */
+:root {
+  --eos-font-text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
+  --eos-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-lux-serif: var(--eos-font-display);
+}
+html, body {
+  font-family: var(--eos-font-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+em { font-style: normal; }

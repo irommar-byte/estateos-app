@@ -1052,16 +1052,16 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                   {company.website}
                 </a>
               ) : (
-                <span className="italic">Brak strony www</span>
+                <span className="">Brak strony www</span>
               )}
             </p>
             <p className="flex items-center gap-2">
               <Phone size={14} className="shrink-0 text-emerald-500" />
-              {company.officePhone || <span className="italic">Brak telefonu</span>}
+              {company.officePhone || <span className="">Brak telefonu</span>}
             </p>
             <p className="flex items-center gap-2">
               <Mail size={14} className="shrink-0 text-emerald-500" />
-              {company.officeEmail || <span className="italic">Brak e-maila</span>}
+              {company.officeEmail || <span className="">Brak e-maila</span>}
             </p>
           </div>
         )}
