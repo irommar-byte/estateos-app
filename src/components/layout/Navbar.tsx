@@ -101,7 +101,7 @@ export default function Navbar() {
   const highlightCar = navHighlight === "car";
   const brandIsCar = highlightCar;
 
-  const isOfferShareLanding = pathname?.startsWith("/o/");
+  const isOfferShareLanding = pathname?.startsWith("/o/") || pathname?.startsWith("/embed/");
   const isDeskApp = pathname?.startsWith("/crm");
   const isBuyerIntake = isBuyerFocusedShellPath(pathname);
   const isAdmin = user?.role === "ADMIN";
