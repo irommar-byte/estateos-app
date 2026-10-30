@@ -1,18 +1,7 @@
-import { IBM_Plex_Mono, Inter_Tight } from 'next/font/google';
+import './offerFonts.css';
 
-/** Kroje ofertówki i wizytówki: `--ofb-sans` (nagłówki, liczby) i `--ofb-mono` (etykiety). */
-export const offerSans = Inter_Tight({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--ofb-sans',
-  display: 'swap',
-});
-
-export const offerMono = IBM_Plex_Mono({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['400', '500'],
-  variable: '--ofb-mono',
-  display: 'swap',
-});
-
-export const offerFontVars = `${offerSans.variable} ${offerMono.variable}`;
+/**
+ * Kroje ofertówki i wizytówki: `--ofb-sans` (Inter Tight — nagłówki, liczby) i `--ofb-mono` (IBM Plex Mono — etykiety).
+ * Pliki leżą w /public/fonts, więc build nie pobiera nic z Google Fonts (to wywracało deploy, gdy Google nie odpowiadał).
+ */
+export const offerFontVars = 'eos-ofb-fonts';
