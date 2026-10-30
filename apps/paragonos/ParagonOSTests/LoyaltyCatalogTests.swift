@@ -357,8 +357,7 @@ final class LoyaltyCatalogTests: XCTestCase {
     }
 
     @MainActor
-    func testSignedPassLoadsInPassKit() throws {
-        try XCTSkipUnless(PassCMSSigner.canSign, "Pass Type key is not bundled on this machine")
+    func testSigningRequestCarriesCardAndImages() throws {
         let card = LoyaltyCard(
             programID: "orlen",
             programName: "Orlen Vitay",
@@ -370,10 +369,14 @@ final class LoyaltyCatalogTests: XCTestCase {
             scannedByName: "",
             ocrText: ""
         )
-        let zip = try WalletPassBuilder.package(for: card, logo: nil)
-        let pass = try PKPass(data: zip)
-        XCTAssertEqual(pass.passTypeIdentifier, WalletPassBuilder.passTypeIdentifier)
-        XCTAssertEqual(pass.serialNumber, card.id.uuidString)
+        let body = try WalletPassBuilder.signingRequestBody(for: card, logo: nil)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(json["serialNumber"] as? String, card.id.uuidString)
+        XCTAssertEqual(json["memberNumber"] as? String, "5901234567890")
+        let images = try XCTUnwrap(json["images"] as? [String: String])
+        XCTAssertEqual(images.count, 9)
+        XCTAssertNotNil(images["icon.png"])
+        XCTAssertNil(Bundle.main.url(forResource: "PassType", withExtension: "key"), "Signing key must not ship in the app")
     }
 
     func testOrlenColorIsDistinctFromBiedronka() {

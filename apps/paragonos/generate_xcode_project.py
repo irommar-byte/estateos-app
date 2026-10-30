@@ -28,7 +28,7 @@ RES = []
 res_dir = SRC / "Resources"
 if res_dir.exists():
     for p in sorted(res_dir.iterdir()):
-        if p.suffix in {".xcassets", ".json", ".xcprivacy", ".cer", ".key", ".xcstrings", ".storekit"}:
+        if p.suffix in {".xcassets", ".json", ".xcprivacy", ".cer", ".xcstrings", ".storekit"}:
             RES.append(f"Resources/{p.name}")
         elif p.is_dir():
             for child in sorted(p.iterdir()):

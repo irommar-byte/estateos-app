@@ -94,3 +94,4 @@ apps/paragonos/.coffee-snaps/
 apps/paragonos/.card-snaps/
 
 apps/paragonos/**/xcuserdata/
+apps/paragonos/**/*.key

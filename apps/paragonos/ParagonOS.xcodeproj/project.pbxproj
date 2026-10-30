@@ -16,7 +16,6 @@
 		1972F57F816E4828B34BD75E /* ScanReceiptControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2229F636EED34820AB975610 /* ScanReceiptControl.swift */; };
 		1A467AEEBC9A49A89B155087 /* ScanReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE819D3EB52B4A8CA2E7F9CF /* ScanReviewView.swift */; };
 		1CB72F55E79E4ACFB5513B0B /* xkom.png in Resources */ = {isa = PBXBuildFile; fileRef = F27906CAB8F3489DBA19CF37 /* xkom.png */; };
-		1E3270D2C0654F80BD9134EA /* PassType.key in Resources */ = {isa = PBXBuildFile; fileRef = BE6E2A332BF84533A0EB1399 /* PassType.key */; };
 		1F769D95CA47464CB257DDB9 /* LoyaltyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7646FFC7CA64186AD50367F /* LoyaltyModels.swift */; };
 		2129F21A342F4945B510DEDE /* GyroFoilOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 198705ACC2154D2C962DFA16 /* GyroFoilOverlay.swift */; };
 		213D9EB57F914861802BD7C6 /* TicketsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 155FF53093E54CFE869A4AC7 /* TicketsWidget.swift */; };
@@ -276,7 +275,6 @@
 		B9121E22CCFB4CFA98FF4143 /* BiometricLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricLock.swift; sourceTree = "<group>"; };
 		BA14DCCC80074DDBBB6BD2DC /* dyson.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = dyson.png; sourceTree = "<group>"; };
 		BBF3BDBF50E34A55B1907500 /* QuietPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietPromptTests.swift; sourceTree = "<group>"; };
-		BE6E2A332BF84533A0EB1399 /* PassType.key */ = {isa = PBXFileReference; lastKnownFileType = text; path = PassType.key; sourceTree = "<group>"; };
 		C04F1E5D04CE4C7DB40EAF28 /* ParagonUIDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParagonUIDemo.swift; sourceTree = "<group>"; };
 		C21FEBD603DA4EA08F102DBF /* BottleReturnStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottleReturnStore.swift; sourceTree = "<group>"; };
 		C22C584EAD3C435D8DAC6B58 /* rossmann.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = rossmann.png; sourceTree = "<group>"; };
@@ -398,7 +396,6 @@
 				3EF1857F2E1740589237497E /* LoyaltyPrograms.json */,
 				EA12FA99E37F4D98928921AF /* ParagonOS.storekit */,
 				8EA4AC5E32D044179613E448 /* PassType.cer */,
-				BE6E2A332BF84533A0EB1399 /* PassType.key */,
 				26BBE82304CC47C39FDB9427 /* PrivacyInfo.xcprivacy */,
 				82EAF12B79C4495AB3763C25 /* Retailers.json */,
 				C9CA16C9AF374406A235E735 /* BrandLogos */,
@@ -730,7 +727,6 @@
 				8481EB9ADAA54919AED6E3AF /* LoyaltyPrograms.json in Resources */,
 				A3A4D8CC11774CF5A21C2FFD /* ParagonOS.storekit in Resources */,
 				7A5011A970BD4337A8BE1848 /* PassType.cer in Resources */,
-				1E3270D2C0654F80BD9134EA /* PassType.key in Resources */,
 				AD1F6FF2BFE74172BCD646B1 /* PrivacyInfo.xcprivacy in Resources */,
 				BF98ACF0BD454713B0682660 /* Retailers.json in Resources */,
 				CDE41975CF7946F5B8EF2F46 /* cash-register-open.mp3 in Resources */,
@@ -886,7 +882,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -906,7 +902,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "ParagonOS/Resources/ParagonOS-Release.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ParagonOS/Resources/Info.plist;
@@ -917,7 +913,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = pl.paragonos.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -933,7 +929,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				SDKROOT = iphoneos;
@@ -949,7 +945,7 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -969,7 +965,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = ParagonOS/Resources/ParagonOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ParagonOS/Resources/Info.plist;
@@ -980,7 +976,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = pl.paragonos.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -996,7 +992,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ParagonOSWidgets/ParagonOSWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ParagonOSWidgets/Info.plist;
@@ -1006,7 +1002,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = pl.paragonos.app.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1023,7 +1019,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ENABLE_MODULES = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_TESTABILITY = YES;
 				GCC_DYNAMIC_NO_PIC = NO;
@@ -1045,7 +1041,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = ParagonOSWidgets/ParagonOSWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 29;
+				CURRENT_PROJECT_VERSION = 30;
 				DEVELOPMENT_TEAM = NW3YW69KL9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ParagonOSWidgets/Info.plist;
@@ -1055,7 +1051,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.2;
 				PRODUCT_BUNDLE_IDENTIFIER = pl.paragonos.app.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

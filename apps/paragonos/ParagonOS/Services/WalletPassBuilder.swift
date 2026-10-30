@@ -8,6 +8,8 @@ enum WalletPassError: LocalizedError {
     case cannotAdd
     case unsigned
     case encoding
+    case offline
+    case server
 
     var errorDescription: String? {
         switch self {
@@ -17,6 +19,10 @@ enum WalletPassError: LocalizedError {
             return "Apple Wallet nie przyjął karty. Karta nadal działa w \(Brand.displayName) przy kasie — ten sam kod, pełna jasność."
         case .encoding:
             return "Nie udało się złożyć karty do Apple Wallet."
+        case .offline:
+            return "Połącz się z internetem, żeby dodać kartę do Apple Wallet. W \(Brand.displayName) karta działa też bez sieci."
+        case .server:
+            return "Apple Wallet jest chwilowo niedostępny. Spróbuj za chwilę — karta nadal działa w \(Brand.displayName) przy kasie."
         }
     }
 }
@@ -24,54 +30,86 @@ enum WalletPassError: LocalizedError {
 enum WalletPassBuilder {
     static let passTypeIdentifier = "pass.pl.paragonos.loyalty"
 
+    /// Wallet passes are signed by the ParagonOS server; the signing key never ships in the app.
+    static let signingEndpoint = URL(string: "https://estateos.pl/api/paragonos/pass")!
+
     @MainActor
-    static func addablePass(for card: LoyaltyCard, logo: UIImage?) throws -> PKPass {
+    static func addablePass(for card: LoyaltyCard, logo: UIImage?) async throws -> PKPass {
         guard PKAddPassesViewController.canAddPasses() else { throw WalletPassError.cannotAdd }
-        guard PassCMSSigner.canSign else { throw WalletPassError.unsigned }
-        let zip = try package(for: card, logo: logo)
+        var request = URLRequest(url: signingEndpoint, timeoutInterval: 20)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try signingRequestBody(for: card, logo: logo)
+        let result: (Data, URLResponse)
         do {
-            return try PKPass(data: zip)
+            result = try await URLSession.shared.data(for: request)
+        } catch let error as URLError where offlineCodes.contains(error.code) {
+            throw WalletPassError.offline
+        } catch {
+            throw WalletPassError.server
+        }
+        let (data, response) = result
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw WalletPassError.server }
+        do {
+            return try PKPass(data: data)
         } catch {
             throw WalletPassError.unsigned
         }
     }
 
+    private static let offlineCodes: Set<URLError.Code> = [
+        .notConnectedToInternet, .networkConnectionLost, .timedOut,
+        .cannotFindHost, .cannotConnectToHost, .dataNotAllowed, .internationalRoamingOff
+    ]
+
+    /// What the server needs to build and sign the pass. pass.json itself is assembled server-side.
+    @MainActor
+    static func signingRequestBody(for card: LoyaltyCard, logo: UIImage?) throws -> Data {
+        let barcodes = barcodeObjects(for: card).prefix(2).map {
+            ["format": $0["format"] ?? "", "message": $0["message"] ?? ""]
+        }
+        var images: [String: String] = [:]
+        for (name, data) in passImages(for: card, logo: logo) {
+            images[name] = data.base64EncodedString()
+        }
+        let object: [String: Any] = [
+            "serialNumber": card.id.uuidString,
+            "description": String(card.displayName.prefix(64)),
+            "memberNumber": String(card.barcodePayload.prefix(64)),
+            "holderName": String(card.holderName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64)),
+            "note": String(card.note.prefix(300)),
+            "barcodes": Array(barcodes),
+            "images": images
+        ]
+        return try JSONSerialization.data(withJSONObject: object)
+    }
+
+    @MainActor
+    static func passImages(for card: LoyaltyCard, logo: UIImage?) -> [(String, Data)] {
+        let program = card.program
+        return [
+            ("icon.png", passIcon(program: program, logo: logo, size: 58)),
+            ("icon@2x.png", passIcon(program: program, logo: logo, size: 116)),
+            ("icon@3x.png", passIcon(program: program, logo: logo, size: 174)),
+            ("logo.png", passHeaderLockup(size: CGSize(width: 160, height: 50))),
+            ("logo@2x.png", passHeaderLockup(size: CGSize(width: 320, height: 100))),
+            ("logo@3x.png", passHeaderLockup(size: CGSize(width: 480, height: 150))),
+            ("strip.png", passStrip(program: program, logo: logo, size: CGSize(width: 375, height: 123))),
+            ("strip@2x.png", passStrip(program: program, logo: logo, size: CGSize(width: 750, height: 246))),
+            ("strip@3x.png", passStrip(program: program, logo: logo, size: CGSize(width: 1125, height: 369)))
+        ]
+    }
+
+    /// Unsigned package, used by tests to check contents. Wallet only accepts the server-signed pass.
     @MainActor
     static func package(for card: LoyaltyCard, logo: UIImage?) throws -> Data {
-        let program = card.program
-        let pass = try passJSON(for: card)
-        let icon = passIcon(program: program, logo: logo, size: 58)
-        let icon2x = passIcon(program: program, logo: logo, size: 116)
-        let icon3x = passIcon(program: program, logo: logo, size: 174)
-        let logoImage = passHeaderLockup(size: CGSize(width: 160, height: 50))
-        let logo2x = passHeaderLockup(size: CGSize(width: 320, height: 100))
-        let logo3x = passHeaderLockup(size: CGSize(width: 480, height: 150))
-        let strip = passStrip(program: program, logo: logo, size: CGSize(width: 375, height: 123))
-        let strip2x = passStrip(program: program, logo: logo, size: CGSize(width: 750, height: 246))
-        let strip3x = passStrip(program: program, logo: logo, size: CGSize(width: 1125, height: 369))
-        let files: [(String, Data)] = [
-            ("pass.json", pass),
-            ("icon.png", icon),
-            ("icon@2x.png", icon2x),
-            ("icon@3x.png", icon3x),
-            ("logo.png", logoImage),
-            ("logo@2x.png", logo2x),
-            ("logo@3x.png", logo3x),
-            ("strip.png", strip),
-            ("strip@2x.png", strip2x),
-            ("strip@3x.png", strip3x)
-        ]
+        let files = [("pass.json", try passJSON(for: card))] + passImages(for: card, logo: logo)
         var manifestObject: [String: String] = [:]
         for (name, data) in files {
             manifestObject[name] = sha1Hex(data)
         }
         let manifest = try JSONSerialization.data(withJSONObject: manifestObject, options: [.sortedKeys])
-        var zipFiles = files
-        zipFiles.append(("manifest.json", manifest))
-        if PassCMSSigner.canSign {
-            zipFiles.append(("signature", try PassCMSSigner.signature(for: manifest)))
-        }
-        return ZipStore.data(files: zipFiles)
+        return ZipStore.data(files: files + [("manifest.json", manifest)])
     }
 
     static let groupingIdentifier = "pl.paragonos.app.loyalty"

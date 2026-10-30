@@ -73,7 +73,7 @@ struct AddToWalletButton: View {
         isPreparing = true
         defer { isPreparing = false }
         do {
-            let built = try WalletPassBuilder.addablePass(for: card, logo: logo)
+            let built = try await WalletPassBuilder.addablePass(for: card, logo: logo)
             alertMessage = nil
             pass = built
         } catch {
