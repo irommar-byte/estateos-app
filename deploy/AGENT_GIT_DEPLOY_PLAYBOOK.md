@@ -18,7 +18,7 @@ To **jedno** repo GitHub (`irommar-byte/estateos-app`), ale **dwie niezależne h
 
 | Gałąź | Rola | Korzeń repo zawiera | Gdzie pracować lokalnie |
 |--------|------|---------------------|-------------------------|
-| `mobile-canonical-20260514` | Aplikacja mobilna (Expo/RN) | `App.tsx`, `ios/`, `src/` (mobile), `deploy/estateos-www-full/` (kopia backendu) | `/Users/marian/apple-style-app` |
+| `mobile-canonical-20260514` | Aplikacja mobilna (Expo/RN) | `App.tsx`, `ios/`, `src/` (mobile), `deploy/estateos-www-full/` (kopia backendu) | `/Users/marian/eos-mobile-canonical` |
 | `recovery-local-snapshot` | Produkcja **estateos.pl** (Next.js + API) | `package.json` (Next), `src/app/`, `prisma/` — **backend w korzeniu** | `/Users/marian/estateos-recovery-deploy` (git worktree) |
 | `main` | Stara stabilna mobilka — **nie** deploy www | jak mobilka | nie używać do produkcji |
 
@@ -29,11 +29,21 @@ To **jedno** repo GitHub (`irommar-byte/estateos-app`), ale **dwie niezależne h
 ### Worktree (drugi katalog)
 
 ```text
-/Users/marian/apple-style-app           → branch mobile-canonical-20260514
+/Users/marian/eos-mobile-canonical      → branch mobile-canonical-20260514 (źródło buildu EstateOS w Xcode)
 /Users/marian/estateos-recovery-deploy  → branch recovery-local-snapshot
+/Users/marian/apple-style-app           → branch tvos-redesign (EOS Music / tvOS / ParagonOS — nie EstateOS)
 ```
 
 Przed commitem backendu: **`cd /Users/marian/estateos-recovery-deploy`** i sprawdź `git branch --show-current`.
+
+### Skąd Xcode buduje aplikację EstateOS (sprawdzone 2026-10-30)
+
+Xcode buduje EstateOS **wyłącznie** z `/Users/marian/eos-mobile-canonical/ios/EstateOS.xcworkspace`.
+Zmiana w aplikacji, której nie ma w tym katalogu, **nie trafi** do buildu w Xcode.
+
+- `/Users/marian/apple-style-app` jest na gałęzi `tvos-redesign` (EOS Music, tvOS, ParagonOS) i **nie jest** źródłem buildu EstateOS — nie edytuj tam ekranów EstateOS jako „głównej” kopii.
+- Przed zgłoszeniem, że zmiana w aplikacji jest gotowa: plik musi być zmieniony i zacommitowany w `eos-mobile-canonical`, a `git log -1` w tym katalogu musi pokazywać ten commit.
+- Jeśli nie masz pewności, skąd Xcode buduje: `WorkspacePath` w `~/Library/Developer/Xcode/DerivedData/EstateOS-*/info.plist`.
 
 ---
 
@@ -94,7 +104,7 @@ Przed usunięciem pliku z powyższych — **zatrzymaj się** i potwierdź z uży
 Dotyczy: `src/`, `App.tsx`, `ios/`, i18n mobilne, komponenty bez zmian w `deploy/estateos-www-full/`.
 
 ```bash
-cd /Users/marian/apple-style-app
+cd /Users/marian/eos-mobile-canonical
 git checkout mobile-canonical-20260514
 git status && git diff
 # commit + push
@@ -118,7 +128,7 @@ cd /Users/marian/estateos-recovery-deploy
 # edytuj pliki w src/, prisma/, public/ ...
 ```
 
-**Opcja z sesji mobilnej:** edytuj `deploy/estateos-www-full/...` w `apple-style-app`, potem **skopiuj zmienione pliki** do worktree recovery (te same ścieżki względne, §3).
+**Opcja z sesji mobilnej:** edytuj `deploy/estateos-www-full/...` w `eos-mobile-canonical`, potem **skopiuj zmienione pliki** do worktree recovery (te same ścieżki względne, §3).
 
 ### Krok B2 — commit na recovery
 
@@ -187,8 +197,8 @@ curl -sS -o /dev/null -w "%{http_code}" -X POST "https://estateos.pl/api/mobile/
 ```bash
 # z recovery do kopii w mobilce (tylko zmienione pliki, nie cały rsync!)
 cp /Users/marian/estateos-recovery-deploy/src/lib/foo.ts \
-   /Users/marian/apple-style-app/deploy/estateos-www-full/src/lib/foo.ts
-cd /Users/marian/apple-style-app
+   /Users/marian/eos-mobile-canonical/deploy/estateos-www-full/src/lib/foo.ts
+cd /Users/marian/eos-mobile-canonical
 git add deploy/estateos-www-full/...
 git commit -m "Sync www-full copy with recovery: <krótki opis>."
 git push origin mobile-canonical-20260514
@@ -200,7 +210,7 @@ git push origin mobile-canonical-20260514
 
 Kolejność **zawsze**:
 
-1. Implementacja w `apple-style-app` (mobile + ewentualnie `deploy/estateos-www-full/`).
+1. Implementacja w `eos-mobile-canonical` (mobile + ewentualnie `deploy/estateos-www-full/`).
 2. Commit + push **`mobile-canonical-20260514`**.
 3. Przeniesienie plików backendu do **`estateos-recovery-deploy`** (§3).
 4. Build recovery → commit + push **`recovery-local-snapshot`**.
@@ -256,7 +266,7 @@ Zaznacz mentalnie — wszystkie pasujące punkty muszą być spełnione:
 pwd && git branch --show-current
 
 # Mobilka — status + push
-cd /Users/marian/apple-style-app && git status && git push origin mobile-canonical-20260514
+cd /Users/marian/eos-mobile-canonical && git status && git push origin mobile-canonical-20260514
 
 # Produkcja — build + push
 cd /Users/marian/estateos-recovery-deploy && npm run build && git push origin recovery-local-snapshot
