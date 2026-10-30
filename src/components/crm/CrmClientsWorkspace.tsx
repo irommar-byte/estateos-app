@@ -1022,14 +1022,14 @@ export default function CrmClientsWorkspace() {
   return (
     <div className="min-w-0 max-w-full space-y-6 overflow-x-clip">
       {showOverview ? (
-        <div className="crmx-strip" title={`% e-mail/telefon = udział klientów ze zweryfikowanym kontaktem. % dopasowań = udział klientów z min. 1 aktywnym dopasowaniem. Online teraz: ${onlineCount}/${clients.length}.`}>
-          <div><b>{report?.buyers ?? "—"}</b><span>Kupujący</span></div>
-          <div><b>{report?.sellers ?? "—"}</b><span>Sprzedający</span></div>
-          <div><b>{report?.totalMatches ?? "—"}</b><span>Dopasowania</span></div>
-          <div><b>{report?.outreachLast30Days ?? "—"}</b><span>Kontakt 30 dni</span></div>
-          <div><b>{analytics.matchPct}%</b><span>Z dopasowaniami</span></div>
-          <div><b>{analytics.emailPct}% · {analytics.phonePct}%</b><span>E-mail · telefon</span></div>
-          <div><b>{onlineCount}</b><span>Online teraz</span></div>
+        <div className="crmx-strip">
+          <div title="Aktywni klienci typu kupujący."><b>{report?.buyers ?? "—"}</b><span>Kupujący</span></div>
+          <div title="Aktywni klienci typu sprzedający."><b>{report?.sellers ?? "—"}</b><span>Sprzedający</span></div>
+          <div title="Łączna liczba dopasowań oferta ↔ klient u wszystkich aktywnych klientów."><b>{report?.totalMatches ?? "—"}</b><span>Dopasowania</span></div>
+          <div title="Ile razy w ostatnich 30 dniach wysłałeś klientom ofertę lub powiadomienie."><b>{report?.outreachLast30Days ?? "—"}</b><span>Kontakt 30 dni</span></div>
+          <div title="Jaki procent klientów ma co najmniej 1 dopasowaną ofertę."><b>{analytics.matchPct}%</b><span>Z dopasowaniem</span></div>
+          <div title="Procent klientów ze zweryfikowanym e-mailem · z potwierdzonym telefonem."><b>{analytics.emailPct}% · {analytics.phonePct}%</b><span>E-mail · tel.</span></div>
+          <div title={`Klienci z kontem EstateOS, którzy byli aktywni w ostatnich 10 minutach (${onlineCount}/${clients.length}).`}><b>{onlineCount}</b><span>Online teraz</span></div>
         </div>
       ) : null}
 

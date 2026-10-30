@@ -207,10 +207,10 @@ button.crmx-kpi:hover { transform: translateY(-2px); box-shadow: var(--x-shadow-
 .crmx-kpi--accent .crmx-kpi__value { color: var(--x-gold-ink); }
 
 .crmx-strip { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--x-line); border-radius: 14px; background: var(--x-surface); box-shadow: var(--x-shadow); overflow: hidden; }
-.crmx-strip > div { flex: 1 1 120px; padding: 12px 16px; border-right: 1px solid var(--x-line); }
+.crmx-strip > div { flex: 1 1 120px; min-width: 0; padding: 12px 14px; border-right: 1px solid var(--x-line); cursor: help; }
 .crmx-strip > div:last-child { border-right: 0; }
 .crmx-strip b { display: block; font-family: var(--eos-font-display); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
-.crmx-strip span { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--x-ink-3); }
+.crmx-strip span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--x-ink-3); }
 
 .crmx-chip {
   display: inline-flex; align-items: center; gap: 5px;
