@@ -97,9 +97,8 @@ struct LoyaltyHomeView: View {
                 .onChange(of: wallet.loyaltyPath.count) { _, count in
                     // Clear zoom source immediately so swipe-back isn't fighting a lifted card.
                     if count == 0 {
-                        var t = Transaction()
-                        t.disablesAnimations = true
-                        withTransaction(t) {
+                        // Card slides back into its slot once the zoom has landed.
+                        withAnimation(PassStackMotion.slideIn) {
                             openingID = nil
                         }
                     }

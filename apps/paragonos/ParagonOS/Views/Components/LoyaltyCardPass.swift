@@ -116,11 +116,12 @@ struct LoyaltyCardPass: View {
     private var program: LoyaltyProgram { card.program }
 
     private var numberLabel: some View {
-        Text("NUMER KARTY")
-            .font(.system(size: 10, weight: .semibold))
-            .tracking(1.4)
-            .foregroundStyle(onColor.opacity(0.62))
-            .padding(.bottom, 5)
+        EngravedText(
+            text: Text("NUMER KARTY").font(.system(size: 10, weight: .semibold)).tracking(1.6),
+            onDark: onDark
+        )
+        .opacity(0.86)
+        .padding(.bottom, 5)
     }
     private var cardColor: Color { program.brandColor }
     private var onDark: Bool { cardColor.relativeLuminance <= 0.62 }
@@ -183,7 +184,8 @@ struct LoyaltyCardPass: View {
                         .padding(.vertical, 6)
                         .frame(maxHeight: height)
                         .background(.white, in: Capsule())
-                        .shadow(color: .black.opacity(0.14), radius: 2, y: 1)
+                        .overlay { Capsule().strokeBorder(BrandInlay.bezel, lineWidth: 1.2) }
+                        .shadow(color: .white.opacity(0.22), radius: 0, y: 0.8)
                 case .tile(let image, let fullBleed):
                     named { BrandTile(image: image, fullBleed: fullBleed, size: height) }
                 case .brandMark:
@@ -210,11 +212,12 @@ struct LoyaltyCardPass: View {
         private func named<Mark: View>(@ViewBuilder _ mark: () -> Mark) -> some View {
             HStack(spacing: 10) {
                 mark()
-                Text(program.name)
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .foregroundStyle(ink)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                EngravedText(
+                    text: Text(program.name).font(.system(size: 17, weight: .semibold, design: .rounded)),
+                    onDark: onDark
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             }
         }
     }
@@ -234,8 +237,8 @@ struct LoyaltyCardPass: View {
                 .frame(width: size, height: size)
                 .background(.white, in: shape)
                 .clipShape(shape)
-                .overlay { shape.strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5) }
-                .shadow(color: .black.opacity(0.16), radius: 2, y: 1)
+                .overlay { shape.strokeBorder(BrandInlay.bezel, lineWidth: 1.2) }
+                .shadow(color: .white.opacity(0.22), radius: 0, y: 0.8)
         }
     }
 
@@ -328,63 +331,76 @@ struct LoyaltyCardPass: View {
         return "\(card.displayName), \(code), karta lojalnościowa"
     }
 
+    /// Anodized brushed-metal plate: brand-tinted metal, hairline grain, light bands,
+    /// machined double bevel. The static part is flattened once; only the gyro sheen moves.
     @ViewBuilder
     private var passChrome: some View {
         let shape = RoundedRectangle(cornerRadius: corner, style: .continuous)
-        shape
-            .fill(passGradient)
-            .overlay {
-                RadialGradient(
-                    colors: [Color.white.opacity(0.24), Color.white.opacity(0.0)],
-                    center: .topLeading,
-                    startRadius: 0,
-                    endRadius: 300
-                )
-                .clipShape(shape)
-                .allowsHitTesting(false)
-            }
-            .overlay {
-                Image(uiImage: CardGrain.image)
-                    .resizable(resizingMode: .tile)
-                    .opacity(0.06)
-                    .clipShape(shape)
-                    .allowsHitTesting(false)
-            }
-            .overlay {
-                // Soft plastic edge — static, no motion sensors.
-                shape
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.48),
-                                Color.white.opacity(0.10),
-                                Color.black.opacity(0.28)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.8
-                    )
-            }
-            .overlay(alignment: .top) {
+        ZStack {
+            ZStack {
+                shape.fill(passGradient)
+                Image(uiImage: BrushedMetal.image)
+                    .resizable()
+                    .blendMode(.overlay)
+                    .opacity(0.7)
+                // Anisotropic light bands of brushed metal.
                 LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.20),
-                        Color.white.opacity(0.06),
-                        Color.clear
+                    stops: [
+                        .init(color: .white.opacity(0.0), location: 0.0),
+                        .init(color: .white.opacity(0.16), location: 0.16),
+                        .init(color: .white.opacity(0.0), location: 0.34),
+                        .init(color: .white.opacity(0.07), location: 0.6),
+                        .init(color: .white.opacity(0.0), location: 0.8)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 72)
-                .clipShape(shape)
-                .allowsHitTesting(false)
+                RadialGradient(
+                    colors: [Color.white.opacity(0.22), Color.white.opacity(0.0)],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 320
+                )
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.22)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
             }
-            .shadow(
-                color: .black.opacity(style == .stack ? 0 : 0.22),
-                radius: style == .stack ? 0 : 18,
-                y: style == .stack ? 0 : 10
+            .clipShape(shape)
+            .drawingGroup()
+
+            if foilActive && style == .detail {
+                GyroFoilOverlay(cornerRadius: corner, intensity: 0.34, isActive: true)
+                    .clipShape(shape)
+            }
+
+            // Machined edge: bright outer lip, then a dark chamfer catching the shade.
+            shape.strokeBorder(
+                LinearGradient(
+                    colors: [Color.white.opacity(0.62), Color.white.opacity(0.14), Color.black.opacity(0.45)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1
             )
+            RoundedRectangle(cornerRadius: corner - 1.4, style: .continuous)
+                .inset(by: 1.4)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.32), Color.white.opacity(0.22)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.7
+                )
+        }
+        .allowsHitTesting(false)
+        .shadow(
+            color: .black.opacity(style == .stack ? 0 : 0.34),
+            radius: style == .stack ? 0 : 22,
+            y: style == .stack ? 0 : 14
+        )
     }
 
     private var barcodeWell: some View {
@@ -421,22 +437,58 @@ struct LoyaltyCardPass: View {
     }
 }
 
-/// Fine static grain so the colour reads as a printed card, not a flat fill. Generated once.
-enum CardGrain {
+/// Brushed-metal hairlines: per-row brightness smeared along the brush direction. Generated once.
+enum BrushedMetal {
     static let image: UIImage = {
-        let side = 96
-        var pixels = [UInt8](repeating: 0, count: side * side)
-        for i in pixels.indices { pixels[i] = UInt8.random(in: 0...255) }
-        let space = CGColorSpaceCreateDeviceGray()
+        let width = 512, height = 160
+        var pixels = [UInt8](repeating: 128, count: width * height)
+        for y in 0..<height {
+            let row = Double.random(in: -0.22...0.22)
+            var noise = [Double](repeating: 0, count: width)
+            for x in 0..<width { noise[x] = Double.random(in: -1...1) }
+            // Box blur along x so strokes look brushed, not sandy.
+            var acc = 0.0
+            let window = 28
+            for x in 0..<(width + window) {
+                acc += noise[x % width]
+                if x >= window { acc -= noise[(x - window) % width] }
+                if x >= window {
+                    let v = 0.5 + row + (acc / Double(window)) * 0.55
+                    pixels[y * width + (x - window)] = UInt8(max(0, min(255, v * 255)))
+                }
+            }
+        }
         guard let provider = CGDataProvider(data: Data(pixels) as CFData),
               let cg = CGImage(
-                width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: side,
-                space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
-                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+                width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: width,
+                space: CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent
               )
         else { return UIImage() }
-        return UIImage(cgImage: cg, scale: 2, orientation: .up)
+        return UIImage(cgImage: cg)
     }()
+}
+
+/// Laser engraving on anodized metal: the cut reveals bright bare metal, its upper wall in shadow.
+struct EngravedText: View {
+    let text: Text
+    var onDark: Bool
+
+    var body: some View {
+        text
+            .foregroundStyle(
+                LinearGradient(
+                    colors: onDark
+                        ? [Color(white: 0.99), Color(white: 0.76)]
+                        : [Color(white: 0.30), Color(white: 0.10)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .shadow(color: .black.opacity(onDark ? 0.55 : 0.22), radius: 0, x: 0, y: -0.7)
+            .shadow(color: .white.opacity(onDark ? 0.26 : 0.5), radius: 0, x: 0, y: 0.8)
+    }
 }
 
 /// Metallic embossed digits. Gyro sheen is a GPU streak — the plastic face never tilts.
@@ -617,7 +669,8 @@ struct LoyaltyPassStack: View {
             let home = LoyaltyPassStackMetrics.yOffset(index: dragHomeIndex, spread: liveSpread)
             return home + dragTranslation
         }
-        return LoyaltyPassStackMetrics.yOffset(index: index, spread: liveSpread)
+        let slot = LoyaltyPassStackMetrics.yOffset(index: index, spread: liveSpread)
+        return openingID == cardID && draggingID == nil ? slot - PassStackMotion.slideOutLift : slot
     }
 
     private func zIndex(for card: LoyaltyCard, index: Int) -> Double {
@@ -704,7 +757,7 @@ struct LoyaltyPassStack: View {
                 )
                 .shadow(color: .black.opacity(0.22), radius: 3, y: 1.5)
         }
-        .scaleEffect(lifted ? 1.03 : 1, anchor: .top)
+        .scaleEffect(lifted ? 1.03 : (openingID == card.id ? 1.015 : 1), anchor: .top)
         .matchedTransitionSource(id: card.id, in: zoomNamespace)
         .frame(height: LoyaltyPassStackMetrics.cardHeight, alignment: .top)
         .allowsHitTesting(false)
@@ -713,9 +766,15 @@ struct LoyaltyPassStack: View {
                 isReordering: isDragging,
                 onTap: {
                     guard draggingID == nil else { return }
-                    openingID = card.id
                     UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                    onOpen(card)
+                    if UIAccessibility.isReduceMotionEnabled {
+                        openingID = card.id
+                        onOpen(card)
+                        return
+                    }
+                    // Pull the card up out of its pocket, then open it.
+                    withAnimation(PassStackMotion.slideOut) { openingID = card.id }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { onOpen(card) }
                 },
                 onBeginReorder: {
                     guard draggingID == nil else { return }
@@ -988,6 +1047,14 @@ struct StackChevron: View {
 }
 
 enum PassStackMotion {
+    /// How far a tapped card rises out of the stack before it opens.
+    static let slideOutLift: CGFloat = 28
+
+    static var slideOut: Animation { .spring(response: 0.3, dampingFraction: 0.74) }
+
+    /// Back into its slot after the detail closes — slower, with a soft landing.
+    static var slideIn: Animation { .spring(response: 0.5, dampingFraction: 0.8).delay(0.08) }
+
     static var response: Double { ParagonTheme.springResponse }
     static var damping: Double { ParagonTheme.springDamping }
 
@@ -1029,6 +1096,15 @@ struct LoyaltyProgramGroup: Identifiable {
         }
         return order.map { LoyaltyProgramGroup(programID: $0, cards: buckets[$0] ?? []) }
     }
+}
+
+/// Recessed bezel around a logo plate: shade on the upper wall, light on the lower lip.
+enum BrandInlay {
+    static let bezel = LinearGradient(
+        colors: [Color.black.opacity(0.38), Color.black.opacity(0.08), Color.white.opacity(0.35)],
+        startPoint: .top,
+        endPoint: .bottom
+    )
 }
 
 /// How a card header shows its brand. Picked once per logo (pixel checks are cached), never per frame.
