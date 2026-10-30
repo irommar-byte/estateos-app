@@ -150,7 +150,7 @@ export default function PublicationChoiceModal({
               <div className="flex-1">
                 <p className="text-sm font-bold text-[var(--eos-text)]">Użyj kredytu Plus</p>
                 <p className="text-xs text-[var(--eos-muted)]">
-                  {plusCredits} publikacja do wykorzystania · 30 dni na rynku
+                  {plusCredits} publikacja do wykorzystania · na rynku do sprzedaży lub wycofania
                 </p>
               </div>
             </button>
@@ -169,7 +169,7 @@ export default function PublicationChoiceModal({
             </div>
             <div className="flex-1">
               <p className="text-sm font-bold text-[var(--eos-text)]">Kup Pakiet Plus</p>
-              <p className="text-xs text-[var(--eos-muted)]">1 dodatkowa publikacja · {PAKIET_PLUS_PRICE_LABEL} · 30 dni</p>
+              <p className="text-xs text-[var(--eos-muted)]">1 dodatkowa publikacja · {PAKIET_PLUS_PRICE_LABEL} · bez limitu czasu</p>
             </div>
           </button>
         </div>

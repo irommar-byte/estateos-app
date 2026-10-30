@@ -523,7 +523,7 @@ const pl: CrmExtendedDictionary = {
     importPreviewLink: "Podgląd",
     importPubTitle: "Opłata za publikację importu",
     importPubSubtitle:
-      "Import z OtoDom, OLX lub Nieruchomosci-Online zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty na 30 dni. Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.",
+      "Import z OtoDom, OLX lub Nieruchomosci-Online zużywa ten sam kredyt lub kupon co zwykłe wystawienie oferty (oferta jest na rynku do sprzedaży lub wycofania). Po opłaceniu oferta trafi do weryfikacji z zarezerwowaną publikacją.",
     importBuyPlusHint: "Kup Pakiet Plus w portfelu publikacji, a następnie ponów import.",
     importUrlEmpty: "Wklej link do oferty z OtoDom, OLX lub Nieruchomosci-Online.",
     importWalletError: "Nie udało się pobrać portfela publikacji.",
@@ -960,7 +960,7 @@ const en: CrmExtendedDictionary = {
     importPreviewLink: "Preview",
     importPubTitle: "Import publication fee",
     importPubSubtitle:
-      "Import from OtoDom, OLX, or Nieruchomosci-Online uses the same coupon or credit as a standard 30-day listing. After payment the listing goes to review with publication reserved.",
+      "Import from OtoDom, OLX, or Nieruchomosci-Online uses the same coupon or credit as a standard listing (it stays on the market until sold or withdrawn). After payment the listing goes to review with publication reserved.",
     importBuyPlusHint: "Buy a Plus package in the publication wallet, then retry the import.",
     importUrlEmpty: "Paste a listing link from OtoDom, OLX, or Nieruchomosci-Online.",
     importWalletError: "Could not load publication wallet.",
@@ -1386,7 +1386,7 @@ const uk: CrmExtendedDictionary = {
     importPreviewLink: "Перегляд",
     importPubTitle: "Оплата за публікацію імпорту",
     importPubSubtitle:
-      "Імпорт з OtoDom, OLX або Nieruchomosci-Online використовує той самий купон або кредит, що й звичайне розміщення на 30 днів. Після оплати оголошення потрапить на перевірку з зарезервованою публікацією.",
+      "Імпорт з OtoDom, OLX або Nieruchomosci-Online використовує той самий купон або кредит, що й звичайне розміщення (оголошення на ринку до продажу або зняття). Після оплати оголошення потрапить на перевірку з зарезервованою публікацією.",
     importBuyPlusHint: "Купіть Pakiet Plus у гаманці публікацій, потім повторіть імпорт.",
     importUrlEmpty: "Вставте посилання на оголошення з OtoDom, OLX або Nieruchomosci-Online.",
     importWalletError: "Не вдалося завантажити гаманець публікацій.",

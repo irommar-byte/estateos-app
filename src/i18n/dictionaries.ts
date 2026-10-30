@@ -1481,7 +1481,7 @@ const pl: Dictionary = {
       "Darmowe konto na start. Mapa, rynek i Radar — publikujesz, gdy potrzebujesz (kupon, Pakiet + lub kredyty z PRO).",
     basicPrice: "0 PLN",
     basicF1:
-      "Jedna aktywna oferta w panelu. Publikacja na mapie i rynku (30 dni): kupon powitalny, Pakiet + (49 zł) lub kredyty z PRO.",
+      "Jedna aktywna oferta w panelu. Publikacja na mapie i rynku do sprzedaży lub wycofania: kupon powitalny, Pakiet + (49 zł) lub kredyty z PRO.",
     basicF2: "Radar Inwestycji — ten sam algorytm dopasowań co w Investor PRO (lokalizacja, budżet, metraż).",
     basicF3: "Podstawowe statystyki wyświetleń oferty w Moje konto.",
     basicF4:
@@ -1497,16 +1497,16 @@ const pl: Dictionary = {
     proF1:
       "Wczesny podgląd nowych ofert — adres, galeria i parametry od razu (Basic: te same dane po 24 h od publikacji).",
     proF2:
-      "5 kredytów publikacji przy aktywacji — każde wystawienie zużywa 1 kredyt (30 dni widoczności na mapie i rynku).",
+      "5 kredytów publikacji przy aktywacji — każde wystawienie zużywa 1 kredyt (oferta widoczna na mapie i rynku do sprzedaży lub wycofania).",
     proF3:
       "Radar sprzedawcy bez czekania — dopasowanych kupców widzisz od razu po publikacji (Basic: lista po 24 h).",
     proF4: "Odznaka Investor PRO w profilu publicznym.",
-    proF5: "Po wykorzystaniu puli PRO — Pakiet + (1 kredyt / 30 dni, 49 zł).",
+    proF5: "Po wykorzystaniu puli PRO — Pakiet + (1 kredyt = 1 publikacja, 49 zł).",
     proF6:
       "EstateOS™ Market: na każdej ofercie widać, jak daleko cena odbiega od aktów notarialnych. Taśmy „Przy aktach” w katalogu i raporty e-mail do klientów.",
     proCta: "Wybieram PRO",
     proCtaLoading: "Przetwarzam...",
-    pakietPlusFootnote: "Potrzebujesz tylko jednej publikacji? Pakiet + — 49 zł / 30 dni (także w aplikacji mobilnej).",
+    pakietPlusFootnote: "Potrzebujesz tylko jednej publikacji? Pakiet + — 49 zł za ofertę, bez limitu czasu (także w aplikacji mobilnej).",
     partnerPeriod: "PLN / msc",
     partnerAgentsUnlimited: "bez limitu",
     partnerCta: "Załóż biuro",
@@ -2329,7 +2329,7 @@ const en: Dictionary = {
       "Free account to start. Map, market, and Radar — publish when you need (coupon, Pakiet +, or PRO credits).",
     basicPrice: "0 PLN",
     basicF1:
-      "One active listing slot in your panel. Market publication (30 days): welcome coupon, Pakiet + (49 PLN), or PRO credits.",
+      "One active listing slot in your panel. Market publication until sold or withdrawn: welcome coupon, Pakiet + (49 PLN), or PRO credits.",
     basicF2: "Investment Radar — the same matching algorithm as Investor PRO (location, budget, size).",
     basicF3: "Basic view statistics for your listing in My account.",
     basicF4:
@@ -2345,16 +2345,16 @@ const en: Dictionary = {
     proF1:
       "Early preview of new listings — address, gallery, and details right away (Basic: same data after 24 h from publication).",
     proF2:
-      "5 publication credits on activation — each listing uses 1 credit (30 days visible on map and market).",
+      "5 publication credits on activation — each listing uses 1 credit (visible on map and market until sold or withdrawn).",
     proF3:
       "Seller Radar without the wait — matched buyers visible immediately after publication (Basic: list after 24 h).",
     proF4: "Investor PRO badge on your public profile.",
-    proF5: "After using the PRO pool — Pakiet + (1 credit / 30 days, 49 PLN).",
+    proF5: "After using the PRO pool — Pakiet + (1 credit = 1 listing, 49 PLN).",
     proF6:
       "EstateOS™ Market: every listing shows how far the ask is from notarized deeds. “At deed prices” catalog tapes and email reports for clients.",
     proCta: "Choose PRO",
     proCtaLoading: "Processing...",
-    pakietPlusFootnote: "Need just one publication? Pakiet + — 49 PLN / 30 days (also in the mobile app).",
+    pakietPlusFootnote: "Need just one publication? Pakiet + — 49 PLN per listing, no time limit (also in the mobile app).",
     partnerPeriod: "PLN / mo",
     partnerAgentsUnlimited: "unlimited",
     partnerCta: "Register your office",

@@ -402,7 +402,7 @@ const pl: AddOfferFormExtended = {
   walletPublishHint:
     "Wybierz kupon, wykorzystaj kredyt Plus lub opłać nową publikację — tak jak w aplikacji mobilnej.",
   walletRenewHint:
-    "Wybierz kupon, wykorzystaj kredyt Plus lub opłać odnowienie oferty na 30 dni.",
+    "Wybierz kupon, wykorzystaj kredyt Plus lub opłać publikację — oferta zostaje na rynku do sprzedaży lub wycofania.",
   walletLoadFailed: "Nie udało się załadować portfela.",
   walletHttpError: "Nie udało się załadować portfela (błąd HTTP).",
   walletUsePlusCredit: "Użyj kredytu Plus",
@@ -647,7 +647,7 @@ const en: AddOfferFormExtended = {
   walletPublishHint:
     "Choose a coupon, use Plus credit, or pay for a new publication — same as in the mobile app.",
   walletRenewHint:
-    "Choose a coupon, use Plus credit, or pay to renew the listing for 30 days.",
+    "Choose a coupon, use Plus credit, or pay for publication — the listing stays on the market until sold or withdrawn.",
   walletLoadFailed: "Could not load wallet.",
   walletHttpError: "Could not load wallet (HTTP error).",
   walletUsePlusCredit: "Use Plus credit",
@@ -893,7 +893,7 @@ const uk: AddOfferFormExtended = {
   walletPublishHint:
     "Оберіть купон, використайте кредит Plus або оплатіть нову публікацію — як у мобільному застосунку.",
   walletRenewHint:
-    "Оберіть купон, використайте кредит Plus або оплатіть поновлення оголошення на 30 днів.",
+    "Оберіть купон, використайте кредит Plus або оплатіть публікацію — оголошення залишається на ринку до продажу або зняття.",
   walletLoadFailed: "Не вдалося завантажити гаманець.",
   walletHttpError: "Не вдалося завантажити гаманець (помилка HTTP).",
   walletUsePlusCredit: "Використати кредит Plus",

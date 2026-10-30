@@ -216,7 +216,7 @@ export default function OfferRenewalModal({
             <p className="text-[10px] font-black uppercase tracking-[0.25em] text-sky-600">
               Odnowienie oferty
             </p>
-            <h3 className="mt-1 text-xl font-black text-[var(--eos-text)]">Wróć na rynek na 30 dni</h3>
+            <h3 className="mt-1 text-xl font-black text-[var(--eos-text)]">Wróć na rynek</h3>
             {offerTitle ? (
               <p className="mt-2 truncate text-sm text-[var(--eos-muted)]">{offerTitle}</p>
             ) : null}

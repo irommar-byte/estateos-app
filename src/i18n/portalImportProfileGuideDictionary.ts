@@ -57,7 +57,7 @@ const pl: PortalImportProfileGuideDictionary = {
   welcomeBadge: 'Konto gotowe',
   welcomeTitle: 'Witaj w EstateOS™',
   welcomeBody:
-    'Twoje konto jest aktywne. Otrzymujesz kupon powitalny na pierwszą publikację — 30 dni widoczności na mapie i rynku bez dodatkowej opłaty przy starcie.',
+    'Twoje konto jest aktywne. Otrzymujesz kupon powitalny na pierwszą publikację — oferta jest widoczna na mapie i rynku, dopóki jej nie sprzedasz lub nie wycofasz.',
   welcomeCouponHint: 'Kupon znajdziesz w portfelu: Moje konto → CRM. Wykorzystasz go przy pierwszym wystawieniu ogłoszenia.',
   pendingBadge: 'Oczekuje na weryfikację',
   pendingTitle: 'Ogłoszenie jest na Twoim profilu',
@@ -131,7 +131,7 @@ const en: PortalImportProfileGuideDictionary = {
   welcomeBadge: 'Account ready',
   welcomeTitle: 'Welcome to EstateOS™',
   welcomeBody:
-    'Your account is active. You receive a welcome coupon for your first listing — 30 days on the map and market with no extra fee at launch.',
+    'Your account is active. You receive a welcome coupon for your first listing — it stays on the map and market until you sell or withdraw it.',
   welcomeCouponHint: 'Find the coupon in your wallet: My account → CRM. Use it when publishing your first listing.',
   pendingBadge: 'Awaiting review',
   pendingTitle: 'Your listing is on your profile',
@@ -197,7 +197,7 @@ const uk: PortalImportProfileGuideDictionary = {
   ...en,
   welcomeTitle: 'Ласкаво просимо до EstateOS™',
   welcomeBody:
-    'Ваш обліковий запис активний. Ви отримуєте вітальний купон на першу публікацію — 30 днів на мапі та ринку без додаткової оплати на старті.',
+    'Ваш обліковий запис активний. Ви отримуєте вітальний купон на першу публікацію — оголошення видно на мапі та ринку, доки ви його не продасте або не знімете.',
   welcomeCouponHint: 'Купон у гаманці: Мій обліковий запис → CRM. Використайте при першій публікації.',
   pendingTitle: 'Оголошення на вашому профілі',
   pendingBody: (id) =>
