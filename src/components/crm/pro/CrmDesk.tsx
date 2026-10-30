@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Check, StickyNote } from 'lucide-react';
 import type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
+import { createPortal } from 'react-dom';
 import { useNotePeek } from './NotePeek';
 import { holidayName, isWeekend } from './holidays';
 
@@ -283,7 +284,23 @@ export function useDesk() {
     }
   }, [notes, selected, text]);
 
-  return { now, monthOffset, setMonthOffset, selected, setSelected, notes, text, setText, saved, setSaved, save, events, view, y, mo };
+  /** Zapis notatki na dowolny dzień (szybka notatka z kalendarza). */
+  const saveNote = useCallback(async (date: string, value: string) => {
+    const res = await fetch('/api/user/notes', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date, text: value }),
+    });
+    if (!res.ok) throw new Error('save');
+    const data = await res.json();
+    setNotes((prev) => {
+      const rest = prev.filter((n) => n.date !== date);
+      return data.deleted ? rest : [...rest, data.note];
+    });
+  }, []);
+
+  return { now, monthOffset, setMonthOffset, selected, setSelected, notes, text, setText, saved, setSaved, save, saveNote, events, view, y, mo };
 }
 type Desk = ReturnType<typeof useDesk>;
 
@@ -320,9 +337,21 @@ export function DeskCalendar({ desk }: { desk: Desk }) {
   const eventDays = new Set(events.map((e) => warsawKey(e.startsAt)));
   const noteDays = new Set(notes.filter((n) => n.text?.trim()).map((n) => n.date));
   const peek = useNotePeek();
+  const [quick, setQuick] = useState<{ date: string; x: number; y: number; below: boolean } | null>(null);
   return (
     <div className="crmx-desk__cal">
-      {peek.layer}
+      {quick ? null : peek.layer}
+      {quick ? (
+        <QuickNote
+          date={quick.date}
+          x={quick.x}
+          y={quick.y}
+          below={quick.below}
+          initial={notes.find((n) => n.date === quick.date)?.text || ''}
+          onSave={(v) => desk.saveNote(quick.date, v)}
+          onClose={() => setQuick(null)}
+        />
+      ) : null}
       <div className="crmx-desk__head">
         <p className="crmx-desk__month">{view.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}</p>
         <div className="flex gap-1">
@@ -342,7 +371,14 @@ export function DeskCalendar({ desk }: { desk: Desk }) {
           const hol = holidayName(dt);
           const cls = ['crmx-desk__d', isWeekend(dt) || hol ? 'is-off' : '', hol ? 'is-holiday' : '', key === todayKey ? 'is-today' : '', key === selected ? 'is-sel' : ''].join(' ');
           return (
-            <button key={i} type="button" className={cls} onClick={() => setSelected(key)} {...peek.bind(key, notes.find((n) => n.date === key)?.text, hol)}>
+            <button key={i} type="button" className={cls} onClick={() => setSelected(key)}
+              onDoubleClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                const below = r.top < 260;
+                setSelected(key);
+                setQuick({ date: key, x: r.left + r.width / 2, y: below ? r.bottom + 10 : r.top - 10, below });
+              }}
+              {...peek.bind(key, quick ? null : notes.find((n) => n.date === key)?.text, quick ? null : hol)}>
               {d}
               <span className="crmx-desk__marks">
                 {eventDays.has(key) ? <i className="ev" /> : null}
@@ -395,5 +431,77 @@ export function DeskNotes({ desk }: { desk: Desk }) {
         <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--primary" onClick={() => void save()}>Zapisz</button>
       </div>
     </div>
+  );
+}
+
+/** Szybka notatka: podwójne kliknięcie w dzień → pole do wpisania; Enter zapisuje, Shift+Enter nowa linia, Esc zamyka. */
+function QuickNote({
+  date,
+  x,
+  y,
+  below,
+  initial,
+  onSave,
+  onClose,
+}: {
+  date: string;
+  x: number;
+  y: number;
+  below: boolean;
+  initial: string;
+  onSave: (value: string) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    ref.current?.focus();
+    ref.current?.setSelectionRange(initial.length, initial.length);
+  }, [initial]);
+  const commit = async () => {
+    if (value.trim() === initial.trim()) return onClose();
+    setBusy(true);
+    try {
+      await onSave(value);
+      onClose();
+    } catch {
+      setBusy(false);
+    }
+  };
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="crmx">
+      <div className="crmx-quick-scrim" onMouseDown={() => void commit()} />
+      <div className="crmx-peek crmx-quick" style={{ left: x, top: y }} data-below={below ? '1' : undefined}>
+        <p className="crmx-peek__head">
+          <StickyNote size={13} />
+          {new Date(`${date}T12:00:00`).toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </p>
+        <textarea
+          ref={ref}
+          value={value}
+          rows={4}
+          disabled={busy}
+          placeholder="Szybka notatka…"
+          className="crmx-quick__input"
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onClose();
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              void commit();
+            }
+          }}
+        />
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] crmx-muted">Enter — zapisz · Esc — anuluj</span>
+          <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--primary" disabled={busy} onClick={() => void commit()}>
+            {busy ? 'Zapisuję…' : 'Zapisz'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
