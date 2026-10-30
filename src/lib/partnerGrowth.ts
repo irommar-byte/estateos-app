@@ -90,8 +90,11 @@ export function computePartnerGrowthInsight(params: {
     return {
       kind: 'pool_expired',
       severity: 'urgent',
-      title: 'Pula kredytów wygasła',
-      body: `Odnów pakiet Partner, aby zespół mógł dalej publikować oferty${params.companyName ? ` w ${params.companyName}` : ''}.`,
+      title: p.poolCredits > 0 ? `Pakiet Partner wygasł — ${p.poolCredits} kredytów zamrożonych` : 'Pakiet Partner wygasł',
+      body:
+        p.poolCredits > 0
+          ? `Kredyty nie przepadły. Przedłuż pakiet, a ${p.poolCredits} zamrożonych kredytów odmrozi się i doda do nowych z pakietu.`
+          : `Odnów pakiet Partner, aby zespół mógł dalej publikować oferty${params.companyName ? ` w ${params.companyName}` : ''}.`,
       ctaLabel: 'Wybierz pakiet',
       ctaHref: '/cennik?tab=partner',
       recommendedPlanId: recommended,

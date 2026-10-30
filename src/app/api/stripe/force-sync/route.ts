@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
 import Stripe from 'stripe';
-import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
+import { grantInvestorProByEmail, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
 import {
   grantPartnerPlanFromStripeCheckout,
@@ -119,12 +119,8 @@ export async function POST(req: Request) {
     }
 
     if (isStripeInvestorProPlan(normalizedPlan)) {
-      const grant = buildInvestorProGrantData();
-      await prisma.user.updateMany({
-        where: { email },
-        data: grant,
-      });
-      console.log(`[force-sync] investor_pro_granted email=${email} until=${grant.proExpiresAt.toISOString()}`);
+      const grant = await grantInvestorProByEmail(prisma, email);
+      console.log(`[force-sync] investor_pro_granted email=${email} granted=${grant.granted} skipped=${grant.skipped} until=${grant.proExpiresAt.toISOString()}`);
       return NextResponse.json({ success: true, planType: 'PRO', proExpiresAt: grant.proExpiresAt });
     }
 

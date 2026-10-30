@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import type { PropertyType, TransactionType } from '@prisma/client';
-import { buildInvestorProGrantData, isStripeInvestorProPlan } from '@/lib/investorProGrant';
+import { grantInvestorProByEmail, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
 import {
   grantPartnerPlanFromStripeCheckout,
@@ -138,13 +138,9 @@ export async function POST(req: Request) {
             );
           }
         } else if (isStripeInvestorProPlan(rawPlanType)) {
-          const grant = buildInvestorProGrantData();
-          await prisma.user.updateMany({
-            where: { email: customerEmail },
-            data: grant,
-          });
+          const grant = await grantInvestorProByEmail(prisma, customerEmail);
           console.log(
-            `[stripe:webhook] investor_pro_granted email=${customerEmail} session=${checkoutSessionId} until=${grant.proExpiresAt.toISOString()}`
+            `[stripe:webhook] investor_pro_granted email=${customerEmail} session=${checkoutSessionId} granted=${grant.granted} skipped=${grant.skipped} until=${grant.proExpiresAt.toISOString()}`
           );
         } else if (rawPlanType === 'market_report') {
           const user = metadataUserId
