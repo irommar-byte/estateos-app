@@ -442,7 +442,7 @@ export default function AdminMarketDataScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     Alert.alert(
       'Aktualizować bazę teraz?',
-      'Pobierzemy najnowsze akty notarialne z Rejestru Cen Nieruchomości (GUGiK). Trwa to zwykle 20–40 minut i działa w tle — możesz zamknąć aplikację.',
+      'Pobierzemy z Rejestru Cen Nieruchomości (GUGiK) tylko to, czego brakuje w bazie — zwykle kilka minut. Działa w tle, możesz zamknąć aplikację.',
       [
         { text: 'Anuluj', style: 'cancel' },
         {
