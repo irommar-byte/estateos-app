@@ -33,6 +33,8 @@ import AddOfferWheelPickerColumn from './AddOffer/AddOfferWheelPickerColumn';
 import type { AddOfferOption } from './AddOffer/AddOfferOptionField';
 import MagicalAiDescribeButton from '../components/MagicalAiDescribeButton';
 import HdrPreviewBadge from '../components/HdrPreviewBadge';
+import { PhotoRoomAiBar, PhotoRoomBadge, PhotoRoomPicker, photoRoomOptions } from '../components/offer/PhotoRoomPicker';
+import { fetchPhotoRoomSuggestions } from '../utils/photoRoomSuggest';
 import ListingDescriptionEditor from '../components/ListingDescriptionEditor';
 import AiDescriptionOptions from '../components/offer/AiDescriptionOptions';
 import { useThemeStore } from '../store/useThemeStore';
@@ -231,6 +233,9 @@ function DraggableEditSquare({
   onRemove,
   onMarkAsPlan,
   onFlip,
+  roomLabel,
+  roomSuggestion,
+  onPickRoom,
 }: {
   img: EditableImage;
   index: number;
@@ -244,6 +249,9 @@ function DraggableEditSquare({
   onRemove: (index: number) => void;
   onMarkAsPlan?: (index: number) => void;
   onFlip?: (index: number) => void;
+  roomLabel?: string | null;
+  roomSuggestion?: string | null;
+  onPickRoom?: () => void;
 }) {
   const pos = useRef(new Animated.ValueXY(getEditGalleryPosition(index, tileSize))).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -398,6 +406,9 @@ function DraggableEditSquare({
         </>
       ) : null}
       {img.isHdr ? <HdrPreviewBadge /> : null}
+      {onPickRoom && progress >= 100 ? (
+        <PhotoRoomBadge label={roomLabel} suggestion={roomSuggestion} onPress={onPickRoom} style={{ bottom: undefined, top: img.isHdr ? 32 : 6 }} />
+      ) : null}
       <Pressable
         style={styles.deleteImageBtn}
         onPress={() => onRemove(index)}
@@ -525,6 +536,38 @@ export default function EditOfferScreen({ route }: any) {
   const [originalFloorPlan3dKey, setOriginalFloorPlan3dKey] = useState<string | null>(null);
   const [originalFloorPlanScanMeta, setOriginalFloorPlanScanMeta] = useState<string | null>(null);
   const [propertyRoomScans, setPropertyRoomScans] = useState<PropertyRoomScan[]>([]);
+  /** Pomieszczenie zdjęcia (wg klucza kafelka) — łączy galerię z rzutem na stronie. */
+  const [photoRooms, setPhotoRooms] = useState<Record<string, string>>({});
+  const [photoRoomsTouched, setPhotoRoomsTouched] = useState(false);
+  const [roomPickerKey, setRoomPickerKey] = useState<string | null>(null);
+  // AI: podpowiedzi pomieszczeń dla zdjęć bez przypisania (klucz = klucz kafelka).
+  const [roomSuggestions, setRoomSuggestions] = useState<Record<string, string>>({});
+  const [roomAiBusy, setRoomAiBusy] = useState(false);
+  const roomAiRequested = useRef<Set<string>>(new Set());
+  const imagesAiKey = images.map((img) => editableImageKey(img)).join('|');
+  useEffect(() => {
+    const pending = images.filter((img) => {
+      const key = editableImageKey(img);
+      return !photoRooms[key] && !roomAiRequested.current.has(key) && !img.uploadKey;
+    });
+    if (!pending.length) return;
+    const timer = setTimeout(() => {
+      pending.forEach((img) => roomAiRequested.current.add(editableImageKey(img)));
+      setRoomAiBusy(true);
+      fetchPhotoRoomSuggestions(
+        pending.map((img) => img.uri),
+        propertyRoomScans.map((room) => String(room.name || '')).filter(Boolean),
+      )
+        .then((found) => {
+          const byKey: Record<string, string> = {};
+          for (const img of pending) if (found[img.uri]) byKey[editableImageKey(img)] = found[img.uri];
+          setRoomSuggestions((prev) => ({ ...prev, ...byKey }));
+        })
+        .finally(() => setRoomAiBusy(false));
+    }, 1200);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesAiKey]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [area, setArea] = useState('');
@@ -730,6 +773,20 @@ export default function EditOfferScreen({ route }: any) {
             }));
             setImages(mapped);
             setOriginalImageKeys(mapped.map((i: EditableImage) => i.serverPath || i.uri));
+            void fetch(`${API_URL}/api/offers/${offerId}/photo-rooms`)
+              .then((res) => (res.ok ? res.json() : null))
+              .then((json) => {
+                const items = Array.isArray(json?.items) ? (json.items as Array<{ url: string; room: string }>) : [];
+                if (!items.length) return;
+                const byPath = new Map(items.map((item) => [item.url, item.room]));
+                const next: Record<string, string> = {};
+                for (const item of mapped as EditableImage[]) {
+                  const room = byPath.get(item.serverPath || toServerPath(item.uri));
+                  if (room) next[editableImageKey(item)] = room;
+                }
+                setPhotoRooms(next);
+              })
+              .catch(() => undefined);
             void fetch(`${API_URL}/api/public/offers/${offerId}/images-meta`)
               .then((res) => (res.ok ? res.json() : null))
               .then((json) => {
@@ -1956,12 +2013,26 @@ export default function EditOfferScreen({ route }: any) {
         extraFloorPlanUrls.map((url) => toServerPath(url)).filter(Boolean).sort().join('|') !==
           originalExtraFloorPlanKeys.slice().sort().join('|');
 
+      // Przypisania zdjęć do pomieszczeń (zdjęcia już na serwerze); nowe dostają je przy wgrywaniu poniżej.
+      if (photoRoomsTouched) {
+        const items = images
+          .filter((img) => img.serverPath && photoRooms[editableImageKey(img)])
+          .map((img) => ({ url: img.serverPath as string, room: photoRooms[editableImageKey(img)] }));
+        await fetch(`${API_URL}/api/offers/${offerId}/photo-rooms`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items }),
+        }).catch(() => undefined);
+      }
+
       for (let i = 0; i < localImages.length; i += 1) {
         const img = localImages[i];
         const prepared = offerPhotoUploadParts({ uri: img.uri });
         const formData = new FormData();
         formData.append('offerId', String(offerId));
         formData.append('file', { uri: prepared.uri, name: prepared.filename, type: prepared.mime } as any);
+        const localRoom = photoRooms[editableImageKey(img)];
+        if (localRoom) formData.append('roomLabel', localRoom);
         const uploadRes = await fetch(`${API_URL}/api/upload/mobile`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
@@ -2662,6 +2733,25 @@ export default function EditOfferScreen({ route }: any) {
                 )}
               </Pressable>
 
+              {displayGalleryImages.length ? (
+                <View style={{ width: '100%' }}>
+                  <PhotoRoomAiBar
+                    busy={roomAiBusy}
+                    pending={displayGalleryImages.filter((img) => !photoRooms[editableImageKey(img)] && roomSuggestions[editableImageKey(img)]).length}
+                    onAcceptAll={() => {
+                      setPhotoRooms((prev) => {
+                        const next = { ...prev };
+                        for (const img of displayGalleryImages) {
+                          const key = editableImageKey(img);
+                          if (!next[key] && roomSuggestions[key]) next[key] = roomSuggestions[key];
+                        }
+                        return next;
+                      });
+                      setPhotoRoomsTouched(true);
+                    }}
+                  />
+                </View>
+              ) : null}
               {displayGalleryImages.map((img, index) => (
                 <DraggableEditSquare
                   key={editableImageKey(img)}
@@ -2677,8 +2767,31 @@ export default function EditOfferScreen({ route }: any) {
                   onRemove={removeImage}
                   onMarkAsPlan={markImageAsPlan}
                   onFlip={flipGalleryImage}
+                  roomLabel={photoRooms[editableImageKey(img)] || null}
+                  roomSuggestion={roomSuggestions[editableImageKey(img)] || null}
+                  onPickRoom={() => setRoomPickerKey(editableImageKey(img))}
                 />
               ))}
+              <PhotoRoomPicker
+                visible={Boolean(roomPickerKey)}
+                options={photoRoomOptions(propertyRoomScans.map((room) => room.name))}
+                scannedCount={new Set(propertyRoomScans.map((room) => String(room.name || '').trim().toLocaleLowerCase('pl')).filter(Boolean)).size}
+                current={roomPickerKey ? photoRooms[roomPickerKey] || null : null}
+                suggested={roomPickerKey ? roomSuggestions[roomPickerKey] || null : null}
+                isDark={isDark}
+                onPick={(room) => {
+                  if (!roomPickerKey) return;
+                  setPhotoRooms((prev) => {
+                    const next = { ...prev };
+                    if (room) next[roomPickerKey] = room;
+                    else delete next[roomPickerKey];
+                    return next;
+                  });
+                  setPhotoRoomsTouched(true);
+                  setRoomPickerKey(null);
+                }}
+                onClose={() => setRoomPickerKey(null)}
+              />
             </View>
           </View>
           <View style={[styles.premiumGroup, { backgroundColor: cardBg, marginTop: 10, ...cardShadow }]}>

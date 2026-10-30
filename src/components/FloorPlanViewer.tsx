@@ -28,6 +28,8 @@ import {
   roomsFromScanMeta,
 } from '../lib/roomScan/refineScanSections';
 import { dedupeDetectedObjects } from '../lib/roomScan/floorPlanGeometry';
+import { planSpecs, type PlanSpec } from '../lib/roomScan/planSpecs';
+import { resolveWholePlanMeta } from '../lib/roomScan/wholePlan';
 import { API_URL } from '../config/network';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -36,6 +38,77 @@ function absolutePlanAssetUrl(uri?: string | null): string | undefined {
   if (!value) return undefined;
   if (value.startsWith('http://') || value.startsWith('https://') || value.startsWith('file://')) return value;
   return `${API_URL.replace(/\/$/, '')}/${value.replace(/^\//, '')}`;
+}
+
+/** Pomiary z LiDAR-u w kafelkach: szerokość, długość, wysokość, metraż, kubatura, okna, drzwi. */
+function PlanSpecGrid({ specs, isDark }: { specs: PlanSpec[]; isDark?: boolean }) {
+  if (!specs.length) return null;
+  return (
+    <View style={styles.specGrid}>
+      {specs.map((spec) => (
+        <View
+          key={spec.label}
+          style={[
+            styles.specCell,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f4f2ee',
+              borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)',
+            },
+          ]}
+        >
+          <Text style={[styles.specLabel, { color: isDark ? 'rgba(235,235,245,0.55)' : '#8a857c' }]}>{spec.label}</Text>
+          <Text style={[styles.specValue, { color: isDark ? '#f5f5f7' : '#15171a' }]}>{spec.value}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+/** Zestawienie rysunków pomieszczeń jako „Całe mieszkanie”, gdy oferta nie ma skanu całości. */
+function RoomPlanMosaic({
+  rooms,
+  isDark,
+  onPick,
+}: {
+  rooms: PropertyRoomScan[];
+  isDark?: boolean;
+  onPick?: (room: PropertyRoomScan) => void;
+}) {
+  const cols = rooms.length <= 2 ? rooms.length : rooms.length <= 4 ? 2 : 3;
+  const rows: PropertyRoomScan[][] = [];
+  for (let i = 0; i < rooms.length; i += cols) rows.push(rooms.slice(i, i + cols));
+  return (
+    <View style={[styles.mosaic, { backgroundColor: isDark ? '#111214' : '#e9edf2' }]}>
+      {rows.map((row, ri) => (
+        <View key={ri} style={styles.mosaicRow}>
+          {row.map((room) => {
+            const area = room.areaM2 ? `${String(room.areaM2).replace('.', ',')} m²` : '';
+            const tile = (
+              <>
+                <Image source={{ uri: absolutePlanAssetUrl(room.floorPlanPngUri) }} style={styles.mosaicImage} resizeMode="contain" />
+                <View style={styles.mosaicLabel}>
+                  <Text style={styles.mosaicName} numberOfLines={1}>
+                    {room.name}
+                  </Text>
+                  {area ? <Text style={styles.mosaicArea}>{area}</Text> : null}
+                </View>
+              </>
+            );
+            return onPick ? (
+              <Pressable key={room.id} style={({ pressed }) => [styles.mosaicTile, pressed && { opacity: 0.8 }]} onPress={() => onPick(room)}>
+                {tile}
+              </Pressable>
+            ) : (
+              <View key={room.id} style={styles.mosaicTile}>
+                {tile}
+              </View>
+            );
+          })}
+          {row.length < cols ? Array.from({ length: cols - row.length }).map((_, k) => <View key={`gap-${k}`} style={{ flex: 1, margin: 3 }} />) : null}
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export default function FloorPlanViewer({
@@ -68,18 +141,31 @@ export default function FloorPlanViewer({
   const canScan = isRoomScanSupportedOnDevice();
   const selectedRoom = planKey === 'whole' ? null : roomScans.find((room) => room.id === planKey) || null;
   const croppedSelected = selectedRoom ? cropScanMetaToRoom(scanMeta, selectedRoom) : null;
-  const activeMeta = croppedSelected || selectedRoom?.scanMeta || scanMeta;
-  const displayImageUrl =
-    absolutePlanAssetUrl(selectedRoom?.floorPlanPngUri) ||
-    absolutePlanAssetUrl(imageUrl) ||
-    absolutePlanAssetUrl(roomScans.find((room) => room.floorPlanPngUri)?.floorPlanPngUri);
+  // Bez skanu całości: plan złożony ze skanów pokoi (dopasowanie po drzwiach), gdy jest pewny.
+  const wholePlan = useMemo(() => resolveWholePlanMeta(scanMeta || null), [scanMeta]);
+  const activeMeta = croppedSelected || selectedRoom?.scanMeta || wholePlan.meta;
+  // „Całe mieszkanie” nigdy nie pokazuje rysunku jednego pokoju — bez planu całości jest zestawienie pomieszczeń.
+  const roomPngUrls = new Set(roomScans.map((room) => absolutePlanAssetUrl(room.floorPlanPngUri)).filter(Boolean));
+  const wholeImageUrl = absolutePlanAssetUrl(imageUrl);
+  const displayImageUrl = selectedRoom
+    ? absolutePlanAssetUrl(selectedRoom.floorPlanPngUri) || undefined
+    : wholeImageUrl && !roomPngUrls.has(wholeImageUrl)
+      ? wholeImageUrl
+      : undefined;
   const hasVectorPlan = Boolean(activeMeta?.walls?.length);
+  const mosaicRooms = roomScans.filter((room) => absolutePlanAssetUrl(room.floorPlanPngUri));
+  const showMosaic = !selectedRoom && !hasVectorPlan && !displayImageUrl && mosaicRooms.length > 0;
   const hasPlan = Boolean(displayImageUrl) || hasVectorPlan || roomScans.length > 0;
   const active3dUrl = selectedRoom?.floorPlan3dUri || model3dUrl;
   const has3d = Boolean(absolutePlanAssetUrl(active3dUrl)?.trim());
   const listingCount =
     listingRoomCountFromRooms(roomScans) || listingRoomCountFromSections(scanMeta?.sections || []);
   const roomCount = listingCount || scanMeta?.roomCount || roomScans.length;
+  // Pomiary z LiDAR-u pod każdym rzutem (pokój albo całe mieszkanie).
+  const specs = useMemo(
+    () => (scanMeta || roomScans.length ? planSpecs(selectedRoom, selectedRoom?.scanMeta || scanMeta || null, roomScans) : []),
+    [selectedRoom, scanMeta, roomScans],
+  );
   const furniture = useMemo(
     () => dedupeDetectedObjects(activeMeta?.objects || []),
     [activeMeta],
@@ -233,14 +319,16 @@ export default function FloorPlanViewer({
                       : undefined
                   }
                 />
+              ) : showMosaic ? (
+                <RoomPlanMosaic rooms={mosaicRooms} isDark={isDark} />
               ) : displayImageUrl ? (
                 <Image source={{ uri: displayImageUrl }} style={styles.thumbnail} resizeMode="cover" />
               ) : null}
               <View
-                style={[styles.thumbnailOverlay, (has3d || hasVectorPlan) && { backgroundColor: 'rgba(0,0,0,0.06)' }]}
+                style={[styles.thumbnailOverlay, (has3d || hasVectorPlan || showMosaic) && { backgroundColor: 'transparent' }]}
                 pointerEvents="none"
               >
-                {!has3d && !hasVectorPlan ? (
+                {!has3d && !hasVectorPlan && !showMosaic ? (
                   <>
                     <View style={styles.iconGlass}>
                       <Ionicons name="expand-outline" size={28} color="#FFF" />
@@ -263,6 +351,7 @@ export default function FloorPlanViewer({
           </View>
 
           {subtitle ? <Text style={[styles.subtitle, isDark && { color: '#9ca3af' }]}>{subtitle}</Text> : null}
+          <PlanSpecGrid specs={specs} isDark={isDark} />
 
           {roomScans.length > 0 ? (
             <View style={styles.planChips}>
@@ -517,10 +606,18 @@ export default function FloorPlanViewer({
                           : undefined
                       }
                     />
+                  ) : showMosaic ? (
+                    <View style={{ width: modalArtboardW, height: modalArtboardH }}>
+                      <RoomPlanMosaic rooms={mosaicRooms} isDark={isDark} onPick={(room) => setPlanKey(room.id)} />
+                    </View>
                   ) : displayImageUrl ? (
                     <Image source={{ uri: displayImageUrl }} style={styles.fullImage} resizeMode="contain" />
                   ) : null}
                 </View>
+              </View>
+
+              <View style={{ paddingHorizontal: 16 }}>
+                <PlanSpecGrid specs={specs} isDark={isDark} />
               </View>
 
               {furniture.length > 0 ? (
@@ -603,6 +700,29 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   thumbnailWrapper: { height: 180, borderRadius: 24, overflow: 'hidden', borderWidth: 1 },
+  mosaic: { flex: 1, padding: 3 },
+  specGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10, marginBottom: 4 },
+  specCell: { minWidth: '30%', flexGrow: 1, borderRadius: 12, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 7 },
+  specLabel: { fontSize: 9.5, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' },
+  specValue: { fontSize: 15, fontWeight: '700', marginTop: 2, fontVariant: ['tabular-nums'] },
+  mosaicRow: { flex: 1, flexDirection: 'row' },
+  mosaicTile: { flex: 1, margin: 3, borderRadius: 12, overflow: 'hidden', backgroundColor: '#ffffff' },
+  mosaicImage: { width: '100%', height: '100%' },
+  mosaicLabel: {
+    position: 'absolute',
+    left: 5,
+    bottom: 5,
+    maxWidth: '92%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(21,23,26,0.82)',
+  },
+  mosaicName: { color: '#fff', fontSize: 11, fontWeight: '700', flexShrink: 1 },
+  mosaicArea: { color: '#c9a96e', fontSize: 10.5, fontWeight: '700' },
   thumbnail: { width: '100%', height: '100%' },
   thumbnailOverlay: {
     ...StyleSheet.absoluteFillObject,

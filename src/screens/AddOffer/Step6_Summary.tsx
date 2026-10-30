@@ -774,6 +774,8 @@ export default function Step6_Summary({ theme }: { theme: any }) {
           const formData = new FormData();
           formData.append('offerId', String(createdOfferId));
           formData.append('file', { uri: prepared.uri, name: prepared.filename, type: prepared.mime } as any);
+          const photoRoom = draft.imageRooms?.[draft.images[i]];
+          if (photoRoom) formData.append('roomLabel', String(photoRoom));
 
           const uploadRes = await fetch(`${API_URL}/api/upload/mobile`, {
             method: 'POST',

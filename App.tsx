@@ -114,6 +114,7 @@ import { useDiscoveryStore } from './src/store/useDiscoveryStore';
 import AdminNativeImportScreen from './src/screens/AdminNativeImportScreen';
 import AdminKeiAmerScreen from './src/screens/AdminKeiAmerScreen';
 import AdminAutomationScreen from './src/screens/AdminAutomationScreen';
+import AdminMarketDataScreen from './src/screens/AdminMarketDataScreen';
 import AdminCoreConsoleScreen from './src/screens/AdminCoreConsoleScreen';
 import AgencyOfficeScreen from './src/screens/AgencyOfficeScreen';
 import AgencyLeadInboxScreen from './src/screens/AgencyLeadInboxScreen';
@@ -2251,6 +2252,11 @@ export default function App() {
             <AppStack.Screen
               name="AdminAutomation"
               component={AdminAutomationScreen}
+              options={{ headerShown: false, animation: 'slide_from_right' }}
+            />
+            <AppStack.Screen
+              name="AdminMarketData"
+              component={AdminMarketDataScreen}
               options={{ headerShown: false, animation: 'slide_from_right' }}
             />
             <AppStack.Screen

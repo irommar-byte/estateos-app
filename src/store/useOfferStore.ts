@@ -86,6 +86,8 @@ const initialDraft = {
   imageByteSizes: {} as Record<string, number>,
   /** Lokalne URI z prawdziwym gain map / Apple HDR — badge na kafelku. */
   imageHdrFlags: {} as Record<string, boolean>,
+  /** Opcjonalnie: pomieszczenie zdjęcia (wg URI) — łączy galerię z rzutem. */
+  imageRooms: {} as Record<string, string>,
   videoUrl: '',
   floorPlanUrl: '',
   floorPlan: null as string | null,
@@ -139,7 +141,7 @@ export const useOfferStore = create<OfferStore>((set) => ({
     set({
       currentStep: 0,
       needsFreshAddOfferEntry: true,
-      draft: { ...initialDraft, images: [], imageByteSizes: {}, imageHdrFlags: {} },
+      draft: { ...initialDraft, images: [], imageByteSizes: {}, imageHdrFlags: {}, imageRooms: {} },
     }),
   clearFreshAddOfferEntry: () =>
     set((state) => (state.needsFreshAddOfferEntry ? { needsFreshAddOfferEntry: false } : state)),

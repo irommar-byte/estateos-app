@@ -32,6 +32,8 @@ import PropertyRoomScanWorkspace from '../../components/roomScan/PropertyRoomSca
 import ProPhotoSessionModal from '../../components/ProPhotoSessionModal';
 import MagicalAiDescribeButton from '../../components/MagicalAiDescribeButton';
 import HdrPreviewBadge from '../../components/HdrPreviewBadge';
+import { PhotoRoomAiBar, PhotoRoomBadge, PhotoRoomPicker, photoRoomOptions } from '../../components/offer/PhotoRoomPicker';
+import { fetchPhotoRoomSuggestions } from '../../utils/photoRoomSuggest';
 import ListingDescriptionEditor from '../../components/ListingDescriptionEditor';
 import AiDescriptionOptions from '../../components/offer/AiDescriptionOptions';
 import type { PropertyRoomScan, WholePropertyScan } from '../../types/roomScan';
@@ -156,6 +158,9 @@ const DraggableSquare = ({
   progress = 100,
   squareSize,
   isHdr = false,
+  roomLabel = null,
+  roomSuggestion = null,
+  onPickRoom,
 }: any) => {
   const pos = useRef(new Animated.ValueXY(getPositionForSize(index, squareSize))).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -310,6 +315,10 @@ const DraggableSquare = ({
       )}
 
       {isHdr ? <HdrPreviewBadge /> : null}
+
+      {onPickRoom && progress >= 100 ? (
+        <PhotoRoomBadge label={roomLabel} suggestion={roomSuggestion} onPress={() => onPickRoom(uri)} style={index === 0 ? { bottom: 26 } : null} />
+      ) : null}
 
       {/* Przycisk usuwania działa bezpiecznie dzięki ograniczeniom PanRespondera */}
       <Pressable onPress={() => onRemove(index)} style={styles.squareRemoveBtn} hitSlop={10}>
@@ -601,8 +610,53 @@ export default function Step5_Media({ theme }: { theme: any }) {
     const nextSizes = pruneImageByteSizes(filtered, mergedSizes);
     const nextHdr = pruneHdrFlags(filtered, draft.imageHdrFlags || {});
 
+    const nextRooms = { ...(draft.imageRooms || {}) };
+    delete nextRooms[uriToRemove];
+
     setDragSnapshot(null);
-    updateDraft({ images: filtered, imageByteSizes: nextSizes, imageHdrFlags: nextHdr });
+    updateDraft({ images: filtered, imageByteSizes: nextSizes, imageHdrFlags: nextHdr, imageRooms: nextRooms });
+  };
+
+  // Opcjonalnie: które to pomieszczenie — zdjęcie połączy się z rzutem na stronie oferty.
+  const [roomPickerUri, setRoomPickerUri] = useState<string | null>(null);
+  const scannedRoomNames: string[] = (Array.isArray(draft.propertyRoomScans) ? draft.propertyRoomScans : [])
+    .map((room: { name?: string }) => String(room?.name || '').trim())
+    .filter(Boolean);
+  const roomOptions = photoRoomOptions(scannedRoomNames);
+  // AI: „to wygląda na kuchnię” — podpowiedzi przychodzą same, agent zatwierdza jednym stuknięciem.
+  const [roomSuggestions, setRoomSuggestions] = useState<Record<string, string>>({});
+  const [roomAiBusy, setRoomAiBusy] = useState(false);
+  const roomAiRequested = useRef<Set<string>>(new Set());
+  const imagesKey = (draft.images || []).join('|');
+  useEffect(() => {
+    const pending: string[] = (draft.images || []).filter(
+      (uri: string) => !draft.imageRooms?.[uri] && !roomAiRequested.current.has(uri) && (uploadProgress[uri] ?? 100) >= 100,
+    );
+    if (!pending.length) return;
+    const timer = setTimeout(() => {
+      pending.forEach((uri) => roomAiRequested.current.add(uri));
+      setRoomAiBusy(true);
+      fetchPhotoRoomSuggestions(pending, scannedRoomNames)
+        .then((found) => setRoomSuggestions((prev) => ({ ...prev, ...found })))
+        .finally(() => setRoomAiBusy(false));
+    }, 900);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesKey]);
+  const pendingSuggestions = (draft.images || []).filter((uri: string) => !draft.imageRooms?.[uri] && roomSuggestions[uri]);
+  const acceptAllSuggestions = () => {
+    const nextRooms = { ...(draft.imageRooms || {}) };
+    for (const uri of pendingSuggestions) nextRooms[uri] = roomSuggestions[uri];
+    updateDraft({ imageRooms: nextRooms });
+  };
+
+  const assignPhotoRoom = (room: string | null) => {
+    if (!roomPickerUri) return;
+    const nextRooms = { ...(draft.imageRooms || {}) };
+    if (room) nextRooms[roomPickerUri] = room;
+    else delete nextRooms[roomPickerUri];
+    updateDraft({ imageRooms: nextRooms });
+    setRoomPickerUri(null);
   };
 
   const handleDragStart = useCallback(() => {
@@ -878,10 +932,30 @@ export default function Step5_Media({ theme }: { theme: any }) {
                   progress={uploadProgress[uri] ?? 100}
                   squareSize={squareSize}
                   isHdr={Boolean(draft.imageHdrFlags?.[uri])}
+                  roomLabel={draft.imageRooms?.[uri] || null}
+                  roomSuggestion={roomSuggestions[uri] || null}
+                  onPickRoom={setRoomPickerUri}
                 />
               ))}
             </View>
           )}
+
+          <PhotoRoomAiBar busy={roomAiBusy} pending={pendingSuggestions.length} onAcceptAll={acceptAllSuggestions} />
+          {displayImages.length > 0 ? (
+            <Text style={{ fontSize: 12, fontWeight: '600', color: theme.subtitle, marginTop: 2, marginBottom: 10 }}>
+              Opcjonalnie: stuknij + na zdjęciu i wskaż pomieszczenie — zdjęcia połączą się z rzutem.
+            </Text>
+          ) : null}
+          <PhotoRoomPicker
+            visible={Boolean(roomPickerUri)}
+            options={roomOptions}
+            scannedCount={new Set(scannedRoomNames.map((n) => n.toLocaleLowerCase('pl'))).size}
+            current={roomPickerUri ? draft.imageRooms?.[roomPickerUri] || null : null}
+            suggested={roomPickerUri ? roomSuggestions[roomPickerUri] || null : null}
+            isDark={isDark}
+            onPick={assignPhotoRoom}
+            onClose={() => setRoomPickerUri(null)}
+          />
 
           <AppleHover onPress={openPhotoSourceSheet} scaleTo={0.98}>
             <View

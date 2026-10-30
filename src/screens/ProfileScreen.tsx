@@ -4977,6 +4977,17 @@ function ProfileScreenLoggedIn({
                 isDark={isDark}
               />
               <ListItem
+                icon="stats-chart"
+                color="#34C759"
+                title="Baza cen RCN"
+                subtitle="Akty notarialne · aktualizacja i harmonogram"
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  (navigation as any).navigate('AdminMarketData');
+                }}
+                isDark={isDark}
+              />
+              <ListItem
                 icon="timer-outline"
                 color="#AF52DE"
                 title="Automatyzacja"
