@@ -1092,29 +1092,26 @@ final class WalletModel: ObservableObject {
 
         let walletID = family.familyWalletID
         if only == nil || only == .deposit, settings.shareNewTicketsWithFamily {
-            for ticket in storedTickets(in: context) {
-                if ticket.familyWalletID == nil {
-                    ticket.familyWalletID = walletID
-                    ticket.updatedAt = Date()
-                }
+            // Only what isn't in the family wallet yet: re-sending tagged items (some added by
+            // other members) could overwrite their newer edits with an older local copy.
+            // Failed uploads of tagged items are retried by retryFamilyUploads.
+            for ticket in storedTickets(in: context) where ticket.familyWalletID == nil {
+                ticket.familyWalletID = walletID
+                ticket.updatedAt = Date()
                 await family.upsertShared(ticket: ticket)
             }
         }
         if only == nil || only == .receipt, settings.shareNewReceiptsWithFamily {
-            for receipt in storedReceipts(in: context) {
-                if receipt.familyShareID == nil {
-                    receipt.familyShareID = walletID
-                    receipt.updatedAt = Date()
-                }
+            for receipt in storedReceipts(in: context) where receipt.familyShareID == nil {
+                receipt.familyShareID = walletID
+                receipt.updatedAt = Date()
                 await family.upsertShared(receipt: receipt)
             }
         }
         if only == nil || only == .loyalty, settings.shareNewLoyaltyCardsWithFamily {
-            for card in storedCards(in: context) {
-                if card.familyShareID == nil {
-                    card.familyShareID = walletID
-                    card.updatedAt = Date()
-                }
+            for card in storedCards(in: context) where card.familyShareID == nil {
+                card.familyShareID = walletID
+                card.updatedAt = Date()
                 await family.upsertShared(card: card)
             }
         }
