@@ -59,7 +59,7 @@ export const profile = {
     withdrawSubtitle: 'End listing',
     republish: 'Relist on market',
     republishing: 'Publishing…',
-    republishSubtitle: 'Plus Package — 30 days public (~{{price}})',
+    republishSubtitle: 'Plus Package — public, no time limit (~{{price}})',
     defaultOfferTitle: 'this listing',
     proStudio: {
       title: 'EstateOS Studio',
@@ -98,17 +98,17 @@ export const profile = {
     alerts: {
       activationRejected: 'Server rejected listing activation (HTTP {{status}}).',
       onMarketTitle: 'Listing live',
-      onMarketBody: '"{{title}}" is publicly listed again for 30 days.',
+      onMarketBody: '"{{title}}" is publicly listed again — until sold or withdrawn.',
       pendingTitle: 'Under review',
       pendingBody:
-        'The listing is waiting for approval — then it returns to the market for 30 days. If you already paid, tap Relist again.',
+        'The listing is waiting for approval — then it returns to the market. If you already paid, tap Relist again.',
       publishFailedTitle: 'Could not publish',
       publishFailedBody: 'Try again in a moment.',
       editTitle: 'Edit',
       editFailed: 'Could not open this listing for editing.',
       plusPackageTitle: 'Plus Package',
       plusPackageBump:
-        'Plus Package pays for one public listing on the market (30 days) or for featuring a listing. It does not extend the publication period of an already active listing.',
+        'Plus Package pays for one public listing on the market (until sold or withdrawn) or for featuring a listing. Active listings never need extending.',
       endListingTitle: 'End listing',
       withdrawAction: 'Withdraw',
       withdrawRejected: 'Server rejected listing withdrawal (HTTP {{status}}).',
@@ -398,10 +398,10 @@ export const profile = {
     restoreIos: 'Restore purchases from Apple ID on this device',
     restoreAndroid: 'Restore purchases from Google Play account',
     footerIos:
-      'Plus Package ({{price}}) is 1 credit: publish a listing for 30 days or feature a listing. It is not a subscription or an account "slot". New accounts receive a welcome coupon for the first publication. If payment did not register the credit, use Restore purchases.',
+      'Plus Package ({{price}}) is 1 credit: publish a listing (until sold or withdrawn) or feature a listing. It is not a subscription or an account "slot". New accounts receive a welcome coupon for the first publication. If payment did not register the credit, use Restore purchases.',
     footerAndroid:
-      'Plus Package is 1 credit: publish a listing for 30 days or feature a listing. Your first publication can be paid with the welcome coupon after sign-up.',
-    plusDaysDefault: 'Extra listing is valid 30 days from publication',
+      'Plus Package is 1 credit: publish a listing (until sold or withdrawn) or feature a listing. Your first publication can be paid with the welcome coupon after sign-up.',
+    plusDaysDefault: 'Extra listing stays on the market until sold or withdrawn',
     plusDaysToday: 'Last extra publication ends today',
     plusDaysLeft: 'Last extra publication: {{days}} {{daysLabel}} remaining',
     dayOne: 'day',

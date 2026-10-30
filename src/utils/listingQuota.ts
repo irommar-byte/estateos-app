@@ -1,4 +1,4 @@
-/** Limit ogłoszeń: konto standardowe ma 1 aktywną/oczekującą ofertę; Pakiet Plus dodaje prawo do jednej nowej oferty na 30 dni. */
+/** Limit ogłoszeń: konto standardowe ma 1 aktywną/oczekującą ofertę; Pakiet Plus dodaje prawo do jednej nowej oferty (bez limitu czasu — do sprzedaży lub wycofania). */
 
 export type MinimalUser = {
   id?: number;

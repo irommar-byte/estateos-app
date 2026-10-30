@@ -959,7 +959,7 @@ class IAPManagerImpl {
    * Restore Purchases (App Store Review Guideline 3.1.1).
    * Pobiera wszystkie historyczne zakupy non-consumable / subscriptions
    * i zgłasza je do backendu. Pakiet Plus jest consumable: jedna dodatkowa
-   * nowa oferta na 30 dni. Apple może zwrócić pustą listę, ale wymaga żeby przycisk DZIAŁAŁ —
+   * nowa oferta (bez limitu czasu). Apple może zwrócić pustą listę, ale wymaga żeby przycisk DZIAŁAŁ —
    * dlatego return value to zawsze obiekt z liczbą restored.
    */
   async restorePurchases(): Promise<RestorePurchasesResult> {

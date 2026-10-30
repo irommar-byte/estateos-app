@@ -51,7 +51,7 @@ export const offer = {
       'Investor Pro odblokowuje podgląd off-market i narzędzia premium. Możesz kupić pakiet w Profil → Zakupy i sklep albo poczekać do końca okresu oczekiwania.',
     paidFeaturesTitle: 'Pakiety płatne na koncie',
     deleteAccountPlusNote:
-      'Pakiet Plus — jednorazowy zakup w App Store: prawo do jednej dodatkowej publikacji wybranej oferty na 30 dni (nie jest abonamentem).',
+      'Pakiet Plus — jednorazowy zakup w App Store: prawo do jednej dodatkowej publikacji wybranej oferty — bez limitu czasu (nie jest abonamentem).',
     deleteAccountInvestorProNote:
       'Investor Pro — subskrypcja miesięczna w App Store (import z portali, off-market, narzędzia Pro). Anuluj w Ustawienia → Apple ID → Subskrypcje.',
     deleteAccountDisclaimer:
@@ -229,7 +229,7 @@ export const offer = {
     },
     ownerFineprint: {
       SOLD: 'Sprzedaż została zamknięta. Oferta pozostaje w archiwum jako potwierdzenie transakcji.',
-      EXPIRED: 'Okres publikacji minął. W Moje ogłoszenia możesz przywrócić ofertę na kolejne 30 dni przez Pakiet Plus.',
+      EXPIRED: 'Oferta została zdjęta z rynku. W Moje ogłoszenia możesz ją ponownie wystawić przez Pakiet Plus.',
       default: 'Oferta nie jest widoczna na rynku. W Moje ogłoszenia możesz ją zarządzać lub przywrócić publikację przez Pakiet Plus.',
     },
     viewerFineprint: {

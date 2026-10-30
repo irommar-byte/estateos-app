@@ -59,7 +59,7 @@ export const profile = {
     withdrawSubtitle: 'Zakończ ofertę',
     republish: 'Wystaw ponownie na rynek',
     republishing: 'Wystawianie…',
-    republishSubtitle: 'Pakiet Plus — 30 dni publicznie (~{{price}})',
+    republishSubtitle: 'Pakiet Plus — publicznie bez limitu czasu (~{{price}})',
     defaultOfferTitle: 'to ogłoszenie',
     proStudio: {
       title: 'EstateOS Studio',
@@ -99,17 +99,17 @@ export const profile = {
     alerts: {
       activationRejected: 'Serwer odrzucił aktywację ogłoszenia (HTTP {{status}}).',
       onMarketTitle: 'Ogłoszenie na rynku',
-      onMarketBody: '„{{title}}" jest ponownie publicznie wystawione na 30 dni.',
+      onMarketBody: '„{{title}}" jest ponownie publicznie wystawione — do sprzedaży lub wycofania.',
       pendingTitle: 'W weryfikacji',
       pendingBody:
-        'Ogłoszenie czeka na akceptację — potem wróci na rynek na 30 dni. Jeśli już zapłaciłeś, tapnij „Wystaw ponownie” jeszcze raz.',
+        'Ogłoszenie czeka na akceptację — potem wróci na rynek. Jeśli już zapłaciłeś, tapnij „Wystaw ponownie” jeszcze raz.',
       publishFailedTitle: 'Nie udało się wystawić',
       publishFailedBody: 'Spróbuj ponownie za chwilę.',
       editTitle: 'Edycja',
       editFailed: 'Nie udało się otworzyć tej oferty do edycji.',
       plusPackageTitle: 'Pakiet Plus',
       plusPackageBump:
-        'Pakiet Plus służy do publicznego wystawienia ogłoszenia na rynek (30 dni) albo do wyróżnienia oferty. Nie przedłuża okresu publikacji już aktywnego ogłoszenia.',
+        'Pakiet Plus służy do publicznego wystawienia ogłoszenia na rynek (do sprzedaży lub wycofania) albo do wyróżnienia oferty. Aktywnego ogłoszenia nie trzeba przedłużać.',
       endListingTitle: 'Zakończ ogłoszenie',
       withdrawAction: 'Wycofaj',
       withdrawRejected: 'Serwer odrzucił wycofanie oferty (HTTP {{status}}).',
@@ -402,10 +402,10 @@ export const profile = {
     restoreIos: 'Odzyskaj zakupy z Apple ID na tym urządzeniu',
     restoreAndroid: 'Odzyskaj zakupy z konta Google Play',
     footerIos:
-      'Pakiet Plus ({{price}}) to 1 kredyt: publiczne wystawienie ogłoszenia na 30 dni albo wyróżnienie oferty. Nie jest to abonament ani „slot” na koncie. Nowe konto dostaje kupon powitalny na pierwszą publikację. Jeśli płatność nie zaksięgowała kredytu, użyj Przywróć zakupy.',
+      'Pakiet Plus ({{price}}) to 1 kredyt: publiczne wystawienie ogłoszenia (do sprzedaży lub wycofania) albo wyróżnienie oferty. Nie jest to abonament ani „slot” na koncie. Nowe konto dostaje kupon powitalny na pierwszą publikację. Jeśli płatność nie zaksięgowała kredytu, użyj Przywróć zakupy.',
     footerAndroid:
-      'Pakiet Plus to 1 kredyt: publiczne wystawienie ogłoszenia na 30 dni albo wyróżnienie oferty. Pierwszą publikację możesz opłacić kuponem powitalnym po rejestracji.',
-    plusDaysDefault: 'Dodatkowa oferta będzie ważna 30 dni od publikacji',
+      'Pakiet Plus to 1 kredyt: publiczne wystawienie ogłoszenia (do sprzedaży lub wycofania) albo wyróżnienie oferty. Pierwszą publikację możesz opłacić kuponem powitalnym po rejestracji.',
+    plusDaysDefault: 'Dodatkowa oferta będzie na rynku do sprzedaży lub wycofania',
     plusDaysToday: 'Ostatnia dodatkowa publikacja kończy się dzisiaj',
     plusDaysLeft: 'Ostatnia dodatkowa publikacja: {{days}} {{daysLabel}} do końca',
     dayOne: 'dzień',

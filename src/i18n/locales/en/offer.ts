@@ -229,7 +229,7 @@ export const offer = {
     },
     ownerFineprint: {
       SOLD: 'The sale was closed. The listing remains in the archive as proof of the transaction.',
-      EXPIRED: 'The publication period ended. In My listings you can restore it for another 30 days with Plus Package.',
+      EXPIRED: 'The listing was taken off the market. In My listings you can relist it with Plus Package.',
       default: 'The listing is not visible on the market. In My listings you can manage it or restore publication with Plus Package.',
     },
     viewerFineprint: {

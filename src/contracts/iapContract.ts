@@ -23,7 +23,7 @@
  * ║                                                                       ║
  * ║  ③ ATOMOWOŚĆ: po WERYFIKACJI z Apple/Google backend ZAPISUJE          ║
  * ║     transakcję w bazie i ZWIĘKSZA `extraListings` użytkownika.        ║
- * ║     Pakiet Plus pozwala dodać JEDNĄ dodatkową publikację na 30 dni:   ║
+ * ║     Pakiet Plus pozwala dodać JEDNĄ dodatkową publikację (bezterminowo): ║
  * ║     nową ofertę albo zakończoną ofertę przywróconą jako nową          ║
  * ║     30-dniową publikację. NIE przedłuża aktywnych ogłoszeń i NIE jest ║
  * ║     planem konta.                                                     ║
@@ -48,7 +48,7 @@
 
 /** Identyfikatory produktów wg konwencji `pl.estateos.app.<typ>_<okres>`. */
 export const IAP_PRODUCT_IDS = {
-  /** Consumable: pozwala dodać 1 dodatkową publikację na 30 dni. */
+  /** Consumable: pozwala dodać 1 dodatkową publikację (do sprzedaży lub wycofania). */
   PAKIET_PLUS_30D: 'pl.estateos.app.pakiet_plus_30d',
   /** Auto-renewable subscription: Investor Pro (import, off-market, narzędzia Pro). Trial w ASC. */
   INVESTOR_PRO: 'pl.estateos.app.investor_pro_monthly',

@@ -2,7 +2,7 @@ export const publication = {
   paywallTitle: 'Publiczne wystawienie ogłoszenia',
   paywallBody:
     'To ogłoszenie możesz wystawić na rynek (Radar) tylko po opłacie Pakiet Plus w sklepie aplikacji. ' +
-    'Płatność dotyczy aktywacji tego konkretnego ogłoszenia na 30 dni — nie jest to abonament ani „slot” na koncie. ' +
+    'Płatność dotyczy aktywacji tego konkretnego ogłoszenia (do sprzedaży lub wycofania) — nie jest to abonament ani „slot” na koncie. ' +
     'Pierwszą publikację możesz opłacić kuponem powitalnym otrzymanym po rejestracji (Profil → Kupony).',
   paywallCta: 'Opłać wystawienie (Pakiet Plus)',
   archiveWarning:
@@ -10,7 +10,7 @@ export const publication = {
     'Ponowne wystawienie tego samego ogłoszenia na rynek wymaga Pakiet Plus.',
   reactivateTitle: 'Wystaw ponownie na rynek',
   reactivateBody:
-    'Aktywujesz to ogłoszenie jako publiczne na 30 dni. Opłata Pakiet Plus dotyczy wyłącznie tego ogłoszenia (tego numeru ID).',
+    'Aktywujesz to ogłoszenie jako publiczne — zostaje na rynku do sprzedaży lub wycofania. Opłata Pakiet Plus dotyczy wyłącznie tego ogłoszenia (tego numeru ID).',
   publishAfterPurchase: 'Wystawiam ogłoszenie na rynek po opłacie…',
   restoreHint:
     'Zakup z Apple został przyjęty. Jeśli ogłoszenie nie weszło na rynek, użyj „Przywróć zakupy” i spróbuj ponownie — bez drugiej opłaty.',

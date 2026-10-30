@@ -53,7 +53,7 @@ export type PurchasePakietPlusResult =
 
 /**
  * Uruchamia natywny sheet App Store / Google Play dla consumable Pakiet
- * Plus: jedna dodatkowa nowa oferta na 30 dni. To nie jest subskrypcja,
+ * Plus: jedna dodatkowa nowa oferta (bez limitu czasu). To nie jest subskrypcja,
  * plan konta ani przedłużenie istniejącego ogłoszenia.
  *
  * NOTE: parametry `apiUrl` / `token` są nadal w sygnaturze dla
