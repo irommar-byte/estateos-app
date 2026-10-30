@@ -291,36 +291,36 @@ async function fetchOsmStreetPng(layout: CompsMapLayout): Promise<string | null>
   }
 }
 
+const LEGEND_SANS = `-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Inter,Helvetica,Arial,sans-serif`;
+
+function legendDot(color: string, label: string) {
+  return `<span style="display:inline-block;margin:0 14px 4px 0;font:500 11.5px/1.4 ${LEGEND_SANS};color:#4a4d55;white-space:nowrap"><span style="display:inline-block;width:9px;height:9px;border-radius:99px;background:${color};margin-right:6px;vertical-align:0"></span>${label}</span>`;
+}
+
 function legendHtml(layout: CompsMapLayout) {
   const numbered = layout.mapped.filter((c) => c.index <= 8);
-  const items = numbered
-    .map((c) => {
-      const addr = esc(c.address || c.district || 'okolica');
-      const tags = [
-        formatMarketType(c.marketType),
-        formatDistance(c.distanceM),
-        c.sameStreet ? 'ta sama ulica' : '',
-        c.geo && plotOnStreetMap(c, layout.subject) ? '' : c.geo ? 'przy przedmiocie' : 'poza mapą',
-      ]
-        .filter(Boolean)
-        .join(' · ');
-      const fill = pinFill(c);
-      return `<li style="margin:0 0 6px;break-inside:avoid">
-        <span style="display:inline-block;width:18px;height:18px;border-radius:99px;background:${fill};color:#fff;font:700 11px/18px -apple-system,BlinkMacSystemFont,sans-serif;text-align:center;margin-right:6px">${c.index}</span>
-        <strong style="font-weight:650">${addr}</strong>
-        <span class="muted"> · ${esc(tags)}</span>
-      </li>`;
-    })
-    .join('');
-  return `<div class="map-legend">
-    <div class="kicker" style="margin:10px 0 8px">MAPA TRANSAKCJI · RCN / GUGiK</div>
-    <p class="muted" style="margin:0 0 8px">${esc(layout.loc)} · ${esc(layout.coord)} · promień próby ${layout.radiusM} m</p>
-    <p class="muted" style="margin:0 0 8px"><span style="color:#0f766e;font-weight:700">● Przedmiot</span>
-      · <span style="color:#0f766e">● ta sama ulica</span>
-      · <span style="color:#1f2937">● inne akty</span>
-      · <span style="color:#c2410c">● pierwotny</span>
-      · numery = wiersze tabeli</p>
-    <ol style="margin:0;padding:0;list-style:none;columns:2;column-gap:18px">${items}</ol>
+  const cell = (c: MappedComp) => {
+    const tags = [
+      formatMarketType(c.marketType),
+      formatDistance(c.distanceM),
+      c.sameStreet ? 'ta sama ulica' : '',
+      c.geo && plotOnStreetMap(c, layout.subject) ? '' : c.geo ? 'tuż przy nieruchomości' : 'poza mapą',
+    ]
+      .filter((t) => t && t !== '—')
+      .join(' · ');
+    return `<td style="width:50%;vertical-align:top;padding:5px 10px 5px 0;border:0">
+      <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse"><tr>
+        <td style="border:0;padding:0 8px 0 0;vertical-align:top"><div style="width:20px;height:20px;border-radius:99px;background:${pinFill(c)};color:#fff;font:700 10.5px/20px ${LEGEND_SANS};text-align:center">${c.index}</div></td>
+        <td style="border:0;padding:0"><div style="font:600 12.5px/1.3 ${LEGEND_SANS};color:#14161b">${esc(c.address || c.district || 'okolica')}</div><div style="font:400 11px/1.35 ${LEGEND_SANS};color:#7a7d86">${esc(tags)}</div></td>
+      </tr></table>
+    </td>`;
+  };
+  const rows: string[] = [];
+  for (let i = 0; i < numbered.length; i += 2) rows.push(`<tr>${cell(numbered[i])}${numbered[i + 1] ? cell(numbered[i + 1]) : '<td style="border:0"></td>'}</tr>`);
+  return `<div style="margin-top:12px">
+    <div style="margin:0 0 8px">${legendDot('#0f766e', 'analizowana nieruchomość / ta sama ulica')}${legendDot('#1f2937', 'inne transakcje')}${legendDot('#c2410c', 'rynek pierwotny')}</div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${rows.join('')}</table>
+    <div style="font:400 10.5px/1.5 ${LEGEND_SANS};color:#7a7d86;margin-top:6px">${esc(layout.loc)} · promień próby ${layout.radiusM} m</div>
   </div>`;
 }
 
@@ -359,7 +359,7 @@ function fallbackPinSvg(layout: CompsMapLayout) {
       </g>`;
     })
     .join('');
-  return `<svg viewBox="0 0 ${MAP_W} ${MAP_H}" width="100%" role="img" aria-label="Mapa aktów notarialnych wokół nieruchomości" style="display:block;border:1px solid #e4e0d6;background:#f4f1ea">
+  return `<svg viewBox="0 0 ${MAP_W} ${MAP_H}" width="100%" role="img" aria-label="Mapa aktów notarialnych wokół nieruchomości" style="display:block;border:1px solid #e8e3d8;border-radius:14px;background:#f4f1ea">
     <rect width="${MAP_W}" height="${MAP_H}" fill="#f4f1ea"/>
     <circle cx="${cx}" cy="${cy}" r="16" fill="#0f766e" fill-opacity="0.16" stroke="#0f766e" stroke-width="2"/>
     <circle cx="${cx}" cy="${cy}" r="6" fill="#0f766e"/>
@@ -387,12 +387,12 @@ export async function buildCompsMapHtml(result: ValuationResult, numberedCount =
   }
   if (photo) {
     return `<figure class="map-block" style="margin:0 0 14px">
-      <img class="map-photo" src="${photo}" alt="Mapa ulic z aktami notarialnymi wokół nieruchomości" width="100%" style="display:block;width:100%;height:auto;border:1px solid #e4e0d6"/>
+      <img class="map-photo" src="${photo}" alt="Mapa ulic z aktami notarialnymi wokół nieruchomości" width="100%" style="display:block;width:100%;height:auto;border-radius:14px;border:1px solid #e8e3d8"/>
       ${legendHtml(layout)}
-      <p class="muted" style="margin:8px 0 0;font-size:11px">${esc(credit)}. Pinezki numerowane; adresy w legendzie, żeby etykiety się nie nakładały.</p>
+      <div style="font:400 10px/1.4 ${LEGEND_SANS};color:#9a9ca3;margin-top:4px">${esc(credit)}</div>
     </figure>`;
   }
   return `<figure class="map-block" style="margin:0 0 14px">${fallbackPinSvg(layout)}${legendHtml(layout)}
-    <p class="muted" style="margin:8px 0 0;font-size:11px">Mapa ulic niedostępna w tej chwili — numery i adresy są w legendzie oraz w tabeli.</p>
+    <div style="font:400 10.5px/1.4 ${LEGEND_SANS};color:#9a9ca3;margin-top:4px">Podkład mapy ulic chwilowo niedostępny — numery odpowiadają legendzie i tabeli.</div>
   </figure>`;
 }
