@@ -706,3 +706,20 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-offerpeek { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; border: 1px solid var(--x-line); background: var(--x-surface); text-align: left; color: var(--x-ink); }
 .crmx-offerpeek:hover { border-color: var(--x-gold); }
 .crmx-offerpeek img, .crmx-offerpeek__ph { width: 64px; height: 48px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: var(--x-surface-2); }
+
+/* Okno boczne z nawigacją (Wstecz / Pełny widok) */
+.crmx-panelbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: color-mix(in srgb, var(--x-bg) 88%, transparent); backdrop-filter: blur(14px); border-bottom: 1px solid var(--x-line); }
+.crmx-panelbar__back { display: inline-flex; align-items: center; gap: 6px; max-width: 60%; padding: 6px 10px 6px 8px; border-radius: 99px; font-size: 13px; font-weight: 600; color: var(--x-ink); background: var(--x-surface); border: 1px solid var(--x-line); }
+.crmx-panelbar__back:hover { border-color: var(--x-gold); }
+.crmx-panelbar__crumb { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--x-ink-3); }
+.crmx-panelbar__btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; color: var(--x-ink-2); border: 1px solid var(--x-line); background: var(--x-surface); }
+.crmx-panelbar__btn:hover { color: var(--x-ink); border-color: var(--x-gold); }
+.crmx-panelbar__close { width: 32px; height: 32px; border-radius: 99px; display: grid; place-items: center; color: var(--x-ink-2); background: var(--x-surface-2); border: 1px solid var(--x-line); }
+.crmx-panelhero { aspect-ratio: 16 / 9; border-radius: 14px; overflow: hidden; background: var(--x-surface-2); }
+.crmx-panelhero img { width: 100%; height: 100%; object-fit: cover; }
+.crmx-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border-radius: 12px; overflow: hidden; border: 1px solid var(--x-line); background: var(--x-line); }
+.crmx-facts > div { padding: 9px 11px; background: var(--x-surface); }
+.crmx-facts span { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--x-ink-3); }
+.crmx-facts b { font-size: 13.5px; font-weight: 600; color: var(--x-ink); }
+.crmx-linkrow { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--x-line); background: var(--x-surface); text-align: left; font-size: 13px; color: var(--x-ink); }
+.crmx-linkrow:hover { border-color: var(--x-gold); }

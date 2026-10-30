@@ -1587,7 +1587,7 @@ export default function CRMDashboard() {
         {/* --- TRANSAKCJE / DEAL ROOMY --- */}
         {activeTab === 'transakcje' && !selectedDealId && (
           <div className="mb-8">
-            <CrmDealsPro onOpenClient={openClientFromAnywhere} onOpenOffer={openOfferFromAnywhere} />
+            <CrmDealsPro onOpenClient={openClientFromAnywhere} onOpenOffer={openOfferFromAnywhere} offers={crmData.offers || []} />
             <p className="crmx-kicker mt-10 mb-3">Rozmowy w Dealroomie</p>
           </div>
         )}

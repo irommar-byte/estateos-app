@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarClock, Check, Mail, Phone, User, X, Home, MessageSquareQuote } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Check, ExternalLink, Mail, Maximize2, Phone, User, X, Home, MessageSquareQuote } from 'lucide-react';
+import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { buyerName, STAGE_SHORT, type ProDeal, type ProGuide } from './CrmPulpit';
 import { pln, relative } from './format';
 
@@ -21,23 +22,88 @@ function localInput(offsetDays: number, hour: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+type View = { kind: 'deal'; id: number } | { kind: 'offer'; id: number } | { kind: 'client'; id: number };
+
+/**
+ * Jedno okno boczne z nawigacją: transakcja → oferta → klient → kolejna transakcja…
+ * Każde kliknięcie podmienia zawartość okna, „Wstecz” wraca krok po kroku.
+ * „Pełny widok” to osobna funkcja — przenosi do odpowiedniego działu CRM.
+ */
 export default function CrmDealSheet({
   deal,
+  deals,
+  offers,
   onClose,
   onOpenClient,
   onOpenOffer,
 }: {
   deal: ProDeal | null;
+  deals: ProDeal[];
+  offers?: any[];
   onClose: () => void;
   onOpenClient: (clientId: number) => void;
   onOpenOffer: (offerId: number) => void;
 }) {
+  const [stack, setStack] = useState<View[]>([]);
+  const scroller = useRef<HTMLElement | null>(null);
+  const titles = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    setStack(deal ? [{ kind: 'deal', id: deal.id }] : []);
+  }, [deal?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const top = stack[stack.length - 1] || null;
+  const push = (view: View) => {
+    setStack((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.kind === view.kind && last.id === view.id) return prev;
+      return [...prev, view];
+    });
+    if (scroller.current) scroller.current.scrollTop = 0;
+  };
+  const back = () => {
+    setStack((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
+    if (scroller.current) scroller.current.scrollTop = 0;
+  };
+
   useEffect(() => {
     if (!deal) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [deal, onClose]);
+
+  const key = (v: View) => `${v.kind}:${v.id}`;
+  const prev = stack.length > 1 ? stack[stack.length - 2] : null;
+  const prevTitle = prev ? titles.current.get(key(prev)) || (prev.kind === 'deal' ? 'Transakcja' : prev.kind === 'offer' ? 'Oferta' : 'Klient') : null;
+  const setTitle = (v: View, t: string) => titles.current.set(key(v), t);
+
+  const nav = {
+    openClient: (id: number) => push({ kind: 'client', id }),
+    openOffer: (id: number) => push({ kind: 'offer', id }),
+    openDeal: (id: number) => push({ kind: 'deal', id }),
+  };
+
+  let body: React.ReactNode = null;
+  let full: (() => void) | null = null;
+  if (top?.kind === 'deal') {
+    const d = deals.find((x) => x.id === top.id) || (deal && deal.id === top.id ? deal : null);
+    if (d) {
+      setTitle(top, buyerName(d));
+      body = <SheetBody key={key(top)} deal={d} onClose={onClose} onOpenClient={nav.openClient} onOpenOffer={nav.openOffer} onFullClient={onOpenClient} />;
+    }
+  } else if (top?.kind === 'offer') {
+    const offer = (offers || []).find((o) => Number(o.id) === top.id) || null;
+    const fallback = deals.find((x) => x.offerId === top.id)?.offer || null;
+    setTitle(top, offer?.title || fallback?.title || `Oferta #${top.id}`);
+    full = () => onOpenOffer(top.id);
+    body = <OfferPanel key={key(top)} offerId={top.id} offer={offer} fallback={fallback} deals={deals} onOpenDeal={nav.openDeal} onOpenClient={nav.openClient} />;
+  } else if (top?.kind === 'client') {
+    full = () => onOpenClient(top.id);
+    body = <ClientPanel key={key(top)} clientId={top.id} deals={deals} onOpenDeal={nav.openDeal} onOpenOffer={nav.openOffer} onTitle={(t) => setTitle(top, t)} />;
+  }
 
   if (typeof document === 'undefined') return null;
   return createPortal(
@@ -47,13 +113,41 @@ export default function CrmDealSheet({
           <motion.div key="scrim" className="crmx-drawer-scrim" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} />
           <motion.aside
             key="sheet"
+            ref={scroller as React.Ref<HTMLElement>}
             className="crmx crmx-drawer"
             initial={{ x: 40, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 40, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 36 }}
           >
-            <SheetBody deal={deal} onClose={onClose} onOpenClient={onOpenClient} onOpenOffer={onOpenOffer} />
+            <div className="crmx-panelbar">
+              {prev ? (
+                <button type="button" className="crmx-panelbar__back" onClick={back}>
+                  <ArrowLeft size={16} />
+                  <span className="truncate">{prevTitle}</span>
+                </button>
+              ) : (
+                <span className="crmx-panelbar__crumb">Transakcja</span>
+              )}
+              <span className="flex-1" />
+              {full ? (
+                <button type="button" className="crmx-panelbar__btn" onClick={full} title="Otwórz w pełnym widoku CRM">
+                  <Maximize2 size={14} /> Pełny widok
+                </button>
+              ) : null}
+              <button type="button" className="crmx-panelbar__close" onClick={onClose} aria-label="Zamknij"><X size={17} /></button>
+            </div>
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.div
+                key={top ? key(top) : 'none'}
+                initial={{ opacity: 0, x: 18 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -18 }}
+                transition={{ duration: 0.18 }}
+              >
+                {body}
+              </motion.div>
+            </AnimatePresence>
           </motion.aside>
         </>
       ) : null}
@@ -62,16 +156,197 @@ export default function CrmDealSheet({
   );
 }
 
+/* ───────────── Oferta w oknie ───────────── */
+
+const PROPERTY_LABEL: Record<string, string> = { FLAT: 'Mieszkanie', HOUSE: 'Dom', PLOT: 'Działka', COMMERCIAL: 'Lokal', PREMISES: 'Lokal' };
+
+function OfferPanel({
+  offerId,
+  offer,
+  fallback,
+  deals,
+  onOpenDeal,
+  onOpenClient,
+}: {
+  offerId: number;
+  offer: any | null;
+  fallback: ProDeal['offer'] | null;
+  deals: ProDeal[];
+  onOpenDeal: (id: number) => void;
+  onOpenClient: (id: number) => void;
+}) {
+  const img = offer ? resolveOfferPrimaryImage(offer) : fallback?.imageUrl || null;
+  const title = offer?.title || fallback?.title || `Oferta #${offerId}`;
+  const addr = offer ? [offer.street, offer.district !== 'OTHER' ? offer.district : null, offer.city].filter(Boolean).join(', ') : fallback?.address || '';
+  const price = offer?.price ?? fallback?.price ?? null;
+  const buyers = deals.filter((d) => d.offerId === offerId && (d.status === 'ACTIVE' || d.status === 'PAUSED'));
+  const seller = deals.find((d) => d.offerId === offerId && d.seller)?.seller || null;
+  const facts: Array<[string, string]> = offer
+    ? [
+        ['Powierzchnia', Number(offer.area) > 0 ? `${Number(offer.area).toLocaleString('pl-PL')} m²` : '—'],
+        ['Pokoje', offer.rooms ? String(offer.rooms) : '—'],
+        ['Piętro', offer.floor != null ? `${offer.floor}${offer.totalFloors ? ` z ${offer.totalFloors}` : ''}` : '—'],
+        ['Rodzaj', PROPERTY_LABEL[String(offer.propertyType)] || String(offer.propertyType || '—')],
+        ['Wyświetlenia', String(offer.views || 0)],
+        ['Ulubione', String(offer.favorites || 0)],
+      ]
+    : [];
+  return (
+    <div className="crmx-dealsheet">
+      <div className="crmx-panelhero">{img ? <img src={img} alt="" /> : null}</div>
+      <div>
+        <p className="crmx-eyebrow">Oferta #{offerId}</p>
+        <h3 className="crmx-dealsheet__title">{pln(price)}</h3>
+        <p className="text-[14px] font-semibold">{title}</p>
+        <p className="text-[12.5px] crmx-muted">{addr}</p>
+      </div>
+      {facts.length ? (
+        <div className="crmx-facts">
+          {facts.map(([k, v]) => (
+            <div key={k}><span>{k}</span><b>{v}</b></div>
+          ))}
+        </div>
+      ) : null}
+      {seller ? (
+        <button type="button" className="crmx-linkrow" onClick={() => onOpenClient(seller.clientId)}>
+          <User size={15} />
+          <span className="flex-1 truncate"><span className="crmx-muted">Właściciel · </span>{seller.name}</span>
+          <span className="crmx-muted">›</span>
+        </button>
+      ) : null}
+      <section className="space-y-2">
+        <p className="crmx-eyebrow">Kupujący przy tej ofercie · {buyers.length}</p>
+        {buyers.length === 0 ? <p className="crmx-dealsheet__hint">Nikt nie jest jeszcze w procesie.</p> : null}
+        {buyers.map((d) => (
+          <button key={d.id} type="button" className="crmx-linkrow" onClick={() => onOpenDeal(d.id)}>
+            <span className="flex-1 min-w-0">
+              <span className="block truncate font-semibold">{buyerName(d)}</span>
+              <span className="block truncate text-[11.5px] crmx-muted">{d.guide?.headline || d.nextAction}</span>
+            </span>
+            <span className="crmx-chip">{STAGE_SHORT[d.stage] || d.stage}</span>
+          </button>
+        ))}
+      </section>
+      <a className="crmx-btn" href={`/oferta/${offerId}`} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Ogłoszenie na stronie</a>
+    </div>
+  );
+}
+
+/* ───────────── Klient w oknie ───────────── */
+
+type LiteClient = {
+  id: number;
+  type: string;
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  sellerCity?: string | null;
+  sellerPrice?: number | null;
+  linkedOfferId?: number | null;
+  portalUrl?: string | null;
+  buyerPreference?: { city?: string | null; minPrice?: number | null; maxPrice?: number | null; minArea?: number | null; minRooms?: number | null } | null;
+};
+
+function ClientPanel({
+  clientId,
+  deals,
+  onOpenDeal,
+  onOpenOffer,
+  onTitle,
+}: {
+  clientId: number;
+  deals: ProDeal[];
+  onOpenDeal: (id: number) => void;
+  onOpenOffer: (id: number) => void;
+  onTitle: (t: string) => void;
+}) {
+  const [client, setClient] = useState<LiteClient | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/crm/clients/${clientId}?lite=1`, { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!alive) return;
+        if (j?.client) {
+          setClient(j.client);
+          onTitle(`${j.client.firstName} ${j.client.lastName}`.trim());
+        } else setErr(String(j?.error || 'Nie udało się wczytać klienta.'));
+      })
+      .catch(() => alive && setErr('Nie udało się wczytać klienta.'));
+    return () => {
+      alive = false;
+    };
+  }, [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const related = deals.filter((d) => (d.buyer.kind === 'client' && d.buyer.clientId === clientId) || d.seller?.clientId === clientId);
+  if (err) return <div className="crmx-dealsheet"><p className="crmx-dealsheet__msg is-bad">{err}</p></div>;
+  if (!client) return <div className="crmx-dealsheet"><p className="crmx-dealsheet__hint">Wczytywanie…</p></div>;
+  const isSeller = client.type === 'SELLER';
+  const pref = client.buyerPreference;
+  const prefLine = pref
+    ? [pref.city, pref.minPrice || pref.maxPrice ? `${pref.minPrice ? pln(pref.minPrice) : '…'} – ${pref.maxPrice ? pln(pref.maxPrice) : '…'}` : null, pref.minArea ? `od ${pref.minArea} m²` : null, pref.minRooms ? `od ${pref.minRooms} pok.` : null]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
+  return (
+    <div className="crmx-dealsheet">
+      <div>
+        <p className="crmx-eyebrow">{isSeller ? 'Sprzedający · właściciel' : 'Kupujący'}</p>
+        <h3 className="crmx-dealsheet__title">{client.firstName} {client.lastName}</h3>
+      </div>
+      <div className="crmx-person">
+        <p className="crmx-person__line">{client.phone || 'brak telefonu'}{client.email ? ` · ${client.email}` : ''}</p>
+        <div className="crmx-dealsheet__row">
+          {client.phone ? <a className="crmx-btn crmx-btn--gold" href={`tel:${client.phone}`}><Phone size={15} /> Zadzwoń</a> : null}
+          {client.email ? <a className="crmx-btn" href={`mailto:${client.email}`}><Mail size={15} /> E-mail</a> : null}
+          {client.portalUrl ? <a className="crmx-btn" href={client.portalUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /> Panel klienta</a> : null}
+        </div>
+      </div>
+      {isSeller && client.linkedOfferId ? (
+        <button type="button" className="crmx-linkrow" onClick={() => onOpenOffer(Number(client.linkedOfferId))}>
+          <Home size={15} />
+          <span className="flex-1 truncate"><span className="crmx-muted">Jego oferta · </span>#{client.linkedOfferId}{client.sellerPrice ? ` · ${pln(client.sellerPrice)}` : ''}</span>
+          <span className="crmx-muted">›</span>
+        </button>
+      ) : null}
+      {!isSeller && prefLine ? (
+        <div className="crmx-person"><p className="crmx-eyebrow">Czego szuka</p><p className="crmx-person__line">{prefLine}</p></div>
+      ) : null}
+      {client.notes ? (
+        <div className="crmx-person"><p className="crmx-eyebrow">Notatki</p><p className="crmx-person__line" style={{ whiteSpace: 'pre-wrap' }}>{client.notes}</p></div>
+      ) : null}
+      <section className="space-y-2">
+        <p className="crmx-eyebrow">{isSeller ? 'Kupujący przy jego ofercie' : 'Nieruchomości w procesie'} · {related.length}</p>
+        {related.length === 0 ? <p className="crmx-dealsheet__hint">Brak transakcji w toku.</p> : null}
+        {related.map((d) => (
+          <button key={d.id} type="button" className="crmx-linkrow" onClick={() => onOpenDeal(d.id)}>
+            <span className="flex-1 min-w-0">
+              <span className="block truncate font-semibold">{isSeller ? buyerName(d) : d.offer.title}</span>
+              <span className="block truncate text-[11.5px] crmx-muted">{d.guide?.headline || d.nextAction}</span>
+            </span>
+            <span className="crmx-chip">{STAGE_SHORT[d.stage] || d.stage}</span>
+          </button>
+        ))}
+      </section>
+    </div>
+  );
+}
+
 function SheetBody({
   deal,
   onClose,
   onOpenClient,
   onOpenOffer,
+  onFullClient,
 }: {
   deal: ProDeal;
   onClose: () => void;
   onOpenClient: (clientId: number) => void;
   onOpenOffer: (offerId: number) => void;
+  onFullClient: (clientId: number) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -332,7 +607,7 @@ function SheetBody({
         body: (
           <div className="crmx-dealsheet__form">
             <p className="crmx-dealsheet__hint">Negocjacje, rezerwację i dokumenty prowadzisz na karcie kupującego.</p>
-            {client ? <button type="button" className="crmx-btn crmx-btn--gold" onClick={() => onOpenClient(client.clientId)}>Przejdź do negocjacji</button> : null}
+            {client ? <button type="button" className="crmx-btn crmx-btn--gold" onClick={() => onFullClient(client.clientId)}>Przejdź do negocjacji</button> : null}
           </div>
         ),
       };
@@ -348,7 +623,6 @@ function SheetBody({
           <h3 className="crmx-dealsheet__title">{buyerName(deal)}</h3>
           <p className="truncate text-[12.5px] crmx-muted">{deal.offer.title} · {pln(deal.offer.price)}</p>
         </div>
-        <button type="button" className="crmx-dealsheet__close" onClick={onClose} aria-label="Zamknij"><X size={18} /></button>
       </div>
 
       {deal.entry ? (

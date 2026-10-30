@@ -26,9 +26,11 @@ function deadlineLabel(iso: string | null): string | null {
 export default function CrmDealsPro({
   onOpenClient,
   onOpenOffer,
+  offers,
 }: {
   onOpenClient: (clientId: number) => void;
   onOpenOffer: (offerId: number) => void;
+  offers?: any[];
 }) {
   const deals = useAgentDeals();
   const [query, setQuery] = useState('');
@@ -90,6 +92,8 @@ export default function CrmDealsPro({
     <div className="space-y-4">
       <CrmDealSheet
         deal={openDeal}
+        deals={deals || []}
+        offers={offers}
         onClose={() => setOpenId(null)}
         onOpenClient={(id) => {
           setOpenId(null);
