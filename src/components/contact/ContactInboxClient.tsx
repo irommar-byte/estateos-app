@@ -77,6 +77,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
   const draftInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<number | null>(null);
+  const sendingRef = useRef(false);
   const typingRef = useRef<number | null>(null);
   const isUserScrolling = useRef(false);
   const prevMsgCount = useRef(0);
@@ -181,11 +182,12 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
   const navigateToThread = useCallback(
     (threadId: number, peerUserId: number, opts?: { replace?: boolean }) => {
       const url = `/moje-konto/wiadomosci?thread=${threadId}&peer=${peerUserId}`;
+      // Otwarcie rozmowy robi efekt na zmianę adresu — tu tylko nawigujemy (dawniej rozmowa ładowała się dwa razy).
+      if (threadId === activeThreadId) return;
       if (opts?.replace) router.replace(url);
       else router.push(url);
-      void openThread(threadId);
     },
-    [openThread, router]
+    [activeThreadId, router]
   );
 
   useEffect(() => {
@@ -239,9 +241,11 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
   useEffect(() => {
     if (!activeThreadId) return;
     pollRef.current = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
+      if (document.visibilityState !== "visible" || sendingRef.current) return;
       void fetchContactMessagesWeb(activeThreadId)
         .then((data) => {
+          // Nie nadpisuj wiadomości wysyłanej w tej chwili (zniknęłaby na moment z ekranu).
+          if (sendingRef.current) return;
           setMessages(data.messages);
           setIsTyping(Boolean(data.isTyping));
         })
@@ -305,6 +309,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
     if (!content && !fileSnapshot) return;
 
     setSending(true);
+    sendingRef.current = true;
     setDraft("");
     setPendingFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -337,6 +342,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       if (fileSnapshot) setPendingFile(fileSnapshot);
       window.alert(err instanceof Error ? err.message : "Nie udało się wysłać wiadomości.");
     } finally {
+      sendingRef.current = false;
       setSending(false);
       setUploading(false);
     }

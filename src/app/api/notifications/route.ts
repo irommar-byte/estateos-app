@@ -197,6 +197,15 @@ export async function GET(req: Request) {
         link = '/moje-konto/crm';
       } else if (n.type === 'SYSTEM_ALERT' && n.title === 'Przypisano ogłoszenia') {
         link = '/moje-konto/crm';
+      } else if (String(n.type) === 'ADMIN_ATTENTION') {
+        // Powiadomienia dla admina: prowadzimy do właściwego miejsca w Centrali, nie do CRM.
+        const kind = String(n.idempotencyKey || '').split(':')[1] || '';
+        link =
+          kind === 'offer_pending' || kind === 'offer_edit_review' || kind === 'legal_verification'
+            ? '/centrala/oferty'
+            : kind.includes('photo')
+              ? '/centrala/sesje-zdjeciowe'
+              : '/centrala';
       } else if (n.type === 'SYSTEM_ALERT' && String(n.title || '').includes('zgłoszenie agenta')) {
         link = agencyPendingApprovalLink();
         groupKey = `agency-pending:${n.targetId || n.id}`;
