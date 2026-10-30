@@ -19,7 +19,7 @@ const PL: LegalDocumentContent = {
   canonical: PARAGONOS_URLS.privacyPl,
   title: 'Polityka prywatności ParagonOS™',
   updatedLabel: 'Ostatnia aktualizacja:',
-  updated: '12 września 2026 r.',
+  updated: '30 października 2026 r.',
   intro:
     'Niniejsza Polityka prywatności opisuje, w jaki sposób przetwarzane są dane osobowe w **aplikacji mobilnej ParagonOS™ na iOS** (bundle `pl.paragonos.app`, dalej: „Aplikacja”). Dokument **nie dotyczy** serwisu nieruchomości EstateOS™ ani innych produktów. Korzystając z Aplikacji, akceptujesz tę Politykę. Jeśli się nie zgadzasz, nie korzystaj z Aplikacji.',
   sections: [
@@ -62,7 +62,7 @@ const PL: LegalDocumentContent = {
         'świadczenie Aplikacji (zapis i wyświetlanie kaucji, paragonów i kart, kody przy kasie, przypomnienia) — art. 6 ust. 1 lit. b RODO (wykonanie umowy o korzystanie z Aplikacji) oraz lit. f (prawnie uzasadniony interes: poprawne działanie funkcji, które włączasz);',
         'lokalizacja na mapie punktów zwrotu — art. 6 ust. 1 lit. a RODO (zgoda systemowa iOS, którą możesz wycofać w Ustawieniach iPhone’a);',
         'synchronizacja i udostępnianie rodzinie przez iCloud — art. 6 ust. 1 lit. b oraz lit. a (Twoje świadome włączenie iCloud / zaproszenie);',
-        'dodanie karty do Apple Wallet — art. 6 ust. 1 lit. b, na Twoje żądanie, za pośrednictwem PassKit na urządzeniu;',
+        'dodanie karty do Apple Wallet — art. 6 ust. 1 lit. b, na Twoje żądanie, z jednorazowym podpisem karty na serwerze operatora (sekcja 8);',
         'odpowiedź na zgłoszenie na kontakt@estateos.pl — art. 6 ust. 1 lit. c (obowiązki prawne, w tym RODO) oraz lit. f;',
         'ustalenie, dochodzenie lub obrona roszczeń — art. 6 ust. 1 lit. f RODO.',
       ],
@@ -84,7 +84,7 @@ const PL: LegalDocumentContent = {
     {
       title: '8. Apple Wallet (PassKit)',
       paragraphs: [
-        'Jeśli wybierzesz „Dodaj do Apple Wallet”, karta lojalnościowa jest składana i podpisywana na urządzeniu, a następnie przekazywana do systemowego Wallet przez PassKit. Operator nie prowadzi własnego serwera passów użytkowników i nie otrzymuje kopii Twojej karty w celu hostowania jej poza Aplikacją i Twoim iCloud.',
+        'Jeśli wybierzesz „Dodaj do Apple Wallet”, Aplikacja wysyła na serwer operatora (estateos.pl) dane potrzebne do podpisania karty: nazwę programu, numer karty i kod kreskowy, opcjonalnie imię posiadacza i notatkę oraz grafiki karty. Serwer składa i podpisuje kartę certyfikatem Apple, odsyła ją do urządzenia i **niczego nie zapisuje** — nie tworzy konta, nie przechowuje kopii karty i nie łączy jej z Twoją tożsamością. Adres IP jest przetwarzany krótkotrwale wyłącznie w celu ochrony przed nadużyciami (limit zapytań). Bez tej funkcji żadne dane kart nie opuszczają urządzenia i Twojego iCloud.',
       ],
     },
     {
@@ -164,7 +164,7 @@ const EN: LegalDocumentContent = {
   canonical: PARAGONOS_URLS.privacyEn,
   title: 'ParagonOS™ Privacy Policy',
   updatedLabel: 'Last updated:',
-  updated: '12 September 2026',
+  updated: '30 October 2026',
   intro:
     'This Privacy Policy explains how personal data is processed in the **ParagonOS™ iOS application** (bundle ID `pl.paragonos.app`, the “App”). It **does not** apply to the EstateOS™ real-estate service or any other product. By using the App, you accept this Policy. If you do not agree, do not use the App.',
   sections: [
@@ -207,7 +207,7 @@ const EN: LegalDocumentContent = {
         'provide the App (store and display tickets, receipts and cards, till codes, reminders) — GDPR Art. 6(1)(b) (performance of the contract to use the App) and Art. 6(1)(f) (legitimate interest in running features you enable);',
         'show nearby return points — Art. 6(1)(a) (iOS system permission, which you can withdraw in iPhone Settings);',
         'sync and share with family via iCloud — Art. 6(1)(b) and Art. 6(1)(a) (your decision to enable iCloud / send an invite);',
-        'add a card to Apple Wallet — Art. 6(1)(b), at your request, via PassKit on the device;',
+        'add a card to Apple Wallet — Art. 6(1)(b), at your request, with a one-time signature on the operator’s server (section 8);',
         'answer mail to kontakt@estateos.pl — Art. 6(1)(c) (legal duties, including GDPR) and Art. 6(1)(f);',
         'establish, exercise or defend legal claims — Art. 6(1)(f).',
       ],
@@ -229,7 +229,7 @@ const EN: LegalDocumentContent = {
     {
       title: '8. Apple Wallet (PassKit)',
       paragraphs: [
-        'If you choose Add to Apple Wallet, the loyalty pass is assembled and signed on the device and handed to system Wallet via PassKit. The operator does not run a user-pass hosting server and does not receive a copy of your card in order to host it outside the App and your iCloud.',
+        'If you choose Add to Apple Wallet, the App sends the operator’s server (estateos.pl) what is needed to sign the pass: the program name, card number and barcode, optionally the holder name and note, and the card artwork. The server assembles and signs the pass with an Apple certificate, returns it to the device and **stores nothing** — no account, no copy of the card, no link to your identity. Your IP address is processed briefly only to prevent abuse (rate limiting). Without this feature, no card data leaves your device and your iCloud.',
       ],
     },
     {
