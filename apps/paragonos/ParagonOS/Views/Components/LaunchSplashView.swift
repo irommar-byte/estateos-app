@@ -1,6 +1,9 @@
 import SwiftUI
 import UIKit
 
+/// Cinematic, quiet launch: emerald aurora out of graphite, a silver mark that sharpens
+/// and turns once under a passing light, the wordmark settling in, gold dust, then the
+/// whole scene leans in and dissolves into the app. Driven by one clock for smoothness.
 struct LaunchSplashView: View {
     enum Style {
         case full
@@ -11,14 +14,17 @@ struct LaunchSplashView: View {
     var style: Style = .full
     var onFinished: () -> Void
 
-    @State private var spin = false
-    @State private var pulse = false
-    @State private var showWordmark = false
-    @State private var burst = false
-    @State private var openPortal = false
-    @State private var fadeOut = false
-    @State private var bits: [ScatterBit] = []
+    @State private var startedAt: Date?
     @State private var splashTask: Task<Void, Never>?
+
+    private enum Cue {
+        static let mark: Double = 0.15
+        static let wordmark: Double = 0.45
+        static let sweep: Double = 0.95
+        static let chime: Double = 1.25
+        static let exit: Double = 1.95
+        static let end: Double = 2.55
+    }
 
     var body: some View {
         if style == .none {
@@ -26,79 +32,15 @@ struct LaunchSplashView: View {
                 .ignoresSafeArea()
                 .onAppear { onFinished() }
         } else {
-            GeometryReader { geo in
-            ZStack {
-                Color.black.ignoresSafeArea()
-                RadialGradient(
-                    colors: [
-                        Color(red: 0.08, green: 0.22, blue: 0.08),
-                        Color.black
-                    ],
-                    center: .center,
-                    startRadius: 20,
-                    endRadius: max(geo.size.width, geo.size.height)
-                )
-                .ignoresSafeArea()
-                if #available(iOS 18.0, *) {
-                    MeshGradient(
-                        width: 3,
-                        height: 3,
-                        points: [
-                            .init(0, 0), .init(0.5, 0), .init(1, 0),
-                            .init(0, 0.5), .init(0.52, 0.48), .init(1, 0.5),
-                            .init(0, 1), .init(0.5, 1), .init(1, 1)
-                        ],
-                        colors: [
-                            Color(red: 0.05, green: 0.18, blue: 0.07),
-                            Color(red: 0.04, green: 0.12, blue: 0.05),
-                            Color.black,
-                            Color(red: 0.08, green: 0.24, blue: 0.08),
-                            Color(red: 0.12, green: 0.32, blue: 0.10),
-                            Color.black,
-                            Color.black,
-                            Color(red: 0.03, green: 0.10, blue: 0.04),
-                            Color.black
-                        ]
-                    )
-                    .opacity(0.72)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                }
-
-                ForEach(bits) { bit in
-                    ScatterGlyph(bit: bit)
-                        .offset(burst ? bit.end : .zero)
-                        .rotationEffect(burst ? bit.endRotation : .degrees(bit.wobble))
-                        .scaleEffect(burst ? 1 : 0.12)
-                        .opacity(burst ? (openPortal ? 0 : 0.95) : 0)
-                }
-
-                VStack(spacing: 22) {
-                    RecyclingMark(spinning: spin, pulsing: pulse)
-                        .frame(width: 108, height: 108)
-                        .scaleEffect(openPortal ? 22 : (showWordmark ? 1 : 0.72))
-                        .opacity(openPortal ? 0 : (showWordmark ? 1 : 0))
-                    BrandWordmark(size: .largeTitle, primary: .white, os: ParagonTheme.osGreen)
-                        .opacity(showWordmark && openPortal == false ? 1 : 0)
-                        .offset(y: showWordmark ? 0 : 12)
-                    Text("Kwitki wracają. Kaucja też.")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.72))
-                        .opacity(showWordmark && openPortal == false ? 1 : 0)
-                }
+            TimelineView(.animation(paused: startedAt == nil)) { timeline in
+                let t = startedAt.map { timeline.date.timeIntervalSince($0) } ?? 0
+                scene(at: style == .brief ? max(t, Cue.exit - 0.35) : t)
             }
-            .mask {
-                Rectangle()
-                    .overlay {
-                        Circle()
-                            .frame(width: 112, height: 112)
-                            .scaleEffect(openPortal ? 28 : 0.001)
-                            .blendMode(.destinationOut)
-                    }
-                    .compositingGroup()
-            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            .environment(\.colorScheme, .dark)
             .onAppear {
-                bits = ScatterBit.make(in: geo.size)
+                startedAt = .now
                 splashTask = Task { await run() }
             }
             .onDisappear {
@@ -106,60 +48,92 @@ struct LaunchSplashView: View {
                 splashTask = nil
             }
         }
-        .ignoresSafeArea()
-        .opacity(fadeOut ? 0 : 1)
-        .allowsHitTesting(false)
+    }
+
+    // MARK: Choreography
+
+    private static func smooth(_ t: Double, _ a: Double, _ b: Double) -> Double {
+        let x = min(1, max(0, (t - a) / max(0.001, b - a)))
+        return x * x * (3 - 2 * x)
+    }
+
+    private static func easeOut(_ x: Double) -> Double {
+        let v = 1 - min(1, max(0, x))
+        return 1 - v * v * v * v
+    }
+
+    @ViewBuilder
+    private func scene(at t: Double) -> some View {
+        let aurora = Self.smooth(t, 0, 0.7)
+        let exit = Self.smooth(t, Cue.exit, Cue.end)
+        let mark = Self.easeOut(Self.smooth(t, Cue.mark, Cue.mark + 0.75))
+        let word = Self.easeOut(Self.smooth(t, Cue.wordmark, Cue.wordmark + 0.7))
+        let tagline = Self.smooth(t, Cue.wordmark + 0.45, Cue.wordmark + 1.0)
+        let sweep = Self.smooth(t, Cue.sweep, Cue.sweep + 0.6)
+        GeometryReader { geo in
+            ZStack {
+                Color(red: 0.035, green: 0.039, blue: 0.043)
+                MeshGradient(
+                    width: 3,
+                    height: 3,
+                    points: [
+                        .init(0, 0), .init(0.5, 0), .init(1, 0),
+                        .init(0, 0.5), .init(Float(0.5 + 0.05 * sin(t * 0.9)), Float(0.46 + 0.04 * cos(t * 0.7))), .init(1, 0.5),
+                        .init(0, 1), .init(0.5, 1), .init(1, 1)
+                    ],
+                    colors: [
+                        .black, Color(red: 0.03, green: 0.14, blue: 0.10), .black,
+                        Color(red: 0.05, green: 0.20, blue: 0.14), Color(red: 0.10, green: 0.34, blue: 0.24),
+                        Color(red: 0.20, green: 0.16, blue: 0.08),
+                        .black, Color(red: 0.04, green: 0.12, blue: 0.09), .black
+                    ]
+                )
+                .opacity(0.85 * aurora)
+
+                GoldDust(time: t, strength: Self.smooth(t, 0.6, 1.2) * (1 - Self.smooth(t, 1.8, 2.4)))
+
+                VStack(spacing: 20) {
+                    SilverMark(turn: Self.easeOut(Self.smooth(t, Cue.mark, Cue.mark + 1.5)), sweep: sweep)
+                        .frame(width: 104, height: 104)
+                        .scaleEffect(0.82 + 0.18 * mark)
+                        .blur(radius: 14 * (1 - mark))
+                        .opacity(mark)
+                    BrandWordmark(size: .largeTitle, primary: .white, os: Color(red: 0.42, green: 0.86, blue: 0.64))
+                        .tracking(10 * (1 - word))
+                        .blur(radius: 8 * (1 - word))
+                        .opacity(word)
+                        .overlay { LightSweep(progress: sweep).mask { BrandWordmark(size: .largeTitle) } }
+                    Text("Kwitki wracają. Kaucja też.")
+                        .font(.footnote.weight(.medium))
+                        .tracking(0.6)
+                        .foregroundStyle(.white.opacity(0.62))
+                        .opacity(tagline)
+                }
+                .scaleEffect(1 + 0.12 * exit)
+                .blur(radius: 16 * exit)
+                .opacity(1 - exit)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .opacity(1 - Self.smooth(t, Cue.exit + 0.15, Cue.end))
         }
     }
 
     private func run() async {
-        if style == .none {
-            onFinished()
-            return
-        }
         if style == .brief || UIAccessibility.isReduceMotionEnabled {
-            showWordmark = true
-            spin = true
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            guard Task.isCancelled == false else { return }
-            withAnimation(.easeOut(duration: 0.2)) {
-                fadeOut = true
-            }
-            try? await Task.sleep(nanoseconds: 200_000_000)
+            try? await Task.sleep(for: .seconds(Cue.end - (Cue.exit - 0.35)))
             guard Task.isCancelled == false else { return }
             onFinished()
             return
         }
         LaunchSounds.prepare()
-        withAnimation(.easeOut(duration: 0.42)) {
-            spin = true
-            pulse = true
-        }
-        withAnimation(.spring(duration: 0.68, bounce: 0.18).delay(0.18)) {
-            showWordmark = true
-        }
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        try? await Task.sleep(for: .seconds(Cue.mark + 0.1))
         guard Task.isCancelled == false else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.spring(duration: 1.18, bounce: 0.34)) {
-            burst = true
-        }
-        try? await Task.sleep(nanoseconds: 1_380_000_000)
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        try? await Task.sleep(for: .seconds(Cue.chime - Cue.mark - 0.1))
         guard Task.isCancelled == false else { return }
         LaunchSounds.cashRegister()
-        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-        try? await Task.sleep(nanoseconds: 120_000_000)
-        guard Task.isCancelled == false else { return }
-        UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-        withAnimation(.easeIn(duration: 0.62)) {
-            openPortal = true
-        }
-        try? await Task.sleep(nanoseconds: 480_000_000)
-        guard Task.isCancelled == false else { return }
-        withAnimation(.easeOut(duration: 0.22)) {
-            fadeOut = true
-        }
-        try? await Task.sleep(nanoseconds: 220_000_000)
+        UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.8)
+        try? await Task.sleep(for: .seconds(Cue.end - Cue.chime))
         guard Task.isCancelled == false else { return }
         onFinished()
     }
@@ -183,31 +157,88 @@ enum LaunchSplashPolicy {
     }
 }
 
-private struct RecyclingMark: View {
-    var spinning: Bool
-    var pulsing: Bool
+/// Brushed-silver recycling mark with a thin champagne ring and an emerald halo.
+private struct SilverMark: View {
+    var turn: Double
+    var sweep: Double
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 24, paused: spinning == false && pulsing == false)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let turn = spinning
-                ? t.truncatingRemainder(dividingBy: 2.4) / 2.4
-                : 0
-            let pulse = spinning || pulsing == false
-                ? 1
-                : 1 + 0.045 * sin(t * 2.4)
-            ZStack {
-                Circle()
-                    .fill(ParagonTheme.osGreen.opacity(0.12))
-                Circle()
-                    .stroke(ParagonTheme.osGreen.opacity(0.28), lineWidth: 8)
-                RecyclingArrows()
-                    .stroke(ParagonTheme.osGreen, style: StrokeStyle(lineWidth: 5.2, lineCap: .round, lineJoin: .round))
-                    .padding(22)
-                    .rotationEffect(.degrees(spinning ? turn * 360 : 0))
-                    .scaleEffect(pulse)
+        ZStack {
+            Circle()
+                .fill(RadialGradient(colors: [Color(red: 0.16, green: 0.52, blue: 0.36).opacity(0.35), .clear],
+                                     center: .center, startRadius: 4, endRadius: 70))
+                .scaleEffect(1.5)
+            Circle()
+                .stroke(
+                    LinearGradient(colors: [Color(red: 0.95, green: 0.86, blue: 0.66), Color(red: 0.55, green: 0.45, blue: 0.28)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                    lineWidth: 1.2
+                )
+            RecyclingArrows()
+                .stroke(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(white: 0.98), location: 0),
+                            .init(color: Color(white: 0.62), location: 0.45),
+                            .init(color: Color(white: 0.92), location: 0.7),
+                            .init(color: Color(white: 0.55), location: 1)
+                        ],
+                        startPoint: .top, endPoint: .bottom
+                    ),
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
+                )
+                .padding(22)
+                .rotationEffect(.degrees(120 * turn))
+                .shadow(color: .black.opacity(0.5), radius: 0, y: 1)
+            LightSweep(progress: sweep)
+                .mask { RecyclingArrows().stroke(style: StrokeStyle(lineWidth: 5, lineCap: .round)).padding(22).rotationEffect(.degrees(120 * turn)) }
+        }
+    }
+}
+
+/// A soft diagonal band of light passing once across whatever it masks.
+private struct LightSweep: View {
+    var progress: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            LinearGradient(
+                colors: [.clear, .white.opacity(0.85), .clear],
+                startPoint: .leading, endPoint: .trailing
+            )
+            .frame(width: geo.size.width * 0.45)
+            .rotationEffect(.degrees(18))
+            .offset(x: (geo.size.width * 1.6) * progress - geo.size.width * 0.5)
+            .opacity(progress > 0 && progress < 1 ? 1 : 0)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Fine champagne dust drifting outward from the mark.
+private struct GoldDust: View {
+    var time: Double
+    var strength: Double
+
+    var body: some View {
+        Canvas { context, size in
+            guard strength > 0.01 else { return }
+            let center = CGPoint(x: size.width / 2, y: size.height / 2 - 40)
+            for i in 0..<46 {
+                let seed = Double(i) * 12.9898
+                let angle = (seed.truncatingRemainder(dividingBy: 6.283)) + time * 0.08
+                let speed = 18 + (seed * 7).truncatingRemainder(dividingBy: 36)
+                let r = 60 + speed * time
+                let p = CGPoint(x: center.x + cos(angle) * r, y: center.y + sin(angle) * r * 0.8)
+                let s = 0.8 + (seed * 3).truncatingRemainder(dividingBy: 1.8)
+                let twinkle = 0.5 + 0.5 * sin(time * 3 + seed)
+                context.fill(
+                    Path(ellipseIn: CGRect(x: p.x - s / 2, y: p.y - s / 2, width: s, height: s)),
+                    with: .color(Color(red: 1, green: 0.88, blue: 0.62).opacity(0.75 * strength * twinkle))
+                )
             }
         }
+        .allowsHitTesting(false)
     }
 }
 
@@ -248,121 +279,3 @@ private struct RecyclingArrows: Shape {
     }
 }
 
-private struct ScatterBit: Identifiable {
-    enum Kind {
-        case receipt
-        case can
-        case bottle
-        case arrow
-    }
-
-    let id = UUID()
-    let kind: Kind
-    let end: CGSize
-    let endRotation: Angle
-    let wobble: Double
-    let size: CGFloat
-
-    static func make(in size: CGSize) -> [ScatterBit] {
-        let count = 18
-        return (0..<count).map { index in
-            let angle = Double(index) / Double(count) * .pi * 2 + Double.random(in: -0.18...0.18)
-            let radius = Double.random(in: 0.26...0.68) * max(size.width, size.height)
-            let kind: Kind = {
-                switch index % 7 {
-                case 0: return .can
-                case 1: return .bottle
-                case 2: return .arrow
-                default: return .receipt
-                }
-            }()
-            let glyphSize: CGFloat = {
-                switch kind {
-                case .receipt: return CGFloat.random(in: 48...86)
-                case .can: return CGFloat.random(in: 34...52)
-                case .bottle: return CGFloat.random(in: 38...58)
-                case .arrow: return CGFloat.random(in: 28...42)
-                }
-            }()
-            return ScatterBit(
-                kind: kind,
-                end: CGSize(width: cos(angle) * radius, height: sin(angle) * radius * 0.92),
-                endRotation: .degrees(Double.random(in: -58...58)),
-                wobble: Double.random(in: -14...14),
-                size: glyphSize
-            )
-        }
-    }
-}
-
-private struct ScatterGlyph: View {
-    let bit: ScatterBit
-
-    var body: some View {
-        switch bit.kind {
-        case .receipt:
-            ReceiptChip()
-                .frame(width: bit.size * 0.78, height: bit.size * 1.22)
-        case .can:
-            CanChip()
-                .frame(width: bit.size * 0.55, height: bit.size)
-        case .bottle:
-            Image(systemName: "waterbottle.fill")
-                .font(.system(size: bit.size * 0.72, weight: .medium))
-                .foregroundStyle(ParagonTheme.osGreen.opacity(0.9))
-        case .arrow:
-            Image(systemName: "arrow.trianglehead.clockwise")
-                .font(.system(size: bit.size * 0.55, weight: .bold))
-                .foregroundStyle(ParagonTheme.osGreen)
-        }
-    }
-}
-
-private struct ReceiptChip: View {
-    var body: some View {
-        RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .fill(Color.white.opacity(0.95))
-            .overlay(alignment: .top) {
-                VStack(spacing: 4) {
-                    Capsule().fill(.black.opacity(0.2)).frame(height: 2.4)
-                    Capsule().fill(.black.opacity(0.12)).frame(width: 26, height: 2.4)
-                    Capsule().fill(.black.opacity(0.1)).frame(width: 20, height: 2)
-                    Spacer(minLength: 6)
-                    HStack(spacing: 1.4) {
-                        ForEach(0..<9, id: \.self) { index in
-                            Rectangle()
-                                .fill(.black.opacity(index.isMultiple(of: 2) ? 0.58 : 0.18))
-                                .frame(width: 1.8)
-                        }
-                    }
-                    .frame(height: 14)
-                }
-                .padding(7)
-            }
-            .shadow(color: .black.opacity(0.28), radius: 5, y: 3)
-    }
-}
-
-private struct CanChip: View {
-    var body: some View {
-        Capsule()
-            .fill(
-                LinearGradient(
-                    colors: [Color.white.opacity(0.85), Color.gray.opacity(0.55)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .overlay {
-                Capsule()
-                    .stroke(ParagonTheme.osGreen.opacity(0.45), lineWidth: 1)
-            }
-            .overlay(alignment: .top) {
-                Capsule()
-                    .fill(Color.white.opacity(0.7))
-                    .frame(height: 5)
-                    .padding(.top, 3)
-                    .padding(.horizontal, 3)
-            }
-    }
-}

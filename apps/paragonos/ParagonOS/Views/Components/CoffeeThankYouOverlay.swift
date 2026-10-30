@@ -149,8 +149,8 @@ struct CoffeeThankYouOverlay: View {
                 .ignoresSafeArea()
             RadialGradient(
                 colors: [
-                    Color(red: 0.48, green: 0.10, blue: 0.18).opacity(0.78 * bloom),
-                    Color(red: 0.16, green: 0.03, blue: 0.07).opacity(0.48 * bloom),
+                    Color(red: 0.42, green: 0.27, blue: 0.12).opacity(0.80 * bloom),
+                    Color(red: 0.13, green: 0.08, blue: 0.04).opacity(0.55 * bloom),
                     Color.black.opacity(0.12 * veil)
                 ],
                 center: .center,
@@ -170,8 +170,8 @@ struct CoffeeThankYouOverlay: View {
                     .fill(
                         RadialGradient(
                             colors: [
-                                Color(red: 1, green: 0.46, blue: 0.56).opacity(0.46 * CoffeeThankYouCue.glowStrength(t)),
-                                Color(red: 1, green: 0.78, blue: 0.70).opacity(0.10 * CoffeeThankYouCue.glowStrength(t)),
+                                Color(red: 1, green: 0.80, blue: 0.52).opacity(0.40 * CoffeeThankYouCue.glowStrength(t)),
+                                Color(red: 1, green: 0.90, blue: 0.74).opacity(0.10 * CoffeeThankYouCue.glowStrength(t)),
                                 Color.clear
                             ],
                             center: .center,
@@ -202,56 +202,45 @@ struct CoffeeThankYouOverlay: View {
         let opacity = CoffeeThankYouCue.heroOpacity(t)
         let glow = CoffeeThankYouCue.glowStrength(t)
         let scale: CGFloat = reduceMotion ? 1 : CoffeeThankYouCue.heroScale(t)
+        // The steam draws a heart on the music: begins after the first hit, closes on the crest.
+        let draw = CoffeeThankYouCue.smooth(t, from: CoffeeThankYouCue.firstHit + 0.4, to: CoffeeThankYouCue.crest)
+        let heartFade = 1 - CoffeeThankYouCue.smooth(t, from: CoffeeThankYouCue.lift, to: CoffeeThankYouCue.decay)
+        let rise = CGFloat(10 * sin(t * 0.8))
         return ZStack {
-            Image(systemName: "heart.fill")
-                .font(.system(size: 118, weight: .medium))
-                .foregroundStyle(Color(red: 0.98, green: 0.34, blue: 0.46).opacity(0.22 + 0.48 * glow))
-                .scaleEffect(1.18 + 0.20 * glow)
-                .blur(radius: 10 + 8 * glow)
-                .opacity(opacity)
-            Image(systemName: "heart.fill")
-                .font(.system(size: 112, weight: .medium))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 1, green: 0.82, blue: 0.86),
-                            Color(red: 0.97, green: 0.36, blue: 0.48),
-                            Color(red: 0.68, green: 0.08, blue: 0.24)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
+            Canvas { context, size in
+                PorcelainCupArt(size: .medium, time: t, pour: nil, steam: 1, glow: 1, steamWhite: 0.95)
+                    .draw(in: &context, canvas: size)
+            }
+            .frame(width: 240, height: 240)
+            .shadow(color: Color(red: 1, green: 0.78, blue: 0.48).opacity(0.25 + 0.35 * glow), radius: 30 + 20 * glow)
+            ZStack {
+                SteamHeart()
+                    .trim(from: 0, to: draw)
+                    .stroke(Color.white.opacity(0.55 * heartFade), style: StrokeStyle(lineWidth: 9, lineCap: .round, lineJoin: .round))
+                    .blur(radius: 7)
+                SteamHeart()
+                    .trim(from: 0, to: draw)
+                    .stroke(
+                        LinearGradient(colors: [.white, Color(red: 1, green: 0.90, blue: 0.74)], startPoint: .top, endPoint: .bottom)
+                            .opacity(0.85 * heartFade),
+                        style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round)
                     )
-                )
-                .overlay {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 112, weight: .medium))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.28),
-                                    Color.white.opacity(0.05),
-                                    Color.clear
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-                .shadow(
-                    color: Color(red: 0.94, green: 0.20, blue: 0.34).opacity((0.36 + 0.48 * glow) * opacity),
-                    radius: 28 + 34 * glow
-                )
-                .opacity(opacity)
+                    .blur(radius: 0.8)
+            }
+            .frame(width: 96, height: 86)
+            .offset(y: -128 - rise)
         }
         .scaleEffect(scale)
+        .opacity(opacity)
         .accessibilityHidden(true)
     }
 
     private func titles(at t: TimeInterval) -> some View {
         VStack(spacing: 8) {
             Text("Dziękuję")
-                .font(.system(size: 44, weight: .semibold, design: .rounded))
-                .tracking(-0.8)
+                .font(.system(size: 46, weight: .semibold, design: .serif))
+                .tracking(-0.4)
+                .foregroundStyle(champagne(at: t))
             Text("że jesteś.")
                 .font(.system(size: 19, weight: .regular))
                 .tracking(1.4)
@@ -263,6 +252,21 @@ struct CoffeeThankYouOverlay: View {
         .scaleEffect(reduceMotion ? 1 : CoffeeThankYouCue.titleScale(t))
         .offset(y: reduceMotion ? 0 : CoffeeThankYouCue.titleOffsetY(t))
         .opacity(CoffeeThankYouCue.titleOpacity(t))
+    }
+
+    /// Champagne metal whose highlight glides across the word on each musical lift.
+    private func champagne(at t: TimeInterval) -> LinearGradient {
+        let phase = (t * 0.22).truncatingRemainder(dividingBy: 1)
+        let x = -0.6 + 2.2 * phase
+        return LinearGradient(
+            stops: [
+                .init(color: Color(red: 0.86, green: 0.72, blue: 0.48), location: 0),
+                .init(color: Color(red: 1, green: 0.96, blue: 0.86), location: 0.5),
+                .init(color: Color(red: 0.80, green: 0.64, blue: 0.40), location: 1)
+            ],
+            startPoint: UnitPoint(x: x - 0.5, y: 0),
+            endPoint: UnitPoint(x: x + 0.5, y: 1)
+        )
     }
 
     private func ringView(_ ring: ThankYouRing, t: TimeInterval) -> some View {
@@ -372,8 +376,8 @@ struct ThankYouRing: Identifiable {
 
     static let rings: [ThankYouRing] = {
         let white = Color.white
-        let rose = Color(red: 1, green: 0.80, blue: 0.84)
-        let gold = Color(red: 1, green: 0.91, blue: 0.80)
+        let rose = Color(red: 0.98, green: 0.82, blue: 0.56)
+        let gold = Color(red: 1, green: 0.91, blue: 0.74)
         return [
             ThankYouRing(id: 1, born: 0.95, life: 2.35, start: 118, travel: 460, line: 1.1, strength: 0.92, tint: white),
             ThankYouRing(id: 2, born: 1.12, life: 2.05, start: 114, travel: 360, line: 0.75, strength: 0.42, tint: rose),
@@ -406,7 +410,7 @@ struct ThankYouSpark: Identifiable {
     var kind: Kind
 
     static func choreography() -> [ThankYouSpark] {
-        let rose = Color(red: 1, green: 0.72, blue: 0.76)
+        let rose = Color(red: 0.98, green: 0.80, blue: 0.52)
         let champagne = Color(red: 1, green: 0.90, blue: 0.80)
         let pearl = Color.white
         var sparks: [ThankYouSpark] = []
@@ -461,5 +465,28 @@ struct ThankYouSpark: Identifiable {
         lanterns(idBase: 120, born: 11.55, count: 6)
         pearls(idBase: 90, born: 11.85, count: 8, distance: 138, spin: 0.20)
         return sparks
+    }
+}
+
+
+/// A soft heart outline, drawn stroke by stroke like a line of steam.
+struct SteamHeart: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let w = rect.width, h = rect.height
+        p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.addCurve(to: CGPoint(x: rect.minX, y: rect.minY + h * 0.32),
+                   control1: CGPoint(x: rect.midX - w * 0.22, y: rect.maxY - h * 0.2),
+                   control2: CGPoint(x: rect.minX, y: rect.minY + h * 0.6))
+        p.addCurve(to: CGPoint(x: rect.midX, y: rect.minY + h * 0.2),
+                   control1: CGPoint(x: rect.minX, y: rect.minY - h * 0.06),
+                   control2: CGPoint(x: rect.midX - w * 0.06, y: rect.minY - h * 0.02))
+        p.addCurve(to: CGPoint(x: rect.maxX, y: rect.minY + h * 0.32),
+                   control1: CGPoint(x: rect.midX + w * 0.06, y: rect.minY - h * 0.02),
+                   control2: CGPoint(x: rect.maxX, y: rect.minY - h * 0.06))
+        p.addCurve(to: CGPoint(x: rect.midX, y: rect.maxY),
+                   control1: CGPoint(x: rect.maxX, y: rect.minY + h * 0.6),
+                   control2: CGPoint(x: rect.midX + w * 0.22, y: rect.maxY - h * 0.2))
+        return p
     }
 }

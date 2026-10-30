@@ -69,7 +69,7 @@ struct CoffeeCupView: View {
     }
 }
 
-private struct PorcelainCupArt {
+struct PorcelainCupArt {
     var size: CoffeeSize
     var time: Double
     var pour: Double?
