@@ -111,8 +111,17 @@ struct LoyaltyCardPass: View {
     var showsChevron: Bool = false
     var foilActive: Bool = false
     @State private var visual: LoyaltyVisual?
+    @State private var barcodeImage: UIImage?
 
     private var program: LoyaltyProgram { card.program }
+
+    private var numberLabel: some View {
+        Text("NUMER KARTY")
+            .font(.system(size: 10, weight: .semibold))
+            .tracking(1.4)
+            .foregroundStyle(onColor.opacity(0.62))
+            .padding(.bottom, 5)
+    }
     private var cardColor: Color { program.brandColor }
     private var onDark: Bool { cardColor.relativeLuminance <= 0.62 }
     private var onColor: Color { onDark ? Color.white : Color.black }
@@ -128,33 +137,105 @@ struct LoyaltyCardPass: View {
             }
         }
         .task(id: card.programID) {
-            visual = await LoyaltyLogoStore.shared.visual(for: program)
+            let loaded = await LoyaltyLogoStore.shared.visual(for: program)
+            withAnimation(.smooth(duration: 0.3)) { visual = loaded }
+        }
+        .task(id: showsBarcode ? "\(card.barcodePayload)|\(card.barcodeSymbology)" : "") {
+            guard showsBarcode else { return }
+            barcodeImage = BarcodePresenter.image(
+                payload: card.barcodePayload,
+                symbology: card.barcodeSymbology,
+                width: card.barcodeSymbology == .qr ? 360 : 720,
+                height: card.barcodeSymbology == .qr ? 360 : 160
+            )
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText)
     }
 
-    /// Header uses the original mark: wordmark alone, or icon + original name — never a second system title on a wordmark.
+    /// Header shows the brand's own logo: a wordmark straight on the field when it reads well,
+    /// otherwise on a white plate, or a logo tile next to the name. Resolved once, not per frame.
     private struct LoyaltyBrandHeader: View {
         let program: LoyaltyProgram
         var visual: LoyaltyVisual?
+        var onDark: Bool
         var height: CGFloat
+        @State private var layout: BrandHeaderLayout?
+
+        private var ink: Color { onDark ? .white : Color.black.opacity(0.86) }
 
         var body: some View {
-            let face = LoyaltyBrandKit.composeForeground(
-                program: program,
-                logo: visual?.image,
-                size: CGSize(width: max(320, height * 10), height: height),
-                placement: .leading,
-                onBrandField: true,
-                scale: 3
-            )
-            Image(uiImage: face)
+            Group {
+                switch layout ?? BrandHeaderLayout.placeholder(program: program, visual: visual) {
+                case .wordmark(let image):
+                    Image(uiImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(maxHeight: height * 0.8)
+                        .shadow(color: .black.opacity(onDark ? 0.16 : 0), radius: 1, y: 0.5)
+                case .platedWordmark(let image):
+                    Image(uiImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .frame(maxHeight: height)
+                        .background(.white, in: Capsule())
+                        .shadow(color: .black.opacity(0.14), radius: 2, y: 1)
+                case .tile(let image, let fullBleed):
+                    named { BrandTile(image: image, fullBleed: fullBleed, size: height) }
+                case .brandMark:
+                    named { LoyaltyBrandMark(program: program, size: height, onBrandField: true) }
+                case .monogram:
+                    named {
+                        Text(program.monogram)
+                            .font(.system(size: height * 0.38, weight: .bold, design: .rounded))
+                            .foregroundStyle(ink)
+                            .frame(width: height, height: height)
+                            .background(ink.opacity(0.16), in: RoundedRectangle(cornerRadius: height * 0.26, style: .continuous))
+                    }
+                }
+            }
+            .frame(height: height, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .transition(.opacity)
+            .animation(.smooth(duration: 0.28), value: layout)
+            .task(id: visual?.image.map { ObjectIdentifier($0) }) {
+                layout = BrandHeaderLayout.resolve(program: program, visual: visual)
+            }
+        }
+
+        private func named<Mark: View>(@ViewBuilder _ mark: () -> Mark) -> some View {
+            HStack(spacing: 10) {
+                mark()
+                Text(program.name)
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+    }
+
+    private struct BrandTile: View {
+        let image: UIImage
+        var fullBleed: Bool
+        var size: CGFloat
+
+        var body: some View {
+            let shape = RoundedRectangle(cornerRadius: size * 0.24, style: .continuous)
+            Image(uiImage: image)
                 .resizable()
-                .interpolation(.medium)
+                .interpolation(.high)
                 .scaledToFit()
-                .frame(height: height, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(fullBleed ? 0 : size * 0.14)
+                .frame(width: size, height: size)
+                .background(.white, in: shape)
+                .clipShape(shape)
+                .overlay { shape.strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5) }
+                .shadow(color: .black.opacity(0.16), radius: 2, y: 1)
         }
     }
 
@@ -163,11 +244,10 @@ struct LoyaltyCardPass: View {
         ZStack(alignment: .topLeading) {
             passChrome
             VStack(alignment: .leading, spacing: 0) {
-                LoyaltyBrandHeader(program: program, visual: visual, height: 34)
+                LoyaltyBrandHeader(program: program, visual: visual, onDark: onDark, height: 34)
                 Spacer(minLength: 10)
-                CreditCardChip(onDark: onDark)
-                    .padding(.bottom, 18)
                 if card.barcodePayload.isEmpty == false {
+                    numberLabel
                     EmbossedMetalText(
                         text: LoyaltyCardPass.groupedCode(card.barcodePayload),
                         fontSize: 17,
@@ -190,11 +270,10 @@ struct LoyaltyCardPass: View {
         ZStack(alignment: .topLeading) {
             passChrome
             VStack(alignment: .leading, spacing: 0) {
-                LoyaltyBrandHeader(program: program, visual: visual, height: 34)
+                LoyaltyBrandHeader(program: program, visual: visual, onDark: onDark, height: 34)
                 Spacer(minLength: 10)
-                CreditCardChip(onDark: onDark)
-                    .padding(.bottom, 16)
                 if card.barcodePayload.isEmpty == false {
+                    numberLabel
                     EmbossedMetalText(
                         text: LoyaltyCardPass.groupedCode(card.barcodePayload),
                         fontSize: 22,
@@ -208,6 +287,7 @@ struct LoyaltyCardPass: View {
                 if showsBarcode, card.barcodePayload.isEmpty == false {
                     barcodeWell
                         .padding(.top, 14)
+                        .transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity))
                 }
                 if card.holderName.isEmpty == false {
                     Text(card.holderName.uppercased())
@@ -254,6 +334,23 @@ struct LoyaltyCardPass: View {
         shape
             .fill(passGradient)
             .overlay {
+                RadialGradient(
+                    colors: [Color.white.opacity(0.24), Color.white.opacity(0.0)],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 300
+                )
+                .clipShape(shape)
+                .allowsHitTesting(false)
+            }
+            .overlay {
+                Image(uiImage: CardGrain.image)
+                    .resizable(resizingMode: .tile)
+                    .opacity(0.06)
+                    .clipShape(shape)
+                    .allowsHitTesting(false)
+            }
+            .overlay {
                 // Soft plastic edge — static, no motion sensors.
                 shape
                     .strokeBorder(
@@ -292,12 +389,7 @@ struct LoyaltyCardPass: View {
 
     private var barcodeWell: some View {
         VStack(spacing: 8) {
-            if let image = BarcodePresenter.image(
-                payload: card.barcodePayload,
-                symbology: card.barcodeSymbology,
-                width: card.barcodeSymbology == .qr ? 360 : 720,
-                height: card.barcodeSymbology == .qr ? 360 : 160
-            ) {
+            if let image = barcodeImage {
                 Image(uiImage: image)
                     .resizable()
                     .interpolation(.none)
@@ -329,49 +421,22 @@ struct LoyaltyCardPass: View {
     }
 }
 
-/// Static EMV-style chip — gold plate with contact pads.
-private struct CreditCardChip: View {
-    var onDark: Bool
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.94, green: 0.84, blue: 0.52),
-                        Color(red: 0.70, green: 0.55, blue: 0.26),
-                        Color(red: 0.90, green: 0.78, blue: 0.42)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .strokeBorder(Color.black.opacity(0.22), lineWidth: 0.5)
-            }
-            .overlay {
-                VStack(spacing: 3) {
-                    HStack(spacing: 3) {
-                        chipPad; chipPad
-                    }
-                    HStack(spacing: 3) {
-                        chipPad; chipPad
-                    }
-                }
-                .padding(5)
-            }
-            .frame(width: 36, height: 28)
-            .shadow(color: .black.opacity(onDark ? 0.38 : 0.14), radius: 1.2, y: 0.6)
-            .accessibilityHidden(true)
-    }
-
-    private var chipPad: some View {
-        RoundedRectangle(cornerRadius: 1, style: .continuous)
-            .fill(Color.black.opacity(0.16))
-            .frame(maxWidth: .infinity)
-            .frame(height: 6)
-    }
+/// Fine static grain so the colour reads as a printed card, not a flat fill. Generated once.
+enum CardGrain {
+    static let image: UIImage = {
+        let side = 96
+        var pixels = [UInt8](repeating: 0, count: side * side)
+        for i in pixels.indices { pixels[i] = UInt8.random(in: 0...255) }
+        let space = CGColorSpaceCreateDeviceGray()
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
+              let cg = CGImage(
+                width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: side,
+                space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
+                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+              )
+        else { return UIImage() }
+        return UIImage(cgImage: cg, scale: 2, orientation: .up)
+    }()
 }
 
 /// Metallic embossed digits. Gyro sheen is a GPU streak — the plastic face never tilts.
@@ -628,12 +693,17 @@ struct LoyaltyPassStack: View {
                 .allowsHitTesting(false)
             }
         }
-        .shadow(
-            color: .black.opacity(lifted ? 0.46 : 0.38 + min(0.16, depth * 0.02)),
-            radius: lifted ? 22 : 16,
-            y: lifted ? 12 : 8
-        )
-        .shadow(color: .black.opacity(0.22), radius: 3, y: 1.5)
+        .background {
+            // Shadow comes from a plain shape: cheap to blur while the stack moves.
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black)
+                .shadow(
+                    color: .black.opacity(lifted ? 0.46 : 0.38 + min(0.16, depth * 0.02)),
+                    radius: lifted ? 22 : 16,
+                    y: lifted ? 12 : 8
+                )
+                .shadow(color: .black.opacity(0.22), radius: 3, y: 1.5)
+        }
         .scaleEffect(lifted ? 1.03 : 1, anchor: .top)
         .matchedTransitionSource(id: card.id, in: zoomNamespace)
         .frame(height: LoyaltyPassStackMetrics.cardHeight, alignment: .top)
@@ -958,5 +1028,49 @@ struct LoyaltyProgramGroup: Identifiable {
             buckets[key, default: []].append(card)
         }
         return order.map { LoyaltyProgramGroup(programID: $0, cards: buckets[$0] ?? []) }
+    }
+}
+
+/// How a card header shows its brand. Picked once per logo (pixel checks are cached), never per frame.
+enum BrandHeaderLayout: Equatable {
+    case wordmark(UIImage)
+    case platedWordmark(UIImage)
+    case tile(UIImage, fullBleed: Bool)
+    case brandMark
+    case monogram
+
+    @MainActor private static var cache: [String: BrandHeaderLayout] = [:]
+
+    @MainActor
+    static func placeholder(program: LoyaltyProgram, visual: LoyaltyVisual?) -> BrandHeaderLayout {
+        if let hit = cache[key(program, visual)] { return hit }
+        return LoyaltyBrandArt.hasMark(program.id) ? .brandMark : .monogram
+    }
+
+    @MainActor
+    static func resolve(program: LoyaltyProgram, visual: LoyaltyVisual?) -> BrandHeaderLayout {
+        let key = key(program, visual)
+        if let hit = cache[key] { return hit }
+        let result: BrandHeaderLayout
+        if let image = visual?.image, PassArtwork.opaqueRatio(image) > 0.03 {
+            let aspect = image.size.width / max(image.size.height, 1)
+            if aspect >= 1.7 {
+                let contrast = PassArtwork.contrastRatio(in: image, againstHex: program.cardColorHex)
+                result = contrast >= 2.6 ? .wordmark(image) : .platedWordmark(image)
+            } else {
+                result = .tile(image, fullBleed: LogoQuality.looksLikeTile(image))
+            }
+        } else if visual?.usesBrandMark == true || LoyaltyBrandArt.hasMark(program.id) {
+            result = .brandMark
+        } else {
+            result = .monogram
+        }
+        cache[key] = result
+        return result
+    }
+
+    private static func key(_ program: LoyaltyProgram, _ visual: LoyaltyVisual?) -> String {
+        let size = visual?.image.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none"
+        return "\(program.id)-\(program.cardColorHex)-\(size)"
     }
 }

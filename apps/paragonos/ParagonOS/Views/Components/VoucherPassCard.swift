@@ -291,7 +291,11 @@ struct WalletPassStack: View {
         }
         .buttonStyle(LoyaltyPassPressStyle())
         .contextMenu { ticketMenu(ticket) }
-        .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
+        .background {
+            RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
+                .fill(Color.black)
+                .shadow(color: .black.opacity(0.18), radius: 12, y: 6)
+        }
     }
 
     @ViewBuilder

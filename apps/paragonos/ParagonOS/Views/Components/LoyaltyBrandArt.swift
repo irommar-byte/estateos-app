@@ -114,7 +114,7 @@ enum LoyaltyBrandKit {
         onBrandField: Bool = true,
         scale: CGFloat = 3
     ) -> UIImage {
-        let key = "\(program.id)-\(Int(size.width))x\(Int(size.height))-\(placement == .leading ? "L" : "C")-\(onBrandField ? "1" : "0")-s\(Int(scale))-v10"
+        let key = "\(program.id)-\(Int(size.width))x\(Int(size.height))-\(placement == .leading ? "L" : "C")-\(onBrandField ? "1" : "0")-s\(Int(scale))-\(logo.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "none")-v11"
         if let cached = faceCache[key] { return cached }
         let format = UIGraphicsImageRendererFormat.default()
         format.opaque = false

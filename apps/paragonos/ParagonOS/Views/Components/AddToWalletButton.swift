@@ -40,6 +40,8 @@ struct AddToWalletButton: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .sensoryFeedback(.impact(weight: .light), trigger: isPreparing) { _, now in now }
+        .sensoryFeedback(.error, trigger: alertMessage) { _, now in now != nil }
         .sheet(item: $pass) { item in
             AddPassSheet(pass: item) { added in
                 pass = nil

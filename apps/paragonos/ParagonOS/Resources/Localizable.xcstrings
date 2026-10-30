@@ -279,6 +279,28 @@
     "Brak kaucji" : {
 
     },
+    "NUMER KARTY" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CARD NUMBER"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "NUMER KARTY"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "НОМЕР КАРТКИ"
+          }
+        }
+      }
+    },
     "Brak kodu" : {
       "localizations" : {
         "en" : {

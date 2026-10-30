@@ -226,6 +226,8 @@ struct WalletView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Text(MoneyFormat.string(activeSum))
+                    .contentTransition(.numericText(value: activeSum))
+                    .animation(.snappy, value: activeSum)
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                 HStack {
                     Label(PolishDates.kwitekCount(visible.count), systemImage: "ticket")
