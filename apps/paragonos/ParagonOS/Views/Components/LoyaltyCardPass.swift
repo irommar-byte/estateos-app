@@ -686,12 +686,25 @@ struct LoyaltyPassStack: View {
             return home + dragTranslation
         }
         let slot = LoyaltyPassStackMetrics.yOffset(index: index, spread: liveSpread)
-        return openingID == cardID && draggingID == nil ? slot - PassStackMotion.slideOutLift : slot
+        guard draggingID == nil, let openID = openingID,
+              let openIndex = orderedCards.firstIndex(where: { $0.id == openID })
+        else { return slot }
+        if cardID == openID { return slot - pocketLift(index: index, count: orderedCards.count) }
+        // Cards in front part a little, like a pocket opening.
+        if index > openIndex { return slot + PassStackMotion.pocketGap }
+        return slot
     }
 
+    /// How far the card must rise to clear the cards in front of it.
+    private func pocketLift(index: Int, count: Int) -> CGFloat {
+        guard index < count - 1 else { return PassStackMotion.slideOutLift }
+        return LoyaltyPassStackMetrics.cardHeight - step + PassStackMotion.pocketGap + 14
+    }
+
+    /// The opening card keeps its place in the pile: it slides out from behind the
+    /// cards in front of it and back in behind them, never jumping on top.
     private func zIndex(for card: LoyaltyCard, index: Int) -> Double {
         if card.id == draggingID { return 9_000 }
-        if openingID == card.id { return 8_000 }
         return Double(index)
     }
 
@@ -1106,14 +1119,16 @@ struct StackChevron: View {
 
 enum PassStackMotion {
     /// How far a tapped card rises out of the stack before it opens.
-    static let slideOutLift: CGFloat = 34
+    static let slideOutLift: CGFloat = 60
+    /// Cards in front of the opening one step aside by this much.
+    static let pocketGap: CGFloat = 26
 
-    /// The card pops up out of its pocket with a visible bounce.
-    static var slideOut: Animation { .spring(response: 0.6, dampingFraction: 0.58) }
-    static let slideOutPause: Double = 0.34
+    /// The card slides up out of the pile and settles with a soft bounce.
+    static var slideOut: Animation { .spring(response: 0.75, dampingFraction: 0.68) }
+    static let slideOutPause: Double = 0.6
 
-    /// Back into its slot: drops in and settles with a springy bounce.
-    static var slideIn: Animation { .spring(response: 0.9, dampingFraction: 0.6) }
+    /// Back into its pocket: slides down behind the front cards, which close over it.
+    static var slideIn: Animation { .spring(response: 0.95, dampingFraction: 0.66) }
 
     static var response: Double { ParagonTheme.springResponse }
     static var damping: Double { ParagonTheme.springDamping }

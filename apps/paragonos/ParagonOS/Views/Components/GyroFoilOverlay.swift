@@ -535,9 +535,13 @@ struct MetalPANLabel: UIViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: MetalPANView, context: Context) -> CGSize {
+        // Take exactly the width offered and never ask for the text's full width:
+        // a long number must shrink inside the card, not stretch the card past the screen.
         var size = uiView.intrinsicContentSize
         if let width = proposal.width, width.isFinite, width > 0 {
             size.width = width
+        } else {
+            size.width = 0
         }
         return size
     }
