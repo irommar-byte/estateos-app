@@ -25,6 +25,7 @@ const MAX_IMAGE_BYTES = 1_500_000;
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 const text = (max: number) => z.string().trim().max(max);
+const rgb = z.string().regex(/^rgb\(\s*(25[0-5]|2[0-4]\d|1?\d?\d)\s*,\s*(25[0-5]|2[0-4]\d|1?\d?\d)\s*,\s*(25[0-5]|2[0-4]\d|1?\d?\d)\s*\)$/);
 
 export const passRequestSchema = z.object({
   serialNumber: z.string().regex(/^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/),
@@ -42,6 +43,14 @@ export const passRequestSchema = z.object({
     .min(1)
     .max(2),
   images: z.partialRecord(z.enum(PASS_IMAGE_NAMES), z.string().max(2_100_000)),
+  style: z
+    .object({
+      foreground: rgb,
+      background: rgb,
+      label: rgb,
+      logoText: text(40).optional().default(''),
+    })
+    .optional(),
 });
 
 export type PassRequest = z.infer<typeof passRequestSchema>;
@@ -49,17 +58,25 @@ export type PassRequest = z.infer<typeof passRequestSchema>;
 export class PassConfigError extends Error {}
 export class PassInputError extends Error {}
 
+function groupedNumber(payload: string): string {
+  const raw = payload.replace(/[^0-9A-Za-z]/g, '');
+  if (raw.length < 8) return payload || '—';
+  return raw.match(/.{1,4}/g)!.join(' ');
+}
+
 function passJson(req: PassRequest): Buffer {
   const storeCard: Record<string, unknown> = {
-    secondaryFields: [{ key: 'member', label: 'Numer', value: req.memberNumber || '—' }],
+    primaryFields: [{ key: 'member', label: 'NUMER KARTY', value: groupedNumber(req.memberNumber) }],
     backFields: [
-      { key: 'note', label: ORGANIZATION, value: req.note || `Karta lojalnościowa z ${ORGANIZATION}.` },
+      { key: 'note', label: 'Notatka', value: req.note || '—' },
+      { key: 'app', label: ORGANIZATION, value: `Karta dodana z ${ORGANIZATION}.` },
     ],
   };
   if (req.holderName) {
-    storeCard.auxiliaryFields = [{ key: 'holder', label: 'Właściciel', value: req.holderName }];
+    storeCard.secondaryFields = [{ key: 'holder', label: 'WŁAŚCICIEL', value: req.holderName }];
   }
-  const pass = {
+  const style = req.style;
+  const pass: Record<string, unknown> = {
     formatVersion: 1,
     passTypeIdentifier: PASS_TYPE_ID,
     serialNumber: req.serialNumber,
@@ -67,9 +84,9 @@ function passJson(req: PassRequest): Buffer {
     organizationName: ORGANIZATION,
     groupingIdentifier: GROUPING_ID,
     description: req.description,
-    foregroundColor: 'rgb(29, 29, 31)',
-    backgroundColor: 'rgb(255, 255, 255)',
-    labelColor: 'rgb(134, 134, 139)',
+    foregroundColor: style?.foreground ?? 'rgb(29, 29, 31)',
+    backgroundColor: style?.background ?? 'rgb(255, 255, 255)',
+    labelColor: style?.label ?? 'rgb(134, 134, 139)',
     storeCard,
     barcodes: req.barcodes.map((b) => ({
       format: b.format,
@@ -78,6 +95,7 @@ function passJson(req: PassRequest): Buffer {
       altText: b.message,
     })),
   };
+  if (style?.logoText) pass.logoText = style.logoText;
   return Buffer.from(JSON.stringify(pass, null, 2), 'utf8');
 }
 
