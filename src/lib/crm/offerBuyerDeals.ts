@@ -107,6 +107,8 @@ export type Transaction = Partial<Record<TransactionStepId, TransactionStep>> & 
 
 export type DealData = {
   events?: DealEvent[];
+  /** Kopia transakcji z Dealroomu (prywatny kupujący ↔ oferta agenta). Odświeżana przy odczycie. */
+  dealroom?: { dealId: number; status: string; events: DealEvent[]; syncedAt: string };
   reminders?: Record<string, string>;
   searchOther?: { wanted: boolean; note: string | null; at: string } | null;
   negotiation?: Negotiation;
@@ -173,6 +175,7 @@ const SOURCE_LABELS: Record<string, string> = {
   listing_request: 'Prośba innej agencji',
   guest_agency: 'Pokazuje inna agencja',
   manual: 'Dodany ręcznie',
+  dealroom: 'Dealroom (kupujący z portalu)',
 };
 
 function asMeta(raw: unknown): Record<string, unknown> {
@@ -330,11 +333,130 @@ export async function syncOfferBuyerDeals(agencyUserId: number, offerId: number)
   }
 
   if (rows.length) await prisma.offerBuyerDeal.createMany({ data: rows, skipDuplicates: true });
+  await syncDealroomDeals(agencyUserId, offerId, seller?.id ?? null).catch((error) => {
+    console.error('[offerBuyerDeals.dealroom]', error);
+  });
   if (seller) {
     await prisma.offerBuyerDeal.updateMany({
       where: { offerId, agencyUserId, sellerClientId: null },
       data: { sellerClientId: seller.id },
     });
+  }
+}
+
+const DEALROOM_STATUS_LABEL: Record<string, string> = {
+  INITIATED: 'Rozpoczęta rozmowa',
+  NEGOTIATION: 'Negocjacje',
+  AGREED: 'Cena uzgodniona',
+  MEETING: 'Umówione spotkanie',
+  FINALIZED: 'Transakcja zakończona',
+  CANCELLED: 'Anulowana',
+};
+
+const APPT_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'czeka na odpowiedź',
+  ACCEPTED: 'potwierdzony',
+  DECLINED: 'odrzucony',
+  RESCHEDULED: 'przełożony',
+  CANCELLED: 'odwołany',
+  COMPLETED: 'odbyty',
+  NO_SHOW: 'nieobecność',
+};
+
+/**
+ * Jedna oś transakcji: rozmowy z Dealroomu przy ofercie agenta trafiają do listy kupujących w CRM
+ * (z ofertami cenowymi i terminami jako wydarzeniami). Dealroom zostaje miejscem rozmowy kupującego,
+ * CRM — miejscem prowadzenia transakcji przez agenta.
+ */
+async function syncDealroomDeals(agencyUserId: number, offerId: number, sellerClientId: number | null): Promise<void> {
+  const offer = await prisma.offer.findUnique({ where: { id: offerId }, select: { userId: true } });
+  if (!offer) return;
+  if (offer.userId !== agencyUserId && !sellerClientId) return;
+
+  const deals = await prisma.deal.findMany({
+    where: { offerId },
+    select: {
+      id: true,
+      status: true,
+      buyerId: true,
+      sellerId: true,
+      createdAt: true,
+      buyer: { select: { id: true, name: true, email: true, phone: true } },
+      bids: { orderBy: { createdAt: 'asc' }, select: { amount: true, senderId: true, status: true, createdAt: true } },
+      appointments: { orderBy: { createdAt: 'asc' }, select: { proposedDate: true, proposedById: true, status: true, createdAt: true } },
+    },
+  });
+  if (!deals.length) return;
+
+  const linkedBuyers = await prisma.agencyClient.findMany({
+    where: { agencyUserId, type: 'BUYER', linkedUserId: { in: deals.map((d) => d.buyerId) } },
+    select: { id: true, linkedUserId: true },
+  });
+  const buyerClientByUser = new Map(linkedBuyers.map((c) => [c.linkedUserId, c.id]));
+
+  for (const deal of deals) {
+    const buyerClientId = buyerClientByUser.get(deal.buyerId) ?? null;
+    const where = buyerClientId
+      ? { offerId_buyerClientId: { offerId, buyerClientId } }
+      : { offerId_externalKey: { offerId, externalKey: `dealroom:${deal.id}` } };
+
+    const events: DealEvent[] = [
+      { at: deal.createdAt.toISOString(), actor: 'buyer', text: 'Kupujący otworzył rozmowę w Dealroomie' },
+    ];
+    for (const bid of deal.bids) {
+      const byBuyer = bid.senderId === deal.buyerId;
+      const state = bid.status === 'ACCEPTED' ? ' · przyjęta' : bid.status === 'REJECTED' ? ' · odrzucona' : bid.status === 'COUNTER_OFFER' ? ' · kontrowana' : '';
+      events.push({
+        at: bid.createdAt.toISOString(),
+        actor: byBuyer ? 'buyer' : 'seller',
+        text: `${byBuyer ? 'Oferta kupującego' : 'Kontroferta'}: ${pln(bid.amount)}${state}`,
+      });
+    }
+    for (const appt of deal.appointments) {
+      const state = APPT_STATUS_LABEL[String(appt.status)] || String(appt.status).toLowerCase();
+      events.push({
+        at: appt.createdAt.toISOString(),
+        actor: appt.proposedById === deal.buyerId ? 'buyer' : 'seller',
+        text: `Termin w Dealroomie: ${when(appt.proposedDate)} · ${state}`,
+      });
+    }
+
+    const status: DealStatus | null =
+      deal.status === 'CANCELLED' ? 'LOST' : deal.status === 'FINALIZED' ? 'WON' : null;
+
+    const existing = await prisma.offerBuyerDeal.findUnique({ where, select: { id: true, data: true, status: true } });
+    const data = parseData(existing?.data);
+    data.dealroom = {
+      dealId: deal.id,
+      status: DEALROOM_STATUS_LABEL[deal.status] || deal.status,
+      events,
+      syncedAt: new Date().toISOString(),
+    };
+    if (existing) {
+      await prisma.offerBuyerDeal.update({
+        where: { id: existing.id },
+        data: {
+          data: data as Prisma.InputJsonValue,
+          ...(status && existing.status === 'ACTIVE' ? { status } : {}),
+        },
+      });
+    } else {
+      await prisma.offerBuyerDeal.create({
+        data: {
+          agencyUserId,
+          offerId,
+          sellerClientId,
+          buyerClientId,
+          externalKey: buyerClientId ? null : `dealroom:${deal.id}`,
+          externalName: buyerClientId ? null : (deal.buyer.name || 'Kupujący z Dealroomu').slice(0, 160),
+          externalEmail: buyerClientId ? null : deal.buyer.email ? deal.buyer.email.slice(0, 191) : null,
+          externalPhone: buyerClientId ? null : deal.buyer.phone ? deal.buyer.phone.slice(0, 32) : null,
+          source: 'dealroom',
+          status: status || 'ACTIVE',
+          data: data as Prisma.InputJsonValue,
+        },
+      }).catch(() => null);
+    }
   }
 }
 
@@ -688,7 +810,7 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     transaction: tx,
     documentsVisible: Boolean(agreedPrice || reservationActive || tx.documentsStartedAt || stage === 'preliminary' || stage === 'deed' || stage === 'closed'),
     nextAction,
-    timeline: buildTimeline(rows, deal, matchFeedback, sellerMerge.events),
+    timeline: buildTimeline(rows, deal, matchFeedback, [...sellerMerge.events, ...(parseData(deal.data).dealroom?.events || [])]),
     updatedAt: deal.updatedAt.toISOString(),
   };
 }
