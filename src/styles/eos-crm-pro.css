@@ -383,3 +383,164 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 @keyframes crmxFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .crmx-fade { animation: crmxFade 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
 @media (prefers-reduced-motion: reduce) { .crmx-fade { animation: none; } }
+
+/* Pulpit jako biurko */
+@media (min-width: 900px) { .crmx-desk--band { grid-template-columns: 1.05fr 1.15fr 1fr; } }
+.crmx-row2 { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1100px) { .crmx-row2 { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); } }
+.crmx-desk--notes { padding: 20px 22px; }
+.crmx-desk--notes .crmx-desk__note { padding: 0; }
+.crmx-grid-3 { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1200px) { .crmx-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.crmx-pulse { min-width: 0; }
+.crmx-pulse__metric { padding: 10px 12px; border-radius: 12px; background: var(--x-surface-2); border: 1px solid var(--x-line); }
+.crmx-pulse__metric span { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--x-ink-3); }
+.crmx-pulse__metric b { display: block; margin-top: 3px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.crmx-pulse__news { display: flex; gap: 8px; align-items: flex-start; padding: 9px 11px; border-radius: 12px; background: var(--x-gold-soft); color: var(--x-ink-2); font-size: 12px; line-height: 1.4; animation: crmxFade 0.5s both; }
+.crmx-pulse__news svg { flex-shrink: 0; margin-top: 1px; color: var(--x-gold-ink); }
+.crmx-pulse__news b { color: var(--x-ink); font-weight: 650; margin-right: 4px; }
+@keyframes crmxLive { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+.crmx-live { animation: crmxLive 1.6s ease-in-out infinite; }
+.crmx-desk__month svg { display: inline; }
+/* Puls cenowy wpięty w biurko — lżejszy, w języku CRM */
+.crmx-pulse__widget .eos-price-pulse-well { border-radius: 14px !important; padding: 12px !important; background: var(--x-surface-2) !important; border: 1px solid var(--x-line) !important; box-shadow: none !important; }
+.crmx-pulse__widget .eos-price-pulse-well > div:nth-of-type(2) button,
+.crmx-pulse__widget .eos-price-pulse-well > .relative.z-10.mt-2 button {
+  height: 26px !important; padding: 0 10px !important; min-height: 0 !important;
+  font-size: 10.5px !important; letter-spacing: 0.04em !important; border-radius: 8px !important;
+  box-shadow: none !important;
+}
+
+/* Zegar pionowo w kolumnie biurka */
+.crmx-desk--band .crmx-desk__clock { flex-direction: column; justify-content: center; text-align: center; gap: 16px; }
+.crmx-desk--band .crmx-watch { width: 168px; height: 168px; }
+
+/* Biurko v2 — spójne nagłówki kolumn, puls rynku w stylu CRM */
+.crmx-desk__head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; min-height: 30px; }
+.crmx-desk__hint { font-size: 11.5px; color: var(--x-ink-3); white-space: nowrap; }
+.crmx-pulse__pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.crmx-pulse__pair > div { padding: 12px 13px; border-radius: 14px; background: var(--x-surface-2); border: 1px solid var(--x-line); display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.crmx-pulse__pair span { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--x-ink-3); }
+.crmx-pulse__pair b { font-size: 21px; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.crmx-pulse__pair small { align-self: flex-start; font-size: 10.5px; padding: 1px 7px; }
+.crmx-pulse__chart { position: relative; margin: 14px 0 0; }
+.crmx-pulse__chart svg { display: block; width: 100%; height: 86px; overflow: visible; }
+.crmx-pulse__dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 99px; background: var(--x-gold); box-shadow: 0 0 0 4px var(--x-gold-soft); }
+.crmx-pulse__dot[data-pre] { background: var(--x-surface); border: 1.5px solid var(--x-gold); }
+.crmx-pulse__chart figcaption { margin-top: 6px; display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--x-ink-3); }
+.crmx-pulse__chart figcaption span:nth-child(2) { text-align: center; }
+.crmx-pulse__foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--x-line); display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--x-ink-2); }
+.crmx-pulse__foot b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.crmx-pulse__foot b.neg { color: var(--x-bad); }
+.crmx-pulse__foot b.pos { color: var(--x-good); }
+.crmx-pulse__src { margin-top: 6px; font-size: 10.5px; color: var(--x-ink-3); }
+/* zegar i kalendarz w biurku: wyrównane do góry, z nagłówkami jak puls */
+.crmx-desk--band > * { display: flex; flex-direction: column; }
+.crmx-desk--band .crmx-desk__clock { justify-content: flex-start; }
+.crmx-desk--band .crmx-desk__cal .crmx-desk__grid { flex: 1; align-content: start; }
+.crmx-desk--band .crmx-desk__d { height: 34px; }
+
+/* Planowanie */
+.crmx-planner { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1200px) { .crmx-planner { grid-template-columns: minmax(0, 1fr) 340px; } }
+.crmx-planner__month { overflow: hidden; }
+.crmx-planner__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--x-line); }
+.crmx-planner__title { margin-left: 8px; font-size: 18px; font-weight: 650; letter-spacing: -0.015em; text-transform: capitalize; }
+.crmx-planner__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.crmx-planner__wd { padding: 9px 10px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--x-ink-3); border-bottom: 1px solid var(--x-line); }
+.crmx-planner__day { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-height: 104px; padding: 7px 7px 8px; text-align: left; border-right: 1px solid var(--x-line); border-bottom: 1px solid var(--x-line); transition: background 0.15s; min-width: 0; }
+.crmx-planner__day:nth-child(7n + 7) { border-right: 0; }
+.crmx-planner__day:hover { background: var(--x-surface-2); }
+.crmx-planner__day.is-out { background: color-mix(in srgb, var(--x-surface-2) 60%, transparent); }
+.crmx-planner__day.is-out .crmx-planner__num { color: var(--x-ink-3); }
+.crmx-planner__day.is-sel { background: var(--x-gold-soft); }
+.crmx-planner__num { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.crmx-planner__day.is-today .crmx-planner__num { color: var(--x-surface); }
+.crmx-planner__day.is-today .crmx-planner__num::before { content: ""; position: absolute; }
+.crmx-planner__day.is-today .crmx-planner__num { background: var(--x-ink); border-radius: 99px; padding: 1px 8px; align-self: flex-start; }
+.crmx-planner__note { width: 5px; height: 5px; border-radius: 99px; background: var(--x-info); display: inline-block; }
+.crmx-planner__items { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.crmx-planner__ev { display: block; padding: 2px 6px; border-radius: 6px; font-size: 11px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-left: 2px solid currentColor; background: var(--x-surface-2); }
+.crmx-planner__ev b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.crmx-planner__ev--good { color: var(--x-good); background: var(--x-good-soft); }
+.crmx-planner__ev--warn { color: var(--x-warn); background: var(--x-warn-soft); }
+.crmx-planner__ev--bad { color: var(--x-bad); background: var(--x-bad-soft); }
+.crmx-planner__ev--info { color: var(--x-info); background: var(--x-info-soft); }
+.crmx-planner__ev--gold, .crmx-planner__ev--plain { color: var(--x-gold-ink); background: var(--x-gold-soft); }
+.crmx-planner__more { font-size: 10.5px; font-weight: 600; color: var(--x-ink-3); padding-left: 6px; }
+@media (max-width: 720px) { .crmx-planner__day { min-height: 64px; } .crmx-planner__ev { font-size: 0; padding: 0; height: 5px; border-left-width: 0; } }
+.crmx-slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 10px 4px; border-radius: 12px; background: var(--x-surface); border: 1px solid var(--x-line); transition: border-color 0.15s, background 0.15s; }
+.crmx-slot:hover { border-color: var(--x-gold); }
+.crmx-slot span { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--x-ink-3); }
+.crmx-slot b { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.crmx-slot--time b { font-size: 14px; }
+.crmx-slot.is-on { background: var(--x-ink); color: var(--x-surface); border-color: var(--x-ink); }
+.crmx-slot.is-on span { color: inherit; opacity: 0.7; }
+
+/* ── Ujednolicenie starszych przycisków i chipów wewnątrz CRM ─────── */
+.crmx .eos-btn,
+.crmx .eos-lux-btn {
+  height: auto !important;
+  min-height: 36px !important;
+  padding: 8px 15px !important;
+  border-radius: 11px !important;
+  font-family: var(--eos-font-text) !important;
+  font-size: 12.5px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  background: var(--x-surface) !important;
+  background-image: none !important;
+  color: var(--x-ink) !important;
+  -webkit-text-fill-color: currentColor !important;
+  border: 1px solid var(--x-line-strong) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  text-shadow: none !important;
+}
+.crmx .eos-btn:hover, .crmx .eos-lux-btn:hover { background: var(--x-surface-2) !important; }
+.crmx .eos-btn--sm { min-height: 30px !important; padding: 5px 11px !important; font-size: 12px !important; }
+.crmx .eos-btn--primary,
+.crmx .eos-btn--home,
+.crmx .eos-btn--car,
+.crmx .eos-btn--call,
+.crmx .eos-lux-btn--primary {
+  background: var(--x-ink) !important;
+  color: var(--x-surface) !important;
+  border-color: var(--x-ink) !important;
+}
+.crmx .eos-btn--primary:hover, .crmx .eos-btn--home:hover, .crmx .eos-btn--car:hover, .crmx .eos-btn--call:hover, .crmx .eos-lux-btn--primary:hover {
+  background: color-mix(in srgb, var(--x-ink) 86%, var(--x-gold)) !important;
+}
+.crmx .eos-btn--promote { background: linear-gradient(180deg, #c3a06a, #a8844c) !important; color: #fff !important; border-color: #9a7742 !important; }
+.crmx .eos-btn--danger { color: var(--x-bad) !important; border-color: color-mix(in srgb, var(--x-bad) 35%, transparent) !important; }
+.crmx .eos-btn--ghost { background: transparent !important; border-color: transparent !important; box-shadow: none !important; color: var(--x-ink-2) !important; }
+.crmx .eos-btn svg, .crmx .eos-lux-btn svg { color: currentColor !important; }
+
+.crmx .eos-raised-chip {
+  padding: 5px 11px !important;
+  border-radius: 99px !important;
+  font-size: 11.5px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  background: var(--x-surface) !important;
+  background-image: none !important;
+  color: var(--x-ink-2) !important;
+  border: 1px solid var(--x-line-strong) !important;
+  box-shadow: none !important;
+}
+.crmx .eos-raised-chip--on { background: var(--x-ink) !important; color: var(--x-surface) !important; border-color: var(--x-ink) !important; }
+.crmx .eos-raised-chip--no { color: var(--x-bad) !important; }
+
+/* Kontenery kart starszych komponentów: jasne, cienkie, bez neumorfizmu */
+.crmx .eos-lux-panel,
+.crmx .eos-crm-section-panel,
+.crmx .eos-pro-panel {
+  background: var(--x-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--x-line) !important;
+  border-radius: var(--x-radius) !important;
+  box-shadow: var(--x-shadow) !important;
+}
+.crmx .eos-portal-label { font-family: var(--eos-font-text) !important; letter-spacing: 0.14em !important; color: var(--x-ink-3) !important; }
+.crmx .text-emerald-500, .crmx .text-emerald-600, .crmx .text-emerald-700 { color: var(--x-good) !important; }

@@ -18,7 +18,7 @@ export default function ContactAttachmentBubble({ attachment, isMe }: Props) {
   const displayName = formatContactAttachmentName(attachment.name);
   const linkClass = isMe
     ? "text-black/80 hover:text-black"
-    : "text-emerald-500 hover:text-emerald-300";
+    : "text-[#a8844c] hover:text-emerald-300";
 
   if (kind === "image") {
     return (
@@ -46,7 +46,7 @@ export default function ContactAttachmentBubble({ attachment, isMe }: Props) {
     return (
       <div className="mt-2 w-full min-w-[220px] max-w-[300px] rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-3 shadow-sm">
         <div className="mb-2 flex min-w-0 items-center gap-2.5">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-600">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#a8844c]/15 text-[#a8844c]">
             <Music className="size-4" />
           </div>
           <div className="min-w-0 flex-1">

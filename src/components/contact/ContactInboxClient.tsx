@@ -52,7 +52,18 @@ type CurrentUser = { id: number; name?: string | null };
 const ACCEPTED_FILE_TYPES =
   "image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar,.7z,.gif,.mp3,.mp4,.mov,.webm";
 
-export default function ContactInboxClient({ currentUser }: { currentUser: CurrentUser }) {
+export default function ContactInboxClient({
+  currentUser,
+  basePath = "/moje-konto/wiadomosci",
+  embedded = false,
+}: {
+  currentUser: CurrentUser;
+  /** Adres, pod którym działa skrzynka (osobna strona albo zakładka CRM). */
+  basePath?: string;
+  /** Wewnątrz CRM: bez własnego nagłówka i przycisku „Wróć”. */
+  embedded?: boolean;
+}) {
+  const withQuery = (q: string) => `${basePath}${basePath.includes("?") ? "&" : "?"}${q}`;
   const router = useRouter();
   const searchParams = useSearchParams();
   const [threads, setThreads] = useState<ContactThreadRow[]>([]);
@@ -108,8 +119,8 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       router.push(from);
       return;
     }
-    router.replace("/moje-konto/wiadomosci");
-  }, [router, searchParams]);
+    router.replace(basePath);
+  }, [router, searchParams, basePath]);
 
   const usageBytes = attachmentsInfo?.usageBytes ?? 0;
   const limitBytes = attachmentsInfo?.limitBytes ?? MAX_CONTACT_THREAD_BYTES;
@@ -181,13 +192,13 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
 
   const navigateToThread = useCallback(
     (threadId: number, peerUserId: number, opts?: { replace?: boolean }) => {
-      const url = `/moje-konto/wiadomosci?thread=${threadId}&peer=${peerUserId}`;
+      const url = withQuery(`thread=${threadId}&peer=${peerUserId}`);
       // Otwarcie rozmowy robi efekt na zmianę adresu — tu tylko nawigujemy (dawniej rozmowa ładowała się dwa razy).
       if (threadId === activeThreadId) return;
       if (opts?.replace) router.replace(url);
       else router.push(url);
     },
-    [activeThreadId, router]
+    [activeThreadId, router, basePath] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   useEffect(() => {
@@ -386,7 +397,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
       setActiveThreadId(null);
       setMessages([]);
       setAttachmentsInfo(null);
-      router.replace("/moje-konto/wiadomosci");
+      router.replace(basePath);
       await loadThreads();
     } catch (err: unknown) {
       window.alert(err instanceof Error ? err.message : "Błąd usuwania.");
@@ -403,8 +414,14 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
   };
 
   return (
-    <div className="theme-aware-dashboard mx-auto flex h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] max-w-6xl flex-col gap-3 overflow-hidden px-4 py-4 md:py-6">
-      <div className="flex shrink-0 items-center gap-3">
+    <div
+      className={
+        embedded
+          ? "flex h-[calc(100dvh-14rem)] min-h-[560px] flex-col gap-3 overflow-hidden"
+          : "theme-aware-dashboard mx-auto flex h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] max-w-6xl flex-col gap-3 overflow-hidden px-4 py-4 md:py-6"
+      }
+    >
+      <div className={embedded ? "hidden" : "flex shrink-0 items-center gap-3"}>
         <button
           type="button"
           onClick={handlePageBack}
@@ -414,7 +431,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           <ArrowLeft className="size-5" />
         </button>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">EstateOS™ Contact</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#a8844c]">EstateOS™ Contact</p>
           <h1 className="text-xl font-black tracking-tight text-[var(--eos-text)] md:text-2xl">Wiadomości bezpośrednie</h1>
         </div>
       </div>
@@ -436,13 +453,13 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                   value={findUserId}
                   onChange={(e) => setFindUserId(e.target.value.replace(/\D/g, ""))}
                   placeholder="np. 55"
-                  className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-2.5 pl-9 pr-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/40"
+                  className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] py-2.5 pl-9 pr-3 text-sm text-[var(--eos-text)] outline-none focus:border-[#a8844c]/40"
                 />
               </div>
               <button
                 type="submit"
                 disabled={findLoading}
-                className="rounded-xl bg-emerald-500 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-60"
+                className="rounded-xl bg-[#a8844c] px-3 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-60"
               >
                 {findLoading ? <Loader2 className="size-4 animate-spin" /> : "Dodaj"}
               </button>
@@ -453,7 +470,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
             {loadingThreads ? (
               <div className="flex items-center justify-center p-10">
-                <Loader2 className="size-6 animate-spin text-emerald-500" />
+                <Loader2 className="size-6 animate-spin text-[#a8844c]" />
               </div>
             ) : threads.length === 0 ? (
               <div className="p-8 text-center text-sm text-[var(--eos-muted)]">
@@ -471,7 +488,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       navigateToThread(thread.id, thread.peerUserId);
                     }}
                     className={`flex w-full items-center gap-3 border-b border-[var(--eos-border)] px-4 py-3 text-left transition-colors ${
-                      selected ? "bg-emerald-500/10" : "hover:bg-[var(--eos-input)]"
+                      selected ? "bg-[#a8844c]/10" : "hover:bg-[var(--eos-input)]"
                     }`}
                   >
                     <div className="relative size-10 shrink-0 overflow-visible">
@@ -484,7 +501,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       </div>
                       {Boolean(thread.peerIsOnline ?? thread.peer?.isOnline) ? (
                         <span
-                          className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-[var(--eos-card)] bg-emerald-500"
+                          className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-[var(--eos-card)] bg-[#a8844c]"
                           aria-label="Online"
                         />
                       ) : null}
@@ -501,7 +518,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       <p
                         className={`truncate text-[11px] font-semibold ${
                           thread.peerIsOnline ?? thread.peer?.isOnline
-                            ? "text-emerald-500"
+                            ? "text-[#a8844c]"
                             : "text-[var(--eos-subtle)]"
                         }`}
                       >
@@ -552,8 +569,8 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
           {!activeThread ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-4 p-10 text-center">
               <div className="relative flex size-20 items-center justify-center rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-surface)] shadow-[var(--eos-shadow-soft)]">
-                <span className="absolute inset-0 animate-ping rounded-[1.75rem] bg-emerald-500/10 [animation-duration:2.6s]" />
-                <MessageCircle className="relative size-8 text-emerald-500" />
+                <span className="absolute inset-0 animate-ping rounded-[1.75rem] bg-[#a8844c]/10 [animation-duration:2.6s]" />
+                <MessageCircle className="relative size-8 text-[#a8844c]" />
               </div>
               <div>
                 <p className="text-base font-bold tracking-tight text-[var(--eos-text)]">Twoje rozmowy</p>
@@ -580,7 +597,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       <p
                         className={`text-[10px] font-semibold uppercase tracking-widest ${
                           activeThread.peerIsOnline ?? activeThread.peer?.isOnline
-                            ? "text-emerald-500"
+                            ? "text-[#a8844c]"
                             : "text-[var(--eos-subtle)]"
                         }`}
                       >
@@ -600,7 +617,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="hidden items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-500 sm:flex">
+                    <span className="hidden items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-[#a8844c] sm:flex">
                       <ShieldCheck className="size-3.5" /> Contact
                     </span>
                     <button
@@ -616,7 +633,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
 
                 <DiscoveryContactWhisper
                   beforeContact={false}
-                  className="mt-3 border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-text)] [&_a]:text-emerald-600 [&_p]:text-[var(--eos-muted)]"
+                  className="mt-3 border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-text)] [&_a]:text-[#a8844c] [&_p]:text-[var(--eos-muted)]"
                 />
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -630,7 +647,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     <div className="h-1.5 overflow-hidden rounded-full bg-[var(--eos-input)]">
                       <div
                         className={`h-full rounded-full transition-all ${
-                          usagePct > 90 ? "bg-red-500" : usagePct > 70 ? "bg-amber-400" : "bg-emerald-500"
+                          usagePct > 90 ? "bg-red-500" : usagePct > 70 ? "bg-amber-400" : "bg-[#a8844c]"
                         }`}
                         style={{ width: `${usagePct}%` }}
                       />
@@ -677,7 +694,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                               rel="noopener noreferrer"
                               className="flex items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 transition hover:bg-[var(--eos-input)]"
                             >
-                              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-500">
+                              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#a8844c]/15 text-[#a8844c]">
                                 <FileText className="size-4" />
                               </div>
                               <div className="min-w-0">
@@ -703,7 +720,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
               >
                 {loadingMessages ? (
                   <div className="flex justify-center py-10">
-                    <Loader2 className="size-6 animate-spin text-emerald-500" />
+                    <Loader2 className="size-6 animate-spin text-[#a8844c]" />
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -733,7 +750,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                               <div
                                 className={`px-4 py-3 ${
                                   isMe
-                                    ? "rounded-[1.4rem] rounded-br-md bg-gradient-to-b from-emerald-400 to-emerald-600 text-black shadow-[0_10px_28px_-12px_rgba(16,185,129,0.65)]"
+                                    ? "rounded-[1.4rem] rounded-br-md bg-gradient-to-b from-[#c3a06a] to-[#a8844c] text-black shadow-[0_10px_28px_-12px_rgba(16,185,129,0.65)]"
                                     : "rounded-[1.4rem] rounded-bl-md border border-[var(--eos-border)] bg-[var(--eos-surface)] text-[var(--eos-text)] shadow-[var(--eos-shadow-soft)]"
                                 }`}
                               >
@@ -780,7 +797,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                                 key={delay}
                                 animate={{ y: [0, -4, 0] }}
                                 transition={{ duration: 0.6, repeat: Infinity, delay }}
-                                className="size-1.5 rounded-full bg-emerald-500/70"
+                                className="size-1.5 rounded-full bg-[#a8844c]/70"
                               />
                             ))}
                           </div>
@@ -800,7 +817,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                       onClick={handleJumpToBottom}
                       className="sticky bottom-4 left-1/2 z-10 mx-auto flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--eos-text)] shadow-[0_8px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition hover:bg-[#1a1a1a]"
                     >
-                      <ArrowDown className="size-3.5 text-emerald-500" />
+                      <ArrowDown className="size-3.5 text-[#a8844c]" />
                       Na dół
                     </motion.button>
                   ) : null}
@@ -812,8 +829,8 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                 className="shrink-0 border-t border-[var(--eos-border)] bg-[var(--eos-card)] p-4 md:p-5"
               >
                 {pendingFile ? (
-                  <div className="mx-auto mb-3 flex max-w-3xl items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5">
-                    <Paperclip className="size-4 shrink-0 text-emerald-500" />
+                  <div className="mx-auto mb-3 flex max-w-3xl items-center gap-3 rounded-2xl border border-[#a8844c]/25 bg-[#a8844c]/10 px-4 py-2.5">
+                    <Paperclip className="size-4 shrink-0 text-[#a8844c]" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-semibold text-[var(--eos-text)]">{pendingFile.name}</p>
                       <p className="text-[10px] text-[var(--eos-muted)]">{formatContactBytes(pendingFile.size)}</p>
@@ -832,7 +849,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                   </div>
                 ) : null}
 
-                <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2 shadow-[var(--eos-shadow-soft)] focus-within:border-emerald-500/40">
+                <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-[2rem] border border-[var(--eos-border)] bg-[var(--eos-surface)] p-2 shadow-[var(--eos-shadow-soft)] focus-within:border-[#a8844c]/40">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -846,7 +863,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={sending || uploading}
-                    className="flex size-11 shrink-0 items-center justify-center rounded-full text-[var(--eos-muted)] transition hover:bg-[var(--eos-input)] hover:text-emerald-500 disabled:opacity-40"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full text-[var(--eos-muted)] transition hover:bg-[var(--eos-input)] hover:text-[#a8844c] disabled:opacity-40"
                     aria-label="Dodaj załącznik"
                   >
                     {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-5" />}
@@ -861,7 +878,7 @@ export default function ContactInboxClient({ currentUser }: { currentUser: Curre
                   <button
                     type="submit"
                     disabled={(!draft.trim() && !pendingFile) || sending || uploading}
-                    className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-black transition hover:bg-emerald-400 disabled:opacity-40"
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#a8844c] text-black transition hover:bg-[#a8844c] disabled:opacity-40"
                     aria-label="Wyślij"
                   >
                     {sending ? <Loader2 className="size-5 animate-spin" /> : <Send className="size-5" />}

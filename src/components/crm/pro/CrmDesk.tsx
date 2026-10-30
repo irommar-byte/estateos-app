@@ -112,8 +112,8 @@ function useNow(intervalMs = 1000) {
   return now;
 }
 
-/** Biurko agenta: zegar z datą, kalendarz miesiąca i szybka notatka na wybrany dzień z planem dnia. */
-export default function CrmDesk() {
+/** Wspólny stan biurka: miesiąc, wybrany dzień, notatki i spotkania. */
+export function useDesk() {
   const now = useNow();
   const [monthOffset, setMonthOffset] = useState(0);
   const [selected, setSelected] = useState(() => iso(new Date()));
@@ -174,6 +174,33 @@ export default function CrmDesk() {
     }
   }, [notes, selected, text]);
 
+  return { now, monthOffset, setMonthOffset, selected, setSelected, notes, text, setText, saved, setSaved, save, events, view, y, mo };
+}
+type Desk = ReturnType<typeof useDesk>;
+
+export function DeskClock({ desk }: { desk: Desk }) {
+  const { now } = desk;
+  return (
+    <div className="crmx-desk__clock">
+      <div className="crmx-desk__head w-full">
+        <p className="crmx-desk__month">Czas</p>
+        <span className="crmx-desk__hint">Warszawa · tydzień {isoWeek(now)}</span>
+      </div>
+      <DeskWatch />
+      <div className="min-w-0">
+        <p className="crmx-desk__time">
+          {now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
+          <span>{String(now.getSeconds()).padStart(2, '0')}</span>
+        </p>
+        <p className="crmx-desk__day">{now.toLocaleDateString('pl-PL', { weekday: 'long' })}</p>
+        <p className="crmx-desk__date">{now.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+      </div>
+    </div>
+  );
+}
+
+export function DeskCalendar({ desk }: { desk: Desk }) {
+  const { now, monthOffset, setMonthOffset, selected, setSelected, notes, events, view, y, mo } = desk;
   const firstDay = (new Date(y, mo, 1).getDay() + 6) % 7;
   const daysIn = new Date(y, mo + 1, 0).getDate();
   const cells = Array.from({ length: 42 }, (_, i) => {
@@ -181,91 +208,79 @@ export default function CrmDesk() {
     return d > 0 && d <= daysIn ? d : null;
   });
   const todayKey = iso(now);
-  const eventDays = useMemo(() => new Set(events.map((e) => warsawKey(e.startsAt))), [events]);
-  const noteDays = useMemo(() => new Set(notes.filter((n) => n.text?.trim()).map((n) => n.date)), [notes]);
-  const dayEvents = events.filter((e) => warsawKey(e.startsAt) === selected).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
-  const selDate = new Date(`${selected}T12:00:00`);
-
+  const eventDays = new Set(events.map((e) => warsawKey(e.startsAt)));
+  const noteDays = new Set(notes.filter((n) => n.text?.trim()).map((n) => n.date));
   return (
-    <section className="crmx-desk">
-      <div className="crmx-desk__clock">
-        <DeskWatch />
-        <div className="min-w-0">
-          <p className="crmx-desk__time">
-            {now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}
-            <span>{String(now.getSeconds()).padStart(2, '0')}</span>
-          </p>
-          <p className="crmx-desk__day">{now.toLocaleDateString('pl-PL', { weekday: 'long' })}</p>
-          <p className="crmx-desk__date">
-            {now.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })}
-          </p>
-          <p className="crmx-desk__meta">Tydzień {isoWeek(now)} · Warszawa</p>
+    <div className="crmx-desk__cal">
+      <div className="crmx-desk__head">
+        <p className="crmx-desk__month">{view.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}</p>
+        <div className="flex gap-1">
+          <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--icon" onClick={() => setMonthOffset((v) => v - 1)} aria-label="Poprzedni miesiąc"><ChevronLeft size={14} /></button>
+          {monthOffset !== 0 ? (
+            <button type="button" className="crmx-btn crmx-btn--sm" onClick={() => { setMonthOffset(0); setSelected(iso(new Date())); }}>Dziś</button>
+          ) : null}
+          <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--icon" onClick={() => setMonthOffset((v) => v + 1)} aria-label="Następny miesiąc"><ChevronRight size={14} /></button>
         </div>
       </div>
+      <div className="crmx-desk__grid">
+        {WEEKDAYS.map((w) => <span key={w} className="crmx-desk__wd">{w}</span>)}
+        {cells.map((d, i) => {
+          if (!d) return <span key={i} />;
+          const key = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const cls = ['crmx-desk__d', key === todayKey ? 'is-today' : '', key === selected ? 'is-sel' : ''].join(' ');
+          return (
+            <button key={i} type="button" className={cls} onClick={() => setSelected(key)}>
+              {d}
+              <span className="crmx-desk__marks">
+                {eventDays.has(key) ? <i className="ev" /> : null}
+                {noteDays.has(key) ? <i className="nt" /> : null}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="crmx-desk__legend"><i className="ev" /> spotkanie <i className="nt" /> notatka</p>
+    </div>
+  );
+}
 
-      <div className="crmx-desk__cal">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="crmx-desk__month">{view.toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}</p>
-          <div className="flex gap-1">
-            <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--icon" onClick={() => setMonthOffset((v) => v - 1)} aria-label="Poprzedni miesiąc"><ChevronLeft size={14} /></button>
-            {monthOffset !== 0 ? (
-              <button type="button" className="crmx-btn crmx-btn--sm" onClick={() => { setMonthOffset(0); setSelected(iso(new Date())); }}>Dziś</button>
-            ) : null}
-            <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--icon" onClick={() => setMonthOffset((v) => v + 1)} aria-label="Następny miesiąc"><ChevronRight size={14} /></button>
-          </div>
-        </div>
-        <div className="crmx-desk__grid">
-          {WEEKDAYS.map((w) => <span key={w} className="crmx-desk__wd">{w}</span>)}
-          {cells.map((d, i) => {
-            if (!d) return <span key={i} />;
-            const key = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-            const cls = ['crmx-desk__d', key === todayKey ? 'is-today' : '', key === selected ? 'is-sel' : ''].join(' ');
-            return (
-              <button key={i} type="button" className={cls} onClick={() => setSelected(key)}>
-                {d}
-                <span className="crmx-desk__marks">
-                  {eventDays.has(key) ? <i className="ev" /> : null}
-                  {noteDays.has(key) ? <i className="nt" /> : null}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="crmx-desk__legend"><i className="ev" /> spotkanie <i className="nt" /> notatka</p>
+export function DeskNotes({ desk }: { desk: Desk }) {
+  const { now, selected, text, setText, saved, setSaved, save, events } = desk;
+  const todayKey = iso(now);
+  const selDate = new Date(`${selected}T12:00:00`);
+  const dayEvents = events.filter((e) => warsawKey(e.startsAt) === selected).sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  return (
+    <div className="crmx-desk__note">
+      <p className="crmx-desk__month">
+        {selected === todayKey ? 'Dziś' : selDate.toLocaleDateString('pl-PL', { weekday: 'long' })}
+        <span>{selDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })}</span>
+      </p>
+      {dayEvents.length ? (
+        <ul className="crmx-desk__events">
+          {dayEvents.map((e) => (
+            <li key={e.id}>
+              <b>{new Date(e.startsAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</b>
+              <span>{e.title}{e.location ? ` · ${e.location}` : ''}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="crmx-desk__free">Bez spotkań tego dnia.</p>
+      )}
+      <textarea
+        value={text}
+        onChange={(e) => { setText(e.target.value); setSaved('idle'); }}
+        onBlur={() => void save()}
+        placeholder="Notatka na ten dzień — telefon, ustalenia, przypomnienie…"
+        className="crmx-desk__textarea"
+        rows={6}
+      />
+      <div className="mt-2 flex items-center justify-between">
+        <span className="text-[11.5px] crmx-muted">
+          {saved === 'saving' ? 'Zapisuję…' : saved === 'saved' ? <><Check size={12} className="inline" /> Zapisano</> : 'Zapisuje się samo po kliknięciu obok'}
+        </span>
+        <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--primary" onClick={() => void save()}>Zapisz</button>
       </div>
-
-      <div className="crmx-desk__note">
-        <p className="crmx-desk__month">
-          {selected === todayKey ? 'Dziś' : selDate.toLocaleDateString('pl-PL', { weekday: 'long' })}
-          <span>{selDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long' })}</span>
-        </p>
-        {dayEvents.length ? (
-          <ul className="crmx-desk__events">
-            {dayEvents.map((e) => (
-              <li key={e.id}>
-                <b>{new Date(e.startsAt).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</b>
-                <span>{e.title}{e.location ? ` · ${e.location}` : ''}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="crmx-desk__free">Bez spotkań tego dnia.</p>
-        )}
-        <textarea
-          value={text}
-          onChange={(e) => { setText(e.target.value); setSaved('idle'); }}
-          onBlur={() => void save()}
-          placeholder="Szybka notatka na ten dzień…"
-          className="crmx-desk__textarea"
-          rows={4}
-        />
-        <div className="mt-2 flex items-center justify-between">
-          <span className="text-[11.5px] crmx-muted">
-            {saved === 'saving' ? 'Zapisuję…' : saved === 'saved' ? <><Check size={12} className="inline" /> Zapisano</> : 'Zapisuje się samo po kliknięciu obok'}
-          </span>
-          <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--primary" onClick={() => void save()}>Zapisz notatkę</button>
-        </div>
-      </div>
-    </section>
+    </div>
   );
 }

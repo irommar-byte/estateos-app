@@ -15,6 +15,8 @@ import {
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { dayLabel, daysSince, initials, pln, relative, timeHM } from './format';
 import type { CrmProTab } from './CrmProRail';
+import { DeskCalendar, DeskClock, DeskNotes, useDesk } from './CrmDesk';
+import CrmMarketPulse from './CrmMarketPulse';
 
 type TodayPayload = {
   counts: Record<string, number>;
@@ -115,6 +117,7 @@ export default function CrmPulpit({
 }) {
   const today = useToday();
   const deals = useAgentDeals();
+  const desk = useDesk();
   const [fetchedClients, setFetchedClients] = useState<{ buyers: number; sellers: number } | null>(null);
   useEffect(() => {
     if (clientsCount) return;
@@ -206,17 +209,16 @@ export default function CrmPulpit({
 
   return (
     <div className="space-y-5">
-      <div className="crmx-kpis">
-        {kpis.map((k) => (
-          <button key={k.label} type="button" className={`crmx-kpi ${k.accent ? 'crmx-kpi--accent' : ''}`} onClick={() => onNavigate(k.tab)}>
-            <p className="crmx-kpi__label">{k.label}</p>
-            <p className="crmx-kpi__value">{k.value}</p>
-            <p className="crmx-kpi__hint">{k.hint}</p>
-          </button>
-        ))}
-      </div>
+      <section className="crmx-desk crmx-desk--band">
+        <DeskClock desk={desk} />
+        <CrmMarketPulse />
+        <DeskCalendar desk={desk} />
+      </section>
 
-      <div className="crmx-grid-2">
+      <div className="crmx-row2">
+        <section className="crmx-card crmx-desk--notes">
+          <DeskNotes desk={desk} />
+        </section>
         <section className="crmx-card">
           <header className="crmx-card__head">
             <h3 className="crmx-card__title"><CheckCircle2 /> Czeka na Twój ruch</h3>
@@ -241,36 +243,19 @@ export default function CrmPulpit({
             )}
           </div>
         </section>
-
-        <section className="crmx-card">
-          <header className="crmx-card__head">
-            <h3 className="crmx-card__title"><CalendarClock /> Najbliższe spotkania</h3>
-            <button type="button" className="crmx-link" onClick={() => onNavigate('planowanie')}>Kalendarz →</button>
-          </header>
-          <div className="crmx-list">
-            {!today ? (
-              <p className="crmx-empty">Ładowanie…</p>
-            ) : upcoming.length === 0 ? (
-              <p className="crmx-empty">Brak zaplanowanych spotkań.</p>
-            ) : (
-              upcoming.map((s) => (
-                <button key={s.id} type="button" className="crmx-row" onClick={() => (s.clientId ? onOpenClient(s.clientId) : onNavigate('planowanie'))}>
-                  <span className="text-center" style={{ minWidth: 52 }}>
-                    <span className="block text-[10.5px] font-bold uppercase tracking-[0.1em] crmx-muted">{dayLabel(s.startsAt)}</span>
-                    <span className="crmx-time block">{timeHM(s.startsAt)}</span>
-                  </span>
-                  <span className="crmx-row__main">
-                    <span className="crmx-row__title block">{s.title}</span>
-                    <span className="crmx-row__sub block">{[s.subtitle, s.location].filter(Boolean).join(' · ')}</span>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </section>
       </div>
 
-      <div className="crmx-grid-2">
+      <div className="crmx-kpis">
+        {kpis.map((k) => (
+          <button key={k.label} type="button" className={`crmx-kpi ${k.accent ? 'crmx-kpi--accent' : ''}`} onClick={() => onNavigate(k.tab)}>
+            <p className="crmx-kpi__label">{k.label}</p>
+            <p className="crmx-kpi__value">{k.value}</p>
+            <p className="crmx-kpi__hint">{k.hint}</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="crmx-grid-3">
         <section className="crmx-card">
           <header className="crmx-card__head">
             <h3 className="crmx-card__title"><ArrowLeftRight /> Transakcje w toku</h3>
@@ -297,7 +282,32 @@ export default function CrmPulpit({
             )}
           </div>
         </section>
-
+        <section className="crmx-card">
+          <header className="crmx-card__head">
+            <h3 className="crmx-card__title"><CalendarClock /> Najbliższe spotkania</h3>
+            <button type="button" className="crmx-link" onClick={() => onNavigate('planowanie')}>Kalendarz →</button>
+          </header>
+          <div className="crmx-list">
+            {!today ? (
+              <p className="crmx-empty">Ładowanie…</p>
+            ) : upcoming.length === 0 ? (
+              <p className="crmx-empty">Brak zaplanowanych spotkań.</p>
+            ) : (
+              upcoming.map((s) => (
+                <button key={s.id} type="button" className="crmx-row" onClick={() => (s.clientId ? onOpenClient(s.clientId) : onNavigate('planowanie'))}>
+                  <span className="text-center" style={{ minWidth: 52 }}>
+                    <span className="block text-[10.5px] font-bold uppercase tracking-[0.1em] crmx-muted">{dayLabel(s.startsAt)}</span>
+                    <span className="crmx-time block">{timeHM(s.startsAt)}</span>
+                  </span>
+                  <span className="crmx-row__main">
+                    <span className="crmx-row__title block">{s.title}</span>
+                    <span className="crmx-row__sub block">{[s.subtitle, s.location].filter(Boolean).join(' · ')}</span>
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        </section>
         <section className="crmx-card">
           <header className="crmx-card__head">
             <h3 className="crmx-card__title"><Building2 /> Ogłoszenia do dopracowania</h3>

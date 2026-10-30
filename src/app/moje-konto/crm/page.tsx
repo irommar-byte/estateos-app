@@ -29,9 +29,11 @@ import CrmClientsWorkspace from "@/components/crm/CrmClientsWorkspace";
 import CrmMyOffersBoard from "@/components/crm/CrmMyOffersBoard";
 import CrmProRail, { type CrmProTab } from "@/components/crm/pro/CrmProRail";
 import CrmPulpit from "@/components/crm/pro/CrmPulpit";
-import CrmDesk from "@/components/crm/pro/CrmDesk";
+import ContactInboxClient from "@/components/contact/ContactInboxClient";
 import CrmListingsPro from "@/components/crm/pro/CrmListingsPro";
 import CrmDealsPro from "@/components/crm/pro/CrmDealsPro";
+import CrmPlanner from "@/components/crm/pro/CrmPlanner";
+import CrmAppointmentSheet from "@/components/crm/pro/CrmAppointmentSheet";
 import { greeting as crmGreeting } from "@/components/crm/pro/format";
 import {
   classifyListingSection,
@@ -66,7 +68,7 @@ import { parseDealEvent } from "@/components/crm/dealRoomUtils";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
 
-type CrmTab = "pulpit" | "klienci" | "radar" | "my_offers" | "offers" | "planowanie" | "transakcje";
+type CrmTab = "pulpit" | "klienci" | "wiadomosci" | "radar" | "my_offers" | "offers" | "planowanie" | "transakcje";
 
 const WowOverlay = ({
   type,
@@ -832,7 +834,7 @@ export default function CRMDashboard() {
     const sParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     if (sParams && sParams.get('tab')) {
         const t = sParams.get('tab');
-        if (['pulpit', 'klienci', 'radar', 'my_offers', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
+        if (['pulpit', 'klienci', 'wiadomosci', 'radar', 'my_offers', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
             setActiveTab(t as CrmTab);
         }
     }
@@ -1010,8 +1012,9 @@ export default function CRMDashboard() {
   if (loading) {
     if (deskLaunching) return null;
     return (
-      <div className="min-h-screen bg-[var(--eos-bg)] flex items-center justify-center">
-        <Loader2 className="animate-spin text-emerald-500" />
+      <div className="crmx crm-dashboard-shell flex min-h-screen flex-col items-center justify-center gap-3">
+        <Loader2 className="animate-spin" style={{ color: "var(--x-gold)" }} />
+        <p className="crmx-kicker">EstateOS™ CRM</p>
       </div>
     );
   }
@@ -1198,8 +1201,8 @@ export default function CRMDashboard() {
 
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
   const profileTabs: CrmTab[] = isAgencyWorkspace
-    ? ["pulpit", "klienci", "my_offers", "transakcje", "planowanie", "offers"]
-    : ["radar", "my_offers", "offers", "planowanie", "transakcje"];
+    ? ["pulpit", "klienci", "wiadomosci", "my_offers", "transakcje", "planowanie", "offers"]
+    : ["radar", "wiadomosci", "my_offers", "offers", "planowanie", "transakcje"];
 
   return (
     <div className="crmx theme-aware-dashboard crm-dashboard-shell eos-page-shell min-h-screen bg-[var(--eos-bg)] text-[var(--eos-text)] px-3 sm:px-6 pb-24 sm:pb-40 font-sans relative overflow-x-hidden">
@@ -1303,6 +1306,7 @@ export default function CRMDashboard() {
             <div>
               <p className="crmx-kicker">
                 {activeTab === "klienci" && "Klienci"}
+                {activeTab === "wiadomosci" && "Wiadomości"}
                 {activeTab === "radar" && "Radar"}
                 {activeTab === "my_offers" && "Ogłoszenia"}
                 {activeTab === "offers" && "Ulubione"}
@@ -1311,6 +1315,7 @@ export default function CRMDashboard() {
               </p>
               <h2 className="crmx-display crmx-h2 mt-1.5">
                 {activeTab === "klienci" && <>Kupujący i <em>sprzedający</em></>}
+                {activeTab === "wiadomosci" && <>Rozmowy <em>bezpośrednie</em></>}
                 {activeTab === "radar" && <>Radar <em>inwestycji</em></>}
                 {activeTab === "my_offers" && <>Twoje <em>nieruchomości</em></>}
                 {activeTab === "offers" && <>Zapisane <em>oferty</em></>}
@@ -1318,6 +1323,7 @@ export default function CRMDashboard() {
                 {activeTab === "transakcje" && <>Lejek <em>transakcji</em></>}
               </h2>
               <p className="crmx-sub mt-1 max-w-2xl">
+                {activeTab === "wiadomosci" && "Wszystkie rozmowy z klientami, agentami i kupującymi — z załącznikami i powiadomieniami."}
                 {activeTab === "klienci" && "Karty klientów, dopasowania, prezentacje i komunikacja — wszystko przy jednej osobie."}
                 {activeTab === "radar" && (showDualRadarPro ? c.radarDescPro : c.radarDesc)}
                 {activeTab === "my_offers" && "Każde ogłoszenie z ceną, zasięgiem i kupującymi w procesie. Kliknij wiersz, żeby zobaczyć szczegóły i działać."}
@@ -1331,7 +1337,6 @@ export default function CRMDashboard() {
 
         {activeTab === 'pulpit' && (
           <div className="space-y-8">
-            <CrmDesk />
             <CrmPulpit
               offers={crmData.offers || []}
               clientsCount={null}
@@ -1339,48 +1344,20 @@ export default function CRMDashboard() {
               onOpenClient={openClientFromAnywhere}
               onOpenOffer={openOfferFromAnywhere}
             />
-            <section>
-              <p className="crmx-kicker mb-3">Narzędzia i profil</p>
-              <div className="space-y-5">
-                <CrmIdentityHeader
-                  personName={personName}
-                  accountPrimary={accountHeadlines.primary}
-                  accountSecondary={accountHeadlines.secondary}
-                  avatarSrc={avatarSrc}
-                  avatarInitial={avatarInitial}
-                  currentUser={currentUser}
-                  userId={currentUser?.id}
-                  isDarkTheme={isDarkTheme}
-                  verificationStatus={verificationStatus}
-                  verificationLabels={{
-                    verifiedBadge: c.verification.verifiedBadge,
-                    confirmEmail: c.verification.confirmEmail,
-                    confirmPhone: c.verification.confirmPhone,
-                    seeProfile: c.seeProfile,
-                    reviewsNone: c.reviewsNone,
-                    userIdLabel: c.userIdLabel,
-                  }}
-                  reviewsData={reviewsData}
-                  reviewsLoading={reviewsLoading}
-                  onOpenReviews={() => setIsReviewsModalOpen(true)}
-                  membership={agencyMembership}
-                  isAgencyWorkspace={!!isAgencyWorkspace}
-                  onPasskeyRefresh={refreshCurrentUserFromBackend}
-                />
-                <div className="grid max-w-md grid-cols-1 gap-4">
-                  <OpenHouseProCard
-                    activeOffers={activeOffersForProTools}
-                    onChanged={() => {
-                      if (currentUser?.id) void fetchData(currentUser.id);
-                    }}
-                  />
-                </div>
-              </div>
-            </section>
           </div>
         )}
 
         {activeTab === 'klienci' && <CrmClientsWorkspace />}
+
+        {activeTab === 'wiadomosci' && currentUser?.id ? (
+          <Suspense fallback={<div className="crmx-card crmx-empty">Ładowanie wiadomości…</div>}>
+            <ContactInboxClient
+              embedded
+              basePath="/moje-konto/crm?tab=wiadomosci"
+              currentUser={{ id: Number(currentUser.id), name: currentUser.name || null }}
+            />
+          </Suspense>
+        ) : null}
 
         {activeTab === 'radar' && (
           <div className="flex flex-col gap-8 mb-12">
@@ -1678,228 +1655,51 @@ export default function CRMDashboard() {
 
       
         {activeTab === 'planowanie' && currentUser?.id && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            <PlanningPresentationCalendar
-              appointments={crmData.appointments || []}
-              contacts={crmData.contacts || []}
-              currentUserId={Number(currentUser.id)}
-              onManage={(app) => {
-                if (String(app.type || "").toUpperCase() === "ACQUISITION" && app.clientId) {
-                  setActiveTab("klienci");
-                  window.dispatchEvent(new CustomEvent("crm-open-client", { detail: { clientId: app.clientId } }));
-                  return;
-                }
-                setManagingApp(app);
-              }}
-              onViewProfile={(user) => void openCounterpartyProfile(user)}
-            />
-          </motion.div>
+          <CrmPlanner
+            appointments={crmData.appointments || []}
+            contacts={crmData.contacts || []}
+            currentUserId={Number(currentUser.id)}
+            onManage={(app) => {
+              // Prezentacje i pozyskania z CRM prowadzi karta klienta (tam są ich akcje); terminy z Dealroomu — panel terminu.
+              const fromCrm = app.source === "presentation" || app.source === "acquisition" || Number(app.id) < 0;
+              if (fromCrm && app.clientId) {
+                openClientFromAnywhere(Number(app.clientId));
+                return;
+              }
+              setManagingApp(app);
+            }}
+          />
         )}
+        {activeTab === 'planowanie' ? (
+          <div className="mt-6 max-w-md">
+            <OpenHouseProCard
+              activeOffers={activeOffersForProTools}
+              onChanged={() => {
+                if (currentUser?.id) void fetchData(currentUser.id);
+              }}
+            />
+          </div>
+        ) : null}
+
         </div>
         </div>
         </div>
 </div>
     
           <AnimatePresence>
-            {managingApp && (() => {
-               const dates = Array.from({ length: 30 }).map((_, i) => { const d = new Date(); d.setDate(d.getDate() + i + 1); return d; });
-               const hours = [];
-               for (let h = 8; h <= 20; h++) { hours.push(`${h.toString().padStart(2, '0')}:00`); if (h !== 20) hours.push(`${h.toString().padStart(2, '0')}:30`); }
-               const myId = Number(currentUser?.id || 0);
-               const enriched = enrichAppointmentForUi(managingApp, myId, crmData.contacts || []);
-               const statusUpper = String(managingApp.status || '').toUpperCase();
-               const isAccepted = statusUpper === 'ACCEPTED';
-               const isPending = statusUpper === 'PENDING';
-               const cp = enriched.counterpartyDisplay;
-               const cpLabel = cp?.name || (cp?.email ? String(cp.email).split('@')[0] : c.planning.counterparty);
-               const refreshPlanning = () => { if (currentUser?.id) void fetchData(currentUser.id); };
-
-               return (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, backgroundColor: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-                 <motion.div initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }} transition={{ type: 'spring', damping: 25, stiffness: 300 }} style={{ backgroundColor: '#0a0a0a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2.5rem', width: '100%', maxWidth: '500px', boxShadow: '0 50px 100px rgba(0,0,0,1)', overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column', maxHeight: '90vh' }}>
-
-                    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '140px', opacity: 0.15, pointerEvents: 'none', filter: 'blur(40px)', backgroundColor: managingApp.status === 'ACCEPTED' ? '#10b981' : '#eab308', transition: 'background-color 0.5s ease' }}></div>
-
-                    <div style={{ padding: '32px', position: 'relative', zIndex: 10, flexShrink: 0 }}>
-                       
-                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                             {isRescheduling && rescheduleStep > 1 ? (
-                                 <button onClick={(e) => { e.preventDefault(); setRescheduleStep(rescheduleStep - 1); }} style={{ width: '48px', height: '48px', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', color: '#fff' }}>
-                                    <ChevronLeft size={24} />
-                                 </button>
-                             ) : (
-                                 <div style={{ width: '48px', height: '48px', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: managingApp.status === 'ACCEPTED' ? 'rgba(16,185,129,0.1)' : 'rgba(234,179,8,0.1)', border: `1px solid ${managingApp.status === 'ACCEPTED' ? 'rgba(16,185,129,0.3)' : 'rgba(234,179,8,0.3)'}`, transition: 'all 0.5s ease' }}>
-                                    <span style={{ fontSize: '24px', color: managingApp.status === 'ACCEPTED' ? '#10b981' : '#eab308' }}>{managingApp.status === 'ACCEPTED' ? '✓' : '⏱️'}</span>
-                                 </div>
-                             )}
-                             <div>
-                                <h3 style={{ fontSize: '20px', fontWeight: '900', color: '#fff', margin: 0, letterSpacing: '-0.05em' }}>
-                                    {isRescheduling ? (rescheduleStep === 1 ? c.planning.stepDay : rescheduleStep === 2 ? c.planning.stepTime : c.planning.stepSend) : (isAccepted ? c.planning.confirmed : c.planning.proposed)}
-                                </h3>
-                                <p style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: isAccepted ? '#10b981' : '#D4AF37', margin: '4px 0 0 0' }}>{isRescheduling ? c.planning.stepOf.replace('{n}', String(rescheduleStep)) : enriched.offerTitle}</p>
-                             </div>
-                          </div>
-                          <motion.button whileHover={{ scale: 1.1, backgroundColor: 'rgba(255,255,255,0.1)' }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setManagingApp(null); setIsRescheduling(false); setRescheduleStep(1); }} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: '14px', transition: 'background-color 0.2s' }}>✕</motion.button>
-                       </div>
-
-                       <AnimatePresence>
-                          {!isRescheduling && (
-                             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0, overflow: 'hidden' }} style={{ backgroundColor: '#111', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)' }}>{c.planning.dateTime}</span>
-                                   <span style={{ fontSize: '18px', fontWeight: '900', color: '#fff' }}>{new Date(managingApp.proposedDate).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
-                                </div>
-                                <div style={{ width: '100%', height: '1px', backgroundColor: 'rgba(255,255,255,0.05)', marginBottom: '16px' }}></div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>{c.planning.property}</span>
-                                   <div style={{ textAlign: 'right', maxWidth: '70%' }}>
-                                      <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'block' }}>{enriched.offerTitle}</span>
-                                      <span style={{ fontSize: '11px', fontWeight: '600', color: 'rgba(255,255,255,0.55)', display: 'block', marginTop: '4px' }}>
-                                        {isAccepted || enriched.offerAddress ? enriched.offerAddress || '—' : c.planning.addressHidden}
-                                      </span>
-                                      {enriched.offer?.apartmentNumber ? (
-                                        <span style={{ fontSize: '11px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '4px' }}>{c.planning.unitNo} {enriched.offer.apartmentNumber}</span>
-                                      ) : null}
-                                      {enriched.offerId ? (
-                                        <span style={{ fontSize: '10px', fontWeight: '900', color: '#10b981', display: 'block', marginTop: '6px' }}>{c.planning.offerId.replace('{id}', String(enriched.offerId))}</span>
-                                      ) : null}
-                                   </div>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                   <span style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>{enriched.needsMyResponse ? c.planning.proposedBy : c.planning.counterparty}</span>
-                                   <div style={{ textAlign: 'right' }}>
-                                      <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#fff', display: 'block' }}>{cpLabel}</span>
-                                      {cp?.email ? <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)', display: 'block', marginTop: '4px' }}>{cp.email}</span> : null}
-                                   </div>
-                                </div>
-                             </motion.div>
-                          )}
-                       </AnimatePresence>
-                    </div>
-
-                    <div className="custom-scrollbar" style={{ padding: '0 32px 32px 32px', overflowY: 'auto', flex: 1 }}>
-                       <AnimatePresence mode="wait">
-                          {isAccepted && !isRescheduling ? (
-                             <motion.div key="accepted" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                <motion.button whileHover={{ scale: 1.02, backgroundColor: '#7f1d1d', borderColor: '#ef4444' }} whileTap={{ scale: 0.98 }} onClick={async () => {
-    if(!confirm(c.confirms.cancelAppointment)) return;
-    try {
-        const res = await fetch('/api/appointments/respond', { credentials: 'include', 
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: managingApp.id, status: 'DECLINED', message: 'Prezentacja odwołana przez CRM.' })
-        });
-        if(res.ok) {
-            setManagingApp(null);
-            refreshPlanning();
-        } else alert(c.alerts.cancelApptError);
-    } catch(err) { alert(c.alerts.network); }
-}} style={{ width: '100%', padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '2px', cursor: 'pointer', transition: 'all 0.2s' }}>
-                                    ⚠️ {c.planning.cancelPresentation}
-                                </motion.button>
-                             </motion.div>
-                          ) : enriched.waitingOnOther && !isRescheduling ? (
-                             <motion.div key="waiting" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ padding: '16px', borderRadius: '12px', backgroundColor: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.25)', textAlign: 'center' }}>
-                                <p style={{ color: '#eab308', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', margin: 0 }}>{c.planning.waiting}</p>
-                             </motion.div>
-                          ) : isPending && enriched.needsMyResponse && !isRescheduling ? (
-                             <motion.div key="buttons" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} style={{ display: 'flex', gap: '12px' }}>
-                                <motion.button whileHover={{ scale: 1.03, filter: 'brightness(1.15)' }} whileTap={{ scale: 0.95 }} onClick={async (e) => {
-    e.preventDefault(); e.stopPropagation();
-    try {
-        const res = await fetch('/api/appointments/respond', { credentials: 'include', 
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: managingApp.id, status: 'ACCEPTED' })
-        });
-        if(res.ok) {
-            const next = enrichAppointmentForUi({ ...managingApp, status: 'ACCEPTED' }, myId, crmData.contacts || []);
-            setManagingApp(next);
-            refreshPlanning();
-        } else alert(c.alerts.saveError);
-    } catch(err) { alert('Błąd połączenia z serwerem.'); }
-}} style={{ flex: 1, padding: '16px', borderRadius: '12px', backgroundColor: '#10b981', color: '#000', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '2px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 10px 20px rgba(16,185,129,0.3)' }}>
-                                    ✓ {c.planning.confirm.toUpperCase()}
-                                </motion.button>
-                                <motion.button whileHover={{ scale: 1.03, backgroundColor: '#1a1a1a', borderColor: 'rgba(255,255,255,0.2)' }} whileTap={{ scale: 0.95 }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsRescheduling(true); setRescheduleStep(1); }} style={{ flex: 1, padding: '16px', borderRadius: '12px', backgroundColor: '#111', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', fontWeight: '900', textTransform: 'uppercase', fontSize: '10px', letterSpacing: '2px', cursor: 'pointer' }}>
-                                    {c.planning.reschedule.toUpperCase()}
-                                </motion.button>
-                             </motion.div>
-                          ) : !isRescheduling ? (
-                             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: '11px', fontWeight: 600 }}>{c.planning.noActions}</motion.div>
-                          ) : (
-                             <motion.div key="calendar" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-                                
-                                {rescheduleStep === 1 && (
-                                    <div className="grid grid-cols-4 gap-2 sm:gap-3">
-                                      {dates.map((d, i) => {
-                                        const isSelected = newPropDate === d.toISOString();
-                                        return ( 
-                                          <button key={i} onClick={(e) => { e.preventDefault(); setNewPropDate(d.toISOString()); setTimeout(() => setRescheduleStep(2), 200); }} className={`relative w-full aspect-square rounded-[1.2rem] border flex flex-col items-center justify-center transition-all duration-300 group ${isSelected ? 'bg-[var(--eos-bg-elevated)] border-2 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.3)] scale-[1.05] z-10' : 'bg-[#111] border-[var(--eos-border)] hover:border-white/20 hover:bg-white/5'}`}>
-                                            <span className={`text-[9px] font-black uppercase mb-1 tracking-widest ${isSelected ? 'text-emerald-500/80' : 'text-[var(--eos-subtle)]'}`}>{d.toLocaleDateString('pl-PL', { weekday: 'short' }).replace('.', '')}</span>
-                                            <span className={`text-xl font-black ${isSelected ? 'text-emerald-500' : 'text-white/90'}`}>{d.getDate()}</span>
-                                            <span className={`text-[8px] font-bold uppercase tracking-wider mt-0.5 ${isSelected ? 'text-emerald-500/80' : 'text-[var(--eos-subtle)]'}`}>{d.toLocaleDateString('pl-PL', { month: 'short' }).replace('.', '')}</span>
-                                          </button> 
-                                        )
-                                      })}
-                                    </div>
-                                )}
-
-                                {rescheduleStep === 2 && (
-                                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                                      {hours.map((h) => {
-                                         const isSelected = newPropTime === h;
-                                         return ( 
-                                          <button key={h} onClick={(e) => { e.preventDefault(); setNewPropTime(h); setTimeout(() => setRescheduleStep(3), 200); }} className={`py-4 rounded-xl border text-sm font-black tracking-widest transition-all duration-300 ${isSelected ? 'bg-[var(--eos-bg-elevated)] text-emerald-500 border-2 border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.3)] scale-[1.05] z-10' : 'bg-[#111] border-[var(--eos-border)] hover:border-white/20 hover:bg-white/5 text-white/80'}`}>{h}</button> 
-                                        )
-                                      })}
-                                    </div>
-                                )}
-
-                                {rescheduleStep === 3 && (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                        <div style={{ backgroundColor: '#111', padding: '16px', borderRadius: '16px', border: '1px solid rgba(16,185,129,0.2)', textAlign: 'center' }}>
-                                            <p style={{ fontSize: '10px', textTransform: 'uppercase', fontWeight: '900', color: 'rgba(255,255,255,0.5)', letterSpacing: '2px', marginBottom: '8px' }}>{c.planning.newSlot}</p>
-                                            <p style={{ color: '#10b981', fontSize: '18px', fontWeight: '900', margin: 0 }}>{new Date(newPropDate).toLocaleDateString('pl-PL')} o {newPropTime}</p>
-                                        </div>
-                                        <button onClick={async (e) => {
-    e.preventDefault();
-    const finalIso = new Date(newPropDate);
-    const [h, m] = newPropTime.split(':');
-    finalIso.setHours(parseInt(h), parseInt(m), 0, 0);
-    const newIsoString = finalIso.toISOString();
-
-    try {
-        const res = await fetch('/api/appointments/respond', { credentials: 'include', 
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: managingApp.id, status: 'COUNTER', proposedDate: newIsoString })
-        });
-        if(res.ok) {
-            const next = enrichAppointmentForUi({ ...managingApp, status: 'PENDING', proposedDate: newIsoString }, myId, crmData.contacts || []);
-            setManagingApp(next);
-            setIsRescheduling(false);
-            setRescheduleStep(1);
-            refreshPlanning();
-        } else alert(c.alerts.proposalError);
-    } catch(err) { alert('Błąd połączenia z serwerem.'); }
-}} className="relative overflow-hidden w-full group flex items-center justify-center gap-3 rounded-[2rem] border-2 px-4 py-5 transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] cursor-pointer bg-[var(--eos-bg-elevated)] hover:bg-emerald-950/40 border-emerald-500/30 hover:border-emerald-400 hover:shadow-[0_0_40px_rgba(16,185,129,0.3)]">
-                                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-emerald-400/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out"></div>
-                                            <ShieldCheck size={18} className="relative z-10 transition-colors duration-300 text-emerald-500 group-hover:text-white" /> 
-                                            <span className="relative z-10 text-xs sm:text-sm font-black uppercase tracking-[0.2em] transition-colors duration-300 text-emerald-500 group-hover:text-white">{c.planning.sendCounter}</span>
-                                        </button>
-                                    </div>
-                                )}
-                             </motion.div>
-                          )}
-                       </AnimatePresence>
-                    </div>
-
-                 </motion.div>
-              </motion.div>
-            );
-            })()}
+            {managingApp ? (
+              <CrmAppointmentSheet
+                key={`${managingApp.id}-${managingApp.status}-${String(managingApp.proposedDate)}`}
+                app={managingApp}
+                contacts={crmData.contacts || []}
+                myId={Number(currentUser?.id || 0)}
+                onClose={() => setManagingApp(null)}
+                onChanged={(next) => {
+                  setManagingApp(next);
+                  if (currentUser?.id) void fetchData(currentUser.id);
+                }}
+              />
+            ) : null}
           </AnimatePresence>
 
           <AnimatePresence>
