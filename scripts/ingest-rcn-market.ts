@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+import { execSync } from 'node:child_process';
 import { ingestWarsawRcn } from '../src/lib/market/ingestRcn';
 import { isScheduledRunDue, markScheduledRun } from '../src/lib/market/ingestControl';
 import { prisma } from '../src/lib/prisma';
@@ -11,6 +12,15 @@ import { prisma } from '../src/lib/prisma';
 async function main() {
   const scheduled = process.argv.includes('--scheduled');
   if (scheduled) {
+    // W trakcie wdrożenia (next build) nie startujemy — za mało pamięci na oba naraz; ruszy za godzinę.
+    try {
+      if (execSync("pgrep -f 'next build' || true").toString().trim()) {
+        console.log(JSON.stringify({ job: 'rcn-ingest', message: 'deploy_in_progress' }));
+        return;
+      }
+    } catch {
+      /* brak pgrep — sprawdzamy dalej */
+    }
     if (!(await isScheduledRunDue())) {
       console.log(JSON.stringify({ job: 'rcn-ingest', message: 'not_due' }));
       return;

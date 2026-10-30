@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -105,6 +105,16 @@ export async function POST(req: Request) {
   }
 
   if (body.action === 'run') {
+    // Budowanie strony i import naraz nie mieszczą się w pamięci serwera.
+    let building = false;
+    try {
+      building = execSync("pgrep -f 'next build' || true").toString().trim().length > 0;
+    } catch {
+      building = false;
+    }
+    if (building) {
+      return NextResponse.json({ success: false, message: 'Trwa wdrożenie strony — spróbuj za kilka minut.' }, { status: 409 });
+    }
     await ensureMarketTables();
     const running = await prisma.marketIngestRun.findFirst({ where: { status: 'RUNNING' }, orderBy: { startedAt: 'desc' } });
     if (running && Date.now() - running.startedAt.getTime() < RUN_STALE_MS) {
