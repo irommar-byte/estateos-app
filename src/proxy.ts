@@ -3,11 +3,19 @@ import type { NextRequest } from 'next/server';
 
 const CANONICAL_HOST = 'estateos.pl';
 
+/** Prawdziwe ID Server Action to hash hex; skanery wysyłają śmieci typu "x", "0", "action". */
+const SERVER_ACTION_ID = /^[0-9a-f]{40,64}$/i;
+
 /**
  * Next.js 16: pojedynczy plik proxy zamiast middleware — tu HTTPS + ochrona tras.
  */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  const actionId = request.headers.get('next-action');
+  if (actionId !== null && !SERVER_ACTION_ID.test(actionId)) {
+    return new NextResponse(null, { status: 404 });
+  }
 
   /**
    * HTTPS force: tylko gdy pośrednik jawnie zgłasza HTTP (np. klient na :80).
