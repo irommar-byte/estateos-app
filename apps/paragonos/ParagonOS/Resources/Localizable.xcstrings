@@ -282,6 +282,160 @@
     "Brak kaucji" : {
 
     },
+    "Wypróbuj też nasze inne aplikacje" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try our other apps"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wypróbuj też nasze inne aplikacje"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спробуйте й інші наші застосунки"
+          }
+        }
+      }
+    },
+    "ZDJĘCIA I WIDEO" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "PHOTOS & VIDEO"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ZDJĘCIA I WIDEO"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ФОТО І ВІДЕО"
+          }
+        }
+      }
+    },
+    "SPRZEDAŻ" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SELLING"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "SPRZEDAŻ"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ПРОДАЖ"
+          }
+        }
+      }
+    },
+    "Zdjęcia i filmy jak w Galerii — kopiowane na Twój własny serwer, nie do chmury." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your photos and videos, just like Photos — backed up to your own server, not the cloud."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zdjęcia i filmy jak w Galerii — kopiowane na Twój własny serwer, nie do chmury."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фото й відео, як у Галереї, — з копією на вашому власному сервері, а не в хмарі."
+          }
+        }
+      }
+    },
+    "Sprzedaj samochód lub nieruchomość — ogłoszenia i kupujący w jednym miejscu." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sell your car or property — listings and buyers in one place."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprzedaj samochód lub nieruchomość — ogłoszenia i kupujący w jednym miejscu."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Продайте авто чи нерухомість — оголошення й покупці в одному місці."
+          }
+        }
+      }
+    },
+    "Pobierz" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Get"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pobierz"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завантажити"
+          }
+        }
+      }
+    },
+    "Otwiera App Store" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opens the App Store"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwiera App Store"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Відкриває App Store"
+          }
+        }
+      }
+    },
     "Brak kodu" : {
       "localizations" : {
         "en" : {

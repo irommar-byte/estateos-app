@@ -1,6 +1,12 @@
+import StoreKit
 import SwiftUI
 
 struct SettingsView: View {
+    @State private var storeApp: SisterApp?
+
+    private var storeOverlayShown: Binding<Bool> {
+        Binding(get: { storeApp != nil }, set: { if $0 == false { storeApp = nil } })
+    }
     @EnvironmentObject private var wallet: WalletModel
     @EnvironmentObject private var lock: BiometricLock
     @ObservedObject private var cloudSync = CloudSyncMonitor.shared
@@ -123,6 +129,15 @@ struct SettingsView: View {
             .listRowBackground(ParagonTheme.surface)
 
             Section {
+                ForEach(SisterApp.all) { app in
+                    SisterAppRow(app: app) { storeApp = app }
+                }
+            } header: {
+                Text("Wypróbuj też nasze inne aplikacje")
+            }
+            .listRowBackground(ParagonTheme.surface)
+
+            Section {
                 LabeledContent("Wersja", value: Self.versionLabel)
             } header: {
                 Text(Brand.displayName)
@@ -130,6 +145,9 @@ struct SettingsView: View {
                 Text("\(Brand.slogan)\n\n\(Brand.disclaimer)\n\nZdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont.")
             }
             .listRowBackground(ParagonTheme.surface)
+        }
+        .appStoreOverlay(isPresented: storeOverlayShown) {
+            SKOverlay.AppConfiguration(appIdentifier: storeApp?.appStoreID ?? "", position: .bottom)
         }
         .navigationTitle("Ustawienia")
         .navigationBarTitleDisplayMode(.inline)
@@ -294,33 +312,79 @@ private struct ReminderOffsetPicker: View {
     }
 }
 
+/// Our other apps, presented like App Store rows.
+struct SisterApp: Identifiable {
+    let id: String
+    let name: String
+    let category: LocalizedStringKey
+    let pitch: LocalizedStringKey
+    let icon: String
+    let appStoreID: String
 
+    static let all: [SisterApp] = [
+        SisterApp(
+            id: "galleryos",
+            name: "GalleryOS™",
+            category: "ZDJĘCIA I WIDEO",
+            pitch: "Zdjęcia i filmy jak w Galerii — kopiowane na Twój własny serwer, nie do chmury.",
+            icon: "PromoGalleryOS",
+            appStoreID: "6822914934"
+        ),
+        SisterApp(
+            id: "estateos",
+            name: "EstateOS™",
+            category: "SPRZEDAŻ",
+            pitch: "Sprzedaj samochód lub nieruchomość — ogłoszenia i kupujący w jednym miejscu.",
+            icon: "PromoEstateOS",
+            appStoreID: "6762899098"
+        )
+    ]
+}
 
+private struct SisterAppRow: View {
+    let app: SisterApp
+    var onGet: () -> Void
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    var body: some View {
+        Button(action: onGet) {
+            HStack(spacing: 14) {
+                Image(app.icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 60, height: 60)
+                    .clipShape(RoundedRectangle(cornerRadius: 13.5, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 13.5, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5)
+                    }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.category)
+                        .font(.caption2.weight(.semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(.secondary)
+                    Text(app.name)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(app.pitch)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text("Pobierz")
+                    .font(.subheadline.weight(.bold))
+                    .textCase(.uppercase)
+                    .foregroundStyle(ParagonTheme.osGreen)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(Color.primary.opacity(0.07), in: Capsule())
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(ParagonPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(Text("Otwiera App Store"))
+    }
+}
