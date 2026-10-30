@@ -191,3 +191,55 @@ export async function readIngestState(): Promise<{
     lastScheduledAt: row.lastScheduledAt,
   };
 }
+
+/**
+ * Pamięć ukończonych okien miesięcznych importu RCN (warstwa × miesiąc → liczba aktów w GUGiK).
+ * Dzięki niej kolejna aktualizacja pobiera tylko miesiące, w których coś przybyło.
+ */
+let windowsEnsured: Promise<void> | null = null;
+function ensureWindowsTable(): Promise<void> {
+  windowsEnsured ||= prisma
+    .$executeRawUnsafe(
+      `CREATE TABLE IF NOT EXISTS \`MarketIngestWindow\` (
+        \`kind\` VARCHAR(16) NOT NULL,
+        \`fromDate\` VARCHAR(10) NOT NULL,
+        \`hits\` INT NOT NULL,
+        \`doneAt\` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+        PRIMARY KEY (\`kind\`, \`fromDate\`)
+      ) DEFAULT CHARSET=utf8mb4`,
+    )
+    .then(() => undefined)
+    .catch((err) => {
+      windowsEnsured = null;
+      throw err;
+    });
+  return windowsEnsured;
+}
+
+export async function readDoneWindows(): Promise<Map<string, number>> {
+  try {
+    await ensureWindowsTable();
+    const rows = (await prisma.$queryRawUnsafe('SELECT `kind`, `fromDate`, `hits` FROM `MarketIngestWindow`')) as Array<{
+      kind: string;
+      fromDate: string;
+      hits: number;
+    }>;
+    return new Map(rows.map((r) => [`${r.kind}:${r.fromDate}`, Number(r.hits)]));
+  } catch {
+    return new Map();
+  }
+}
+
+export async function markWindowDone(kind: string, fromDate: string, hits: number): Promise<void> {
+  try {
+    await ensureWindowsTable();
+    await prisma.$executeRawUnsafe(
+      'INSERT INTO `MarketIngestWindow` (`kind`, `fromDate`, `hits`, `doneAt`) VALUES (?, ?, ?, NOW(3)) ON DUPLICATE KEY UPDATE `hits` = VALUES(`hits`), `doneAt` = NOW(3)',
+      kind,
+      fromDate,
+      hits,
+    );
+  } catch {
+    /* pamięć okien jest pomocnicza */
+  }
+}

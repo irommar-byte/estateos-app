@@ -6,7 +6,7 @@ import { countWarsawSince, fetchWarsawPage } from "@/lib/market/rcnWfs";
 import { assessRcnQuality } from "@/lib/market/rcnQuality";
 import { resolveWarsawDistrict } from "@/lib/market/warsawDistricts";
 import { recomputeWarsawAreaStats } from "@/lib/market/aggregates";
-import { appendIngestHistory, writeIngestProgress } from "@/lib/market/ingestControl";
+import { appendIngestHistory, markWindowDone, readDoneWindows, writeIngestProgress } from "@/lib/market/ingestControl";
 import type { RcnLocalFeature } from "@/lib/market/rcnParse";
 
 const PAGE = 120;
@@ -48,7 +48,10 @@ function log(message: string, extra: Record<string, unknown> = {}) {
   );
 }
 
-export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
+/** Ostatnie miesiące zawsze pobieramy ponownie — akty notarialne trafiają do RCN z opóźnieniem. */
+const ALWAYS_REFRESH_WINDOWS = 3;
+
+export async function ingestWarsawRcn(opts?: { source?: string; full?: boolean }): Promise<{
   fetched: number;
   upserted: number;
   skipped: number;
@@ -78,6 +81,9 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
   const totalBefore = await prisma.marketTransaction.count().catch(() => 0);
   const startedAtIso = run.startedAt.toISOString();
   const allWindows = monthWindows(since);
+  // Tryb przyrostowy: miesiąc, którego liczba aktów w GUGiK się nie zmieniła od ukończonego pobrania, pomijamy.
+  const doneWindows = opts?.full ? new Map<string, number>() : await readDoneWindows();
+  let skippedWindows = 0;
   const units = Math.max(1, MARKET_KINDS.length * allWindows.length);
   const KIND_PL: Record<string, string> = { LOCAL: "Mieszkania", BUILDING: "Domy", PLOT: "Działki" };
   const monthLabel = (iso: string) =>
@@ -115,6 +121,14 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
             matched = (matched ?? 0) + (hits ?? 0);
             log("window", { kind, from: win.from, to: win.to, hits });
             if (hits === 0) continue;
+            if (
+              hits != null &&
+              winIndex >= ALWAYS_REFRESH_WINDOWS &&
+              doneWindows.get(`${kind}:${win.from}`) === hits
+            ) {
+              skippedWindows += 1;
+              continue;
+            }
             for (let page = 0; page < MAX_PAGES; page += 1) {
               const startIndex = page * PAGE;
               if (hits != null && startIndex >= hits) break;
@@ -154,6 +168,7 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
               if (hits == null && returned < PAGE) break;
               await new Promise((r) => setTimeout(r, 150));
             }
+            if (hits != null) await markWindowDone(kind, win.from, hits);
           } catch (error) {
             // Jeden miesiąc z błędem serwera GUGiK nie przerywa importu pozostałych.
             log("window_failed", {
@@ -184,7 +199,7 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
         error: kindErrors.length ? kindErrors.join("\n").slice(0, 4000) : null,
       },
     });
-    log("done", { fetched, upserted, skipped, matched });
+    log("done", { fetched, upserted, skipped, matched, skippedWindows });
     const totalAfter = await prisma.marketTransaction.count().catch(() => totalBefore);
     await appendIngestHistory({
       runId: run.id,

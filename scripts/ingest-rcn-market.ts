@@ -27,7 +27,10 @@ async function main() {
     }
     await markScheduledRun();
   }
-  const result = await ingestWarsawRcn({ source: scheduled ? 'schedule' : process.argv.includes('--manual') ? 'admin-app' : 'cli' });
+  const result = await ingestWarsawRcn({
+    source: scheduled ? 'schedule' : process.argv.includes('--manual') ? 'admin-app' : 'cli',
+    full: process.argv.includes('--full'),
+  });
   console.log(JSON.stringify(result, null, 2));
   // Ile wiarygodnych aktów mamy dla mieszkań, domów i działek.
   const byKind = await prisma.marketTransaction.groupBy({ by: ['kind', 'qualityOk'], _count: { _all: true } });
