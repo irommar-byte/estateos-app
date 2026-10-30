@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LUX_SERIF, plnFormat, SENTIMENT_LABEL, sentimentOf, type LuxPalette } from './luxTheme';
 import type { LuxMatch } from './types';
+import MatchReasonChips from '../../search/MatchReasonChips';
 
 const TONE: Record<string, string> = { like: '#2F9E6A', maybe: '#C98A1B', dislike: '#C2412D' };
 
@@ -69,6 +70,7 @@ export default function LuxOfferCard({
             {[o.area ? `${o.area} m²` : null, o.rooms ? `${o.rooms} pok.` : null, ppsm ? `${ppsm.toLocaleString('pl-PL')} zł/m²` : null].filter(Boolean).join(' · ')}
           </Text>
         </View>
+        <MatchReasonChips reasons={match.reasons} max={3} textColor={palette.ink} style={{ marginTop: 9 }} />
         {match.clientWhy ? (
           <Text style={{ fontSize: 13, color: palette.muted, marginTop: 8, lineHeight: 18 }} numberOfLines={3}>
             {match.clientWhy}
