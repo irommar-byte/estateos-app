@@ -65,6 +65,7 @@ enum WalletPassBuilder {
     /// What the server needs to build and sign the pass. pass.json itself is assembled server-side.
     @MainActor
     static func signingRequestBody(for card: LoyaltyCard, logo: UIImage?) throws -> Data {
+        let style = PassStyle(program: card.program, logo: logo)
         let barcodes = barcodeObjects(for: card).prefix(2).map {
             ["format": $0["format"] ?? "", "message": $0["message"] ?? ""]
         }
@@ -79,7 +80,13 @@ enum WalletPassBuilder {
             "holderName": String(card.holderName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64)),
             "note": String(card.note.prefix(300)),
             "barcodes": Array(barcodes),
-            "images": images
+            "images": images,
+            "style": [
+                "foreground": style.foreground,
+                "background": style.background,
+                "label": style.label,
+                "logoText": style.showsLogoText ? String(card.displayName.prefix(40)) : ""
+            ]
         ]
         return try JSONSerialization.data(withJSONObject: object)
     }
@@ -91,12 +98,12 @@ enum WalletPassBuilder {
             ("icon.png", passIcon(program: program, logo: logo, size: 58)),
             ("icon@2x.png", passIcon(program: program, logo: logo, size: 116)),
             ("icon@3x.png", passIcon(program: program, logo: logo, size: 174)),
-            ("logo.png", passHeaderLockup(size: CGSize(width: 160, height: 50))),
-            ("logo@2x.png", passHeaderLockup(size: CGSize(width: 320, height: 100))),
-            ("logo@3x.png", passHeaderLockup(size: CGSize(width: 480, height: 150))),
-            ("strip.png", passStrip(program: program, logo: logo, size: CGSize(width: 375, height: 123))),
-            ("strip@2x.png", passStrip(program: program, logo: logo, size: CGSize(width: 750, height: 246))),
-            ("strip@3x.png", passStrip(program: program, logo: logo, size: CGSize(width: 1125, height: 369)))
+            ("logo.png", PassStyle.logo(program: program, logo: logo, pixels: CGSize(width: 160, height: 50))),
+            ("logo@2x.png", PassStyle.logo(program: program, logo: logo, pixels: CGSize(width: 320, height: 100))),
+            ("logo@3x.png", PassStyle.logo(program: program, logo: logo, pixels: CGSize(width: 480, height: 150))),
+            ("strip.png", PassStyle.metalStrip(program: program, pixels: CGSize(width: 375, height: 123))),
+            ("strip@2x.png", PassStyle.metalStrip(program: program, pixels: CGSize(width: 750, height: 246))),
+            ("strip@3x.png", PassStyle.metalStrip(program: program, pixels: CGSize(width: 1125, height: 369)))
         ]
     }
 
@@ -115,32 +122,21 @@ enum WalletPassBuilder {
     static let groupingIdentifier = "pl.paragonos.app.loyalty"
 
     static func passObject(for card: LoyaltyCard) -> [String: Any] {
+        let style = PassStyle(program: card.program, logo: nil)
         var storeCard: [String: Any] = [
-            "secondaryFields": [
-                [
-                    "key": "member",
-                    "label": "Numer",
-                    "value": card.barcodePayload.isEmpty ? "—" : card.barcodePayload
-                ]
+            "primaryFields": [
+                ["key": "member", "label": "NUMER KARTY", "value": PassStyle.groupedNumber(card.barcodePayload)]
             ],
             "backFields": [
-                [
-                    "key": "note",
-                    "label": Brand.displayName,
-                    "value": card.note.isEmpty ? "Karta lojalnościowa z \(Brand.displayName)." : card.note
-                ]
+                ["key": "note", "label": "Notatka", "value": card.note.isEmpty ? "—" : card.note],
+                ["key": "app", "label": Brand.displayName, "value": "Karta dodana z \(Brand.displayName)."]
             ]
         ]
-        if card.holderName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            storeCard["auxiliaryFields"] = [
-                [
-                    "key": "holder",
-                    "label": "Właściciel",
-                    "value": card.holderName
-                ]
-            ]
+        let holder = card.holderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if holder.isEmpty == false {
+            storeCard["secondaryFields"] = [["key": "holder", "label": "WŁAŚCICIEL", "value": holder]]
         }
-        return [
+        var pass: [String: Any] = [
             "formatVersion": 1,
             "passTypeIdentifier": passTypeIdentifier,
             "serialNumber": card.id.uuidString,
@@ -148,12 +144,14 @@ enum WalletPassBuilder {
             "organizationName": Brand.displayName,
             "groupingIdentifier": groupingIdentifier,
             "description": card.displayName,
-            "foregroundColor": "rgb(29, 29, 31)",
-            "backgroundColor": "rgb(255, 255, 255)",
-            "labelColor": "rgb(134, 134, 139)",
+            "foregroundColor": style.foreground,
+            "backgroundColor": style.background,
+            "labelColor": style.label,
             "storeCard": storeCard,
             "barcodes": barcodeObjects(for: card)
         ]
+        if style.showsLogoText { pass["logoText"] = card.displayName }
+        return pass
     }
 
     private static func passJSON(for card: LoyaltyCard) throws -> Data {
@@ -187,8 +185,8 @@ enum WalletPassBuilder {
         format.scale = 1
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format)
         let image = renderer.image { _ in
-            UIColor(program.brandColor).setFill()
-            UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: size, height: size), cornerRadius: size * 0.22).fill()
+            UIColor.white.setFill()
+            UIBezierPath(rect: CGRect(x: 0, y: 0, width: size, height: size)).fill()
             if let logo {
                 let prepared = PassArtwork.fitted(
                     LogoCropper.trim(logo),
@@ -213,134 +211,6 @@ enum WalletPassBuilder {
         return image.pngData() ?? Data()
     }
 
-    private static func passHeaderLockup(size: CGSize) -> Data {
-        let format = UIGraphicsImageRendererFormat.default()
-        format.opaque = false
-        format.scale = 1
-        let renderer = UIGraphicsImageRenderer(size: size, format: format)
-        let image = renderer.image { _ in
-            drawThreeDWordmark(in: size)
-        }
-        return image.pngData() ?? Data()
-    }
-
-    private static func drawThreeDWordmark(in canvas: CGSize) {
-        let scale = max(canvas.height / 50, 1)
-        var fontSize = canvas.height * 0.58
-        func chunks() -> (paragon: NSAttributedString, os: NSAttributedString, tm: NSAttributedString) {
-            let kern = -0.5 * (fontSize / 24)
-            return (
-                maskString("Paragon", fontSize: fontSize, kern: kern),
-                maskString("OS", fontSize: fontSize, kern: kern),
-                maskString("™", fontSize: fontSize * 0.4, kern: 0)
-            )
-        }
-        var parts = chunks()
-        while parts.paragon.size().width + parts.os.size().width + parts.tm.size().width > canvas.width, fontSize > 8 {
-            fontSize -= 0.5
-            parts = chunks()
-        }
-        let wordHeight = parts.paragon.size().height
-        let originY = max(0.5 * scale, (canvas.height - wordHeight) * 0.08)
-        var x: CGFloat = 0
-        drawBeveled(parts.paragon, at: CGPoint(x: x, y: originY), style: .graphite, scale: scale)
-        x += parts.paragon.size().width
-        drawBeveled(parts.os, at: CGPoint(x: x, y: originY), style: .osGreen, scale: scale)
-        x += parts.os.size().width
-        drawBeveled(parts.tm, at: CGPoint(x: x, y: max(0, originY - fontSize * 0.12)), style: .osGreen, scale: scale)
-    }
-
-    private static func maskString(_ string: String, fontSize: CGFloat, kern: CGFloat) -> NSAttributedString {
-        NSAttributedString(string: string, attributes: [
-            .font: UIFont.systemFont(ofSize: fontSize, weight: .bold),
-            .foregroundColor: UIColor.white,
-            .kern: kern
-        ])
-    }
-
-    private enum WordmarkBevel {
-        case graphite
-        case osGreen
-    }
-
-    private static func drawBeveled(_ text: NSAttributedString, at origin: CGPoint, style: WordmarkBevel, scale: CGFloat) {
-        let textSize = text.size()
-        guard textSize.width > 0, textSize.height > 0 else { return }
-        let format = UIGraphicsImageRendererFormat.default()
-        format.opaque = false
-        format.scale = 1
-        let renderer = UIGraphicsImageRenderer(size: textSize, format: format)
-        let mask = renderer.image { _ in
-            text.draw(at: .zero)
-        }
-        mask.draw(at: CGPoint(x: origin.x, y: origin.y + 1.6 * scale), blendMode: .normal, alpha: 0.26)
-
-        let bodyColors: [CGColor]
-        switch style {
-        case .graphite:
-            bodyColors = [
-                UIColor(white: 0.42, alpha: 1).cgColor,
-                UIColor(white: 0.16, alpha: 1).cgColor,
-                UIColor(white: 0.05, alpha: 1).cgColor
-            ]
-        case .osGreen:
-            bodyColors = [
-                UIColor(red: 0.78, green: 1, blue: 0.52, alpha: 1).cgColor,
-                ParagonMark.fill.cgColor,
-                UIColor(red: 0.18, green: 0.48, blue: 0.06, alpha: 1).cgColor
-            ]
-        }
-        let body = renderer.image { ctx in
-            guard let gradient = CGGradient(
-                colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                colors: bodyColors as CFArray,
-                locations: [0, 0.46, 1]
-            ) else { return }
-            ctx.cgContext.drawLinearGradient(
-                gradient,
-                start: .zero,
-                end: CGPoint(x: 0, y: textSize.height),
-                options: []
-            )
-            mask.draw(at: .zero, blendMode: .destinationIn, alpha: 1)
-        }
-        body.draw(at: origin)
-
-        let highlight = renderer.image { ctx in
-            UIColor.white.setFill()
-            ctx.fill(CGRect(origin: .zero, size: textSize))
-            mask.draw(at: .zero, blendMode: .destinationIn, alpha: 1)
-        }
-        highlight.draw(at: CGPoint(x: origin.x, y: origin.y - 0.7 * scale), blendMode: .plusLighter, alpha: 0.38)
-
-        let depth = renderer.image { ctx in
-            UIColor.black.setFill()
-            ctx.fill(CGRect(origin: .zero, size: textSize))
-            mask.draw(at: .zero, blendMode: .destinationIn, alpha: 1)
-        }
-        depth.draw(at: CGPoint(x: origin.x, y: origin.y + 0.8 * scale), blendMode: .multiply, alpha: 0.22)
-
-        let specular = renderer.image { ctx in
-            guard let gradient = CGGradient(
-                colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                colors: [
-                    UIColor.clear.cgColor,
-                    UIColor.white.cgColor,
-                    UIColor.clear.cgColor
-                ] as CFArray,
-                locations: [0.12, 0.36, 0.58]
-            ) else { return }
-            ctx.cgContext.drawLinearGradient(
-                gradient,
-                start: .zero,
-                end: CGPoint(x: textSize.width, y: 0),
-                options: []
-            )
-            mask.draw(at: .zero, blendMode: .destinationIn, alpha: 1)
-        }
-        specular.draw(at: origin, blendMode: .plusLighter, alpha: 0.55)
-    }
-
     @MainActor
     static func stripImage(program: LoyaltyProgram, logo: UIImage?, size: CGSize) -> UIImage {
         let format = UIGraphicsImageRendererFormat.default()
@@ -363,11 +233,6 @@ enum WalletPassBuilder {
             )
             face.draw(in: CGRect(origin: .zero, size: size))
         }
-    }
-
-    @MainActor
-    private static func passStrip(program: LoyaltyProgram, logo: UIImage?, size: CGSize) -> Data {
-        stripImage(program: program, logo: logo, size: size).pngData() ?? Data()
     }
 
     private static func fillBrandStrip(program: LoyaltyProgram, size: CGSize) {
@@ -931,5 +796,150 @@ private extension Data {
     mutating func appendUInt32(_ value: UInt32) {
         var little = value.littleEndian
         Swift.withUnsafeBytes(of: &little) { append(contentsOf: $0) }
+    }
+}
+
+
+/// Apple Wallet look for a loyalty pass: the brand's colour as a deep anodized metal,
+/// its real logo on a white plate top-left, the card number large over a brushed strip.
+struct PassStyle {
+    let foreground: String
+    let background: String
+    let label: String
+    /// Square logos get the program name beside them; wordmarks already say it.
+    let showsLogoText: Bool
+
+    init(program: LoyaltyProgram, logo: UIImage?) {
+        let base = UIColor(program.brandColor)
+        let onDark = program.brandColor.relativeLuminance <= 0.62
+        let bg = Self.shade(base, by: onDark ? 0.78 : 0.96)
+        let fg = onDark ? UIColor.white : UIColor(white: 0.09, alpha: 1)
+        background = Self.rgb(bg)
+        foreground = Self.rgb(fg)
+        label = Self.rgb(Self.mix(fg, bg, 0.62))
+        let mark = logo ?? LoyaltyBrandKit.bundledLogo(for: program.id)
+        showsLogoText = mark.map { $0.size.width / max($0.size.height, 1) < 1.7 } ?? true
+    }
+
+    static func groupedNumber(_ payload: String) -> String {
+        let raw = payload.filter { $0.isNumber || $0.isLetter }
+        guard raw.count >= 8 else { return payload.isEmpty ? "—" : payload }
+        return stride(from: 0, to: raw.count, by: 4).map { start -> String in
+            let from = raw.index(raw.startIndex, offsetBy: start)
+            let to = raw.index(from, offsetBy: 4, limitedBy: raw.endIndex) ?? raw.endIndex
+            return String(raw[from..<to])
+        }.joined(separator: " ")
+    }
+
+    /// logo.png: the brand's own logo, crisp, on a white tile (square marks) or capsule (wordmarks).
+    @MainActor
+    static func logo(program: LoyaltyProgram, logo: UIImage?, pixels: CGSize) -> Data {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = false
+        format.scale = 1
+        let source = (logo ?? LoyaltyBrandKit.bundledLogo(for: program.id)).map { LogoCropper.trim($0) }
+        let image = UIGraphicsImageRenderer(size: pixels, format: format).image { context in
+            let cg = context.cgContext
+            cg.interpolationQuality = .high
+            let h = pixels.height * 0.9
+            let y = (pixels.height - h) / 2
+            guard let source else {
+                let tile = CGRect(x: 0, y: y, width: h, height: h)
+                UIColor.white.withAlphaComponent(0.18).setFill()
+                UIBezierPath(roundedRect: tile, cornerRadius: h * 0.24).fill()
+                let text = program.monogram as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: h * 0.42, weight: .bold),
+                    .foregroundColor: UIColor.white
+                ]
+                let size = text.size(withAttributes: attrs)
+                text.draw(at: CGPoint(x: tile.midX - size.width / 2, y: tile.midY - size.height / 2), withAttributes: attrs)
+                return
+            }
+            let aspect = source.size.width / max(source.size.height, 1)
+            let plate: CGRect
+            let path: UIBezierPath
+            if aspect >= 1.7 {
+                let pad = h * 0.2
+                let inner = CGSize(width: min(pixels.width - pad * 2, (h - pad * 2) * aspect), height: h - pad * 2)
+                plate = CGRect(x: 0, y: y, width: inner.width + pad * 2, height: h)
+                path = UIBezierPath(roundedRect: plate, cornerRadius: h / 2)
+            } else {
+                plate = CGRect(x: 0, y: y, width: h, height: h)
+                path = UIBezierPath(roundedRect: plate, cornerRadius: h * 0.24)
+            }
+            cg.saveGState()
+            cg.setShadow(offset: CGSize(width: 0, height: h * 0.03), blur: h * 0.08, color: UIColor.black.withAlphaComponent(0.25).cgColor)
+            UIColor.white.setFill()
+            path.fill()
+            cg.restoreGState()
+            path.addClip()
+            let fullBleed = aspect < 1.7 && LogoQuality.looksLikeTile(source)
+            let inset = fullBleed ? 0 : (aspect >= 1.7 ? h * 0.2 : h * 0.16)
+            let box = plate.insetBy(dx: inset, dy: inset)
+            let fit = min(box.width / source.size.width, box.height / source.size.height)
+            let drawn = CGSize(width: source.size.width * fit, height: source.size.height * fit)
+            source.draw(in: CGRect(x: box.midX - drawn.width / 2, y: box.midY - drawn.height / 2, width: drawn.width, height: drawn.height))
+        }
+        return image.pngData() ?? Data()
+    }
+
+    /// strip.png: brushed anodized metal in the brand colour. The number is drawn over it by Wallet.
+    static func metalStrip(program: LoyaltyProgram, pixels: CGSize) -> Data {
+        let format = UIGraphicsImageRendererFormat.default()
+        format.opaque = true
+        format.scale = 1
+        let onDark = program.brandColor.relativeLuminance <= 0.62
+        let base = UIColor(program.brandColor)
+        let bg = shade(base, by: onDark ? 0.78 : 0.96)
+        let image = UIGraphicsImageRenderer(size: pixels, format: format).image { context in
+            let cg = context.cgContext
+            let rect = CGRect(origin: .zero, size: pixels)
+            let space = CGColorSpaceCreateDeviceRGB()
+            func gradient(_ colors: [UIColor], _ locations: [CGFloat]) -> CGGradient? {
+                CGGradient(colorsSpace: space, colors: colors.map(\.cgColor) as CFArray, locations: locations)
+            }
+            if let g = gradient([shade(base, by: onDark ? 1.0 : 1.06), bg, shade(base, by: onDark ? 0.56 : 0.8)], [0, 0.5, 1]) {
+                cg.drawLinearGradient(g, start: .zero, end: CGPoint(x: pixels.width, y: pixels.height), options: [])
+            }
+            BrushedMetal.image.draw(in: rect, blendMode: .overlay, alpha: 0.34)
+            if let bands = gradient(
+                [.white.withAlphaComponent(0), .white.withAlphaComponent(0.16), .white.withAlphaComponent(0),
+                 .white.withAlphaComponent(0.07), .white.withAlphaComponent(0)],
+                [0, 0.22, 0.42, 0.68, 0.9]
+            ) {
+                cg.drawLinearGradient(bands, start: .zero, end: CGPoint(x: 0, y: pixels.height), options: [])
+            }
+            if let glow = gradient([.white.withAlphaComponent(0.22), .white.withAlphaComponent(0)], [0, 1]) {
+                cg.drawRadialGradient(glow, startCenter: .zero, startRadius: 0, endCenter: .zero,
+                                      endRadius: pixels.width * 0.7, options: [])
+            }
+            UIColor.white.withAlphaComponent(0.32).setFill()
+            cg.fill(CGRect(x: 0, y: 0, width: pixels.width, height: max(1, pixels.height * 0.01)))
+            UIColor.black.withAlphaComponent(0.28).setFill()
+            cg.fill(CGRect(x: 0, y: pixels.height - max(1, pixels.height * 0.012), width: pixels.width, height: max(1, pixels.height * 0.012)))
+        }
+        return image.pngData() ?? Data()
+    }
+
+    private static func shade(_ color: UIColor, by factor: CGFloat) -> UIColor {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return UIColor(hue: h, saturation: min(1, s * (factor < 1 ? 1.04 : 0.96)), brightness: min(1, b * factor), alpha: 1)
+    }
+
+    private static func mix(_ a: UIColor, _ b: UIColor, _ t: CGFloat) -> UIColor {
+        var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+        b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        return UIColor(red: ar * t + br * (1 - t), green: ag * t + bg * (1 - t), blue: ab * t + bb * (1 - t), alpha: 1)
+    }
+
+    private static func rgb(_ color: UIColor) -> String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.getRed(&r, green: &g, blue: &b, alpha: &a)
+        func c(_ v: CGFloat) -> Int { Int((min(1, max(0, v)) * 255).rounded()) }
+        return "rgb(\(c(r)), \(c(g)), \(c(b)))"
     }
 }

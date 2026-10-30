@@ -305,19 +305,17 @@ final class LoyaltyCatalogTests: XCTestCase {
         XCTAssertEqual(barcodes?.first?["format"], "PKBarcodeFormatQR")
         XCTAssertEqual(barcodes?.first?["message"], "447461001121060")
         XCTAssertTrue(barcodes?.contains(where: { $0["format"] == "PKBarcodeFormatCode128" }) == true)
-        XCTAssertNil(pass["logoText"])
-        XCTAssertEqual(pass["backgroundColor"] as? String, "rgb(255, 255, 255)")
-        XCTAssertEqual(pass["foregroundColor"] as? String, "rgb(29, 29, 31)")
+        // Brand-coloured metal pass: card number up front, holder below.
+        XCTAssertNotEqual(pass["backgroundColor"] as? String, "rgb(255, 255, 255)")
+        XCTAssertTrue((pass["foregroundColor"] as? String)?.hasPrefix("rgb(") == true)
         let store = pass["storeCard"] as? [String: Any]
         XCTAssertNil(store?["headerFields"])
-        XCTAssertNil(store?["primaryFields"])
+        let primary = store?["primaryFields"] as? [[String: String]]
+        XCTAssertEqual(primary?.first?["label"], "NUMER KARTY")
+        XCTAssertEqual(primary?.first?["value"], "4474 6100 1121 060")
         let secondary = store?["secondaryFields"] as? [[String: String]]
-        XCTAssertEqual(secondary?.count, 1)
-        XCTAssertEqual(secondary?.first?["label"], "Numer")
-        XCTAssertEqual(secondary?.first?["value"], "447461001121060")
-        let auxiliary = store?["auxiliaryFields"] as? [[String: String]]
-        XCTAssertEqual(auxiliary?.first?["label"], "Właściciel")
-        XCTAssertEqual(auxiliary?.first?["value"], "Anna")
+        XCTAssertEqual(secondary?.first?["label"], "WŁAŚCICIEL")
+        XCTAssertEqual(secondary?.first?["value"], "Anna")
     }
 
     func testBarcodeTypesAreUserSelectable() {
