@@ -1000,21 +1000,23 @@ final class CloudKitFamilyService: ObservableObject {
     }
 
     private func zoneRecords(in database: CKDatabase, zoneID: CKRecordZone.ID) async -> (records: [CKRecord], ok: Bool) {
+        // Complete only if every page succeeded and the server said nothing more is coming.
+        // A partial read must not look like success, or the merge deletes what it missed.
         var token: CKServerChangeToken?
         var all: [CKRecord] = []
         var more = true
-        var ok = false
+        var complete = true
         var pages = 0
-        while more, pages < 24 {
+        while more, pages < 200 {
             pages += 1
             let page = await zoneRecordsPage(in: database, zoneID: zoneID, token: token)
-            if page.ok { ok = true }
             all.append(contentsOf: page.records)
+            guard page.ok else { complete = false; break }
             token = page.token
             more = page.more
-            if page.ok == false, page.records.isEmpty { break }
         }
-        return (all, ok)
+        if more { complete = false }
+        return (all, complete)
     }
 
     private func zoneRecordsPage(
@@ -1052,7 +1054,7 @@ final class CloudKitFamilyService: ObservableObject {
                     case .success:
                         continuation.resume(returning: (snap.records, snap.ok || snap.records.isEmpty == false, snap.more, snap.token))
                     case .failure:
-                        continuation.resume(returning: (snap.records, snap.records.isEmpty == false, false, snap.token))
+                        continuation.resume(returning: (snap.records, false, false, snap.token))
                     }
                 }
                 database.add(op)
@@ -1122,16 +1124,25 @@ final class CloudKitFamilyService: ObservableObject {
     }
 
     private func queryResult(_ query: CKQuery, in database: CKDatabase, zoneID: CKRecordZone.ID) async -> (records: [CKRecord], ok: Bool) {
-        await AsyncTimeout.value(seconds: 10) {
+        // Follow every page: CloudKit returns ~100 records at a time. A partial list must
+        // never count as success, or the merge would delete the records it didn't see.
+        await AsyncTimeout.value(seconds: 30) {
             do {
-                let (result, _) = try await database.records(matching: query, inZoneWith: zoneID)
                 var records: [CKRecord] = []
-                for (_, item) in result {
-                    if let record = try? item.get() {
-                        records.append(record)
+                var complete = true
+                var (result, cursor) = try await database.records(matching: query, inZoneWith: zoneID)
+                while true {
+                    for (_, item) in result {
+                        if let record = try? item.get() {
+                            records.append(record)
+                        } else {
+                            complete = false
+                        }
                     }
+                    guard let next = cursor else { break }
+                    (result, cursor) = try await database.records(continuingMatchFrom: next)
                 }
-                return (records, true)
+                return (records, complete)
             } catch {
                 return ([], false)
             }

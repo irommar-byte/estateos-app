@@ -15,8 +15,28 @@ struct LoyaltyHomeView: View {
     @State private var isReordering = false
     @Namespace private var passSpace
 
+    /// One card per number: the same physical card can arrive twice (added on two devices
+    /// before iCloud caught up, or again from family). Prefer your own copy, then the newest.
     private var uniqueCards: [LoyaltyCard] {
-        FamilyMergePolicy.uniqued(cards, id: \.id)
+        let byID = FamilyMergePolicy.uniqued(cards, id: \.id)
+        var keep: [String: LoyaltyCard] = [:]
+        for card in byID {
+            let key = LoyaltyIdentity.normalizedPayload(card.barcodePayload)
+            guard key.isEmpty == false else { continue }
+            if let current = keep[key] {
+                let currentOwn = current.familyShareID == nil
+                let cardOwn = card.familyShareID == nil
+                if cardOwn && currentOwn == false || (cardOwn == currentOwn && card.updatedAt > current.updatedAt) {
+                    keep[key] = card
+                }
+            } else {
+                keep[key] = card
+            }
+        }
+        return byID.filter { card in
+            let key = LoyaltyIdentity.normalizedPayload(card.barcodePayload)
+            return key.isEmpty || keep[key]?.id == card.id
+        }
     }
 
     private var filtered: [LoyaltyCard] {

@@ -1359,6 +1359,10 @@ final class WalletModel: ObservableObject {
         observers.append(NotificationCenter.default.addObserver(forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification, object: NSUbiquitousKeyValueStore.default, queue: .main) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                // A preference changed on another device: adopt it here.
+                AppSettings.pullFromCloud(overwrite: true)
+                let synced = AppSettings.load()
+                if synced != self.settings { self.settings = synced }
                 if let context = self.profileContext {
                     await self.refreshDisplayName(context: context)
                 }
@@ -1522,6 +1526,7 @@ struct AppSettings: Equatable {
     }
 
     static func load() -> AppSettings {
+        pullFromCloud()
         let defaults = UserDefaults.standard
         let depositDays: [Int] = {
             if let stored = defaults.array(forKey: Keys.depositReminders) as? [Int] {
@@ -1583,6 +1588,36 @@ struct AppSettings: Equatable {
         defaults.set(warrantyReminderDays, forKey: Keys.warrantyReminders)
         defaults.set(returnReminderDays, forKey: Keys.returnReminders)
         defaults.set(lockWithBiometrics, forKey: Keys.lockBiometrics)
+        Self.pushToCloud(defaults)
+    }
+
+    /// Preferences that follow the user to a new iPhone via iCloud key-value storage.
+    /// Face ID lock stays per device on purpose.
+    private static let cloudKeys = [
+        Keys.onboarding, Keys.brightness, Keys.shareFamily, Keys.shareReceipts, Keys.shareCards,
+        Keys.shareExisting, Keys.scanImmediate, Keys.language,
+        Keys.depositReminders, Keys.warrantyReminders, Keys.returnReminders
+    ]
+
+    private static func pushToCloud(_ defaults: UserDefaults) {
+        let cloud = NSUbiquitousKeyValueStore.default
+        for key in cloudKeys {
+            if let value = defaults.object(forKey: key) { cloud.set(value, forKey: key) }
+        }
+        cloud.synchronize()
+    }
+
+    /// Fills in preferences this device has never set from the copy in iCloud
+    /// (fresh install or a new iPhone). Local choices are never overwritten.
+    static func pullFromCloud(overwrite: Bool = false) {
+        let cloud = NSUbiquitousKeyValueStore.default
+        let defaults = UserDefaults.standard
+        for key in cloudKeys {
+            guard let value = cloud.object(forKey: key) else { continue }
+            if overwrite || defaults.object(forKey: key) == nil {
+                defaults.set(value, forKey: key)
+            }
+        }
     }
 
     private enum Keys {
