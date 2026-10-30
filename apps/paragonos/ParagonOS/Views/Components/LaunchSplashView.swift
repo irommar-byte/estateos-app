@@ -65,11 +65,13 @@ struct LaunchSplashView: View {
     @ViewBuilder
     private func scene(at t: Double) -> some View {
         let aurora = Self.smooth(t, 0, 0.7)
-        let exit = Self.smooth(t, Cue.exit, Cue.end)
         let mark = Self.easeOut(Self.smooth(t, Cue.mark, Cue.mark + 0.75))
         let word = Self.easeOut(Self.smooth(t, Cue.wordmark, Cue.wordmark + 0.7))
         let tagline = Self.smooth(t, Cue.wordmark + 0.45, Cue.wordmark + 1.0)
         let sweep = Self.smooth(t, Cue.sweep, Cue.sweep + 0.6)
+        // Portal: the mark swells and a growing circle opens straight onto the app.
+        let raw = Self.smooth(t, Cue.exit, Cue.end)
+        let portal = raw * raw
         GeometryReader { geo in
             ZStack {
                 Color(red: 0.035, green: 0.039, blue: 0.043)
@@ -95,26 +97,34 @@ struct LaunchSplashView: View {
                 VStack(spacing: 20) {
                     SilverMark(turn: Self.easeOut(Self.smooth(t, Cue.mark, Cue.mark + 1.5)), sweep: sweep)
                         .frame(width: 104, height: 104)
-                        .scaleEffect(0.82 + 0.18 * mark)
+                        .scaleEffect((0.82 + 0.18 * mark) * (1 + 21 * portal))
                         .blur(radius: 14 * (1 - mark))
-                        .opacity(mark)
+                        .opacity(mark * (1 - portal))
                     BrandWordmark(size: .largeTitle, primary: .white, os: Color(red: 0.42, green: 0.86, blue: 0.64))
                         .tracking(10 * (1 - word))
                         .blur(radius: 8 * (1 - word))
                         .opacity(word)
                         .overlay { LightSweep(progress: sweep).mask { BrandWordmark(size: .largeTitle) } }
+                        .opacity(1 - Self.smooth(t, Cue.exit, Cue.exit + 0.18))
                     Text("Kwitki wracają. Kaucja też.")
                         .font(.footnote.weight(.medium))
                         .tracking(0.6)
                         .foregroundStyle(.white.opacity(0.62))
-                        .opacity(tagline)
+                        .opacity(tagline * (1 - Self.smooth(t, Cue.exit, Cue.exit + 0.18)))
                 }
-                .scaleEffect(1 + 0.12 * exit)
-                .blur(radius: 16 * exit)
-                .opacity(1 - exit)
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .opacity(1 - Self.smooth(t, Cue.exit + 0.15, Cue.end))
+            .mask {
+                Rectangle()
+                    .overlay {
+                        Circle()
+                            .frame(width: 112, height: 112)
+                            .scaleEffect(max(0.001, 28 * portal))
+                            .offset(y: -46)
+                            .blendMode(.destinationOut)
+                    }
+                    .compositingGroup()
+            }
         }
     }
 
