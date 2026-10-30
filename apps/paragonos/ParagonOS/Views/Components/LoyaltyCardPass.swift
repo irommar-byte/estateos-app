@@ -510,11 +510,36 @@ struct EmbossedMetalText: View {
     }
 
     var body: some View {
-        MetalPANLabel(text: text, fontSize: fitted, gyroActive: gyroSheen)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: fontSize * 1.35)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            .accessibilityHidden(true)
+        Group {
+            if gyroSheen {
+                // Open card only: UIKit metal with a light streak that follows the tilt.
+                MetalPANLabel(text: text, fontSize: fitted, gyroActive: true)
+            } else {
+                // Everywhere else (stack, flight): plain SwiftUI, safe under 3D transforms.
+                Text(text)
+                    .font(.system(size: fitted, weight: .semibold, design: .rounded).monospacedDigit())
+                    .lineLimit(1)
+                    .foregroundStyle(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color(red: 0.92, green: 0.91, blue: 0.87), location: 0),
+                                .init(color: Color(red: 1.0, green: 0.99, blue: 0.96), location: 0.22),
+                                .init(color: Color(red: 0.55, green: 0.54, blue: 0.51), location: 0.52),
+                                .init(color: Color(red: 0.95, green: 0.93, blue: 0.88), location: 0.76),
+                                .init(color: Color(red: 0.66, green: 0.64, blue: 0.59), location: 1)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .shadow(color: .black.opacity(0.45), radius: 0, x: 0, y: 1)
+                    .shadow(color: .white.opacity(0.35), radius: 0, x: 0, y: -0.5)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: fontSize * 1.35)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .accessibilityHidden(true)
     }
 }
 
@@ -689,16 +714,16 @@ struct LoyaltyPassStack: View {
         guard draggingID == nil, let openID = openingID,
               let openIndex = orderedCards.firstIndex(where: { $0.id == openID })
         else { return slot }
-        if cardID == openID { return slot - pocketLift(index: index, count: orderedCards.count) }
-        // Cards in front part a little, like a pocket opening.
-        if index > openIndex { return slot + PassStackMotion.pocketGap }
+        if cardID == openID { return slot - PassStackMotion.slideOutLift }
+        // Like Wallet: the cards in front slide down until the chosen card is fully free,
+        // so nothing overlaps it on the way out — or on the way back in.
+        if index > openIndex { return slot + pocketDrop }
         return slot
     }
 
-    /// How far the card must rise to clear the cards in front of it.
-    private func pocketLift(index: Int, count: Int) -> CGFloat {
-        guard index < count - 1 else { return PassStackMotion.slideOutLift }
-        return LoyaltyPassStackMetrics.cardHeight - step + PassStackMotion.pocketGap + 14
+    /// How far the cards in front drop so the opening card is uncovered.
+    private var pocketDrop: CGFloat {
+        LoyaltyPassStackMetrics.cardHeight - step + PassStackMotion.slideOutLift + PassStackMotion.pocketGap
     }
 
     /// The opening card keeps its place in the pile: it slides out from behind the
@@ -792,7 +817,7 @@ struct LoyaltyPassStack: View {
                     )
             }
         }
-        .scaleEffect(lifted ? (pullOutArmed ? 1.07 : 1.03) : (openingID == card.id ? 1.015 : 1), anchor: .top)
+        .scaleEffect(lifted ? (pullOutArmed ? 1.07 : 1.03) : 1, anchor: .top)
         .matchedTransitionSource(id: card.id, in: zoomNamespace)
         .opacity(flight?.hiddenID == card.id ? 0 : 1)
         .frame(height: LoyaltyPassStackMetrics.cardHeight, alignment: .top)
@@ -1119,9 +1144,9 @@ struct StackChevron: View {
 
 enum PassStackMotion {
     /// How far a tapped card rises out of the stack before it opens.
-    static let slideOutLift: CGFloat = 60
-    /// Cards in front of the opening one step aside by this much.
-    static let pocketGap: CGFloat = 26
+    static let slideOutLift: CGFloat = 22
+    /// Clear space left between the risen card and the cards that dropped away.
+    static let pocketGap: CGFloat = 18
 
     /// The card slides up out of the pile and settles with a soft bounce.
     static var slideOut: Animation { .spring(response: 0.75, dampingFraction: 0.68) }
