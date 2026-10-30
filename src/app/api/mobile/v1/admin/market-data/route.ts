@@ -93,7 +93,7 @@ export async function GET(req: Request) {
   }
 }
 
-/** { action: 'run' } — uruchom aktualizację teraz; { action: 'schedule', schedule } — zapisz harmonogram. */
+/** { action: 'run' } — uruchom aktualizację teraz; { action: 'stop' } — zatrzymaj trwającą; { action: 'schedule', schedule } — zapisz harmonogram. */
 export async function POST(req: Request) {
   const gate = await requireMobileAdmin(req);
   if (!gate.ok) return gate.response;
@@ -102,6 +102,29 @@ export async function POST(req: Request) {
   if (body.action === 'schedule') {
     await saveIngestSchedule(body.schedule || {});
     return NextResponse.json(await buildState());
+  }
+
+  if (body.action === 'stop') {
+    const kill = (sig: string) => {
+      try {
+        execSync(`pkill -${sig} -f '[i]ngest-rcn-market' || true`);
+      } catch {
+        /* brak procesu */
+      }
+    };
+    kill('TERM');
+    await new Promise((r) => setTimeout(r, 1500));
+    kill('KILL');
+    await ensureMarketTables();
+    await prisma.marketIngestRun.updateMany({
+      where: { status: 'RUNNING' },
+      data: { status: 'FAILED', finishedAt: new Date(), error: 'Zatrzymane przez administratora.' },
+    });
+    await writeIngestProgress(
+      { runId: null, percent: 0, phase: 'Zatrzymano', detail: 'Przerwane przez administratora', kind: null, upserted: 0, startedAt: null, done: true },
+      true,
+    );
+    return NextResponse.json({ ...(await buildState()), stopped: true });
   }
 
   if (body.action === 'run') {
