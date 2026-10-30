@@ -72,6 +72,7 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
   let skipped = 0;
   let matched: number | null = null;
   const kindErrors: string[] = [];
+  const sampled = new Set<MarketKind>();
 
   try {
     // Mieszkania, domy i działki — błąd jednej warstwy nie zatrzymuje pozostałych.
@@ -99,8 +100,10 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
                 startIndex,
                 count: PAGE,
               });
-              if (sample && kind !== "LOCAL" && win === windows[0])
+              if (sample && !sampled.has(kind)) {
+                sampled.add(kind);
                 log("sample", { kind, member: sample.slice(0, 3000) });
+              }
               fetched += features.length;
               if (returned === 0) break;
 
@@ -117,10 +120,12 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
                   got: features.length,
                   upserted: result.upserted,
                   qualityOk: result.qualityOk,
+                  flags: result.flags,
                 });
               }
 
-              if (returned < PAGE) break;
+              // GUGiK potrafi zwrócić mniej niż `count` w środku wyników — gdy znamy hits, kończymy dopiero po nich.
+              if (hits == null && returned < PAGE) break;
               await new Promise((r) => setTimeout(r, 150));
             }
           } catch (error) {
@@ -197,13 +202,13 @@ function toRow(
     deedAt: row.deedAt,
     marketType: row.marketType,
     transactionKind: row.transactionKind,
-    share: row.share || null,
+    share: row.share ? row.share.slice(0, 24) : null,
     shareRatio: row.shareRatio,
     rooms: row.rooms != null ? Math.round(row.rooms) : null,
     floor: row.floor != null ? Math.round(row.floor) : null,
     areaM2: row.areaM2,
     ancillaryM2: row.ancillaryM2,
-    functionCode: row.functionCode || null,
+    functionCode: row.functionCode ? row.functionCode.slice(0, 48) : null,
     priceGross: row.priceGross,
     vatAmount: row.vatAmount,
     pricePerM2: quality.ppsm,
@@ -220,6 +225,7 @@ async function persistFeatures(
   let upserted = 0;
   let skipped = 0;
   let qualityOk = 0;
+  const flags: Record<string, number> = {};
   const chunk = 20;
   for (let i = 0; i < features.length; i += chunk) {
     const slice = features.slice(i, i + chunk);
@@ -227,6 +233,8 @@ async function persistFeatures(
       slice.map(async (row) => {
         const mapped = toRow(row, kind);
         if (mapped.payload.qualityOk) qualityOk += 1;
+        for (const f of (mapped.payload.qualityFlags || "").split(",").filter(Boolean))
+          flags[f] = (flags[f] || 0) + 1;
         try {
           await prisma.marketTransaction.upsert({
             where: { gmlId: mapped.gmlId },
@@ -247,5 +255,5 @@ async function persistFeatures(
     upserted += results.filter((r) => r === "ok").length;
     skipped += results.filter((r) => r === "skip").length;
   }
-  return { upserted, skipped, qualityOk };
+  return { upserted, skipped, qualityOk, flags };
 }
