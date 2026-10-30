@@ -1224,8 +1224,8 @@ enum PassStackMotion {
 
     /// The card slides up out of the pile in one quick move with no settle, and the
     /// flight takes over while it is still moving, so there is no stop at the top.
-    static var slideOut: Animation { .spring(response: 0.32, dampingFraction: 1.0) }
-    static let slideOutPause: Double = 0.22
+    static var slideOut: Animation { .timingCurve(0.45, 0.0, 0.9, 0.85, duration: 0.2) }
+    static let slideOutPause: Double = 0.18
 
     /// Back into its pocket: slides down behind the front cards, which close over it.
     static var slideIn: Animation { .spring(response: 0.56, dampingFraction: 0.76) }
@@ -1484,9 +1484,9 @@ private struct FlyingCard: View, Animatable {
     var body: some View {
         let p = CGFloat(progress)
         let arc = CGFloat(sin(Double.pi * min(1, max(0, progress))))
-        // The flip happens mid-flight, eased, so the card turns while it travels.
-        let t = min(1, max(0, (progress - 0.12) / 0.7))
-        let angle = 180 * t * t * (3 - 2 * t)
+        // The card turns for the whole flight, from the first frame to the last, both ways —
+        // no flat stretch before the flip starts. (The flight's own curve gives the easing.)
+        let angle = 180 * min(1, max(0, progress))
         let showsBack = angle > 90
         ZStack(alignment: .top) {
             LoyaltyCardPass(card: card, style: .stack)
