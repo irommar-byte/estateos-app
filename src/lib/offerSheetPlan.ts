@@ -1,7 +1,8 @@
 import sharp from 'sharp';
 import type { FloorPlanScanMeta } from '@/types/roomScan';
 import { Fragment, isValidElement, type ReactNode } from 'react';
-import { detectPlanRooms, normalizeScanMeta, placePlanObjects } from '@/lib/roomScan/planNormalize';
+import { detectPlanRooms, normalizeScanMeta, placePlanObjects, planLabelSpot } from '@/lib/roomScan/planNormalize';
+import { resolveWholePlanMeta } from '@/lib/roomScan/wholePlan';
 import { planFurnitureSymbol } from '@/components/offers/planFurnitureSymbols';
 
 const ROOM_TINT: Record<string, string> = {
@@ -37,7 +38,7 @@ export type SheetPlan = {
 
 /** Czysty rzut wektorowy ze skanu LiDAR: wyprostowany, pomieszczenia w kolorach, grube ściany. */
 export async function buildSheetPlan(raw: FloorPlanScanMeta | null, width: number, height: number, density = 2): Promise<SheetPlan | null> {
-  const meta = normalizeScanMeta(raw);
+  const meta = normalizeScanMeta(resolveWholePlanMeta(raw).meta);
   if (!meta?.walls?.length) return null;
   const rooms = detectPlanRooms(meta);
   const pad = 14;
@@ -66,7 +67,8 @@ export async function buildSheetPlan(raw: FloorPlanScanMeta | null, width: numbe
     .map((o) => `<line x1="${X(o.x1).toFixed(1)}" y1="${Y(o.z1).toFixed(1)}" x2="${X(o.x2).toFixed(1)}" y2="${Y(o.z2).toFixed(1)}"/>`)
     .join('');
   // Rzut „ubrany” — te same meble i symbole co na stronie oferty.
-  const furniture = placePlanObjects(meta, rooms)
+  const placed = placePlanObjects(meta, rooms);
+  const furniture = placed
     .map((o) => {
       const inner = svgMarkup(planFurnitureSymbol(o.category, o.widthM * scale, o.depthM * scale));
       return `<g transform="translate(${X(o.centerX).toFixed(1)} ${Y(o.centerZ).toFixed(1)}) rotate(${o.rotationDeg})" opacity="0.9">${inner}</g>`;
@@ -84,9 +86,17 @@ export async function buildSheetPlan(raw: FloorPlanScanMeta | null, width: numbe
 
   const labels = rooms
     .filter((room) => room.label)
-    .map((room) => ({
-      x: X(room.labelX),
-      y: Y(room.labelZ),
+    .map((room) => {
+      // Podpis tam, gdzie nie zasłania mebli (te same zasady co na stronie oferty).
+      const small = room.areaSqM < 6;
+      const wM = (room.label.length * (small ? 9 : 11) * 0.62 + 10) / scale;
+      const hM = (small ? 24 : 30) / scale;
+      const spot = planLabelSpot(room, wM, hM, placed);
+      return { room, spot };
+    })
+    .map(({ room, spot }) => ({
+      x: X(spot.x),
+      y: Y(spot.z),
       label: room.label,
       area: `${String(Math.round(room.areaSqM * 10) / 10).replace('.', ',')} m²`,
       small: room.areaSqM < 6,

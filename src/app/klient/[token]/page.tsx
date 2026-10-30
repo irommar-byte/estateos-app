@@ -1,6 +1,7 @@
 "use client";
 
 import { portalToast } from "@/lib/portalUi";
+import OfferInterestPanel from "@/components/offers/OfferInterestPanel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -1387,6 +1388,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                       otherAgencies={portal.otherAgencies || null}
                     />
                     <PortalReachCard reach={portal.reach} agentFirst={agentFirst} />
+                    {token ? (
+                      <div className="mt-4">
+                        <OfferInterestPanel offerId={portal.listing.id} portalToken={token} title="Co oglądają kupujący" />
+                      </div>
+                    ) : null}
                   </section>
                 ) : null}
 

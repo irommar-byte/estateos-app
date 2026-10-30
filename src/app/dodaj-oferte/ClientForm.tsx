@@ -30,7 +30,8 @@ import AiDescriptionOptions from '@/components/offer/AiDescriptionOptions';
 import { editorialToHtml } from '@/lib/listingDescriptionFormat';
 import { descriptionForStorageFromEdit } from '@/lib/offerDescriptionHtml';
 import { OfferHdrBadge } from '@/components/offer/OfferHdrBadge';
-import { PhotoRoomBadge, PhotoRoomPickerDialog, photoRoomOptions } from '@/components/offer/PhotoRoomPicker';
+import { PhotoRoomAiBar, PhotoRoomBadge, PhotoRoomPickerDialog, photoRoomOptions } from '@/components/offer/PhotoRoomPicker';
+import { fetchPhotoRoomSuggestions } from '@/lib/photoRoomSuggestClient';
 import { probeHdrFromBlob } from '@/lib/upload/hdrBinaryProbe';
 import { typewriterReveal } from '@/lib/typewriterReveal';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -214,7 +215,7 @@ type DistrictCatalogResponse = {
   strictCityDistricts: Record<string, string[]>;
 };
 
-const SortableItem = ({ id, img, idx, onRemove, progressObj, isHdr, roomLabel, onPickRoom }: any) => {
+const SortableItem = ({ id, img, idx, onRemove, progressObj, isHdr, roomLabel, roomSuggestion, onPickRoom }: any) => {
   const { dict } = useLocale();
   const ao = dict.addOffer;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -234,7 +235,7 @@ const SortableItem = ({ id, img, idx, onRemove, progressObj, isHdr, roomLabel, o
     <div ref={setNodeRef} style={style} className="w-32 h-32 relative rounded-2xl overflow-hidden group border border-white/10 hover:border-[#10b981]/50 transition-all z-50 shadow-lg bg-black/40 flex-shrink-0">
       <img src={img} className={`w-full h-full object-cover pointer-events-none transition-all ${isUploading ? 'opacity-40 blur-[2px]' : ''}`} alt={ao.thumbAlt} />
       {isHdr ? <OfferHdrBadge compact /> : null}
-      {onPickRoom && !isUploading ? <PhotoRoomBadge label={roomLabel} onOpen={() => onPickRoom(img)} className={isHdr ? '!top-8' : ''} /> : null}
+      {onPickRoom && !isUploading ? <PhotoRoomBadge label={roomLabel} suggestion={roomSuggestion} onOpen={() => onPickRoom(img)} className={isHdr ? '!top-8' : ''} /> : null}
 
       {/* Nakładka z kropeczkami (Uchwyt Drag & Drop) */}
       <div {...attributes} {...listeners} className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing z-20">
@@ -318,6 +319,10 @@ export default function ClientForm({
   // Opcjonalnie: pomieszczenie zdjęcia (łączy galerię z rzutem na stronie oferty).
   const [photoRooms, setPhotoRooms] = useState<Record<string, string>>({});
   const [roomPickerImg, setRoomPickerImg] = useState<string | null>(null);
+  // AI: „to wygląda na kuchnię” — podpowiedzi do zatwierdzenia jednym kliknięciem.
+  const [roomSuggestions, setRoomSuggestions] = useState<Record<string, string>>({});
+  const [roomAiBusy, setRoomAiBusy] = useState(false);
+  const roomAiRequested = useRef<Set<string>>(new Set());
   const [uploadStats, setUploadStats] = useState<{[key: string]: {progress: number, error: boolean, sizeMB: number}}>({});
   const [filesMap, setFilesMap] = useState<{[key: string]: File}>({}); 
   const [hdrFlags, setHdrFlags] = useState<Record<string, boolean>>({}); 
@@ -805,6 +810,30 @@ export default function ClientForm({
         setHdrFlags((prev) => ({ ...prev, [url]: true }));
       }),
     );
+  };
+
+  useEffect(() => {
+    const pending = imagesList.filter((img) => !photoRooms[img] && !roomAiRequested.current.has(img) && !/placeholder/.test(img));
+    if (!pending.length) return;
+    const timer = window.setTimeout(() => {
+      pending.forEach((img) => roomAiRequested.current.add(img));
+      setRoomAiBusy(true);
+      fetchPhotoRoomSuggestions(pending.slice(0, 40), (Array.isArray(data.propertyRoomScans) ? data.propertyRoomScans : []).map((room: { name?: string }) => String(room?.name || '')).filter(Boolean))
+        .then((found) => setRoomSuggestions((prev) => ({ ...prev, ...found })))
+        .catch(() => undefined)
+        .finally(() => setRoomAiBusy(false));
+    }, 900);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesList]);
+  const pendingRoomSuggestions = imagesList.filter((img) => !photoRooms[img] && roomSuggestions[img]);
+  const acceptAllRoomSuggestions = () => {
+    setPhotoRooms((prev) => {
+      const next = { ...prev };
+      for (const img of pendingRoomSuggestions) next[img] = roomSuggestions[img];
+      return next;
+    });
+    
   };
 
   const handleRemoveImage = (idx: number) => {
@@ -2331,7 +2360,7 @@ export default function ClientForm({
                   
                   <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => { const { active, over } = e; if (active.id !== over?.id && over) { setImagesList((items) => arrayMove(items, items.indexOf(active.id as string), items.indexOf(over.id as string))); } }}>
                     <SortableContext items={imagesList} strategy={rectSortingStrategy}>
-                      {imagesList.map((img, idx) => <SortableItem key={img} id={img} img={img} idx={idx} onRemove={handleRemoveImage} progressObj={uploadStats[img]} isHdr={Boolean(hdrFlags[img])} roomLabel={photoRooms[img] || null} onPickRoom={setRoomPickerImg} />)}
+                      {imagesList.map((img, idx) => <SortableItem key={img} id={img} img={img} idx={idx} onRemove={handleRemoveImage} progressObj={uploadStats[img]} isHdr={Boolean(hdrFlags[img])} roomLabel={photoRooms[img] || null} roomSuggestion={roomSuggestions[img] || null} onPickRoom={setRoomPickerImg} />)}
                     </SortableContext>
                   </DndContext>
                   {(() => {
@@ -2344,6 +2373,7 @@ export default function ClientForm({
                         options={options}
                         scannedCount={scanned}
                         current={roomPickerImg ? photoRooms[roomPickerImg] || null : null}
+                        suggested={roomPickerImg ? roomSuggestions[roomPickerImg] || null : null}
                         onPick={(room) => {
                           if (!roomPickerImg) return;
                           setPhotoRooms((prev) => {
@@ -2359,6 +2389,7 @@ export default function ClientForm({
                     );
                   })()}
                 </div>
+                <PhotoRoomAiBar busy={roomAiBusy} pending={pendingRoomSuggestions.length} onAcceptAll={acceptAllRoomSuggestions} />
                 <p className="text-[10px] text-zinc-500 mt-3 text-center">{ao.photoGalleryHint}</p>
                 {imagesList.length > 0 ? (
                   <p className="mt-1 text-center text-[11px] text-zinc-500">Opcjonalnie: kliknij „+ Pomieszczenie” na zdjęciu — zdjęcia połączą się z rzutem.</p>

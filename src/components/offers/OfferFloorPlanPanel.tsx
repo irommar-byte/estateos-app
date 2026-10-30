@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FileImage, Maximize2, ScanLine } from 'lucide-react';
 import type { OfferPageCopy } from '@/content/offerPageCopy';
 import type { Locale } from '@/i18n/config';
@@ -13,6 +13,10 @@ import { formatListingAreaSqm } from '@/lib/listingRoomAreas';
 import { cropScanMetaToRoom, roomsFromScanMeta } from '@/lib/roomScan/refineScanSections';
 import { normalizeScanMeta } from '@/lib/roomScan/planNormalize';
 import { planSpecs } from '@/lib/roomScan/planSpecs';
+import { resolveWholePlanMeta } from '@/lib/roomScan/wholePlan';
+import { DIR_LABEL, windowExposure } from '@/lib/roomScan/exposure';
+import { Sun } from 'lucide-react';
+import { useRoomPhotoColors } from '@/lib/roomPhotoColors';
 import type { RoomScanObjectCategory } from '@/types/roomScan';
 import { photoRoomKey, sameRoomName, type OfferPhotoRoom } from '@/lib/offerPhotoRoomKey';
 
@@ -58,6 +62,10 @@ type OfferFloorPlanPanelProps = {
   /** Z galerii: „Pokaż na planie” wybiera pomieszczenie. */
   focusRoom?: { room: string; nonce: number } | null;
   onOpenPhoto?: (url: string) => void;
+  /** Zgłoszenie oglądania pokoju (statystyki zainteresowania). */
+  onRoomFocus?: (room: string) => void;
+  /** Mapa ciepła zainteresowania (tylko dla właściciela / agenta). */
+  roomHeat?: Record<string, number> | null;
 };
 
 function assetUrl(uri?: string | null): string {
@@ -78,8 +86,12 @@ export default function OfferFloorPlanPanel({
   photoRooms = [],
   focusRoom = null,
   onOpenPhoto,
+  onRoomFocus,
+  roomHeat = null,
 }: OfferFloorPlanPanelProps) {
   const roomScans = useMemo(() => roomsFromScanMeta(scanMeta || null), [scanMeta]);
+  // Bez skanu całości plan składamy z pokoi (dopasowanie po drzwiach); gdy niepewne — zestawienie pokoi.
+  const wholePlan = useMemo(() => resolveWholePlanMeta(scanMeta || null), [scanMeta]);
   const [planKey, setPlanKey] = useState<'whole' | string>('whole');
 
   // Zdjęcia pogrupowane po pomieszczeniu (w kolejności galerii).
@@ -98,19 +110,46 @@ export default function OfferFloorPlanPanel({
   const photosFor = (name: string | null | undefined) => photosByRoom.find((g) => sameRoomName(g.room, name))?.urls || [];
   // Pomieszczenia ze zdjęciami, których nie ma na rzucie (np. balkon, widok) — osobne zakładki.
   const photoOnlyRooms = photosByRoom.filter((g) => !roomScans.some((room) => sameRoomName(room.name, g.room)));
+  // Spacer 3D w kolorach wnętrza: podłogi i ściany odczytane ze zdjęć przypisanych do pokoi.
+  const roomColors = useRoomPhotoColors(photosByRoom);
 
   useEffect(() => {
     if (!focusRoom) return;
     const room = roomScans.find((r) => sameRoomName(r.name, focusRoom.room));
-    setPlanKey(room ? room.id : photoOnlyRooms.some((g) => sameRoomName(g.room, focusRoom.room)) ? `photo:${focusRoom.room}` : 'whole');
+    if (room && !(scanMeta?.walls?.length)) setPlanKey(room.id);
+    else if (room || !photoOnlyRooms.some((g) => sameRoomName(g.room, focusRoom.room))) {
+      // Plan całości jest — zostajemy na nim i podświetlamy pokój ze zdjęcia.
+      if (planKey === 'whole') setWholeFocus(focusRoom.room);
+      else {
+        pendingFocus.current = focusRoom.room;
+        setPlanKey('whole');
+      }
+    } else setPlanKey(`photo:${focusRoom.room}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRoom?.nonce]);
   const selectedRoom: PropertyRoomScan | null =
     planKey === 'whole' ? null : roomScans.find((room) => room.id === planKey) || null;
   const selectedPhotoRoom = planKey.startsWith('photo:') ? planKey.slice(6) : null;
-  const selectedPhotos = selectedRoom ? photosFor(selectedRoom.name) : selectedPhotoRoom ? photosFor(selectedPhotoRoom) : [];
+  // Klik w pokój na planie całego mieszkania: zostajemy na planie, pokój świeci, pod spodem jego zdjęcia i wymiary.
+  const [wholeFocus, setWholeFocus] = useState<string | null>(null);
+  const pendingFocus = useRef<string | null>(null);
+  useEffect(() => {
+    setWholeFocus(pendingFocus.current);
+    pendingFocus.current = null;
+  }, [planKey]);
+  const focusedRoomScan = !selectedRoom && wholeFocus ? roomScans.find((room) => sameRoomName(room.name, wholeFocus)) || null : null;
+  const selectedPhotos = selectedRoom
+    ? photosFor(selectedRoom.name)
+    : selectedPhotoRoom
+      ? photosFor(selectedPhotoRoom)
+      : wholeFocus
+        ? photosFor(wholeFocus)
+        : [];
   const croppedSelected = selectedRoom ? cropScanMetaToRoom(scanMeta, selectedRoom) : null;
-  const activeMeta = useMemo(() => normalizeScanMeta(croppedSelected || selectedRoom?.scanMeta || scanMeta), [croppedSelected, selectedRoom, scanMeta]);
+  const activeMeta = useMemo(
+    () => normalizeScanMeta(croppedSelected || selectedRoom?.scanMeta || wholePlan.meta),
+    [croppedSelected, selectedRoom, wholePlan],
+  );
   const active3d = assetUrl(selectedRoom?.floorPlan3dUri) || floorPlan3dSrc || '';
   const hasInteractive = Boolean(activeMeta?.walls?.length);
   // Zawsze „ubrany” rzut: pokój — gotowy rysunek z aplikacji (meble, wymiary); całe mieszkanie — wyprostowany plan z meblami.
@@ -159,7 +198,10 @@ export default function OfferFloorPlanPanel({
         <button
           key={room.id || room.name}
           type="button"
-        onClick={() => setPlanKey(room.id)}
+        onClick={() => {
+          setPlanKey(room.id);
+          onRoomFocus?.(room.name);
+        }}
           aria-pressed={planKey === room.id}
         className={`eos-plan-chip ${planKey === room.id ? 'is-active' : ''}`}
         >
@@ -183,7 +225,8 @@ export default function OfferFloorPlanPanel({
   ) : null;
 
   // Pomiary z LiDAR-u pod każdym rzutem (pokój albo całe mieszkanie).
-  const specs = scanMeta || roomScans.length ? planSpecs(selectedRoom, selectedRoom?.scanMeta || scanMeta || null, roomScans) : [];
+  const specRoom = selectedRoom || focusedRoomScan;
+  const specs = scanMeta || roomScans.length ? planSpecs(specRoom, specRoom?.scanMeta || scanMeta || null, roomScans) : [];
   const specGrid = specs.length ? (
     <dl className="eos-plan-specs" key={`specs-${planKey}`}>
       {specs.map((spec) => (
@@ -193,6 +236,26 @@ export default function OfferFloorPlanPanel({
         </div>
       ))}
     </dl>
+  ) : null;
+
+  // Ekspozycja okien całego mieszkania: z planu całości albo ze skanów pokoi (każdy ma swój kompas).
+  const exposures = (() => {
+    if (selectedRoom || focusedRoomScan) return [];
+    const whole = scanMeta?.openings?.length ? windowExposure(activeMeta, null) : [];
+    if (whole.length) return whole;
+    return roomScans.flatMap((room) => windowExposure(room.scanMeta || null, room.name));
+  })();
+  const exposureList = exposures.length ? (
+    <div className="eos-plan-exposure">
+      {exposures.map((exp) => (
+        <div key={exp.room} className="eos-plan-exposure__row">
+          <Sun size={14} className="eos-plan-exposure__sun" style={{ opacity: 0.45 + Math.min(1, exp.sunHours / 6.5) * 0.55 }} />
+          <span className="eos-plan-exposure__room">{exp.room}</span>
+          <span className="eos-plan-exposure__dirs">okna: {exp.dirs.map((d) => DIR_LABEL[d]).join(', ')}</span>
+          <span className="eos-plan-exposure__hint">{exp.sun}</span>
+        </div>
+      ))}
+    </div>
   ) : null;
 
   const photoStrip = selectedPhotos.length ? (
@@ -247,6 +310,16 @@ export default function OfferFloorPlanPanel({
           width={variant === 'compact' ? 640 : 960}
           height={variant === 'compact' ? 480 : 600}
           locale={locale}
+          onRoomClick={
+            selectedRoom
+              ? undefined
+              : (label) => {
+                  setWholeFocus((prev) => (sameRoomName(prev, label) ? null : label));
+                  onRoomFocus?.(label);
+                }
+          }
+          highlight={selectedRoom ? null : wholeFocus}
+          heat={selectedRoom ? null : roomHeat}
         />
       ) : showMosaic ? (
         <div className="eos-plan-mosaic" style={{ gridTemplateColumns: `repeat(${mosaicRooms.length <= 2 ? mosaicRooms.length : mosaicRooms.length <= 4 ? 2 : 3}, minmax(0, 1fr))` }}>
@@ -301,6 +374,9 @@ export default function OfferFloorPlanPanel({
             <div>
               <h4 className="eos-aside-card__title !mb-1">{copy.floorPlan}</h4>
               {metaLine ? <p className="text-[12px] font-medium text-[var(--eos-muted)]">{metaLine}</p> : null}
+              {wholePlan.assembled && !selectedRoom ? (
+                <p className="mt-0.5 text-[11px] font-semibold text-[#b08a47]">Plan złożony automatycznie ze skanów pokoi</p>
+              ) : null}
             </div>
             {scanMeta ? (
               <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-sky-400/30 bg-sky-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-sky-700 dark:bg-sky-500/10 dark:text-sky-200">
@@ -318,6 +394,7 @@ export default function OfferFloorPlanPanel({
             </span>
           </button>
           {specGrid ? <div className="mt-3">{specGrid}</div> : null}
+          {exposureList ? <div className="mt-3">{exposureList}</div> : null}
           {photoStrip ? <div className="mt-3">{photoStrip}</div> : null}
         </div>
         {furnitureRow ? <div className="px-4 pb-4">{furnitureRow}</div> : null}
@@ -326,6 +403,7 @@ export default function OfferFloorPlanPanel({
             <FloorPlan3dWalkthrough
               modelUrl={active3d}
               scanMeta={activeMeta}
+              roomColors={roomColors}
               copy={copy.floorPlanWalkthrough}
               compact
             />
@@ -384,6 +462,7 @@ export default function OfferFloorPlanPanel({
       </button>
 
       {specGrid ? <div className="px-6 pb-4 md:px-8">{specGrid}</div> : null}
+      {exposureList ? <div className="px-6 pb-4 md:px-8">{exposureList}</div> : null}
       {photoStrip ? <div className="px-6 pb-5 md:px-8">{photoStrip}</div> : null}
 
       {furnitureRow ? (
@@ -399,6 +478,7 @@ export default function OfferFloorPlanPanel({
         <FloorPlan3dWalkthrough
           modelUrl={active3d}
           scanMeta={activeMeta}
+          roomColors={roomColors}
           copy={{
             ...copy.floorPlanWalkthrough,
             title: selectedRoom ? copy.floorPlanScan.roomWalkthrough : copy.floorPlanWalkthrough.title,

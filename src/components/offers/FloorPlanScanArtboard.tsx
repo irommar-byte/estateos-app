@@ -32,9 +32,15 @@ type Props = {
   locale: Locale;
   className?: string;
   compact?: boolean;
+  /** Klik w pomieszczenie na planie (nazwa jak w skanie: „Salon”, „Łazienka”…). */
+  onRoomClick?: (label: string) => void;
+  /** Podświetlone pomieszczenie (np. pokój ze zdjęcia w galerii). */
+  highlight?: string | null;
+  /** Mapa ciepła zainteresowania: nazwa pomieszczenia → 0…1. */
+  heat?: Record<string, number> | null;
 };
 
-export default function FloorPlanScanArtboard({ walls, meta, width, height, locale, className, compact }: Props) {
+export default function FloorPlanScanArtboard({ walls, meta, width, height, locale, className, compact, onRoomClick, highlight, heat }: Props) {
   const padding = compact ? 8 : 48;
   const bg = compact ? '#eef2f6' : '#eef2f6';
 
@@ -64,6 +70,7 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
     () =>
       planRooms.map((room) => ({
         id: room.id,
+        label: room.label,
         fill: ROOM_TINT[room.key] || '#f8fafc',
         d: room.rects
           .map(([x0, z0, x1, z1]) => {
@@ -142,7 +149,7 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
       viewBox={`0 0 ${width} ${height}`}
       width="100%"
       height="100%"
-      className={className}
+      className={`eos-plan-svg ${className || ''}`}
       role="img"
       aria-label="Plan mieszkania ze skanu LiDAR"
       style={{ fontFamily: 'Inter, ui-sans-serif, system-ui, -apple-system, sans-serif' }}
@@ -153,14 +160,37 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
         path.d.includes(' Z') ? <path key={`${path.id}-fill`} d={path.d} fill="#ffffff" stroke="none" /> : null,
       )}
 
-      {roomPaths.map((room) => (
-        <path key={room.id} d={room.d} fill={room.fill} stroke={room.fill} strokeWidth={0.6} />
-      ))}
+      {roomPaths.map((room) => {
+        const norm = (v: string | null | undefined) => String(v || '').trim().toLocaleLowerCase('pl');
+        const lit = Boolean(highlight) && norm(highlight) === norm(room.label);
+        const heatValue = heat ? heat[norm(room.label)] ?? 0 : 0;
+        return (
+          <g key={room.id}>
+            <path d={room.d} fill={room.fill} stroke={room.fill} strokeWidth={0.6} />
+            {heat && heatValue > 0 ? (
+              <path d={room.d} fill={`rgba(234, 88, 12, ${(0.12 + heatValue * 0.5).toFixed(2)})`} className="eos-plan-heat" />
+            ) : null}
+            {lit ? <path d={room.d} className="eos-plan-room-lit" /> : null}
+            {onRoomClick && room.label ? (
+              <path
+                d={room.d}
+                className="eos-plan-room-hit"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRoomClick(room.label);
+                }}
+              >
+                <title>{room.label}</title>
+              </path>
+            ) : null}
+          </g>
+        );
+      })}
 
       {furniture.map((obj) => {
         const p = mapFloorPlanPoint(obj.centerX, obj.centerZ, meta.bounds, viewport);
         return (
-          <g key={obj.id} transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${obj.rotationDeg})`} opacity={0.92}>
+          <g key={obj.id} transform={`translate(${p.x.toFixed(1)} ${p.y.toFixed(1)}) rotate(${obj.rotationDeg})`} opacity={0.92} pointerEvents="none">
             {planFurnitureSymbol(obj.category, obj.widthM * viewport.scale, obj.depthM * viewport.scale)}
           </g>
         );
@@ -221,6 +251,19 @@ export default function FloorPlanScanArtboard({ walls, meta, width, height, loca
               ) : null}
             </g>
           ))}
+
+      {!compact && meta.northRotationDegrees != null && Number.isFinite(meta.northRotationDegrees) ? (
+        <g transform={`translate(${width - padding + 4} ${padding + 6})`} className="eos-plan-compass">
+          <circle r={22} fill="#ffffff" stroke="#cbd5e1" strokeWidth={1} />
+          <g transform={`rotate(${meta.northRotationDegrees})`}>
+            <path d="M0 -17 L5 0 L0 4 L-5 0 Z" fill="#b91c1c" />
+            <path d="M0 17 L5 0 L0 -4 L-5 0 Z" fill="#94a3b8" />
+            <text y={-24} textAnchor="middle" fontSize={11} fontWeight={700} fill="#b91c1c" transform={`rotate(${-meta.northRotationDegrees} 0 -28)`}>
+              N
+            </text>
+          </g>
+        </g>
+      ) : null}
 
       {compact ? null : (
         <g>

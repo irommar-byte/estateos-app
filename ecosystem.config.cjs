@@ -91,12 +91,13 @@ module.exports = {
       name: "rcn-market-ingest",
       cwd: root,
       script: "npx",
-      args: "tsx scripts/ingest-rcn-market.ts",
+      // Co godzinę sprawdza harmonogram z panelu admina (aplikacja → Profil → Baza cen RCN).
+      args: "tsx scripts/ingest-rcn-market.ts --scheduled",
       env_file: path.join(root, ".env"),
       env: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
       env_production: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
       autorestart: false,
-      cron_restart: "20 3 * * 0",
+      cron_restart: "20 * * * *",
       time: true,
     },
     {

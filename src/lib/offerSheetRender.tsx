@@ -25,7 +25,8 @@ const LINE = '#e6e2da';
 const BLUE = '#2f4fd8';
 const CREAM = '#f4f1ea';
 const PLAN_FULL = { w: 440, h: 300 };
-const PLAN_ARCH = { w: 350, h: 396 };
+const PLAN_ARCH = { w: 350, h: 300 };
+const ROOM_SHOT = { w: 222, h: 120 };
 
 type Assets = {
   hero: string | null;
@@ -35,6 +36,8 @@ type Assets = {
   map: string | null;
   plan: SheetPlan | null;
   planImage: string | null;
+  /** Zdjęcia podpisane nazwami pokoi (styl Architekt). */
+  roomShots: Array<{ src: string; room: string | null }>;
 };
 
 function abs(url: string): string {
@@ -71,7 +74,12 @@ async function fetchBuffer(url: string, timeoutMs = 7000): Promise<Buffer | null
   }
 }
 
-async function loadAssets(data: OfferSheetData, style: OfferSheetStyleId, scanMeta: FloorPlanScanMeta | null): Promise<Assets> {
+async function loadAssets(
+  data: OfferSheetData,
+  style: OfferSheetStyleId,
+  scanMeta: FloorPlanScanMeta | null,
+  roomPhotos: Array<{ url: string; room: string }>,
+): Promise<Assets> {
   const heroSize = style === 'galeria' ? [W, 450] : style === 'architekt' ? [380, 268] : [W, 292];
   const photoSize = style === 'galeria' ? [230, 172] : style === 'architekt' ? [326, PLAN_ARCH.h - 44] : [262, 143];
   const planSize = style === 'architekt' ? [PLAN_ARCH.w - 24, PLAN_ARCH.h - 44] : [PLAN_FULL.w - 24, PLAN_FULL.h - 44];
@@ -88,6 +96,25 @@ async function loadAssets(data: OfferSheetData, style: OfferSheetStyleId, scanMe
     style === 'galeria' ? Promise.resolve(null) : buildSheetPlan(scanMeta, planSize[0], planSize[1]).catch(() => null),
   ]);
   const planImage = style !== 'galeria' && !plan && data.floorPlanUrl ? await photo(data.floorPlanUrl, planSize[0], planSize[1], 'contain') : null;
+  // Architekt: trzy zdjęcia różnych pokoi (z przypisań), a bez przypisań — kolejne zdjęcia galerii.
+  let roomShots: Assets['roomShots'] = [];
+  if (style === 'architekt') {
+    const picked: Array<{ url: string; room: string | null }> = [];
+    const seen = new Set<string>();
+    for (const item of roomPhotos) {
+      const key = item.room.toLocaleLowerCase('pl');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      picked.push(item);
+      if (picked.length === 3) break;
+    }
+    for (const url of data.photos) {
+      if (picked.length >= 3) break;
+      if (!picked.some((p) => p.url === url)) picked.push({ url, room: null });
+    }
+    const loaded = await Promise.all(picked.map((p) => photo(p.url, ROOM_SHOT.w, ROOM_SHOT.h)));
+    roomShots = picked.map((p, i) => ({ src: loaded[i] || '', room: p.room })).filter((p) => p.src);
+  }
   return {
     hero,
     photos: [p1, p2, p3],
@@ -96,6 +123,7 @@ async function loadAssets(data: OfferSheetData, style: OfferSheetStyleId, scanMe
     map: await toDataUri(mapBuf, 326, PLAN_ARCH.h - 44),
     plan,
     planImage,
+    roomShots,
   };
 }
 
@@ -341,10 +369,24 @@ function Architekt({ data, a }: { data: OfferSheetData; a: Assets }) {
             <Img src={a.map || a.photos[0]} style={{ width: 326, height: PLAN_ARCH.h - 44, borderRadius: 8, marginTop: 6 }} />
           </div>
         </div>
-        <div style={{ display: 'flex', marginTop: 16 }}>
+        {a.roomShots.length ? (
+          <div style={{ display: 'flex', marginTop: 14, justifyContent: 'space-between' }}>
+            {a.roomShots.map((shot, i) => (
+              <div key={i} style={{ display: 'flex', position: 'relative', width: ROOM_SHOT.w, height: ROOM_SHOT.h }}>
+                <Img src={shot.src} style={{ width: ROOM_SHOT.w, height: ROOM_SHOT.h, borderRadius: 10 }} />
+                {shot.room ? (
+                  <span style={{ position: 'absolute', left: 8, bottom: 8, display: 'flex', fontSize: 10.5, fontWeight: 700, color: '#ffffff', background: 'rgba(21,23,26,0.85)', padding: '3px 9px', borderRadius: 999 }}>
+                    {shot.room}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div style={{ display: 'flex', marginTop: 14 }}>
           <Chips items={data.amenities} dark />
         </div>
-        {data.description ? <div style={clamp(4, { fontSize: 11.5, lineHeight: 1.55, color: INK2, marginTop: 12 })}>{shortText(data.description, 380)}</div> : null}
+        {data.description ? <div style={clamp(3, { fontSize: 11.5, lineHeight: 1.55, color: INK2, marginTop: 10 })}>{shortText(data.description, 300)}</div> : null}
         <div style={{ display: 'flex', marginTop: 'auto' }} />
         <Footer data={data} a={a} />
       </div>
@@ -352,9 +394,14 @@ function Architekt({ data, a }: { data: OfferSheetData; a: Assets }) {
   );
 }
 
-export async function renderOfferSheet(card: OfferShareCard, style: OfferSheetStyleId, scanMeta: FloorPlanScanMeta | null): Promise<ImageResponse> {
+export async function renderOfferSheet(
+  card: OfferShareCard,
+  style: OfferSheetStyleId,
+  scanMeta: FloorPlanScanMeta | null,
+  roomPhotos: Array<{ url: string; room: string }> = [],
+): Promise<ImageResponse> {
   const data = offerSheetData(card);
-  const [fonts, assets] = await Promise.all([loadOgFonts(), loadAssets(data, style, scanMeta)]);
+  const [fonts, assets] = await Promise.all([loadOgFonts(), loadAssets(data, style, scanMeta, roomPhotos)]);
   const Page = style === 'galeria' ? Galeria : style === 'architekt' ? Architekt : Pelna;
   const page: ReactNode = (
     <div style={{ display: 'flex', position: 'relative', width: W * D, height: H * D, background: '#ffffff' }}>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { MapPin, Plus, ScanLine, X } from 'lucide-react';
+import { Check, Loader2, MapPin, Plus, ScanLine, Sparkles, X } from 'lucide-react';
 
 /** Typowe pomieszczenia — gdy oferta nie ma skanu, a i tak warto opisać zdjęcia. */
 export const DEFAULT_PHOTO_ROOMS = [
@@ -57,7 +57,19 @@ export function scannedRoomNames(rawMeta: unknown): string[] {
 }
 
 /** Plakietka na kafelku zdjęcia: nazwa pomieszczenia albo „+ Pomieszczenie”. */
-export function PhotoRoomBadge({ label, onOpen, className = '' }: { label?: string | null; onOpen: () => void; className?: string }) {
+export function PhotoRoomBadge({
+  label,
+  suggestion,
+  onOpen,
+  className = '',
+}: {
+  label?: string | null;
+  /** Podpowiedź AI (jeszcze niezatwierdzona) — „Kuchnia?”. */
+  suggestion?: string | null;
+  onOpen: () => void;
+  className?: string;
+}) {
+  const ai = !label && suggestion;
   return (
     <button
       type="button"
@@ -66,11 +78,11 @@ export function PhotoRoomBadge({ label, onOpen, className = '' }: { label?: stri
         event.stopPropagation();
         onOpen();
       }}
-      title={label ? `Pomieszczenie: ${label}` : 'Przypisz pomieszczenie'}
-      className={`eos-photo-room-badge ${label ? 'is-set' : ''} ${className}`}
+      title={label ? `Pomieszczenie: ${label}` : ai ? `AI: wygląda na „${suggestion}” — kliknij, by zatwierdzić lub zmienić` : 'Przypisz pomieszczenie'}
+      className={`eos-photo-room-badge ${label ? 'is-set' : ''} ${ai ? 'is-ai' : ''} ${className}`}
     >
-      {label ? <MapPin size={11} /> : <Plus size={12} />}
-      <span>{label || 'Pomieszczenie'}</span>
+      {label ? <MapPin size={11} /> : ai ? <Sparkles size={11} /> : <Plus size={12} />}
+      <span>{label || (ai ? `${suggestion}?` : 'Pomieszczenie')}</span>
     </button>
   );
 }
@@ -81,6 +93,7 @@ export function PhotoRoomPickerDialog({
   options,
   scannedCount,
   current,
+  suggested,
   onPick,
   onClose,
 }: {
@@ -88,6 +101,7 @@ export function PhotoRoomPickerDialog({
   options: string[];
   scannedCount: number;
   current?: string | null;
+  suggested?: string | null;
   onPick: (room: string | null) => void;
   onClose: () => void;
 }) {
@@ -139,6 +153,11 @@ export function PhotoRoomPickerDialog({
             >
               {index < scannedCount ? <ScanLine size={13} className={isActive(room) ? 'text-white' : 'text-[#b08a47]'} /> : null}
               {room}
+              {!current && suggested && suggested.toLocaleLowerCase('pl') === room.toLocaleLowerCase('pl') ? (
+                <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-[#c9a96e] to-[#e6cf9f] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-[#15171a]">
+                  <Sparkles size={9} /> AI
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -155,6 +174,25 @@ export function PhotoRoomPickerDialog({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Pasek nad zdjęciami: AI rozpoznaje pomieszczenia / „Zatwierdź wszystkie podpowiedzi”. */
+export function PhotoRoomAiBar({ busy, pending, onAcceptAll }: { busy: boolean; pending: number; onAcceptAll: () => void }) {
+  if (!busy && !pending) return null;
+  return (
+    <div className="eos-photo-ai-bar">
+      <span className="eos-photo-ai-bar__glow" aria-hidden />
+      {busy ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+      <span className="eos-photo-ai-bar__text">
+        {busy ? 'AI rozpoznaje pomieszczenia na zdjęciach…' : `AI rozpoznało pomieszczenia na ${pending} ${pending === 1 ? 'zdjęciu' : 'zdjęciach'}`}
+      </span>
+      {!busy && pending ? (
+        <button type="button" onClick={onAcceptAll} className="eos-photo-ai-bar__btn">
+          <Check size={14} /> Zatwierdź wszystkie
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { countWarsawSince, fetchWarsawPage } from "@/lib/market/rcnWfs";
 import { assessRcnQuality } from "@/lib/market/rcnQuality";
 import { resolveWarsawDistrict } from "@/lib/market/warsawDistricts";
 import { recomputeWarsawAreaStats } from "@/lib/market/aggregates";
+import { appendIngestHistory, writeIngestProgress } from "@/lib/market/ingestControl";
 import type { RcnLocalFeature } from "@/lib/market/rcnParse";
 
 const PAGE = 120;
@@ -73,16 +74,40 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
   let matched: number | null = null;
   const kindErrors: string[] = [];
   const sampled = new Set<MarketKind>();
+  // Postęp dla panelu admina: (warstwa × miesiąc) jako jednostki, w środku miesiąca — ułamek stron.
+  const totalBefore = await prisma.marketTransaction.count().catch(() => 0);
+  const startedAtIso = run.startedAt.toISOString();
+  const allWindows = monthWindows(since);
+  const units = Math.max(1, MARKET_KINDS.length * allWindows.length);
+  const KIND_PL: Record<string, string> = { LOCAL: "Mieszkania", BUILDING: "Domy", PLOT: "Działki" };
+  const monthLabel = (iso: string) =>
+    new Date(`${iso}T12:00:00Z`).toLocaleDateString("pl-PL", { month: "long", year: "numeric", timeZone: "UTC" });
+  const report = (kindIndex: number, winIndex: number, fraction: number, kind: string, from: string, force = false) =>
+    writeIngestProgress(
+      {
+        runId: run.id,
+        percent: Math.min(99, ((kindIndex * allWindows.length + winIndex + fraction) / units) * 100),
+        phase: `${KIND_PL[kind] || kind} · ${monthLabel(from)}`,
+        detail: `${upserted.toLocaleString("pl-PL")} aktów zapisanych`,
+        kind,
+        upserted,
+        startedAt: startedAtIso,
+        done: false,
+      },
+      force,
+    );
+  await report(0, 0, 0, MARKET_KINDS[0], allWindows[0]?.from || since, true);
 
   try {
     // Mieszkania, domy i działki — błąd jednej warstwy nie zatrzymuje pozostałych.
-    for (const kind of MARKET_KINDS) {
+    for (const [kindIndex, kind] of MARKET_KINDS.entries()) {
       try {
         // Miesiąc po miesiącu, od najnowszego: każde okno ma kilka tysięcy aktów, więc stronicowanie jest pewne,
         // a przerwany import i tak zostawia najświeższe dane. Koniec strony poznajemy po numberReturned,
         // nie po liczbie poprawnie odczytanych rekordów (część aktów jest odrzucana przez kontrolę jakości).
-        const windows = monthWindows(since);
-        for (const win of windows) {
+        const windows = allWindows;
+        for (const [winIndex, win] of windows.entries()) {
+          await report(kindIndex, winIndex, 0, kind, win.from);
           try {
             const hits = await countWarsawSince(kind, win.from, win.to).catch(
               () => null,
@@ -111,6 +136,7 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
                 const result = await persistFeatures(features, kind);
                 upserted += result.upserted;
                 skipped += result.skipped;
+                await report(kindIndex, winIndex, hits ? Math.min(1, (startIndex + PAGE) / hits) : 0.5, kind, win.from);
                 log("page", {
                   kind,
                   from: win.from,
@@ -159,9 +185,43 @@ export async function ingestWarsawRcn(opts?: { source?: string }): Promise<{
       },
     });
     log("done", { fetched, upserted, skipped, matched });
+    const totalAfter = await prisma.marketTransaction.count().catch(() => totalBefore);
+    await appendIngestHistory({
+      runId: run.id,
+      finishedAt: new Date().toISOString(),
+      added: Math.max(0, totalAfter - totalBefore),
+      total: totalAfter,
+      durationSec: Math.round((Date.now() - run.startedAt.getTime()) / 1000),
+      status: kindErrors.length ? "PARTIAL" : "SUCCESS",
+    });
+    await writeIngestProgress(
+      {
+        runId: run.id,
+        percent: 100,
+        phase: "Gotowe",
+        detail: `+${Math.max(0, totalAfter - totalBefore).toLocaleString("pl-PL")} nowych aktów`,
+        kind: null,
+        upserted,
+        startedAt: startedAtIso,
+        done: true,
+      },
+      true,
+    );
     return { fetched, upserted, skipped, matched };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    await writeIngestProgress(
+      { runId: run.id, percent: 0, phase: "Błąd importu", detail: message.slice(0, 200), kind: null, upserted, startedAt: startedAtIso, done: true },
+      true,
+    );
+    await appendIngestHistory({
+      runId: run.id,
+      finishedAt: new Date().toISOString(),
+      added: Math.max(0, (await prisma.marketTransaction.count().catch(() => totalBefore)) - totalBefore),
+      total: await prisma.marketTransaction.count().catch(() => totalBefore),
+      durationSec: Math.round((Date.now() - run.startedAt.getTime()) / 1000),
+      status: "FAILED",
+    });
     await prisma.marketIngestRun.update({
       where: { id: run.id },
       data: {

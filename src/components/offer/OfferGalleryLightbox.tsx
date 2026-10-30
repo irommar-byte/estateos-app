@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import OfferMiniPlan from '@/components/offers/OfferMiniPlan';
+import type { FloorPlanScanMeta } from '@/types/roomScan';
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
@@ -21,6 +23,12 @@ type Props = {
   /** Pomieszczenie przypisane do zdjęcia (np. „Salon”) — z przyciskiem „Pokaż na planie”. */
   roomOf?: (url: string) => string | null;
   onShowRoom?: (room: string) => void;
+  /** Skan mieszkania — minirzut w rogu z podświetlonym pokojem ze zdjęcia. */
+  miniPlanMeta?: FloorPlanScanMeta | null;
+  /** Statystyki: ile czasu oglądano każde zdjęcie. */
+  onPhotoDwell?: (url: string, ms: number) => void;
+  /** Zakładki pomieszczeń: „Wszystkie (20) · Salon (4) · Kuchnia (3)”. */
+  tabs?: Array<{ label: string; count: number; active: boolean; onSelect: () => void }>;
 };
 
 const MIN_SCALE = 1;
@@ -45,6 +53,9 @@ export default function OfferGalleryLightbox({
   imageMeta,
   roomOf,
   onShowRoom,
+  miniPlanMeta,
+  onPhotoDwell,
+  tabs,
 }: Props) {
   const [mounted, setMounted] = useState(false);
   const [scale, setScale] = useState(1);
@@ -53,6 +64,27 @@ export default function OfferGalleryLightbox({
   const [isInteracting, setIsInteracting] = useState(false);
   const viewportRef = useRef<HTMLDivElement>(null);
   const pointersRef = useRef<Map<number, PointerSample>>(new Map());
+  // Statystyki zainteresowania: ile czasu klient patrzy na każde zdjęcie.
+  const dwellRef = useRef<{ url: string; at: number } | null>(null);
+  useEffect(() => {
+    const flush = () => {
+      const prev = dwellRef.current;
+      if (prev && onPhotoDwell) onPhotoDwell(prev.url, Date.now() - prev.at);
+      dwellRef.current = null;
+    };
+    flush();
+    if (isOpen && images[index]) dwellRef.current = { url: images[index], at: Date.now() };
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, isOpen]);
+  useEffect(
+    () => () => {
+      const prev = dwellRef.current;
+      if (prev && onPhotoDwell) onPhotoDwell(prev.url, Date.now() - prev.at);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const pinchStartRef = useRef<{ distance: number; scale: number } | null>(null);
   const panStartRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -284,6 +316,27 @@ export default function OfferGalleryLightbox({
           {index + 1} / {images.length}
           {scale > 1 ? <span className="ml-2 text-white/55">{Math.round(scale * 100)}%</span> : null}
         </div>
+
+        {tabs?.length ? (
+          <div className="eos-lightbox-tabs" onClick={(e) => e.stopPropagation()}>
+            {tabs.map((tab) => (
+              <button key={tab.label} type="button" onClick={tab.onSelect} className={`eos-lightbox-tabs__tab ${tab.active ? "is-active" : ""}`}>
+                {tab.label}
+                <span>{tab.count}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {(() => {
+          const room = roomOf?.(images[index] || '') || null;
+          if (!room || !miniPlanMeta) return null;
+          return (
+            <div className="absolute bottom-[max(6.5rem,calc(env(safe-area-inset-bottom)+6rem))] left-3 z-[2147483001] sm:left-5">
+              <OfferMiniPlan key={room} meta={miniPlanMeta} room={room} onClick={onShowRoom ? () => onShowRoom(room) : undefined} />
+            </div>
+          );
+        })()}
 
         {(() => {
           const room = roomOf?.(images[index] || '') || null;

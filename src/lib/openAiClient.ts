@@ -304,6 +304,87 @@ export async function callOpenAiText(params: {
   throw lastError instanceof Error ? lastError : new Error('OpenAI request failed');
 }
 
+/**
+ * Zapytanie z obrazami (miniatury jako data URL, „low detail” — najtaniej) i ścisłym JSON-em.
+ * Ten sam łańcuch modeli co tekst: gdy domyślny model nie przyjmie obrazów, idzie następny.
+ */
+export async function callOpenAiVisionJson(params: {
+  apiKey: string;
+  model: string;
+  system: string;
+  prompt: string;
+  images: string[];
+  jsonSchema: OpenAiJsonSchema;
+  maxOutputTokens?: number;
+  feature: string;
+}): Promise<{ text: string; model: string; usage: OpenAiUsage }> {
+  const { default: OpenAI } = await import('openai');
+  const client = new OpenAI({ apiKey: params.apiKey, timeout: 55_000, maxRetries: 1 }) as unknown as OpenAiClient;
+  const maxOutput = params.maxOutputTokens ?? 600;
+  let lastError: unknown;
+  const chain = buildModelFallbackChain(params.model);
+  for (const model of chain) {
+    try {
+      let text = '';
+      let usage: OpenAiUsage = { inputTokens: 0, outputTokens: 0 };
+      if (usesResponsesApi(model)) {
+        const args: Record<string, unknown> = {
+          model,
+          instructions: params.system,
+          input: [
+            {
+              role: 'user',
+              content: [
+                { type: 'input_text', text: params.prompt },
+                ...params.images.map((url) => ({ type: 'input_image', image_url: url, detail: 'low' })),
+              ],
+            },
+          ],
+          max_output_tokens: maxOutput,
+          text: { format: { type: 'json_schema', name: params.jsonSchema.name, schema: params.jsonSchema.schema, strict: true } },
+        };
+        const reasoning = reasoningParam(model, 'none');
+        if (reasoning) args.reasoning = reasoning;
+        const response = await client.responses.create(args);
+        text = String(response.output_text || '').trim();
+        usage = { inputTokens: Number(response.usage?.input_tokens || 0), outputTokens: Number(response.usage?.output_tokens || 0) };
+      } else {
+        const completion = await client.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: params.system },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: params.prompt },
+                ...params.images.map((url) => ({ type: 'image_url', image_url: { url, detail: 'low' } })),
+              ],
+            },
+          ],
+          ...(/^gpt-(4|3\.5)/i.test(model) ? { max_tokens: maxOutput, temperature: 0 } : { max_completion_tokens: maxOutput }),
+          response_format: {
+            type: 'json_schema',
+            json_schema: { name: params.jsonSchema.name, schema: params.jsonSchema.schema, strict: true },
+          },
+        });
+        text = String(completion.choices[0]?.message?.content || '').trim();
+        usage = {
+          inputTokens: Number(completion.usage?.prompt_tokens || 0),
+          outputTokens: Number(completion.usage?.completion_tokens || 0),
+        };
+      }
+      if (!text) throw new Error('OpenAI zwróciło pusty wynik.');
+      void recordAiUsage(params.feature, model, usage, false);
+      return { text, model, usage };
+    } catch (err) {
+      lastError = err;
+      void recordAiUsage(params.feature, model, null, true);
+      if (model !== chain[chain.length - 1]) continue;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('OpenAI vision request failed');
+}
+
 export function getOpenAiApiKey(): string | null {
   return process.env.OPENAI_API_KEY?.trim()?.replace(/^"|"$/g, '') || null;
 }

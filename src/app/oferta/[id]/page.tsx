@@ -41,6 +41,8 @@ import OfferDescriptionBody from "@/components/offer/OfferDescriptionBody";
 import OfferFloorPlanPanel from "@/components/offers/OfferFloorPlanPanel";
 import OfferRevealEffects from "@/components/offer/OfferRevealEffects";
 import { photoRoomKey, type OfferPhotoRoom } from "@/lib/offerPhotoRoomKey";
+import { trackEngagement } from "@/lib/offerEngagementClient";
+import OfferInterestPanel from "@/components/offers/OfferInterestPanel";
 import { parseFloorPlanScanMeta } from "@/lib/roomScan/parseFloorPlanScanMeta";
 import OpenHouseOfferBanner from "@/components/offer/OpenHouseOfferBanner";
 import OpenHouseReserveModal from "@/components/offer/OpenHouseReserveModal";
@@ -168,6 +170,8 @@ function OfferDetails({
   // Zdjęcia przypisane do pomieszczeń: rzut ↔ galeria w obie strony.
   const [photoRooms, setPhotoRooms] = useState<OfferPhotoRoom[]>([]);
   const [planFocus, setPlanFocus] = useState<{ room: string; nonce: number } | null>(null);
+  // Galeria po pomieszczeniach: „Salon (4) · Kuchnia (3)” — filtr w galerii.
+  const [galleryFilter, setGalleryFilter] = useState<string | null>(null);
   useEffect(() => {
     const offerIdForRooms = Number(offer?.id ?? offer?._id);
     if (!Number.isFinite(offerIdForRooms) || offerIdForRooms <= 0) return;
@@ -184,7 +188,22 @@ function OfferDetails({
   }, [offer?.id, offer?._id]);
   const photoRoomByKey = new Map(photoRooms.map((item) => [item.url, item.room]));
   const roomOfPhoto = (url: string) => photoRoomByKey.get(photoRoomKey(url)) || null;
+  const roomGroups: Array<{ room: string; urls: string[] }> = [];
+  for (const url of allImages) {
+    const room = roomOfPhoto(url);
+    if (!room) continue;
+    const group = roomGroups.find((g) => g.room.toLocaleLowerCase("pl") === room.toLocaleLowerCase("pl"));
+    if (group) group.urls.push(url);
+    else roomGroups.push({ room, urls: [url] });
+  }
+  const galleryImages = galleryFilter ? roomGroups.find((g) => g.room === galleryFilter)?.urls || images : images;
+  const openRoomGallery = (room: string | null) => {
+    setGalleryFilter(room);
+    setCurrentImageIndex(0);
+    setIsGalleryOpen(true);
+  };
   const openPhotoFromPlan = (url: string) => {
+    setGalleryFilter(null);
     const at = images.findIndex((img) => photoRoomKey(img) === photoRoomKey(url));
     setCurrentImageIndex(at >= 0 ? at : 0);
     setIsFloorplanModalOpen(false);
@@ -228,6 +247,7 @@ function OfferDetails({
   });
 
   const openGallery = (index: number) => {
+    setGalleryFilter(null);
     setCurrentImageIndex(index);
     setIsGalleryOpen(true);
   };
@@ -387,9 +407,23 @@ function OfferDetails({
   const streetRaw = String(offer.street || offer.address || "").trim();
   const addressNumberRaw = String(offer.buildingNumber || "").trim();
   const exactLocation = offer.isExactLocation !== false;
+  // Tytuł bez „|” z portali i ulica bez kodu, województwa i kraju z geokodera.
+  const displayTitle = String(offer.title || "")
+    .replace(/\s*[|/]\s*/g, " · ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  const cleanStreet = (() => {
+    const parts = streetRaw.split(",").map((part) => part.trim()).filter(Boolean);
+    const skip = (part: string) =>
+      /\d{2}-\d{3}/.test(part) ||
+      /województwo|wojewodztwo|^polska$|^poland$/i.test(part) ||
+      (cityRaw && part.toLowerCase() === cityRaw.toLowerCase()) ||
+      (districtRaw && part.toLowerCase() === districtRaw.toLowerCase());
+    return parts.filter((part) => !skip(part))[0] || parts[0] || "";
+  })();
   const streetLine = exactLocation
-    ? [streetRaw, addressNumberRaw].filter(Boolean).join(" ").trim()
-    : streetRaw;
+    ? [cleanStreet, cleanStreet.includes(addressNumberRaw) ? "" : addressNumberRaw].filter(Boolean).join(" ").trim()
+    : cleanStreet;
   const districtUpper = districtRaw.toUpperCase();
   const districtSpecified =
     districtRaw.length > 0 &&
@@ -740,7 +774,7 @@ function OfferDetails({
 
             {!isArchived ? (
               <h1 className="eos-offer-hero-title pointer-events-none hidden min-h-0 flex-1 items-center justify-center self-center px-2 text-center font-light leading-tight tracking-tighter [text-wrap:balance] sm:flex">
-                {isLocked ? t.beforeLaunchTitle : offer.title}
+                {isLocked ? t.beforeLaunchTitle : displayTitle}
               </h1>
             ) : (
               <div className="hidden min-h-0 flex-1 sm:block" aria-hidden />
@@ -856,7 +890,7 @@ function OfferDetails({
                 </div>
                 <p className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-2">{t.archivedTitle}</p>
                 <p className="text-zinc-500 text-xs sm:text-sm font-bold uppercase tracking-widest mb-4">{t.archivedSubtitle}</p>
-                <h2 className="text-2xl sm:text-3xl font-light text-white mb-4 tracking-tight leading-snug [text-wrap:balance]">{offer.title}</h2>
+                <h2 className="text-2xl sm:text-3xl font-light text-white mb-4 tracking-tight leading-snug [text-wrap:balance]">{displayTitle}</h2>
                 <p className="text-4xl sm:text-5xl font-light text-white tracking-tighter">
                   <span>{priceFormatted.primary}</span>
                   {rentAdminFeeInline ? (
@@ -1011,6 +1045,26 @@ function OfferDetails({
                   </div>
                 ))}
                 </div>
+                {roomGroups.length > 1 ? (
+                  <div className="eos-room-strip" aria-label="Zdjęcia według pomieszczeń">
+                    {roomGroups.map((group, i) => (
+                      <button
+                        key={group.room}
+                        type="button"
+                        onClick={() => openRoomGallery(group.room)}
+                        className="eos-room-strip__card"
+                        style={{ animationDelay: `${i * 60}ms` }}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={group.urls[0]} alt="" loading="lazy" />
+                        <span className="eos-room-strip__label">
+                          {group.room}
+                          <b>{group.urls.length}</b>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             )}
 
@@ -1028,7 +1082,7 @@ function OfferDetails({
                   ) : null}
                 </div>
                 <h1 className="mb-2 text-[1.75rem] font-light leading-[1.15] tracking-tight text-[var(--eos-text)] [text-wrap:balance] sm:mb-7 sm:hidden sm:text-4xl sm:leading-tight sm:tracking-tighter">
-                  {isLocked ? t.beforeLaunchTitle : offer.title}
+                  {isLocked ? t.beforeLaunchTitle : displayTitle}
                 </h1>
                 {!isLocked && (localityValue || districtValue) ? (
                   <p className="mb-5 text-sm leading-snug text-[var(--eos-muted)] sm:hidden">
@@ -1151,8 +1205,8 @@ function OfferDetails({
                   </div>
                 ) : null}
 
-                <div className="eos-offer-panel p-8 md:p-12">
-                  <h3 className="eos-offer-metric-label mb-6">{t.aboutProperty}</h3>
+                <div className="eos-offer-panel p-6 md:p-10">
+                  <h3 className="eos-offer-metric-label mb-5">{t.aboutProperty}</h3>
                   <OfferDescriptionBody description={offer.description || ""} />
                 </div>
 
@@ -1169,6 +1223,148 @@ function OfferDetails({
                   </div>
                 </div>
                 )}
+
+              <section className="eos-aside-card eos-reveal mt-8 !p-6 md:!p-8">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h4 className="eos-aside-card__title !mb-0">{t.locationSection}</h4>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-2.5 py-1 text-[11px] font-semibold text-[var(--eos-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+                    <span className="text-sm leading-none">{countryFlag}</span>
+                    {resolvedCountry.name}
+                  </span>
+                </div>
+                <div className="grid gap-5 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] md:items-start">
+                <dl className="divide-y divide-[var(--eos-border)]">
+                  {locationParams.map((param) => (
+                    <div key={param.label} className="flex items-baseline justify-between gap-4 py-2.5">
+                      <dt className="eos-aside-stat__label">{param.label}</dt>
+                      <dd className="max-w-[65%] text-right text-[13.5px] font-semibold text-[var(--eos-text)]">{param.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {offer?.lat && offer?.lng ? (
+                  <div className="overflow-hidden rounded-[1.25rem]">
+                    <NeighborhoodMapPreview
+                      lat={Number(offer.lat)}
+                      lng={Number(offer.lng)}
+                      street={offer.street}
+                      city={offer.city}
+                      district={offer.district}
+                      variant="offer"
+                      showPin={exactLocation}
+                      sectionLabel={t.neighborhoodPreview}
+                    />
+                  </div>
+                ) : null}
+                </div>
+              </section>
+
+                {showCommissionSection && !contentSuppressed && (
+                  <div className="eos-aside-card eos-reveal mt-8 !p-6 md:!p-8">
+                    <h4 className="eos-aside-card__title">{t.costsSection}</h4>
+                    {agentCommissionInfo?.isZero ? (
+                      <div className="mb-4 rounded-2xl border-2 border-emerald-500/45 bg-emerald-500/15 px-4 py-6 text-center shadow-[0_0_40px_rgba(16,185,129,0.12)]">
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-500">
+                          {t.commissionZeroBadge}
+                        </p>
+                        <p className="mt-2 text-3xl sm:text-4xl font-black uppercase tracking-tight text-emerald-400">
+                          {t.commissionZeroTitle}
+                        </p>
+                        <p className="mt-3 text-xs sm:text-sm leading-relaxed text-[var(--eos-muted)] max-w-md mx-auto">
+                          {t.commissionZeroSub}
+                        </p>
+                      </div>
+                    ) : costsParams.length > 0 ? (
+                      <div className="mb-3 grid grid-cols-2 gap-2">
+                        {costsParams.map((param, idx) => (
+                          <div key={idx} className="eos-aside-stat">
+                            <span className="eos-aside-stat__label">{param.label}</span>
+                            <span className="eos-aside-stat__value">{param.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                    {showServicingCompanyBlock ? (
+                      <div className="eos-aside-company">
+                        <div className="flex items-center gap-3">
+                          <div className="eos-aside-company__logo">
+                            {servicingCompanyLogoUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={servicingCompanyLogoUrl} alt={t.companyLogoAlt} className="h-full w-full object-contain p-1.5" />
+                            ) : (
+                              <Briefcase className={`size-5 ${themeColors.textActive}`} aria-hidden />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="eos-aside-stat__label">{t.commissionCompany}</p>
+                            {servicingCompanyName ? (
+                              <p className="truncate text-[15px] font-semibold text-[var(--eos-text)]">{servicingCompanyName}</p>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {(agentPhotoUrl || agentPersonName) ? (
+                          <div className="mt-3 flex items-center gap-3 border-t border-[var(--eos-border)] pt-3">
+                            <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] shadow-[0_6px_14px_-8px_rgba(0,0,0,0.5)]">
+                              {agentPhotoUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={agentPhotoUrl} alt={t.agentPhotoAlt} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-base" aria-hidden>👤</span>
+                              )}
+                            </div>
+                            <div className="min-w-0 text-left">
+                              <p className="eos-aside-stat__label">{t.agentRoleLabel}</p>
+                              {agentPersonName ? (
+                                <p className="truncate text-[14px] font-semibold text-[var(--eos-text)]">{agentPersonName}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
+                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[var(--eos-text)] transition-colors hover:text-emerald-400"
+                          >
+                            {t.openCompanyProfile}
+                          </button>
+                          {!isOwner && canContactSeller && (offer?.user?.id || offer?.userId) ? (
+                            currentUser?.id ? (
+                              <ProfileWriteMessageButton
+                                peerUserId={Number(offer?.user?.id || offer?.userId)}
+                                peerName={sellerLabel}
+                                currentUserId={currentUser?.id}
+                                variant="light"
+                                label={t.contactSeller}
+                                className="!min-h-0 flex-1 !px-3 !py-2.5"
+                              />
+                            ) : (
+                              <EosButton
+                                type="button"
+                                variant="home"
+                                size="sm"
+                                onClick={() => setIsGuestAskOpen(true)}
+                                className="flex-1 !whitespace-normal"
+                              >
+                                {t.askSeller}
+                              </EosButton>
+                            )
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+                    {agentCommissionLine && !agentCommissionInfo?.isZero ? (
+                      <p className="eos-subtle-copy mt-3 text-[11px]">{agentCommissionLine}</p>
+                    ) : null}
+                  </div>
+                )}
+
+                {canManageOffer && !isLocked ? (
+                  <div className="mt-8">
+                    <OfferInterestPanel offerId={Number(offer.id ?? offer._id)} scanMeta={floorPlanScanMeta} />
+                  </div>
+                ) : null}
 
                 <OfferPriceHistoryProSection
                   offerId={Number(offer.id ?? offer._id)}
@@ -1321,37 +1517,6 @@ function OfferDetails({
                 </section>
               ) : null}
 
-              <section className="eos-aside-card eos-reveal">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h4 className="eos-aside-card__title !mb-0">{t.locationSection}</h4>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] px-2.5 py-1 text-[11px] font-semibold text-[var(--eos-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
-                    <span className="text-sm leading-none">{countryFlag}</span>
-                    {resolvedCountry.name}
-                  </span>
-                </div>
-                <dl className="divide-y divide-[var(--eos-border)]">
-                  {locationParams.map((param) => (
-                    <div key={param.label} className="flex items-baseline justify-between gap-4 py-2.5">
-                      <dt className="eos-aside-stat__label">{param.label}</dt>
-                      <dd className="max-w-[65%] text-right text-[13.5px] font-semibold text-[var(--eos-text)]">{param.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-                {offer?.lat && offer?.lng ? (
-                  <div className="mt-3 overflow-hidden rounded-[1.25rem]">
-                    <NeighborhoodMapPreview
-                      lat={Number(offer.lat)}
-                      lng={Number(offer.lng)}
-                      street={offer.street}
-                      city={offer.city}
-                      district={offer.district}
-                      variant="offer"
-                      showPin={exactLocation}
-                      sectionLabel={t.neighborhoodPreview}
-                    />
-                  </div>
-                ) : null}
-              </section>
 
                 {(floorPlanSrc || floorPlan3dSrc || floorPlanScanMeta) && !isLocked ? (
                   <div id="offer-plan" className="scroll-mt-28">
@@ -1369,112 +1534,12 @@ function OfferDetails({
                     photoRooms={photoRooms}
                     focusRoom={planFocus}
                     onOpenPhoto={openPhotoFromPlan}
+                    onRoomFocus={canManageOffer ? undefined : (room) => trackEngagement(Number(offer.id ?? offer._id), { kind: "room", key: room, ms: 0 })}
                   />
                   </div>
                 ) : null}
 
 
-                {showCommissionSection && !contentSuppressed && (
-                  <div className="eos-aside-card eos-reveal">
-                    <h4 className="eos-aside-card__title">{t.costsSection}</h4>
-                    {agentCommissionInfo?.isZero ? (
-                      <div className="mb-4 rounded-2xl border-2 border-emerald-500/45 bg-emerald-500/15 px-4 py-6 text-center shadow-[0_0_40px_rgba(16,185,129,0.12)]">
-                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-500">
-                          {t.commissionZeroBadge}
-                        </p>
-                        <p className="mt-2 text-3xl sm:text-4xl font-black uppercase tracking-tight text-emerald-400">
-                          {t.commissionZeroTitle}
-                        </p>
-                        <p className="mt-3 text-xs sm:text-sm leading-relaxed text-[var(--eos-muted)] max-w-md mx-auto">
-                          {t.commissionZeroSub}
-                        </p>
-                      </div>
-                    ) : costsParams.length > 0 ? (
-                      <div className="mb-3 grid grid-cols-2 gap-2">
-                        {costsParams.map((param, idx) => (
-                          <div key={idx} className="eos-aside-stat">
-                            <span className="eos-aside-stat__label">{param.label}</span>
-                            <span className="eos-aside-stat__value">{param.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                    {showServicingCompanyBlock ? (
-                      <div className="eos-aside-company">
-                        <div className="flex items-center gap-3">
-                          <div className="eos-aside-company__logo">
-                            {servicingCompanyLogoUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={servicingCompanyLogoUrl} alt={t.companyLogoAlt} className="h-full w-full object-contain p-1.5" />
-                            ) : (
-                              <Briefcase className={`size-5 ${themeColors.textActive}`} aria-hidden />
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="eos-aside-stat__label">{t.commissionCompany}</p>
-                            {servicingCompanyName ? (
-                              <p className="truncate text-[15px] font-semibold text-[var(--eos-text)]">{servicingCompanyName}</p>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        {(agentPhotoUrl || agentPersonName) ? (
-                          <div className="mt-3 flex items-center gap-3 border-t border-[var(--eos-border)] pt-3">
-                            <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[var(--eos-border)] bg-[var(--eos-input)] shadow-[0_6px_14px_-8px_rgba(0,0,0,0.5)]">
-                              {agentPhotoUrl ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img src={agentPhotoUrl} alt={t.agentPhotoAlt} className="h-full w-full object-cover" />
-                              ) : (
-                                <span className="text-base" aria-hidden>👤</span>
-                              )}
-                            </div>
-                            <div className="min-w-0 text-left">
-                              <p className="eos-aside-stat__label">{t.agentRoleLabel}</p>
-                              {agentPersonName ? (
-                                <p className="truncate text-[14px] font-semibold text-[var(--eos-text)]">{agentPersonName}</p>
-                              ) : null}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => setPublicProfileId(String(offer?.user?.id || offer?.userId))}
-                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[var(--eos-text)] transition-colors hover:text-emerald-400"
-                          >
-                            {t.openCompanyProfile}
-                          </button>
-                          {!isOwner && canContactSeller && (offer?.user?.id || offer?.userId) ? (
-                            currentUser?.id ? (
-                              <ProfileWriteMessageButton
-                                peerUserId={Number(offer?.user?.id || offer?.userId)}
-                                peerName={sellerLabel}
-                                currentUserId={currentUser?.id}
-                                variant="light"
-                                label={t.contactSeller}
-                                className="!min-h-0 flex-1 !px-3 !py-2.5"
-                              />
-                            ) : (
-                              <EosButton
-                                type="button"
-                                variant="home"
-                                size="sm"
-                                onClick={() => setIsGuestAskOpen(true)}
-                                className="flex-1 !whitespace-normal"
-                              >
-                                {t.askSeller}
-                              </EosButton>
-                            )
-                          ) : null}
-                        </div>
-                      </div>
-                    ) : null}
-                    {agentCommissionLine && !agentCommissionInfo?.isZero ? (
-                      <p className="eos-subtle-copy mt-3 text-[11px]">{agentCommissionLine}</p>
-                    ) : null}
-                  </div>
-                )}
 
 
 
@@ -1521,7 +1586,15 @@ function OfferDetails({
       </AnimatePresence>
 
       <OfferGalleryLightbox
-        images={images}
+        images={galleryImages}
+        tabs={
+          roomGroups.length > 1
+            ? [
+                { label: "Wszystkie", count: images.length, active: !galleryFilter, onSelect: () => openRoomGallery(null) },
+                ...roomGroups.map((g) => ({ label: g.room, count: g.urls.length, active: galleryFilter === g.room, onSelect: () => openRoomGallery(g.room) })),
+              ]
+            : undefined
+        }
         index={currentImageIndex}
         isOpen={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
@@ -1533,6 +1606,8 @@ function OfferDetails({
         glowActiveClass={themeColors.glowActive}
         roomOf={photoRooms.length ? roomOfPhoto : undefined}
         onShowRoom={floorPlanScanMeta ? showRoomOnPlan : undefined}
+        miniPlanMeta={floorPlanScanMeta}
+        onPhotoDwell={canManageOffer ? undefined : (url, ms) => trackEngagement(Number(offer.id ?? offer._id), { kind: "photo", key: url, ms })}
       />
 
     

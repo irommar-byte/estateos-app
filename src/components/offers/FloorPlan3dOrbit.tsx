@@ -6,6 +6,8 @@ import { detectPlanRooms, placePlanObjects } from '@/lib/roomScan/planNormalize'
 
 type Props = {
   meta: FloorPlanScanMeta;
+  /** Kolory wnętrza ze zdjęć pokoi: nazwa pokoju (małe litery) → podłoga i ściany. */
+  roomColors?: Record<string, { floor: number; wall: number }> | null;
   className?: string;
 };
 
@@ -35,7 +37,7 @@ const WET = /łaz|lazien|bath|wc|toalet|kuch|kitchen/i;
  * Makieta 3D mieszkania ze skanu LiDAR (three.js): podłogi pomieszczeń, ściany z grubością, okna, drzwi i meble.
  * Obraca się sama, dopóki ktoś jej nie dotknie; renderuje tylko, gdy jest widoczna na ekranie.
  */
-export default function FloorPlan3dOrbit({ meta, className }: Props) {
+export default function FloorPlan3dOrbit({ meta, className, roomColors = null }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -109,13 +111,26 @@ export default function FloorPlan3dOrbit({ meta, className }: Props) {
         const g = geo(new THREE.BufferGeometry());
         g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         g.computeVertexNormals();
-        const floor = new THREE.Mesh(g, mat(WET.test(`${room.key} ${room.label}`) ? 0xe7edf3 : 0xeadfcf, { side: THREE.DoubleSide }));
+        const photoColor = roomColors?.[String(room.label || '').toLocaleLowerCase('pl')];
+        const floor = new THREE.Mesh(
+          g,
+          mat(photoColor ? photoColor.floor : WET.test(`${room.key} ${room.label}`) ? 0xe7edf3 : 0xeadfcf, { side: THREE.DoubleSide }),
+        );
         floor.receiveShadow = true;
         scene.add(floor);
       }
 
       // Ściany z grubością i delikatną krawędzią
-      const wallMat = mat(0xf8fafc);
+      // Ściany: średni kolor ścian ze zdjęć wszystkich pokoi (ściany są wspólne dla sąsiednich pokoi).
+      const wallTones = Object.values(roomColors || {}).map((c) => c.wall);
+      const wallColor = wallTones.length
+        ? wallTones
+            .map((c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255])
+            .reduce((acc, c) => acc.map((v, i) => v + c[i] / wallTones.length), [0, 0, 0])
+            .map((v) => Math.round(v))
+            .reduce((acc, v) => (acc << 8) | v, 0)
+        : 0xf8fafc;
+      const wallMat = mat(wallColor);
       const edgeMat = new THREE.LineBasicMaterial({ color: 0x94a3b8 });
       disposables.push(edgeMat);
       const addBox = (x1: number, z1: number, x2: number, z2: number, y0: number, y1: number, thick: number, material: unknown, edges = false) => {
@@ -214,7 +229,7 @@ export default function FloorPlan3dOrbit({ meta, className }: Props) {
       disposed = true;
       cleanup();
     };
-  }, [meta]);
+  }, [meta, roomColors]);
 
   return (
     <div

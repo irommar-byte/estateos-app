@@ -4200,3 +4200,223 @@ html.dark .eos-plan-chip.is-active { color: #15171a; background: #f3eee6; border
   background: var(--eos-card);
   box-shadow: 0 8px 18px -12px rgba(15, 23, 42, 0.55);
 }
+
+/* ── Oferta: tytuł na zdjęciu — czytelny, z miękką winietą ── */
+.eos-offer-hero-title {
+  font-weight: 600 !important;
+  letter-spacing: -0.028em !important;
+  line-height: 1.12 !important;
+  max-width: 22ch;
+  margin-inline: auto;
+  border-radius: 2rem;
+  padding: 0.35em 0.6em !important;
+  background: radial-gradient(60% 70% at 50% 50%, rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0) 100%);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55), 0 6px 24px rgba(0, 0, 0, 0.45) !important;
+  animation: eos-hero-title-in 1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes eos-hero-title-in {
+  from { opacity: 0; transform: translateY(10px); filter: blur(6px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+/* Spokojniejsza typografia treści oferty */
+.eos-offer-body .eos-offer-metric-label {
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  font-weight: 700;
+}
+.eos-offer-body .eos-offer-panel {
+  border-radius: 1.75rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .eos-offer-hero-title { animation: none; }
+}
+.eos-photo-room-badge.is-ai {
+  border-style: dashed;
+  border-color: rgba(230, 207, 159, 0.95);
+  background: linear-gradient(120deg, rgba(21, 23, 26, 0.82), rgba(80, 62, 28, 0.82)) !important;
+  animation: eos-ai-badge-pulse 2.4s ease-in-out infinite;
+}
+@keyframes eos-ai-badge-pulse { 50% { box-shadow: 0 0 0 4px rgba(201, 169, 110, 0.22); } }
+.eos-photo-ai-bar {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 169, 110, 0.45);
+  padding: 8px 8px 8px 16px;
+  color: #f3eee6;
+  background: linear-gradient(110deg, #15171a, #2a2418 55%, #15171a);
+  box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.7);
+  font-size: 13px;
+  font-weight: 600;
+}
+.eos-photo-ai-bar__glow {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(230, 207, 159, 0.25) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: eos-ai-sweep 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes eos-ai-sweep { to { transform: translateX(100%); } }
+.eos-photo-ai-bar__text { position: relative; flex: 1; min-width: 180px; }
+.eos-photo-ai-bar__btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #15171a;
+  background: linear-gradient(120deg, #c9a96e, #ecd7a9);
+  transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+}
+.eos-photo-ai-bar__btn:hover { transform: translateY(-1px); box-shadow: 0 10px 22px -10px rgba(201, 169, 110, 0.8); }
+.eos-photo-ai-bar__btn:active { transform: scale(0.96); }
+/* Klikalny rzut: podświetlenie pokoju, mapa ciepła */
+.eos-plan-room-hit { fill: rgba(201, 169, 110, 0); cursor: pointer; transition: fill 0.25s ease; }
+.eos-plan-room-hit:hover { fill: rgba(201, 169, 110, 0.22); }
+.eos-plan-room-lit {
+  fill: rgba(201, 169, 110, 0.35);
+  stroke: #c9a96e;
+  stroke-width: 2;
+  animation: eos-plan-lit 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes eos-plan-lit { 50% { fill: rgba(201, 169, 110, 0.18); } }
+.eos-plan-heat { pointer-events: none; animation: eos-plan-heat-in 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes eos-plan-heat-in { from { opacity: 0; } to { opacity: 1; } }
+.eos-lightbox-miniplan {
+  position: relative;
+  display: block;
+  width: 220px;
+  height: 150px;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(238, 242, 246, 0.96);
+  box-shadow: 0 24px 50px -20px rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  animation: eos-miniplan-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.eos-lightbox-miniplan:hover { transform: translateY(-3px) scale(1.02); }
+.eos-lightbox-miniplan__label {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(21, 23, 26, 0.85);
+}
+@keyframes eos-miniplan-in { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
+@media (max-width: 640px) { .eos-lightbox-miniplan { width: 150px; height: 104px; } }
+
+/* ── Zainteresowanie: mapa ciepła i ranking pokoi ── */
+.eos-interest {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.75rem;
+  border: 1px solid rgba(201, 169, 110, 0.35);
+  padding: 1.4rem;
+  color: #f5f1ea;
+  background:
+    radial-gradient(120% 80% at 0% 0%, rgba(234, 88, 12, 0.18), transparent 55%),
+    radial-gradient(100% 70% at 100% 100%, rgba(201, 169, 110, 0.16), transparent 60%),
+    #121214;
+  box-shadow: 0 30px 70px -36px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+.eos-interest__head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.eos-interest__kicker { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #f0b27a; }
+.eos-interest__headline { margin-top: 6px; font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+.eos-interest__headline span {
+  background: linear-gradient(90deg, #ffb36b, #e6cf9f);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.eos-interest__sub { margin-top: 4px; max-width: 46ch; font-size: 12.5px; line-height: 1.5; color: rgba(245, 241, 234, 0.62); }
+.eos-interest__totals { display: flex; gap: 8px; }
+.eos-interest__totals span {
+  display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 6px 11px;
+  font-size: 12px; font-weight: 700; background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.eos-interest__grid { display: grid; gap: 16px; margin-top: 16px; }
+@media (min-width: 900px) { .eos-interest__grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); align-items: start; } }
+.eos-interest__plan { overflow: hidden; border-radius: 1.2rem; background: #eef2f6; box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.8); aspect-ratio: 64 / 44; }
+.eos-interest__rooms { display: flex; flex-direction: column; gap: 10px; }
+.eos-interest__row { animation: eos-interest-row 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.eos-interest__row-head { display: flex; justify-content: space-between; font-size: 13.5px; font-weight: 600; }
+.eos-interest__pct { color: #e6cf9f; font-weight: 700; }
+.eos-interest__bar { margin-top: 5px; height: 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.eos-interest__bar span {
+  display: block; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, #ea580c, #f0b27a 60%, #e6cf9f);
+  box-shadow: 0 0 14px rgba(240, 178, 122, 0.55);
+  transform-origin: left;
+  animation: eos-interest-bar 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.eos-interest__photos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.eos-interest__photo { position: relative; margin: 0; aspect-ratio: 1; overflow: hidden; border-radius: 12px; }
+.eos-interest__photo img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.eos-interest__photo:hover img { transform: scale(1.06); }
+.eos-interest__photo figcaption {
+  position: absolute; inset: auto 0 0 0; display: flex; flex-direction: column; padding: 14px 7px 6px;
+  font-size: 10.5px; font-weight: 700; color: #fff; background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+}
+.eos-interest__photo figcaption b { font-size: 10px; color: #e6cf9f; }
+@keyframes eos-interest-row { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes eos-interest-bar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+/* ── Galeria po pomieszczeniach ── */
+.eos-room-strip { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: none; }
+.eos-room-strip::-webkit-scrollbar { display: none; }
+.eos-room-strip__card {
+  position: relative; flex: 0 0 auto; width: 132px; height: 86px; overflow: hidden; border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 14px 30px -18px rgba(0, 0, 0, 0.7);
+  animation: eos-plan-photo-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.35s ease;
+}
+.eos-room-strip__card img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.eos-room-strip__card::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent 60%); }
+.eos-room-strip__label {
+  position: absolute; left: 10px; right: 10px; bottom: 8px; z-index: 1; display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; font-weight: 650; color: #fff; text-align: left;
+}
+.eos-room-strip__label b { border-radius: 999px; padding: 1px 7px; font-size: 10.5px; color: #15171a; background: #e6cf9f; }
+@media (hover: hover) {
+  .eos-room-strip__card:hover { transform: translateY(-3px); box-shadow: 0 20px 36px -18px rgba(0, 0, 0, 0.8); }
+  .eos-room-strip__card:hover img { transform: scale(1.07); }
+}
+.eos-lightbox-tabs {
+  position: absolute; left: 50%; top: max(4.2rem, calc(env(safe-area-inset-top) + 3.6rem)); z-index: 2147483001;
+  display: flex; max-width: calc(100vw - 24px); gap: 6px; overflow-x: auto; transform: translateX(-50%);
+  border-radius: 999px; padding: 5px; background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14); scrollbar-width: none;
+}
+.eos-lightbox-tabs__tab {
+  display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; border-radius: 999px; padding: 6px 12px;
+  font-size: 12.5px; font-weight: 650; color: rgba(255, 255, 255, 0.78); transition: background 0.25s ease, color 0.25s ease;
+}
+.eos-lightbox-tabs__tab span { font-size: 10.5px; opacity: 0.7; }
+.eos-lightbox-tabs__tab:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+.eos-lightbox-tabs__tab.is-active { color: #15171a; background: #f3eee6; }
+.eos-plan-exposure { display: flex; flex-direction: column; gap: 6px; }
+.eos-plan-exposure__row {
+  display: grid; grid-template-columns: auto auto 1fr; align-items: center; column-gap: 8px; row-gap: 1px;
+  border-radius: 12px; border: 1px solid var(--eos-border); padding: 8px 11px;
+  background: linear-gradient(110deg, rgba(251, 191, 36, 0.1), transparent 60%), var(--eos-card);
+}
+.eos-plan-exposure__sun { color: #f59e0b; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.55)); }
+.eos-plan-exposure__room { font-size: 13px; font-weight: 650; color: var(--eos-text); }
+.eos-plan-exposure__dirs { font-size: 12px; color: var(--eos-muted); }
+.eos-plan-exposure__hint { grid-column: 2 / -1; font-size: 11.5px; color: #b45309; font-weight: 600; }

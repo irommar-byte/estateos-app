@@ -1,4 +1,5 @@
 import type { FloorPlanScanMeta, PropertyRoomScan } from '@/types/roomScan';
+import { DIR_LABEL, windowExposure } from '@/lib/roomScan/exposure';
 
 export type PlanSpec = { label: string; value: string };
 
@@ -32,6 +33,11 @@ export function planSpecs(room: PropertyRoomScan | null, meta: FloorPlanScanMeta
     const o = countOpenings(room.scanMeta?.openings || meta?.openings);
     if (o.windows) out.push({ label: 'Okna', value: String(o.windows) });
     if (o.doors) out.push({ label: 'Drzwi', value: String(o.doors) });
+    const exp = windowExposure(room.scanMeta || meta, room.name)[0];
+    if (exp) {
+      out.push({ label: 'Okna na', value: exp.dirs.map((d) => DIR_LABEL[d]).join(', ') });
+      out.push({ label: 'Słońce', value: `${exp.sun} · ~${String(exp.sunHours).replace('.', ',')} h` });
+    }
     return out;
   }
   const areaSum = rooms.reduce((sum, r) => sum + (num(r.areaM2) || 0), 0);

@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { PhotoRoomBadge, PhotoRoomPickerDialog, photoRoomOptions, scannedRoomNames } from '@/components/offer/PhotoRoomPicker';
+import { PhotoRoomAiBar, PhotoRoomBadge, PhotoRoomPickerDialog, photoRoomOptions, scannedRoomNames } from '@/components/offer/PhotoRoomPicker';
+import { fetchPhotoRoomSuggestions } from '@/lib/photoRoomSuggestClient';
 import { photoRoomKey } from '@/lib/offerPhotoRoomKey';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -188,10 +189,12 @@ const SortablePhoto = ({
   meta,
   progress,
   roomLabel,
+  roomSuggestion,
   onPickRoom,
 }: {
   url: string;
   roomLabel?: string | null;
+  roomSuggestion?: string | null;
   onPickRoom?: (url: string) => void;
   onRemove: (url: string) => void;
   onMarkAsPlan?: (url: string) => void;
@@ -234,7 +237,7 @@ const SortablePhoto = ({
           <span className="h-1.5 w-1.5 rounded-full bg-white/85" />
         </div>
       </div>
-      {onPickRoom && !uploading ? <PhotoRoomBadge label={roomLabel} onOpen={() => onPickRoom(url)} /> : null}
+      {onPickRoom && !uploading ? <PhotoRoomBadge label={roomLabel} suggestion={roomSuggestion} onOpen={() => onPickRoom(url)} /> : null}
       <button onClick={() => onRemove(url)} className="absolute top-2 right-2 p-2 bg-black/80 border border-white/10 hover:bg-red-500 hover:border-red-400 rounded-full text-white/80 hover:text-white z-20 transition-all shadow-xl"><Trash2 size={14} /></button>
       {onMarkAsPlan ? (
         <button
@@ -294,6 +297,10 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
   const [photoRoomsTouched, setPhotoRoomsTouched] = useState(false);
   const [roomPickerUrl, setRoomPickerUrl] = useState<string | null>(null);
   const [scannedRooms, setScannedRooms] = useState<string[]>([]);
+  // AI: „to wygląda na kuchnię” — podpowiedzi do zatwierdzenia jednym kliknięciem.
+  const [roomSuggestions, setRoomSuggestions] = useState<Record<string, string>>({});
+  const [roomAiBusy, setRoomAiBusy] = useState(false);
+  const roomAiRequested = useRef<Set<string>>(new Set());
   const [imageMeta, setImageMeta] = useState<Record<string, OfferImageMetaPublic>>({});
   const [floorPlanUrl, setFloorPlanUrl] = useState<string | null>(null);
   const [floorPlanExtraUrls, setFloorPlanExtraUrls] = useState<string[]>([]);
@@ -673,6 +680,30 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
         updateData({ images: newItems.join(","), imageUrl: newItems[0] }); return newItems;
       });
     }
+  };
+
+  useEffect(() => {
+    const pending = imagesList.filter((img) => !photoRooms[img] && !roomAiRequested.current.has(img) && !/placeholder/.test(img));
+    if (!pending.length) return;
+    const timer = window.setTimeout(() => {
+      pending.forEach((img) => roomAiRequested.current.add(img));
+      setRoomAiBusy(true);
+      fetchPhotoRoomSuggestions(pending.slice(0, 40), scannedRooms)
+        .then((found) => setRoomSuggestions((prev) => ({ ...prev, ...found })))
+        .catch(() => undefined)
+        .finally(() => setRoomAiBusy(false));
+    }, 900);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imagesList]);
+  const pendingRoomSuggestions = imagesList.filter((img) => !photoRooms[img] && roomSuggestions[img]);
+  const acceptAllRoomSuggestions = () => {
+    setPhotoRooms((prev) => {
+      const next = { ...prev };
+      for (const img of pendingRoomSuggestions) next[img] = roomSuggestions[img];
+      return next;
+    });
+    setPhotoRoomsTouched(true);
   };
 
   const handleSave = async () => {
@@ -1348,6 +1379,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                 options={options}
                 scannedCount={scanned}
                 current={roomPickerUrl ? photoRooms[roomPickerUrl] || null : null}
+                suggested={roomPickerUrl ? roomSuggestions[roomPickerUrl] || null : null}
                 onPick={(room) => {
                   if (!roomPickerUrl) return;
                   setPhotoRooms((prev) => {
@@ -1363,6 +1395,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
               />
             );
           })()}
+          <PhotoRoomAiBar busy={roomAiBusy} pending={pendingRoomSuggestions.length} onAcceptAll={acceptAllRoomSuggestions} />
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={imagesList} strategy={horizontalListSortingStrategy}>
               <div className="flex flex-wrap gap-4 md:gap-6 mb-6">
@@ -1375,6 +1408,7 @@ export default function UltraPremiumEditForm({ params }: { params: Promise<{ id:
                     isMain={idx === 0}
                     meta={imageMeta[url] || null}
                     roomLabel={photoRooms[url] || null}
+                    roomSuggestion={roomSuggestions[url] || null}
                     onPickRoom={setRoomPickerUrl}
                   />
                 ))}

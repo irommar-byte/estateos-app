@@ -108,8 +108,14 @@ export function normalizeScanMeta(meta: FloorPlanScanMeta | null | undefined): F
   });
   const xs = walls.flatMap((w) => [w.x1, w.x2]);
   const zs = walls.flatMap((w) => [w.z1, w.z2]);
+  // Kompas obraca się razem z planem (kąt północy liczony w tym samym układzie co ściany).
+  const northRotationDegrees =
+    meta.northRotationDegrees != null && Number.isFinite(meta.northRotationDegrees)
+      ? ((((meta.northRotationDegrees - (angle * 180) / Math.PI) % 360) + 360) % 360)
+      : meta.northRotationDegrees;
   return {
     ...meta,
+    northRotationDegrees,
     walls,
     sections,
     objects,

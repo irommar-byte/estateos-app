@@ -12,6 +12,7 @@ type FloorPlan3dWalkthroughProps = {
   copy: OfferPageCopy['floorPlanWalkthrough'];
   compact?: boolean;
   scanMeta?: FloorPlanScanMeta | null;
+  roomColors?: Record<string, { floor: number; wall: number }> | null;
 };
 
 function isIosSafari(): boolean {
@@ -27,6 +28,7 @@ export default function FloorPlan3dWalkthrough({
   copy,
   compact = false,
   scanMeta = null,
+  roomColors = null,
 }: FloorPlan3dWalkthroughProps) {
   const [ready, setReady] = useState(false);
   const absoluteUrl = useMemo(() => resolvePublicAssetUrl(modelUrl), [modelUrl]);
@@ -57,7 +59,7 @@ export default function FloorPlan3dWalkthrough({
       <div className="mt-3 space-y-2">
         {canOrbitFromScan && scanMeta ? (
           <div className="overflow-hidden rounded-2xl border border-sky-400/20">
-            <FloorPlan3dOrbit meta={scanMeta} className="relative h-64 w-full cursor-grab bg-[#eef2f6]" />
+            <FloorPlan3dOrbit meta={scanMeta} roomColors={roomColors} className="relative h-64 w-full cursor-grab bg-[#eef2f6]" />
           </div>
         ) : null}
         {showArLink ? (
@@ -87,7 +89,7 @@ export default function FloorPlan3dWalkthrough({
 
       <div className="overflow-hidden rounded-[1.25rem] border border-[var(--eos-border)] bg-[#eef2f6]">
         {canOrbitFromScan && scanMeta ? (
-          <FloorPlan3dOrbit meta={scanMeta} />
+          <FloorPlan3dOrbit meta={scanMeta} roomColors={roomColors} />
         ) : useGltfViewer && ready ? (
           <model-viewer
             src={absoluteUrl}
