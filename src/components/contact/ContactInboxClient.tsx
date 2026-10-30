@@ -202,6 +202,8 @@ export default function ContactInboxClient({
   );
 
   useEffect(() => {
+    // Blokada przewijania strony tylko w osobnym, pełnoekranowym widoku — w CRM strona ma się przewijać normalnie.
+    if (embedded) return;
     const prevOverflow = document.body.style.overflow;
     const prevHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
@@ -210,7 +212,7 @@ export default function ContactInboxClient({
       document.body.style.overflow = prevOverflow;
       document.documentElement.style.overflow = prevHtmlOverflow;
     };
-  }, []);
+  }, [embedded]);
 
   useEffect(() => {
     void loadThreads();
