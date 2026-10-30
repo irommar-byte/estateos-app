@@ -141,7 +141,8 @@ struct LoyaltyHomeView: View {
             }
         }
         .background(ParagonTheme.canvas.ignoresSafeArea())
-        .navigationTitle("Karty")
+        // The card that rides to the top takes the title's place while it is out.
+        .navigationTitle(openingID == nil ? "Karty" : "")
         .navigationBarTitleDisplayMode(.large)
         .navigationDestination(for: LoyaltyRoute.self) { route in
             loyaltyDestination(route)

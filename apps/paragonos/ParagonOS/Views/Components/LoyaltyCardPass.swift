@@ -1147,12 +1147,12 @@ enum PassStackMotion {
     /// Clear space left between the risen card and the cards that dropped away.
     static let pocketGap: CGFloat = 18
 
-    /// The card slides up out of the pile and settles with a soft bounce.
-    static var slideOut: Animation { .spring(response: 0.75, dampingFraction: 0.68) }
-    static let slideOutPause: Double = 0.6
+    /// The card slides up out of the pile: quick, with a short settle.
+    static var slideOut: Animation { .spring(response: 0.46, dampingFraction: 0.78) }
+    static let slideOutPause: Double = 0.36
 
     /// Back into its pocket: slides down behind the front cards, which close over it.
-    static var slideIn: Animation { .spring(response: 0.95, dampingFraction: 0.66) }
+    static var slideIn: Animation { .spring(response: 0.56, dampingFraction: 0.76) }
 
     static var response: Double { ParagonTheme.springResponse }
     static var damping: Double { ParagonTheme.springDamping }
@@ -1283,8 +1283,8 @@ final class CardFlight {
     var isFlying: Bool { phase == .opening || phase == .dragging || phase == .closing }
 
     /// Twice as slow as a standard push, with a springy landing (slight overshoot, settle).
-    static var opening: Animation { .spring(response: 1.2, dampingFraction: 0.72) }
-    static var closing: Animation { .spring(response: 1.05, dampingFraction: 0.76) }
+    static var opening: Animation { .spring(response: 0.78, dampingFraction: 0.8) }
+    static var closing: Animation { .spring(response: 0.66, dampingFraction: 0.82) }
 
     func updateStackFrame(_ id: UUID, _ rect: CGRect) {
         stackFrames[id] = rect
