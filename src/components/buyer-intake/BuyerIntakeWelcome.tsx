@@ -22,7 +22,7 @@ export default function BuyerIntakeWelcome({ agentName, agentFirstName, agentIma
 
   const features = [
     { icon: ScanSearch, title: 'Dopasowanie co do szczegółu', text: 'Lokalizacja, budżet, metraż, piętro, balkon — szukamy dokładnie tego, co opiszesz.' },
-    { icon: BellRing, title: 'Nowe oferty od razu', text: `${agentFirstName} dostaje je pierwszy i wysyła Ci tylko te, które pasują.` },
+    { icon: BellRing, title: 'Nowe oferty od razu', text: 'Dostajemy je pierwsi i wysyłamy Ci tylko te, które pasują.' },
     { icon: LayoutPanelTop, title: 'Wszystko w jednym panelu', text: 'Oferty, oglądania, negocjacje i dokumenty — w Twoim prywatnym panelu.' },
   ];
 
@@ -50,7 +50,7 @@ export default function BuyerIntakeWelcome({ agentName, agentFirstName, agentIma
         </motion.h1>
 
         <motion.p {...rise(0.35)} className="mt-4 max-w-sm text-[15px] leading-relaxed bi-ink-3">
-          Opisz swój wymarzony dom w 2 minuty. Resztą zajmie się {agentFirstName} — i EstateOS™ Intelligence.
+          Opisz swój wymarzony dom w 2 minuty. Resztą zajmiemy się my — razem z EstateOS™ Intelligence.
         </motion.p>
 
         <ul className="mt-8 w-full max-w-sm space-y-2.5 text-left [@media(max-height:760px)]:mt-5 [@media(max-height:760px)]:space-y-2">

@@ -80,8 +80,7 @@ export function BuyerIntakeStep4Contact({
             <div className="min-w-0 flex-1">
               <p className="text-base font-semibold bi-ink">Twój panel klienta jest gotowy</p>
               <p className="mt-1.5 text-[13px] leading-relaxed bi-ink-2">
-                <span className="font-semibold bi-ink">{agentFirstName}</span> ma już Twoje kryteria i przygotuje
-                dla Ciebie pierwsze propozycje — znajdziesz je w panelu.
+                Mamy już Twoje kryteria i przygotujemy dla Ciebie pierwsze propozycje — znajdziesz je w panelu.
               </p>
               {summaryLine ? (
                 <p className="bi-success-card__summary mt-2.5 rounded-xl px-3 py-2 text-[11px] leading-relaxed sm:text-[12px]">
@@ -221,7 +220,7 @@ export function BuyerIntakeStep4Contact({
           <ul className="mt-2 space-y-2">
             {[
               { icon: LayoutDashboard, text: 'Otwieramy Twój panel klienta — link dostaniesz też e-mailem.' },
-              { icon: CheckCircle2, text: `${agentFirstName} wysyła tam oferty dopasowane do Twoich kryteriów — oceniasz je jednym dotknięciem.` },
+              { icon: CheckCircle2, text: 'Wysyłamy tam oferty dopasowane do Twoich kryteriów — oceniasz je jednym dotknięciem.' },
               { icon: CalendarCheck2, text: 'Oglądania potwierdzasz w panelu, przypomnienia przychodzą same.' },
               { icon: Handshake, text: 'Negocjacje, dokumenty i czat z agentem — wszystko w jednym miejscu.' },
             ].map(({ icon: Icon, text }) => (

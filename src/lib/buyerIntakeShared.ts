@@ -874,9 +874,9 @@ export function buyerIntakeTimelineHint(
   transactionType: BuyerTransactionType | null | undefined,
 ): string {
   if (transactionType === 'RENT') {
-    return `Termin najmu — ${firstName} dopasuje priorytety`;
+    return `Termin najmu — dopasujemy priorytety`;
   }
-  return `Tempo zakupu — ${firstName} dopasuje priorytety`;
+  return `Tempo zakupu — dopasujemy priorytety`;
 }
 
 export function buyerIntakeBudgetHeading(transactionType: BuyerTransactionType | null | undefined): string {

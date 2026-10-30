@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import BuyerReveal, { BuyerRevealSkip } from '@/components/buyer-intake/BuyerReveal';
 import BuyerIntakeWelcome from './BuyerIntakeWelcome';
 import {
   ArrowLeft,
@@ -369,6 +370,9 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
   const showRooms = buyerMissionShowsRooms(propertyType);
   const showArea = buyerMissionShowsArea(propertyType);
   const showAmenities = buyerMissionShowsAmenities(propertyType);
+  /** Kaskada: opcjonalne pola można świadomie pominąć, żeby odsłonić kolejne. */
+  const [districtsSkipped, setDistrictsSkipped] = useState(false);
+  const [mustHavesSkipped, setMustHavesSkipped] = useState(false);
   const isRent = transactionType === 'RENT';
   const intakeComplete = step4Saved;
   const budgetOptions = useMemo(
@@ -1048,7 +1052,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                 <section className="bi-page__intro shrink-0">
                   <h1 className="bi-page__headline text-[1.45rem] font-semibold leading-[1.1] tracking-[-0.03em] sm:text-[1.9rem]">
                     {isRent ? 'Opisz, czego szukasz —' : 'Opisz, czego szukasz —'}{' '}
-                    <span className="bi-accent">{firstName} znajdzie to za Ciebie</span>
+                    <span className="bi-accent">znajdziemy to za Ciebie</span>
                   </h1>
                   <p className="bi-page__lede mt-2 max-w-md text-[13px] leading-relaxed sm:text-[14px]">
                     Minuta na kryteria. Potem wszystko dzieje się w Twoim panelu klienta: propozycje ofert, oglądania,
@@ -1073,6 +1077,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                   />
                 </section>
 
+                <BuyerReveal show={Boolean(transactionType)}>
                 <section className="mt-3 shrink-0" aria-labelledby="bi-type-heading">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <h2
@@ -1098,6 +1103,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                     ))}
                   </div>
                 </section>
+                </BuyerReveal>
               </motion.div>
             ) : uiStep === 2 ? (
               <motion.div
@@ -1126,7 +1132,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                       </span>
                     </h1>
                     <p className="mt-1 text-[13px] leading-snug bi-ink-2">
-                      {firstName} zawęzi {isRent ? 'oferty najmu' : 'rynek'} — wybierz lokalizację
+                      Zawęzimy {isRent ? 'oferty najmu' : 'rynek'} — wybierz lokalizację
                       {isRent ? ' i maksymalny czynsz.' : ' i budżet.'}
                     </p>
                   </section>
@@ -1165,6 +1171,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                         />
                       </section>
 
+                      <BuyerReveal show={Boolean(resolvedCity)}>
                       {resolvedCity && catalogDistricts.length > 0 ? (
                         <section className="bi-form-block" aria-labelledby="bi-district-heading">
                           <div className="mb-1.5">
@@ -1212,6 +1219,13 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                               <ChevronDown className={`size-3 transition-transform ${districtsExpanded ? 'rotate-180' : ''}`} />
                             </button>
                           ) : null}
+                          {districts.length === 0 && !districtsSkipped ? (
+                            <BuyerRevealSkip
+                              label={`Całe miasto — ${resolvedCity}`}
+                              disabled={submitting}
+                              onClick={() => setDistrictsSkipped(true)}
+                            />
+                          ) : null}
                         </section>
                       ) : resolvedCity ? (
                         <section className="bi-form-block" aria-labelledby="bi-district-custom-heading">
@@ -1235,9 +1249,20 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                             suggestions={[]}
                             ariaLabel="Dzielnica lub okolica"
                           />
+                          {!customDistrict.trim() && !districtsSkipped ? (
+                            <BuyerRevealSkip
+                              label={`Całe miasto — ${resolvedCity}`}
+                              disabled={submitting}
+                              onClick={() => setDistrictsSkipped(true)}
+                            />
+                          ) : null}
                         </section>
                       ) : null}
+                      </BuyerReveal>
 
+                      <BuyerReveal
+                        show={Boolean(resolvedCity) && (districts.length > 0 || Boolean(customDistrict.trim()) || districtsSkipped || budgetMax != null)}
+                      >
                       <section className="bi-form-block" aria-labelledby="bi-budget-heading">
                         <h2 id="bi-budget-heading" className="bi-form-block__title mb-1.5">
                           {buyerIntakeBudgetHeading(transactionType)}
@@ -1258,7 +1283,9 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                           ))}
                         </div>
                       </section>
+                      </BuyerReveal>
 
+                      <BuyerReveal show={(showArea || showRooms) && (budgetMax != null || minArea != null || maxArea != null || rooms.length > 0)}>
                       {showArea || showRooms ? (
                         <div className={`grid shrink-0 gap-2 ${showArea && showRooms ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                           {showArea ? (
@@ -1345,6 +1372,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                           ) : null}
                         </div>
                       ) : null}
+                      </BuyerReveal>
 
                       {step2Summary.length > 0 ? (
                         <p className="bi-live-summary truncate text-center text-[11px] font-medium sm:text-xs">
@@ -1420,10 +1448,17 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                             Must-have:{' '}
                             <span className="font-semibold">{selectedMustHaves.join(' · ')}</span>
                           </p>
+                        ) : !mustHavesSkipped && purchaseTimeline == null ? (
+                          <BuyerRevealSkip
+                            label="Bez szczególnych wymagań"
+                            disabled={submitting}
+                            onClick={() => setMustHavesSkipped(true)}
+                          />
                         ) : null}
                       </section>
                     ) : null}
 
+                    <BuyerReveal show={!showAmenities || selectedMustHaves.length > 0 || mustHavesSkipped || purchaseTimeline != null}>
                     <section className="bi-form-block" aria-labelledby="bi-timeline-heading">
                       <div className="mb-1.5">
                         <h2 id="bi-timeline-heading" className="bi-form-block__title">
@@ -1451,6 +1486,7 @@ export default function BuyerIntakeFlowClient({ agent, initialMission = null }: 
                         ))}
                       </div>
                     </section>
+                    </BuyerReveal>
 
                     {step2Summary.length > 0 ? (
                       <p className="bi-live-summary truncate text-center text-[11px] font-medium sm:text-xs">
