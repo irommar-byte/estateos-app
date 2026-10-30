@@ -91,14 +91,9 @@ export function sellerPipelineFromListItem(client: {
   return computeSellerPipeline({
     meetingConfirmed: Boolean(client.meetingConfirmed || client.upcomingMeetingStartsAt),
     acquisitionSigned: Boolean(client.acquisitionSigned),
-    offerActive:
-      Boolean(client.linkedOfferId) ||
-      normalizedOfferStatus === 'ACTIVE' ||
-      normalizedOfferStatus === 'PUBLISHED' ||
-      normalizedOfferStatus === 'PENDING' ||
-      normalizedOfferStatus === 'IN_DEAL',
+    offerActive: ['ACTIVE', 'PUBLISHED', 'IN_DEAL', 'SOLD'].includes(normalizedOfferStatus),
     notaryScheduled: client.presentationConfirmed === true,
-    handoverComplete: normalizedOfferStatus === 'SOLD' || normalizedOfferStatus === 'ARCHIVED',
+    handoverComplete: normalizedOfferStatus === 'SOLD',
   });
 }
 
@@ -115,15 +110,9 @@ export function sellerPipelineFromClientDetail(
     acquisition?.status === 'SIGNED' || Boolean(acquisition?.signedAt);
 
   const normalizedOfferStatus = String(offerStatus || '').toUpperCase();
-  const offerPrepared =
-    Boolean(client.linkedOfferId) ||
-    normalizedOfferStatus === 'ACTIVE' ||
-    normalizedOfferStatus === 'PUBLISHED' ||
-    normalizedOfferStatus === 'PENDING' ||
-    normalizedOfferStatus === 'IN_DEAL';
+  // Ogłoszenie zaliczone dopiero, gdy jest opublikowane (szkic / weryfikacja / odrzucona to jeszcze nie).
+  const offerPrepared = ['ACTIVE', 'PUBLISHED', 'IN_DEAL', 'SOLD'].includes(normalizedOfferStatus);
 
-  const activities = (client as AgencyClientDetail & { activities?: Array<{ kind: string; title: string | null; body: string | null }> })
-    .activities || [];
 
   const presentationConfirmed = client.presentation?.status === 'confirmed';
 
@@ -132,11 +121,9 @@ export function sellerPipelineFromClientDetail(
     acquisitionSigned,
     offerActive: offerPrepared,
     notaryScheduled: presentationConfirmed,
-    handoverComplete:
-      activityHintsNotary(activities) ||
-      activityHintsHandover(activities) ||
-      normalizedOfferStatus === 'SOLD' ||
-      normalizedOfferStatus === 'ARCHIVED',
+    // Sprzedaż = oferta SOLD (ustawiana przy przekazaniu kluczy w CRM lub finalizacji). Archiwum to nie sprzedaż,
+    // a słowa „klucze” / „notariusz” w notatce nie mogą zamykać lejka.
+    handoverComplete: normalizedOfferStatus === 'SOLD',
   });
 }
 
