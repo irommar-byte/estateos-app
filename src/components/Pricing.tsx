@@ -276,12 +276,16 @@ export default function Pricing() {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [isBasicModalOpen, setIsBasicModalOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [partnerFreeAvailable, setPartnerFreeAvailable] = useState(true);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   React.useEffect(() => {
     fetch("/api/auth/check")
       .then((r) => r.json())
-      .then((d) => setIsLoggedIn(d.loggedIn))
+      .then((d) => {
+        setIsLoggedIn(d.loggedIn);
+        if (d.loggedIn && d.partnerFreeAvailable === false) setPartnerFreeAvailable(false);
+      })
       .catch(() => {});
 
     const params = new URLSearchParams(window.location.search);
@@ -293,6 +297,7 @@ export default function Pricing() {
   const handleCheckout = async (planName: string) => {
     setCheckoutError(null);
     if (planName === "partner_free") {
+      if (!partnerFreeAvailable) return;
       window.location.href = "/rejestracja?kind=agent";
       return;
     }
@@ -344,7 +349,7 @@ export default function Pricing() {
   };
 
   const activeSubtitle =
-    tab === "partner" ? p.subtitleAgency : tab === "permanent" ? p.subtitlePermanent : p.subtitlePrivate;
+    tab === "partner" ? (partnerFreeAvailable ? p.subtitleAgency : p.subtitleAgencyRenew) : tab === "permanent" ? p.subtitlePermanent : p.subtitlePrivate;
 
   return (
     <section className="theme-aware-dashboard relative bg-[var(--eos-bg)] text-[var(--eos-text)] overflow-hidden font-sans min-h-[calc(100dvh-var(--eos-nav-height))] py-10 sm:py-14 lg:py-20">
@@ -538,6 +543,8 @@ export default function Pricing() {
 
         {tab === "partner" && (
           <div className="animate-in fade-in duration-700 space-y-10">
+            {partnerFreeAvailable && (
+              <>
             <div className="max-w-4xl mx-auto rounded-[2rem] border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.1] via-[var(--eos-card)] to-[var(--eos-card)] p-8 md:p-10 text-center shadow-[0_0_60px_rgba(16,185,129,0.08)]">
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-emerald-600 dark:text-emerald-400 mb-3">
                 {p.partnerFreeBadge}
@@ -576,6 +583,9 @@ export default function Pricing() {
                 onRegister={goRegisterOffice}
               />
             </div>
+
+              </>
+            )}
 
             <p className="text-center text-sm font-semibold text-[var(--eos-muted)] max-w-2xl mx-auto">
               {p.partnerPaidIntro}
@@ -624,7 +634,7 @@ export default function Pricing() {
               </div>
               <div className="flex-1">
                 <p className="text-sm font-bold text-[var(--eos-text)] mb-1">EstateOS™ Partner</p>
-                <p className="text-sm text-[var(--eos-muted)] leading-relaxed">{p.subtitleAgency}</p>
+                <p className="text-sm text-[var(--eos-muted)] leading-relaxed">{partnerFreeAvailable ? p.subtitleAgency : p.subtitleAgencyRenew}</p>
               </div>
               <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 shrink-0">
                 <Wallet size={18} />

@@ -119,3 +119,28 @@ export async function resolveCompanyPartnerPlanStatus(params: {
 }
 
 export { describePartnerPlanChange } from '@/lib/partnerPricing';
+
+/**
+ * Czy Partner Free (0 zł na start) może być jeszcze pokazany / aktywowany.
+ * Start jest jednorazowy: gdy użytkownik lub jego biuro już z niego skorzystało
+ * i okres się skończył — przy przedłużaniu pokazujemy tylko pakiety płatne.
+ */
+export async function isPartnerFreeAvailableForUser(userId: number): Promise<boolean> {
+  await ensureMobileIapTables();
+  const membership = await prisma.agencyCompanyMember.findUnique({
+    where: { userId },
+    select: { company: { select: { ownerUserId: true, plusExpiresAt: true } } },
+  });
+  const ids = Array.from(new Set([userId, membership?.company?.ownerUserId].filter((v): v is number => typeof v === 'number' && v > 0)));
+  const rows = (await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
+    `SELECT id FROM MobileIapPurchase WHERE productId = ? AND userId IN (${ids.map(() => '?').join(',')}) LIMIT 1`,
+    PARTNER_FREE_SIGNUP_PRODUCT,
+    ...ids,
+  )) as Array<{ id: bigint }>;
+  const usedFree = rows.length > 0;
+  const expiresAt = membership?.company?.plusExpiresAt ? new Date(membership.company.plusExpiresAt).getTime() : 0;
+  const hadAnyPeriod = expiresAt > 0;
+  const periodActive = expiresAt > Date.now();
+  if ((usedFree || hadAnyPeriod) && !periodActive) return false;
+  return true;
+}

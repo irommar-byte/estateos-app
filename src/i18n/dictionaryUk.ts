@@ -537,6 +537,8 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       titleSuffix: ", не важче.",
       subtitlePrivate:
         "Безкоштовний акаунт або часова перевага на ринку. Публікуєте, коли потрібно — купоном, кредитами PRO або Pakiet +.",
+      subtitleAgencyRenew:
+        "Продовжте пакет Partner — заморожені кредити розморозяться й додадуться до нових із пакета.",
       subtitleAgency:
         "Зареєструйте офіс за 0 zł — Partner Free активується при реєстрації (5 кредитів, Concierge, каталог). Платні пакети нижче, коли команда зросте.",
       tabPrivate: "Приватні та інвестори",

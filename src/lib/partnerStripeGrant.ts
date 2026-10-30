@@ -484,6 +484,10 @@ export async function grantPartnerFreeTierOnSignup(userId: number): Promise<{
   }
 
   const currentExpiryMs = company.plusExpiresAt ? new Date(company.plusExpiresAt).getTime() : 0;
+  // Start za 0 zł jest jednorazowy — biuro, którego okres już minął, nie dostaje go ponownie.
+  if (currentExpiryMs > 0 && currentExpiryMs <= Date.now()) {
+    return { granted: false, alreadyGranted: true, companyId: company.id, creditsAdded: 0 };
+  }
   const mergedExpiry = new Date(Math.max(currentExpiryMs, periodEnd.getTime()));
   const pendingId = `partner_free_signup_${userId}`;
 

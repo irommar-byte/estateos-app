@@ -617,6 +617,7 @@ export type Dictionary = {
     titleSuffix: string;
     subtitlePrivate: string;
     subtitleAgency: string;
+    subtitleAgencyRenew: string;
     tabPrivate: string;
     tabAgency: string;
     tabPermanent: string;
@@ -1441,6 +1442,8 @@ const pl: Dictionary = {
     titleSuffix: ", nie ciężej.",
     subtitlePrivate:
       "Konto za darmo albo przewaga czasowa na rynku. Publikujesz wtedy, kiedy chcesz — kuponem, kredytem z PRO albo Pakietem +.",
+    subtitleAgencyRenew:
+      "Przedłuż pakiet Partner — zamrożone kredyty odmrożą się i dodadzą do nowych z pakietu.",
     subtitleAgency:
       "Załóż biuro za 0 zł — Partner Free włącza się przy rejestracji (5 kredytów, Concierge, katalog). Poniżej pakiety płatne, gdy zespół się rozwinie.",
     tabPrivate: "Prywatni & Inwestorzy",
@@ -2289,6 +2292,8 @@ const en: Dictionary = {
     titleSuffix: ", not harder.",
     subtitlePrivate:
       "A free account or a time advantage on the market. Publish when you need — welcome coupon, PRO credits, or Pakiet +.",
+    subtitleAgencyRenew:
+      "Renew your Partner plan — frozen credits are unlocked and added to the new plan credits.",
     subtitleAgency:
       "Register your office for 0 PLN — Partner Free activates on signup (5 credits, Concierge, catalog). Paid plans below when your team scales up.",
     tabPrivate: "Private & Investors",

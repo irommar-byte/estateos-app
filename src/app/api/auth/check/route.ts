@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { MOBILE_USER_SELECT } from '@/lib/mobileUserShape';
 import { shapeMobileUserEntitled } from '@/lib/mobileUserShapeEntitled';
 import { reconcileFreeAgencyPlanTypeIfNeeded } from '@/lib/partnerPlanReconcile';
+import { isPartnerFreeAvailableForUser } from '@/lib/partnerPlanStatus';
 
 export async function GET() {
   try {
@@ -35,9 +36,11 @@ export async function GET() {
     }
 
     const shaped = await shapeMobileUserEntitled(user);
+    const partnerFreeAvailable = await isPartnerFreeAvailableForUser(user.id).catch(() => true);
     return NextResponse.json({
       success: true,
-      loggedIn: true, 
+      loggedIn: true,
+      partnerFreeAvailable,
       user: {
         ...shaped,
         advertiserType:
