@@ -27,7 +27,7 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const text = (max: number) => z.string().trim().max(max);
 
 export const passRequestSchema = z.object({
-  serialNumber: z.string().uuid(),
+  serialNumber: z.string().regex(/^[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/),
   description: text(64).min(1),
   memberNumber: text(64),
   holderName: text(64).optional().default(''),
