@@ -623,3 +623,13 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 .crmx-client__actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; cursor: default; }
 .crmx-client__seen { font-size: 11.5px; color: var(--x-ink-3); white-space: nowrap; }
 .crmx-clients.is-compact .crmx-client__actions { flex-direction: row; justify-content: space-between; align-items: center; }
+/* Weekendy i święta — czerwone cyfry */
+.crmx { --x-red: #c62f3a; }
+html:not(.light) .crmx { --x-red: #ff6b74; }
+.crmx-desk__d.is-off:not(.is-sel) { color: var(--x-red); }
+.crmx-desk__d.is-holiday:not(.is-sel) { font-weight: 800; background: color-mix(in srgb, var(--x-red) 8%, transparent); }
+.crmx-desk__wd:nth-child(6), .crmx-desk__wd:nth-child(7) { color: var(--x-red); opacity: 0.75; }
+.crmx-planner__day.is-off .crmx-planner__num { color: var(--x-red); }
+.crmx-planner__day.is-today.is-off .crmx-planner__num { color: var(--x-surface); }
+.crmx-planner__wd:nth-child(6), .crmx-planner__wd:nth-child(7) { color: var(--x-red); }
+.crmx-planner__hol { font-size: 10.5px; font-weight: 650; color: var(--x-red); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import type { UpcomingScheduleEvent } from '@/lib/crm/upcomingScheduleShared';
 import { useNotePeek } from './NotePeek';
+import { holidayName, isWeekend } from './holidays';
 
 type Note = { date: string; text: string };
 
@@ -337,9 +338,11 @@ export function DeskCalendar({ desk }: { desk: Desk }) {
         {cells.map((d, i) => {
           if (!d) return <span key={i} />;
           const key = `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-          const cls = ['crmx-desk__d', key === todayKey ? 'is-today' : '', key === selected ? 'is-sel' : ''].join(' ');
+          const dt = new Date(y, mo, d);
+          const hol = holidayName(dt);
+          const cls = ['crmx-desk__d', isWeekend(dt) || hol ? 'is-off' : '', hol ? 'is-holiday' : '', key === todayKey ? 'is-today' : '', key === selected ? 'is-sel' : ''].join(' ');
           return (
-            <button key={i} type="button" className={cls} onClick={() => setSelected(key)} {...peek.bind(key, notes.find((n) => n.date === key)?.text)}>
+            <button key={i} type="button" className={cls} title={hol || undefined} onClick={() => setSelected(key)} {...peek.bind(key, notes.find((n) => n.date === key)?.text)}>
               {d}
               <span className="crmx-desk__marks">
                 {eventDays.has(key) ? <i className="ev" /> : null}
