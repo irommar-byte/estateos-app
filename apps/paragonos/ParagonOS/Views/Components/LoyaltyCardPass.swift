@@ -1,3 +1,4 @@
+import CoreMotion
 import SwiftUI
 import UIKit
 
@@ -512,32 +513,106 @@ struct EmbossedMetalText: View {
         return max(10, floor(fontSize * width / natural * 0.97))
     }
 
-    var body: some View {
-        // Native SwiftUI metal everywhere: it always fits the width it is given and is safe
-        // under 3D flips. The tilt sheen on the open card comes from the card's foil overlay.
+    private var digits: some View {
         Text(text)
             .font(.system(size: fitted, weight: .semibold, design: .rounded).monospacedDigit())
             .lineLimit(1)
             .minimumScaleFactor(0.4)
-            .foregroundStyle(
-                LinearGradient(
-                    stops: [
-                        .init(color: Color(red: 0.92, green: 0.91, blue: 0.87), location: 0),
-                        .init(color: Color(red: 1.0, green: 0.99, blue: 0.96), location: 0.22),
-                        .init(color: Color(red: 0.55, green: 0.54, blue: 0.51), location: 0.52),
-                        .init(color: Color(red: 0.95, green: 0.93, blue: 0.88), location: 0.76),
-                        .init(color: Color(red: 0.66, green: 0.64, blue: 0.59), location: 1)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
+    }
+
+    var body: some View {
+        // Native SwiftUI metal: always fits its width and is safe under 3D flips.
+        // On the open card (`gyroSheen`) the digits float above the plate with tilt parallax.
+        let tilt = gyroSheen ? CardTilt.shared : nil
+        let tx = CGFloat(tilt?.x ?? 0)
+        let ty = CGFloat(tilt?.y ?? 0)
+        ZStack(alignment: .leading) {
+            if gyroSheen {
+                // Cast shadow on the plate: shifts opposite to the digits, so they read as raised.
+                digits
+                    .foregroundStyle(Color.black.opacity(0.38))
+                    .blur(radius: 1.8)
+                    .offset(x: -tx * 3, y: 2.4 - ty * 2)
+            }
+            digits
+                .foregroundStyle(
+                    LinearGradient(
+                        stops: [
+                            .init(color: Color(red: 0.92, green: 0.91, blue: 0.87), location: 0),
+                            .init(color: Color(red: 1.0, green: 0.99, blue: 0.96), location: 0.22),
+                            .init(color: Color(red: 0.55, green: 0.54, blue: 0.51), location: 0.52),
+                            .init(color: Color(red: 0.95, green: 0.93, blue: 0.88), location: 0.76),
+                            .init(color: Color(red: 0.66, green: 0.64, blue: 0.59), location: 1)
+                        ],
+                        startPoint: UnitPoint(x: 0.5 + tx * 0.5, y: -ty * 0.4),
+                        endPoint: UnitPoint(x: 0.5 - tx * 0.5, y: 1 - ty * 0.4)
+                    )
                 )
-            )
-            .shadow(color: .black.opacity(0.45), radius: 0, x: 0, y: 1)
-            .shadow(color: .white.opacity(0.35), radius: 0, x: 0, y: -0.5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: fontSize * 1.35)
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            .accessibilityHidden(true)
+                .overlay {
+                    if gyroSheen {
+                        // Specular glint gliding across the metal as the phone tilts.
+                        LinearGradient(
+                            colors: [.clear, .white.opacity(0.8), .clear],
+                            startPoint: UnitPoint(x: 0.2 + 0.6 * tx - 0.18, y: 0),
+                            endPoint: UnitPoint(x: 0.2 + 0.6 * tx + 0.18, y: 1)
+                        )
+                        .mask { digits }
+                        .blendMode(.plusLighter)
+                    }
+                }
+                .shadow(color: .black.opacity(0.45), radius: 0, x: 0, y: 1)
+                .shadow(color: .white.opacity(0.35), radius: 0, x: 0, y: -0.5)
+                .offset(x: tx * 5, y: ty * 3.5)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: fontSize * 1.35)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onAppear { if gyroSheen { CardTilt.shared.start() } }
+        .onDisappear { if gyroSheen { CardTilt.shared.stop() } }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Smoothed device tilt for parallax on the open card. Runs only while someone listens;
+/// the rest position slowly follows how the phone is held, so the effect never sticks.
+@MainActor
+@Observable
+final class CardTilt {
+    static let shared = CardTilt()
+
+    private(set) var x: Double = 0
+    private(set) var y: Double = 0
+    @ObservationIgnored private let manager = CMMotionManager()
+    @ObservationIgnored private var listeners = 0
+    @ObservationIgnored private var rest: (roll: Double, pitch: Double)?
+
+    func start() {
+        listeners += 1
+        guard listeners == 1, manager.isDeviceMotionAvailable,
+              UIAccessibility.isReduceMotionEnabled == false else { return }
+        rest = nil
+        manager.deviceMotionUpdateInterval = 1 / 60
+        manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+            guard let self, let motion else { return }
+            let roll = motion.attitude.roll
+            let pitch = motion.attitude.pitch
+            var base = self.rest ?? (roll, pitch)
+            base.roll += (roll - base.roll) * 0.012
+            base.pitch += (pitch - base.pitch) * 0.012
+            self.rest = base
+            let tx = max(-1, min(1, (roll - base.roll) / 0.32))
+            let ty = max(-1, min(1, (pitch - base.pitch) / 0.32))
+            self.x += (tx - self.x) * 0.2
+            self.y += (ty - self.y) * 0.2
+        }
+    }
+
+    func stop() {
+        listeners = max(0, listeners - 1)
+        guard listeners == 0 else { return }
+        manager.stopDeviceMotionUpdates()
+        x = 0
+        y = 0
     }
 }
 
