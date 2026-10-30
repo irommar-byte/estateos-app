@@ -21,12 +21,14 @@ struct ReceiptScanReviewView: View {
                         Text(saveError)
                             .foregroundStyle(.red)
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
                 if let message = wallet.scanError {
                     Section {
                         Text(message)
                             .foregroundStyle(.secondary)
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
 
                 Section {
@@ -55,12 +57,14 @@ struct ReceiptScanReviewView: View {
                         Text("Odczyt jest niepewny — sprawdź sklep, kwotę i datę.")
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Towar") {
                     TextField("Nazwa towaru lub usługi", text: $draft.itemName, axis: .vertical)
                         .lineLimit(2...4)
                         .textInputAutocapitalization(.sentences)
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Kwota") {
                     TextField("0,00 zł", value: $draft.amount, format: .currency(code: "PLN").locale(Locale(identifier: "pl_PL")))
@@ -69,6 +73,7 @@ struct ReceiptScanReviewView: View {
                         LabeledContent("VAT", value: MoneyFormat.string(draft.taxAmount))
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Kategoria") {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
@@ -87,7 +92,7 @@ struct ReceiptScanReviewView: View {
                                 .frame(maxWidth: .infinity)
                                 .background(
                                     RoundedRectangle(cornerRadius: ParagonTheme.stampCorner, style: .continuous)
-                                        .fill(draft.category == category ? category.color.opacity(0.18) : Color(.secondarySystemGroupedBackground))
+                                        .fill(draft.category == category ? category.color.opacity(0.18) : ParagonTheme.surface)
                                         .overlay {
                                             ParagonTheme.passHairline(
                                                 RoundedRectangle(cornerRadius: ParagonTheme.stampCorner, style: .continuous)
@@ -101,6 +106,7 @@ struct ReceiptScanReviewView: View {
                     }
                     .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Terminy") {
                     DatePicker("Zakup", selection: $draft.issuedAt, displayedComponents: .date)
@@ -133,6 +139,7 @@ struct ReceiptScanReviewView: View {
                         }
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Zdjęcie") {
                     if let photo {
@@ -151,6 +158,7 @@ struct ReceiptScanReviewView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
             .navigationTitle("Sprawdź paragon")
             .navigationBarTitleDisplayMode(.inline)

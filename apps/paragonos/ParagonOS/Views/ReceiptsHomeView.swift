@@ -158,7 +158,7 @@ struct ReceiptsHomeView: View {
                 .paragonTabClearance()
             }
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .background(ParagonTheme.canvas.ignoresSafeArea())
         .navigationTitle("Paragony")
         .searchable(text: $query, isPresented: $isSearching, prompt: "Sklep, NIP albo kwota")
         .toolbar {
@@ -277,7 +277,7 @@ struct ReceiptsHomeView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
+                .fill(ParagonTheme.surface)
                 .overlay {
                     ParagonTheme.passHairline(
                         RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
@@ -434,7 +434,7 @@ struct ReceiptsHomeView: View {
             .frame(width: 168, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
+                    .fill(ParagonTheme.surface)
             )
         }
         .buttonStyle(.plain)
@@ -493,7 +493,7 @@ struct ReceiptsHomeView: View {
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
+                    .fill(ParagonTheme.surface)
             )
         }
     }
@@ -584,7 +584,7 @@ struct ReceiptRow: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
+                .fill(ParagonTheme.surface)
         )
     }
 }
@@ -598,7 +598,7 @@ struct ReceiptGroupRow: View {
         ZStack(alignment: .top) {
             ForEach(0..<extras, id: \.self) { layer in
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
+                    .fill(ParagonTheme.surface)
                     .overlay {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.5)
@@ -629,7 +629,7 @@ struct ReceiptGroupRow: View {
             .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
+                    .fill(ParagonTheme.surface)
             )
         }
         .padding(.bottom, CGFloat(extras) * 7)

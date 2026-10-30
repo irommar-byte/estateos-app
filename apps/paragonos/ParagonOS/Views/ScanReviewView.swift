@@ -30,18 +30,21 @@ struct ScanReviewView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
                 if let saveError {
                     Section {
                         Text(saveError)
                             .foregroundStyle(.red)
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
                 if let message = wallet.scanError {
                     Section {
                         Text(message)
                             .foregroundStyle(.secondary)
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
 
                 Section {
@@ -86,11 +89,13 @@ struct ScanReviewView: View {
                         }
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Kwota kaucji") {
                     TextField("0,00 zł", value: $draft.amount, format: .currency(code: "PLN").locale(Locale(identifier: "pl_PL")))
                         .keyboardType(.decimalPad)
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Daty") {
                     DatePicker("Wystawiono", selection: $draft.issuedAt, displayedComponents: .date)
@@ -115,6 +120,7 @@ struct ScanReviewView: View {
                         applyPolicyExpiry()
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Kod") {
                     TextField("Kod kreskowy lub QR", text: $draft.barcodePayload)
@@ -127,6 +133,7 @@ struct ScanReviewView: View {
                     }
                     TextField("Numer kwitka", text: $draft.ticketNumber)
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Zdjęcie") {
                     if let photo {
@@ -145,6 +152,7 @@ struct ScanReviewView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
             .navigationTitle("Sprawdź kwitek")
             .navigationBarTitleDisplayMode(.inline)

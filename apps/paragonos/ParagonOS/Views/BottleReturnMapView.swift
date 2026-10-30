@@ -96,7 +96,7 @@ struct BottleReturnMapView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .background(Color(.systemBackground))
+        .background(ParagonTheme.canvas)
         .navigationTitle("Butelkomaty")
         .navigationBarTitleDisplayMode(.inline)
         .animation(.easeInOut(duration: 0.22), value: selected?.id)

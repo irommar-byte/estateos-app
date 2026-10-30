@@ -187,7 +187,7 @@ struct CoffeeTipSettingsRow: View {
         .padding(16)
         .background {
             RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
+                .fill(ParagonTheme.surface)
                 .overlay {
                     ParagonTheme.passHairline(
                         RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)

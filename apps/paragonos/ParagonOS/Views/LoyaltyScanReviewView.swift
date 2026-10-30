@@ -24,12 +24,14 @@ struct LoyaltyScanReviewView: View {
                         Text(saveError)
                             .foregroundStyle(.red)
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
                 if let message = wallet.scanError {
                     Section {
                         Text(message)
                             .foregroundStyle(.secondary)
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
 
                 Section {
@@ -60,6 +62,7 @@ struct LoyaltyScanReviewView: View {
                 } header: {
                     Text("Program")
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Kod") {
                     TextField("Numer karty lub treść kodu", text: $draft.barcodePayload, axis: .vertical)
@@ -81,6 +84,7 @@ struct LoyaltyScanReviewView: View {
                             .padding(.vertical, 6)
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section("Właściciel") {
                     TextField("Imię na karcie (opcjonalnie)", text: $draft.holderName)
@@ -88,6 +92,7 @@ struct LoyaltyScanReviewView: View {
                     TextField("Notatka", text: $draft.note, axis: .vertical)
                         .lineLimit(2...4)
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 Section {
                     if let photo {
@@ -105,6 +110,7 @@ struct LoyaltyScanReviewView: View {
                 } footer: {
                     Text("Zapisuje tylko to, co było w ramce karty — bez stołu i palców wokół.")
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
             .navigationTitle("Nowa karta")
             .navigationBarTitleDisplayMode(.inline)

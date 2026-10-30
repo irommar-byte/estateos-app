@@ -24,6 +24,7 @@ struct ReceiptMerchantDetailView: View {
                 }
                 LabeledContent("Paragony", value: PolishDates.receiptCount(group.receipts.count))
             }
+            .listRowBackground(ParagonTheme.surface)
             Section("Wszystkie paragony") {
                 ForEach(group.receipts.sorted { $0.issuedAt > $1.issuedAt }, id: \.id) { receipt in
                     NavigationLink {
@@ -34,7 +35,10 @@ struct ReceiptMerchantDetailView: View {
                     .buttonStyle(ParagonPressStyle())
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
         }
+        .scrollContentBackground(.hidden)
+        .background(ParagonTheme.canvas)
         .navigationTitle(group.merchantName)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -61,7 +65,7 @@ struct ReceiptMerchantChip: View {
         .padding(.vertical, 10)
         .background(
             RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
+                .fill(ParagonTheme.surface)
                 .overlay {
                     ParagonTheme.passHairline(
                         RoundedRectangle(cornerRadius: ParagonTheme.passCorner, style: .continuous)

@@ -39,7 +39,25 @@ enum ParagonMark {
 }
 
 enum ParagonTheme {
-    static let osGreen = Color(red: 0.486, green: 1.0, blue: 0.227)
+    /// Accent: deep emerald in light mode, soft jade in dark — calm, not neon.
+    static let osGreen = adaptive(
+        light: UIColor(red: 0.118, green: 0.478, blue: 0.322, alpha: 1),
+        dark: UIColor(red: 0.369, green: 0.824, blue: 0.604, alpha: 1)
+    )
+    /// Screen background: warm stone in light mode, graphite in dark.
+    static let canvas = adaptive(
+        light: UIColor(red: 0.937, green: 0.933, blue: 0.918, alpha: 1),
+        dark: UIColor(red: 0.039, green: 0.039, blue: 0.047, alpha: 1)
+    )
+    /// Cards and list rows: ivory instead of stark white; deep graphite in dark.
+    static let surface = adaptive(
+        light: UIColor(red: 0.984, green: 0.980, blue: 0.969, alpha: 1),
+        dark: UIColor(red: 0.106, green: 0.106, blue: 0.118, alpha: 1)
+    )
+
+    private static func adaptive(light: UIColor, dark: UIColor) -> Color {
+        Color(uiColor: UIColor { $0.userInterfaceStyle == .dark ? dark : light })
+    }
     static let markGreen = osGreen
     static let warranty = Color(red: 0.22, green: 0.42, blue: 0.78)
     static let returning = Color(red: 0.78, green: 0.30, blue: 0.38)

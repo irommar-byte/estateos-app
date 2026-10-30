@@ -130,7 +130,7 @@ struct LoyaltyHomeView: View {
                 }
             }
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(ParagonTheme.canvas.ignoresSafeArea())
         .navigationTitle("Karty")
         .navigationBarTitleDisplayMode(.large)
         .navigationDestination(for: LoyaltyRoute.self) { route in

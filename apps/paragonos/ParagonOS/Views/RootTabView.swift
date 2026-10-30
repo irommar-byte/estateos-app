@@ -97,28 +97,33 @@ struct RootTabView: View {
             Tab("Kaucje", systemImage: "waterbottle.fill", value: AppTab.wallet) {
                 NavigationStack(path: $wallet.walletPath) {
                     WalletView()
+                        .containerBackground(ParagonTheme.canvas, for: .navigation)
                         .navigationDestination(for: WalletRoute.self, destination: walletDestination)
                 }
             }
             Tab("Paragony", systemImage: "doc.text.fill", value: AppTab.receipts) {
                 NavigationStack(path: $wallet.receiptPath) {
                     ReceiptsHomeView()
+                        .containerBackground(ParagonTheme.canvas, for: .navigation)
                         .navigationDestination(for: ReceiptRoute.self, destination: receiptDestination)
                 }
             }
             Tab("Karty", systemImage: "creditcard.fill", value: AppTab.cards) {
                 NavigationStack(path: $wallet.loyaltyPath) {
                     LoyaltyHomeView()
+                        .containerBackground(ParagonTheme.canvas, for: .navigation)
                 }
             }
             Tab("Historia", systemImage: "clock.arrow.circlepath", value: AppTab.history) {
                 NavigationStack {
                     HistoryView()
+                        .containerBackground(ParagonTheme.canvas, for: .navigation)
                 }
             }
             Tab("Rodzina", systemImage: "person.2.fill", value: AppTab.family) {
                 NavigationStack {
                     FamilyView()
+                        .containerBackground(ParagonTheme.canvas, for: .navigation)
                 }
             }
         }

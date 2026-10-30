@@ -21,6 +21,7 @@ struct LoyaltyCardDetailView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 Button {
@@ -29,6 +30,7 @@ struct LoyaltyCardDetailView: View {
                     Label("Pokaż przy kasie", systemImage: "barcode.viewfinder")
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section("Apple Wallet") {
                 AddToWalletButton(card: card) {
@@ -36,6 +38,7 @@ struct LoyaltyCardDetailView: View {
                     try? wallet.persistLoyalty(card, context: context)
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section("Szczegóły") {
                 if let saveError {
@@ -63,6 +66,7 @@ struct LoyaltyCardDetailView: View {
                     LabeledContent("Dodał", value: card.scannedByName)
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             if wallet.family.familyWalletID != nil {
                 Section {
@@ -76,6 +80,7 @@ struct LoyaltyCardDetailView: View {
                 } footer: {
                     Text("Bliscy widzą nazwę i kod. Zdjęcie karty zostaje na tym iPhonie.")
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
 
             Section {
@@ -90,13 +95,17 @@ struct LoyaltyCardDetailView: View {
             } footer: {
                 Text("Tylko kadr z ramki — przód i tył, jeśli obie strony były skanowane.")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 Button("Usuń kartę", role: .destructive) {
                     confirmDelete = true
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
         }
+        .scrollContentBackground(.hidden)
+        .background(ParagonTheme.canvas)
         .navigationTitle(card.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .paragonHidesTabBar()
@@ -202,6 +211,8 @@ struct CardPhotoCaptureSheet: View {
                     Label("Wybierz z biblioteki", systemImage: "photo.on.rectangle")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(ParagonTheme.canvas)
             .navigationTitle("Zdjęcie karty")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

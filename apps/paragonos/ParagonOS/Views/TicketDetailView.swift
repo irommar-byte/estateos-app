@@ -21,6 +21,7 @@ struct TicketDetailView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .listRowBackground(Color.clear)
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section("Szczegóły") {
                 LabeledContent("Sieć") {
@@ -44,6 +45,7 @@ struct TicketDetailView: View {
                     LabeledContent("Zrealizował", value: ticket.redeemedByName)
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section("Notatka") {
                 TextField("Np. który automat, która kasa…", text: $ticket.note, axis: .vertical)
@@ -52,6 +54,7 @@ struct TicketDetailView: View {
                         wallet.schedulePersistTicket(ticket, context: context)
                     }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section("Przy kasie") {
                 Text(policy.checkoutHint)
@@ -63,6 +66,7 @@ struct TicketDetailView: View {
                     Label("Pokaż przy kasie", systemImage: "barcode")
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             if status == .active {
                 Section {
@@ -72,6 +76,7 @@ struct TicketDetailView: View {
                         Label("Oznacz jako wykorzystany", systemImage: "checkmark.circle")
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
 
             if status == .redeemed {
@@ -82,6 +87,7 @@ struct TicketDetailView: View {
                         Label("Przywróć do kaucji", systemImage: "arrow.uturn.backward.circle")
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
 
             if wallet.family.familyWalletID != nil {
@@ -96,6 +102,7 @@ struct TicketDetailView: View {
                 } footer: {
                     Text("Bliscy widzą kod i kwotę. Zdjęcie zostaje na tym iPhonie.")
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
 
             Section {
@@ -105,7 +112,10 @@ struct TicketDetailView: View {
                     Label("Usuń kwitek", systemImage: "trash")
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
         }
+        .scrollContentBackground(.hidden)
+        .background(ParagonTheme.canvas)
         .navigationTitle(policy.name)
         .navigationBarTitleDisplayMode(.inline)
         .paragonHidesTabBar()

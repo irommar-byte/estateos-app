@@ -105,7 +105,7 @@ struct WalletView: View {
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .paragonTabClearance()
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .background(ParagonTheme.canvas.ignoresSafeArea())
         .navigationTitle("Kaucje")
         .searchable(text: $query, isPresented: $isSearching, prompt: "Sklep lub kwota")
         .sensoryFeedback(.success, trigger: tickets.count)

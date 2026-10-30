@@ -72,7 +72,7 @@ struct OnboardingView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }
-        .background(Color(.systemBackground))
+        .background(ParagonTheme.canvas)
     }
 
     private func onboardingPage(symbol: String, title: String, text: String) -> some View {

@@ -406,6 +406,6 @@ struct CoffeeCupStrip: View {
         }
         .padding(24)
         .frame(width: compact ? 360 : 390, height: compact ? 200 : 240)
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(ParagonTheme.surface)
     }
 }

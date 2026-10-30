@@ -36,6 +36,7 @@ struct ReceiptDetailView: View {
                     .font(.system(size: 32, weight: .bold, design: .rounded))
                     .paragonHairlineRow()
             }
+            .listRowBackground(ParagonTheme.surface)
 
             if let data = receipt.photoData, let image = UIImage(data: data) {
                 Section("Zdjęcie") {
@@ -61,6 +62,7 @@ struct ReceiptDetailView: View {
                         Label("Udostępnij zdjęcie", systemImage: "square.and.arrow.up")
                     }
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
 
             Section("Dane") {
@@ -113,11 +115,13 @@ struct ReceiptDetailView: View {
                     }
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section("Towar") {
                 TextField("Nazwa towaru lub usługi", text: $receipt.itemName, axis: .vertical)
                     .lineLimit(2...5)
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section("Terminy") {
                 DatePicker("Zakup", selection: $receipt.issuedAt, displayedComponents: .date)
@@ -148,16 +152,19 @@ struct ReceiptDetailView: View {
                     applyCategoryDates()
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section("Notatka") {
                 TextField("Model, numer seryjny, miejsce zakupu…", text: $receipt.note, axis: .vertical)
                     .lineLimit(3...6)
             }
+            .listRowBackground(ParagonTheme.surface)
 
             if receipt.scannedByName.isEmpty == false {
                 Section {
                     LabeledContent("Zeskanował", value: receipt.scannedByName)
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
 
             if wallet.family.familyWalletID != nil {
@@ -172,6 +179,7 @@ struct ReceiptDetailView: View {
                 } footer: {
                     Text("Bliscy widzą sklep, kwotę i zdjęcie. Plik jest lekki i leży raz we wspólnym portfelu.")
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
 
             Section {
@@ -181,7 +189,10 @@ struct ReceiptDetailView: View {
                     Label("Usuń paragon", systemImage: "trash")
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
         }
+        .scrollContentBackground(.hidden)
+        .background(ParagonTheme.canvas)
         .navigationTitle(receipt.merchantName)
         .navigationBarTitleDisplayMode(.inline)
         .paragonHidesTabBar()

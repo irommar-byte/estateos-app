@@ -18,6 +18,7 @@ struct SettingsView: View {
             } footer: {
                 Text("Imię widać przy kaucjach, paragonach i kartach, które udostępnisz bliskim.")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 ParagonCloudDevicesRow(cloudSync: cloudSync) {
@@ -28,6 +29,7 @@ struct SettingsView: View {
             } footer: {
                 Text("Ten sam Apple ID na iPhonie i iPadzie synchronizuje dane automatycznie. Zaproszenie rodziny ustawiasz w dziale Rodzina.")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 reminderLink(
@@ -56,6 +58,7 @@ struct SettingsView: View {
             } footer: {
                 Text("Każdy termin możesz dodać albo usunąć osobno — jak w Kalendarzu.")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 Toggle(isOn: lockBinding) {
@@ -67,6 +70,7 @@ struct SettingsView: View {
             } footer: {
                 Text("Po zablokowaniu ekranu \(Brand.displayName) pyta o \(lock.biometryTitle), zanim pokaże kaucje, paragony i karty.")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 Toggle(isOn: $wallet.settings.boostBrightness) {
@@ -75,6 +79,7 @@ struct SettingsView: View {
             } header: {
                 Text("Kasa")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 Toggle(isOn: $wallet.settings.scanOpensImmediately) {
@@ -83,6 +88,7 @@ struct SettingsView: View {
             } header: {
                 Text("Skanowanie")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 Picker(selection: $wallet.settings.language) {
@@ -93,6 +99,7 @@ struct SettingsView: View {
                     settingsLabel("Język", symbol: "globe", tint: ParagonSettingsTint.language)
                 }
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 CoffeeTipSettingsRow()
@@ -101,6 +108,7 @@ struct SettingsView: View {
             } footer: {
                 Text("Napiwek idzie przez zakupy w aplikacji. Nic nie musisz.")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 Button {
@@ -112,6 +120,7 @@ struct SettingsView: View {
             } header: {
                 Text("Ocena")
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 LabeledContent("Wersja", value: Self.versionLabel)
@@ -120,6 +129,7 @@ struct SettingsView: View {
             } footer: {
                 Text("\(Brand.slogan)\n\n\(Brand.disclaimer)\n\nZdjęcia kaucji, paragonów i kart zostają na tym iPhonie i — gdy iCloud jest włączony — w Twojej prywatnej chmurze Apple. ParagonOS™ nie ma własnego serwera kont.")
             }
+            .listRowBackground(ParagonTheme.surface)
         }
         .navigationTitle("Ustawienia")
         .navigationBarTitleDisplayMode(.inline)
@@ -233,6 +243,7 @@ private struct ReminderDaysEditor: View {
             } footer: {
                 Text(footer)
             }
+            .listRowBackground(ParagonTheme.surface)
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
@@ -269,6 +280,8 @@ private struct ReminderOffsetPicker: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(ParagonTheme.canvas)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

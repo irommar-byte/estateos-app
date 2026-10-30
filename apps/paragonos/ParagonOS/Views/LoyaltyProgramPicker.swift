@@ -63,7 +63,10 @@ struct LoyaltyProgramPicker: View {
                 } footer: {
                     Text("\(Brand.displayName) nie jest powiązany z tymi sieciami.")
                 }
+                .listRowBackground(ParagonTheme.surface)
             }
+            .scrollContentBackground(.hidden)
+            .background(ParagonTheme.canvas)
             .listStyle(.plain)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)

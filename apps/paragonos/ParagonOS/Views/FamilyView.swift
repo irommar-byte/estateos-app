@@ -47,6 +47,7 @@ struct FamilyView: View {
                         .foregroundStyle(.secondary)
                         .font(.subheadline)
                 }
+                .listRowBackground(ParagonTheme.surface)
             } else if hasFamily == false {
                 inviteHeroSection
             } else {
@@ -170,6 +171,7 @@ struct FamilyView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         }
+        .listRowBackground(ParagonTheme.surface)
     }
 
     private var devicesSection: some View {
@@ -193,6 +195,7 @@ struct FamilyView: View {
         } footer: {
             Text("Ten sam Apple ID na Twoich iPhone’ach idzie sam. Rodzina — zaproszeniem.")
         }
+        .listRowBackground(ParagonTheme.surface)
     }
 
     private var inviteHeroSection: some View {
@@ -228,6 +231,7 @@ struct FamilyView: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         }
+        .listRowBackground(ParagonTheme.surface)
     }
 
     private var membersSection: some View {
@@ -244,6 +248,7 @@ struct FamilyView: View {
                 .disabled(isBusy)
             }
         }
+        .listRowBackground(ParagonTheme.surface)
     }
 
     private var sharingMemberSection: some View {
@@ -254,6 +259,7 @@ struct FamilyView: View {
         } header: {
             Text("Udostępnianie")
         }
+        .listRowBackground(ParagonTheme.surface)
     }
 
     @ViewBuilder
@@ -288,6 +294,7 @@ struct FamilyView: View {
         } footer: {
             Text(familyFooter)
         }
+        .listRowBackground(ParagonTheme.surface)
     }
 
     private var leaveSection: some View {
@@ -300,6 +307,7 @@ struct FamilyView: View {
                  ? "Bliscy stracą dostęp do wspólnego portfela. Twoje kaucje, paragony i karty zostaną na tym iPhonie."
                  : "Wypiszesz się ze wspólnego portfela. Kopie na tym iPhonie zostaną.")
         }
+        .listRowBackground(ParagonTheme.surface)
     }
 
     private func shareToggle(_ title: String, symbol: String, tint: Color, isOn: Binding<Bool>) -> some View {

@@ -87,6 +87,7 @@ struct HistoryView: View {
                 }
                 .pickerStyle(.segmented)
             }
+            .listRowBackground(ParagonTheme.surface)
 
             Section {
                 Picker("Okres", selection: $grain) {
@@ -110,6 +111,7 @@ struct HistoryView: View {
             } footer: {
                 Text(chartFooter)
             }
+            .listRowBackground(ParagonTheme.surface)
 
             if scope == .kaucje {
                 Section {
@@ -120,6 +122,7 @@ struct HistoryView: View {
                     }
                     .padding(.vertical, 4)
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 if redeemed.isEmpty && expired.isEmpty {
                     ContentUnavailableView(
@@ -153,6 +156,7 @@ struct HistoryView: View {
                             }
                         }
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
 
                 if expired.isEmpty == false {
@@ -171,6 +175,7 @@ struct HistoryView: View {
                             }
                         }
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
             } else {
                 Section {
@@ -188,6 +193,7 @@ struct HistoryView: View {
                     }
                     .padding(.vertical, 4)
                 }
+                .listRowBackground(ParagonTheme.surface)
 
                 if receipts.isEmpty == false {
                     Section("Według sklepów") {
@@ -221,6 +227,7 @@ struct HistoryView: View {
                             }
                         }
                     }
+                    .listRowBackground(ParagonTheme.surface)
                 }
 
                 if receipts.isEmpty {
@@ -232,6 +239,8 @@ struct HistoryView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(ParagonTheme.canvas)
         .navigationTitle("Historia")
         .paragonTabClearance()
         .toolbar {

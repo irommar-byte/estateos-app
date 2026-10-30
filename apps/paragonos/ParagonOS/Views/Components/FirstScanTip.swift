@@ -74,7 +74,7 @@ struct ParagonTipCard<T: Tip>: View {
 
     var body: some View {
         TipView(tip)
-            .tipBackground(Color(.secondarySystemGroupedBackground))
+            .tipBackground(ParagonTheme.surface)
             .tipCornerRadius(ParagonTheme.passCorner)
             .tipImageSize(CGSize(width: 36, height: 36))
             .frame(maxWidth: .infinity, alignment: .leading)
