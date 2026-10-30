@@ -206,8 +206,10 @@ struct LoyaltyHomeView: View {
                 LoyaltyCardDetailView(card: card)
                     .navigationTransition(.zoom(sourceID: id, in: passSpace))
                     .onDisappear {
-                        // Ensure source is calm if path pop didn't clear via count==0 race.
-                        if wallet.loyaltyPath.isEmpty {
+                        // Ensure source is calm if path pop didn't clear via count==0 race —
+                        // but not while the card flies home: the pile must stay parted until
+                        // it lands, then it slides back in between its neighbours.
+                        if wallet.loyaltyPath.isEmpty, flight?.card == nil {
                             openingID = nil
                         }
                     }
