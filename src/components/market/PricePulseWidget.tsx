@@ -241,7 +241,7 @@ function WindowChip({
   );
 }
 
-export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale }) {
+export default function PricePulseWidget({ locale = "pl", variant = "default" }: { locale?: Locale; variant?: "default" | "crm" }) {
   const copy = dictFor(locale);
   const [data, setData] = useState<PricePulsePayload | null>(null);
   const [open, setOpen] = useState(false);
@@ -297,83 +297,8 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
   const periodCaption =
     trendKey === "day" ? copy.day : trendKey === "week" ? copy.week : trendKey === "year" ? copy.year : copy.month;
 
-  return (
+  const modal = (
     <>
-      <div className="eos-pro-panel eos-pro-panel-inset eos-price-pulse-well group relative w-full overflow-hidden rounded-3xl p-4 text-left">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent" />
-        <button type="button" onClick={() => setOpen(true)} className="relative z-10 w-full text-left">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="mb-1 flex items-center gap-2">
-                <Activity size={15} className="eos-ecg-icon shrink-0" strokeWidth={2.2} />
-                <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[var(--eos-muted)]">
-                  {copy.title}
-                </p>
-                <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5">
-                  <span className="eos-ecg-icon h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[7px] font-black uppercase tracking-widest text-emerald-500">{copy.live}</span>
-                </span>
-              </div>
-              <p className="truncate text-[10px] font-semibold text-[var(--eos-subtle)]">
-                {copy.heroDeed} · {periodCaption}
-              </p>
-            </div>
-            <RollingPct className={`text-2xl font-black tracking-tight md:text-3xl ${toneClass(trendTone)}`} value={data ? pct : "—"} />
-          </div>
-
-          <div className="relative mt-2 h-[78px]">
-            {chart.area ? (
-              <svg viewBox="0 0 320 78" preserveAspectRatio="none" className="h-full w-full">
-                <defs>
-                  <linearGradient id="eos-deed-trend-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={waveColor} stopOpacity="0.28" />
-                    <stop offset="100%" stopColor={waveColor} stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path d={chart.area} fill="url(#eos-deed-trend-fill)" />
-                <path d={chart.line} fill="none" stroke={waveColor} strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round" />
-                {chart.last ? (
-                  <circle cx={chart.last.x} cy={chart.last.y} r="3.2" fill={waveColor} />
-                ) : null}
-              </svg>
-            ) : (
-              <p className="flex h-full items-center text-[11px] font-semibold text-[var(--eos-muted)]">{copy.empty}</p>
-            )}
-          </div>
-        </button>
-
-        <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
-          {(["day", "week", "month", "year"] as TrendKey[]).map((key) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTrendKey(key)}
-              className={`rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] transition ${
-                trendKey === key
-                  ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
-                  : "border border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
-              }`}
-            >
-              {copy[key]}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative z-10 mt-2 flex items-center justify-between gap-2">
-          <p className={`text-[10px] font-bold ${toneClass(trendTone)}`}>
-            {data ? boughtLabel : copy.tap}
-          </p>
-          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-subtle)]">
-            {trend?.currentPpsm ? formatPpsm(trend.currentPpsm) : copy.tap}
-          </p>
-        </div>
-        {data?.lagNote ? (
-          <p className="relative z-10 mt-2 text-[9px] font-semibold leading-snug text-[var(--eos-subtle)]">
-            {data.lagNote}
-          </p>
-        ) : null}
-      </div>
-
       <AnimatePresence>
         {open && (
           <motion.div
@@ -472,6 +397,132 @@ export default function PricePulseWidget({ locale = "pl" }: { locale?: Locale })
           </motion.div>
         )}
       </AnimatePresence>
+    </>
+  );
+
+  if (variant === "crm") {
+    const crmTone = trendTone === "up" ? "var(--x-good)" : trendTone === "down" ? "var(--x-bad)" : "var(--x-gold)";
+    return (
+      <>
+        <div className="crmx-ppulse">
+          <button type="button" onClick={() => setOpen(true)} className="block w-full text-left">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="crmx-ppulse__label">{copy.heroDeed}</p>
+                <p className="crmx-ppulse__sub">{periodCaption} · {trend?.currentPpsm ? formatPpsm(trend.currentPpsm) : "—"}</p>
+              </div>
+              <p className="crmx-ppulse__pct" style={{ color: heroPct == null ? "var(--x-ink-3)" : crmTone }}>{data ? (heroPct == null ? "—" : pct) : "…"}</p>
+            </div>
+            <div className="crmx-ppulse__chart">
+              {chart.area ? (
+                <svg viewBox="0 0 320 78" preserveAspectRatio="none">
+                  <defs>
+                    <linearGradient id="crmx-ppulse-fill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#a8844c" stopOpacity="0.24" />
+                      <stop offset="100%" stopColor="#a8844c" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path d={chart.area} fill="url(#crmx-ppulse-fill)" />
+                  <path d={chart.line} fill="none" stroke="#a8844c" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                  {chart.last ? <circle cx={chart.last.x} cy={chart.last.y} r="3.4" fill="#a8844c" /> : null}
+                </svg>
+              ) : (
+                <p className="crmx-ppulse__empty">{copy.empty}</p>
+              )}
+            </div>
+          </button>
+          <div className="crmx-seg mt-2 w-full">
+            {(["day", "week", "month", "year"] as TrendKey[]).map((key) => (
+              <button key={key} type="button" aria-pressed={trendKey === key} onClick={() => setTrendKey(key)} style={{ flex: 1, justifyContent: "center" }}>
+                {copy[key]}
+              </button>
+            ))}
+          </div>
+          <p className="crmx-ppulse__note">{data ? boughtLabel : copy.tap}</p>
+        </div>
+        {modal}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="eos-pro-panel eos-pro-panel-inset eos-price-pulse-well group relative w-full overflow-hidden rounded-3xl p-4 text-left">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-white/[0.04] to-transparent" />
+        <button type="button" onClick={() => setOpen(true)} className="relative z-10 w-full text-left">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="mb-1 flex items-center gap-2">
+                <Activity size={15} className="eos-ecg-icon shrink-0" strokeWidth={2.2} />
+                <p className="text-[9px] font-black uppercase tracking-[0.22em] text-[var(--eos-muted)]">
+                  {copy.title}
+                </p>
+                <span className="flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5">
+                  <span className="eos-ecg-icon h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-[7px] font-black uppercase tracking-widest text-emerald-500">{copy.live}</span>
+                </span>
+              </div>
+              <p className="truncate text-[10px] font-semibold text-[var(--eos-subtle)]">
+                {copy.heroDeed} · {periodCaption}
+              </p>
+            </div>
+            <RollingPct className={`text-2xl font-black tracking-tight md:text-3xl ${toneClass(trendTone)}`} value={data ? pct : "—"} />
+          </div>
+
+          <div className="relative mt-2 h-[78px]">
+            {chart.area ? (
+              <svg viewBox="0 0 320 78" preserveAspectRatio="none" className="h-full w-full">
+                <defs>
+                  <linearGradient id="eos-deed-trend-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={waveColor} stopOpacity="0.28" />
+                    <stop offset="100%" stopColor={waveColor} stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={chart.area} fill="url(#eos-deed-trend-fill)" />
+                <path d={chart.line} fill="none" stroke={waveColor} strokeWidth="2.1" strokeLinejoin="round" strokeLinecap="round" />
+                {chart.last ? (
+                  <circle cx={chart.last.x} cy={chart.last.y} r="3.2" fill={waveColor} />
+                ) : null}
+              </svg>
+            ) : (
+              <p className="flex h-full items-center text-[11px] font-semibold text-[var(--eos-muted)]">{copy.empty}</p>
+            )}
+          </div>
+        </button>
+
+        <div className="relative z-10 mt-2 flex flex-wrap gap-1.5">
+          {(["day", "week", "month", "year"] as TrendKey[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTrendKey(key)}
+              className={`rounded-full px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.14em] transition ${
+                trendKey === key
+                  ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-400"
+                  : "border border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)] hover:text-[var(--eos-text)]"
+              }`}
+            >
+              {copy[key]}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative z-10 mt-2 flex items-center justify-between gap-2">
+          <p className={`text-[10px] font-bold ${toneClass(trendTone)}`}>
+            {data ? boughtLabel : copy.tap}
+          </p>
+          <p className="text-[9px] font-black uppercase tracking-[0.12em] text-[var(--eos-subtle)]">
+            {trend?.currentPpsm ? formatPpsm(trend.currentPpsm) : copy.tap}
+          </p>
+        </div>
+        {data?.lagNote ? (
+          <p className="relative z-10 mt-2 text-[9px] font-semibold leading-snug text-[var(--eos-subtle)]">
+            {data.lagNote}
+          </p>
+        ) : null}
+      </div>
+
+      {modal}
     </>
   );
 }

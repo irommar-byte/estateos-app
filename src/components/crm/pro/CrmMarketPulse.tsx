@@ -61,7 +61,7 @@ export default function CrmMarketPulse() {
         </div>
       </div>
       <div className="crmx-pulse__widget mt-3">
-        <PricePulseWidget locale="pl" />
+        <PricePulseWidget locale="pl" variant="crm" />
       </div>
       {h ? (
         <div className="crmx-pulse__news mt-3">

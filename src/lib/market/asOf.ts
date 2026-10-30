@@ -38,8 +38,13 @@ export async function resolveRcnAsOfDate(city = WARSAW_CITY): Promise<Date> {
     city,
   );
 
+  // RCN dosyła akty partiami: miesiąc z ułamkiem zwykłej liczby aktów nie jest kompletny
+  // (np. maj 972 wobec ~10 tys. w poprzednich) — liczy się dopiero miesiąc z ≥60% typowej liczby.
+  const counts = rows.map((r) => Number(r.c)).filter((c) => c >= MIN_COMPLETE_MONTH).sort((a, b) => a - b);
+  const typical = counts.length ? counts[Math.floor(counts.length / 2)] : MIN_COMPLETE_MONTH;
+  const completeAt = Math.max(MIN_COMPLETE_MONTH, Math.round(typical * 0.6));
   for (const row of rows) {
-    if (Number(row.c) >= MIN_COMPLETE_MONTH) {
+    if (Number(row.c) >= completeAt) {
       const [year, month] = String(row.ym).split('-').map(Number);
       if (year && month) {
         const asOf = lastDayOfMonthUtc(year, month);
