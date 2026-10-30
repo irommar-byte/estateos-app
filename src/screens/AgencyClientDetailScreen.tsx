@@ -305,6 +305,34 @@ function MatchRow({
             </View>
             <Text style={{ color: scoreColor, fontWeight: '900', fontSize: 11 }}>{item.score || 0}%</Text>
           </View>
+          {item.reasons?.length ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
+              {item.reasons.slice(0, 4).map((r, i) => {
+                const c = r.tone === 'good' ? '#34C759' : r.tone === 'warn' ? '#FF9F0A' : '#FF453A';
+                return (
+                  <View
+                    key={`${r.label}-${i}`}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 3,
+                      paddingHorizontal: 7,
+                      paddingVertical: 3,
+                      borderRadius: 99,
+                      backgroundColor: `${c}1F`,
+                      borderWidth: StyleSheet.hairlineWidth,
+                      borderColor: `${c}55`,
+                    }}
+                  >
+                    <Text style={{ color: c, fontSize: 10, fontWeight: '900' }}>
+                      {r.tone === 'good' ? '✓' : r.tone === 'warn' ? '–' : '✕'}
+                    </Text>
+                    <Text style={{ color: colors.text, fontSize: 10.5, fontWeight: '700' }}>{r.label}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
         </View>
       </View>
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>

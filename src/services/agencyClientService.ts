@@ -66,6 +66,8 @@ export type AgencyClientMatch = {
   clientFeedbackAt?: string | null;
   intelligenceSent?: boolean;
   intelligenceReason?: string | null;
+  /** Powody z jednego silnika dopasowań (serwer). */
+  reasons?: { tone: 'good' | 'warn' | 'bad'; label: string }[] | null;
   importBrief?: AgencyClientMatchImportBrief | null;
   offer: {
     id: number;
