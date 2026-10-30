@@ -18,6 +18,7 @@ import {
   scheduleExternalViewing,
   setDealFeedback,
   setDealStatus,
+  confirmBuyerIntent,
   updateExternalBuyer,
   type DealSentiment,
   type DealStatus,
@@ -135,6 +136,8 @@ export async function POST(req: Request) {
       if (action === 'update_external') {
         const external = (body.external && typeof body.external === 'object' ? body.external : {}) as Record<string, string>;
         await updateExternalBuyer({ agencyUserId, dealId, ...external });
+      } else if (action === 'confirm_intent') {
+        await confirmBuyerIntent({ agencyUserId, dealId, note: body.note ? String(body.note) : null });
       } else if (action === 'schedule_external') {
         const startsAt = parseStartsAtInput(body.startsAt);
         if (!startsAt) return fail('Wybierz termin i godzinę.');

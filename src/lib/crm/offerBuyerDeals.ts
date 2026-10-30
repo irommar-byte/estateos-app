@@ -111,8 +111,27 @@ export type DealData = {
   dealroom?: { dealId: number; status: string; events: DealEvent[]; syncedAt: string };
   reminders?: Record<string, string>;
   searchOther?: { wanted: boolean; note: string | null; at: string } | null;
+  /** Agent potwierdził telefonicznie, że kupujący chce obejrzeć (i kiedy mu pasuje). */
+  intent?: { confirmedAt: string; note: string | null } | null;
   negotiation?: Negotiation;
   transaction?: Transaction;
+};
+
+export type GuideStep = {
+  title: string;
+  detail: string;
+  /** Z kim kontakt w tym kroku — okno pokazuje od razu wizytówkę tej osoby. */
+  contact: 'buyer' | 'seller' | null;
+  /** Przycisk(i), które okno pokazuje przy kroku. */
+  action: 'confirm_intent' | 'schedule' | 'accept_client_slot' | 'remind_buyer' | null;
+};
+
+export type DealGuide = {
+  intent: 'unclear' | 'wants';
+  headline: string;
+  story: string;
+  lastMessage: { text: string; at: string } | null;
+  steps: GuideStep[];
 };
 
 export type DealView = {
@@ -122,13 +141,15 @@ export type DealView = {
   source: string;
   sourceLabel: string;
   offer: { id: number; title: string; address: string; price: number | null; imageUrl: string | null };
-  seller: { clientId: number; name: string } | null;
+  seller: { clientId: number; name: string; phone: string | null; email: string | null } | null;
   buyer:
     | { kind: 'client'; clientId: number; name: string; phone: string | null; email: string | null }
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
   stage: DealStage;
   /** Dlaczego kupujący pojawił się w lejku — konkretna akcja i kiedy. */
   entry: { reason: string; at: string | null; qualified: boolean };
+  /** Wyjaśnienie sytuacji i kroki dla agenta — co zrobić teraz, z kim i w jakiej kolejności. */
+  guide: DealGuide | null;
   phases: Array<{
     id: PhaseId;
     label: string;
@@ -392,6 +413,7 @@ async function syncDealroomDeals(agencyUserId: number, offerId: number, sellerCl
       buyer: { select: { id: true, name: true, email: true, phone: true } },
       bids: { orderBy: { createdAt: 'asc' }, select: { amount: true, senderId: true, status: true, createdAt: true } },
       appointments: { orderBy: { createdAt: 'asc' }, select: { proposedDate: true, proposedById: true, status: true, createdAt: true } },
+      messages: { orderBy: { createdAt: 'desc' }, take: 10, select: { senderId: true, content: true, createdAt: true } },
     },
   });
   if (!deals.length) return;
@@ -428,6 +450,16 @@ async function syncDealroomDeals(agencyUserId: number, offerId: number, sellerCl
         text: `Termin w Dealroomie: ${when(appt.proposedDate)} · ${state}`,
       });
     }
+
+    for (const message of [...deal.messages].reverse()) {
+      const byBuyer = message.senderId === deal.buyerId;
+      events.push({
+        at: message.createdAt.toISOString(),
+        actor: byBuyer ? 'buyer' : 'seller',
+        text: `${byBuyer ? 'Kupujący napisał' : 'Odpowiedź'}: „${String(message.content || '').replace(/\s+/g, ' ').trim().slice(0, 240)}”`,
+      });
+    }
+    events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
     const status: DealStatus | null =
       deal.status === 'CANCELLED' ? 'LOST' : deal.status === 'FINALIZED' ? 'WON' : null;
@@ -646,23 +678,23 @@ function dealEntry(
   switch (deal.source) {
     case 'radar': {
       if (parsed.sentiment === 'like') {
-        return { reason: `Kliknął „Chcę obejrzeć” przy ofercie od agenta poszukiwań${note}`, at: feedbackAt, qualified: true };
+        return { reason: `Klik „Chcę obejrzeć” przy ofercie od agenta poszukiwań${note}`, at: feedbackAt, qualified: true };
       }
       if (parsed.sentiment === 'maybe') {
-        return { reason: `Odpowiedział „Do przemyślenia” na ofertę od agenta poszukiwań${note}`, at: feedbackAt, qualified: true };
+        return { reason: `Odpowiedź „Do przemyślenia” na ofertę od agenta poszukiwań${note}`, at: feedbackAt, qualified: true };
       }
       if (match?.clientFavorite) {
-        return { reason: 'Dodał ofertę do ulubionych w panelu klienta', at: iso(match.favoriteAt) || null, qualified: true };
+        return { reason: 'Oferta dodana do ulubionych w panelu klienta', at: iso(match.favoriteAt) || null, qualified: true };
       }
       const viaSchedule = scheduleEntry();
       if (viaSchedule) return viaSchedule;
-      if (parsed.sentiment === 'dislike') return { reason: `Odpowiedział „Nie pasuje”${note}`, at: feedbackAt, qualified: false };
+      if (parsed.sentiment === 'dislike') return { reason: `Odpowiedź „Nie pasuje”${note}`, at: feedbackAt, qualified: false };
       return { reason: 'Oferta wysłana z radaru — bez reakcji', at: null, qualified: false };
     }
     case 'inquiry': {
       const lead = rows.find((row) => row.kind === 'EXTERNAL_PORTAL_LEAD');
       const text = clip(lead?.body || lead?.title);
-      return { reason: text ? `Zapytanie z portalu: „${text}”` : 'Wysłał zapytanie z portalu', at: iso(lead?.createdAt) || iso(deal.createdAt) || null, qualified: true };
+      return { reason: text ? `Zapytanie z portalu: „${text}”` : 'Zapytanie z portalu', at: iso(lead?.createdAt) || iso(deal.createdAt) || null, qualified: true };
     }
     case 'listing_request': {
       const req = rows.find((row) => row.kind === JOURNEY_ACTIVITY.LISTING_SHOWING_REQUESTED) || rows[0];
@@ -679,10 +711,137 @@ function dealEntry(
     case 'manual':
       return { reason: 'Dodany ręcznie przez agenta', at: iso(deal.createdAt) || null, qualified: true };
     case 'dealroom':
-      return { reason: 'Rozpoczął transakcję w Dealroomie (portal)', at: iso(deal.createdAt) || null, qualified: true };
+      return { reason: 'Otwarta rozmowa w Dealroomie (portal)', at: iso(deal.createdAt) || null, qualified: true };
     default:
       return { reason: SOURCE_LABELS[deal.source] || 'Kupujący przy ofercie', at: iso(deal.createdAt) || null, qualified: true };
   }
+}
+
+const VIEW_WORDS = /obejrz|ogl[aą]d|wizyt|prezentac|zobaczy|pokaz|spotka/i;
+
+function firstName(full: string | null | undefined): string {
+  return String(full || '').trim().split(/\s+/)[0] || 'Kupujący';
+}
+
+/** Co się stało i co agent ma zrobić — przed prezentacją (Zainteresowani / Umawianie). */
+function dealGuide(
+  deal: DealRow,
+  stage: DealStage,
+  entry: DealView['entry'],
+  presentation: DealView['presentation'],
+  rows: ActivityRow[],
+  parsed: ReturnType<typeof parseClientOfferFeedback>,
+  data: DealData,
+  buyerLabel: string,
+  sellerName: string | null,
+): DealGuide | null {
+  if (stage !== 'interested' && stage !== 'scheduling') return null;
+  const who = firstName(buyerLabel);
+  const owner = sellerName ? `właściciela (${sellerName})` : 'właściciela';
+
+  // Ostatnia wiadomość kupującego: Dealroom albo zapytanie z portalu.
+  const dealroomMsg = [...(data.dealroom?.events || [])].reverse().find((e) => e.actor === 'buyer' && e.text.startsWith('Kupujący napisał'));
+  const lead = [...rows].reverse().find((row) => row.kind === 'EXTERNAL_PORTAL_LEAD');
+  const lastMessage = dealroomMsg
+    ? { text: dealroomMsg.text.replace(/^Kupujący napisał:\s*/, ''), at: dealroomMsg.at }
+    : lead && (lead.body || lead.title)
+      ? { text: `„${clip(lead.body || lead.title, 240)}”`, at: iso(lead.createdAt) || '' }
+      : parsed.note
+        ? { text: `„${clip(parsed.note, 240)}”`, at: entry.at || '' }
+        : null;
+  const buyerProposedInDealroom = (data.dealroom?.events || []).some((e) => e.actor === 'buyer' && e.text.startsWith('Termin w Dealroomie'));
+
+  const wants =
+    Boolean(data.intent?.confirmedAt) ||
+    parsed.sentiment === 'like' ||
+    deal.source === 'listing_request' ||
+    deal.source === 'guest_agency' ||
+    buyerProposedInDealroom ||
+    presentation?.proposedBy === 'client' ||
+    Boolean(lastMessage && VIEW_WORDS.test(lastMessage.text));
+
+  // 1) Kupujący sam zaproponował termin — sprawdź z właścicielem i potwierdź.
+  if (stage === 'scheduling' && presentation?.proposedBy === 'client') {
+    return {
+      intent: 'wants',
+      headline: `${who} proponuje termin — sprawdź z właścicielem`,
+      story: `${entry.reason}. kupujący zaproponował termin prezentacji. Zanim potwierdzisz, upewnij się, że ${owner} może wtedy pokazać nieruchomość.`,
+      lastMessage,
+      steps: [
+        { title: `Zadzwoń do ${owner}`, detail: 'Zapytaj, czy termin proponowany przez kupującego pasuje.', contact: 'seller', action: null },
+        { title: 'Potwierdź termin kupującemu', detail: 'Jeśli właściciel nie może — zaproponuj inne terminy od niego.', contact: null, action: 'accept_client_slot' },
+      ],
+    };
+  }
+
+  // 2) Terminy wysłane — czekamy na wybór kupującego.
+  if (stage === 'scheduling') {
+    return {
+      intent: 'wants',
+      headline: `Czekamy, aż ${who} wybierze termin`,
+      story: `Terminy prezentacji zostały wysłane. ${who} wybiera jeden w swoim panelu — dostanie przypomnienie.`,
+      lastMessage,
+      steps: [
+        { title: `Jeśli długo cisza — zadzwoń do kupującego (${buyerLabel})`, detail: 'Przypomnij o terminach albo ustal inny, który pasuje obu stronom.', contact: 'buyer', action: 'remind_buyer' },
+      ],
+    };
+  }
+
+  if (!wants) {
+    const what =
+      deal.source === 'dealroom'
+        ? lastMessage
+          ? 'Kupujący napisał w Dealroomie, ale z wiadomości nie wynika jasno, że chce oglądać.'
+          : 'Kupujący otworzył rozmowę w Dealroomie przy tej ofercie — bez żadnej wiadomości i bez prośby o prezentację.'
+        : parsed.sentiment === 'maybe'
+          ? 'Odpowiedź „Do przemyślenia” — oferta zainteresowała, ale kupujący nie jest pewny.'
+          : `${entry.reason}. To zainteresowanie, ale jeszcze nie prośba o prezentację.`;
+    return {
+      intent: 'unclear',
+      headline: `Najpierw upewnij się, czy ${who} chce obejrzeć`,
+      story: `${what} Nie dzwoń jeszcze do właściciela — najpierw potwierdź z kupującym.`,
+      lastMessage,
+      steps: [
+        {
+          title: `Zadzwoń do kupującego (${buyerLabel})`,
+          detail: 'Zapytaj, czy chce obejrzeć nieruchomość i jakie dni/godziny mu pasują. Odpowiedz też na pytania o ofertę.',
+          contact: 'buyer',
+          action: 'confirm_intent',
+        },
+      ],
+    };
+  }
+
+  const why = data.intent?.confirmedAt
+    ? `Potwierdzone telefonicznie: kupujący chce obejrzeć${data.intent.note ? ` (pasuje: ${data.intent.note})` : ''}.`
+    : parsed.sentiment === 'like'
+      ? 'Kupujący kliknął „Chcę obejrzeć” przy ofercie od agenta poszukiwań.'
+      : deal.source === 'listing_request' || deal.source === 'guest_agency'
+        ? `Agent innej agencji chce pokazać tę nieruchomość swojemu kupującemu.`
+        : buyerProposedInDealroom
+          ? 'Kupujący zaproponował termin w Dealroomie.'
+          : 'Kupujący napisał, że chce obejrzeć.';
+  return {
+    intent: 'wants',
+    headline: sellerName ? `${who} chce obejrzeć — zadzwoń do właściciela` : `${who} chce obejrzeć — ustal termin`,
+    story: `${why} Teraz ustal z ${sellerName ? 'właścicielem' : 'dostępnością nieruchomości'}, kiedy można pokazać, i przekaż terminy kupującemu.`,
+    lastMessage,
+    steps: [
+      sellerName
+        ? { title: `Zadzwoń do ${owner}`, detail: `Zapytaj, kiedy może pokazać nieruchomość${data.intent?.note ? ` — kupującemu pasuje: ${data.intent.note}` : ''}.`, contact: 'seller', action: null }
+        : { title: 'Sprawdź, kiedy nieruchomość jest dostępna', detail: 'Brak sprzedającego w CRM — ustal dostępność samodzielnie.', contact: null, action: null },
+      {
+        title: 'Wpisz terminy i wyślij kupującemu',
+        detail: deal.buyerClientId
+          ? 'Kupujący wybierze jeden w swoim panelu.'
+          : deal.source === 'dealroom'
+            ? 'Termin trafi do kupującego w rozmowie w Dealroomie.'
+            : 'Zapisz uzgodniony termin.',
+        contact: null,
+        action: 'schedule',
+      },
+    ],
+  };
 }
 
 function shapeDeal(deal: DealRow, ctx: Context): DealView {
@@ -852,6 +1011,12 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     ? ctx.activities.find((row) => row.clientId === otherAgencyClientId)?.agencyUserId
     : null;
 
+  const buyerLabel = buyerRow ? `${buyerRow.firstName} ${buyerRow.lastName}`.trim() : deal.externalName || deal.externalAgency || 'Kupujący';
+  const guide =
+    status === 'ACTIVE' || status === 'PAUSED'
+      ? dealGuide(deal, stage, entry, presentation, rows, matchParsed, data, buyerLabel, sellerRow ? `${sellerRow.firstName} ${sellerRow.lastName}`.trim() : null)
+      : null;
+
   return {
     id: deal.id,
     offerId: deal.offerId,
@@ -865,7 +1030,9 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
       price: offer?.price ?? null,
       imageUrl: offer ? resolveOfferPrimaryImage(offer) || null : null,
     },
-    seller: deal.sellerClientId && sellerRow ? { clientId: deal.sellerClientId, name: `${sellerRow.firstName} ${sellerRow.lastName}`.trim() } : null,
+    seller: deal.sellerClientId && sellerRow
+      ? { clientId: deal.sellerClientId, name: `${sellerRow.firstName} ${sellerRow.lastName}`.trim(), phone: sellerRow.phone, email: sellerRow.email }
+      : null,
     buyer:
       deal.buyerClientId && buyerRow
         ? {
@@ -884,6 +1051,7 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
           },
     stage,
     entry,
+    guide,
     phases,
     presentation,
     attendance,
@@ -1133,9 +1301,39 @@ export async function updateExternalBuyer(params: {
 }
 
 /** Termin dla kupującego spoza CRM (kupujący z CRM dostaje termin przez zwykłą propozycję prezentacji). */
+export async function confirmBuyerIntent(params: { agencyUserId: number; dealId: number; note: string | null }) {
+  const deal = await ownedDeal(params.agencyUserId, params.dealId);
+  const note = params.note ? params.note.trim().slice(0, 200) || null : null;
+  await prisma.offerBuyerDeal.update({
+    where: { id: deal.id },
+    data: {
+      data: withEvent(
+        deal.data,
+        { actor: 'agent', text: `Kupujący potwierdził, że chce obejrzeć${note ? ` · pasuje: ${note}` : ''}` },
+        new Date(),
+        (d) => ({ ...d, intent: { confirmedAt: new Date().toISOString(), note } }),
+      ),
+    },
+  });
+}
+
 export async function scheduleExternalViewing(params: { agencyUserId: number; dealId: number; startsAt: Date }) {
   const deal = await ownedDeal(params.agencyUserId, params.dealId);
   if (deal.buyerClientId) throw new Error('Termin dla kupującego z CRM ustal w jego karcie.');
+  // Kupujący z Dealroomu dostaje termin w swojej rozmowie.
+  const dealroomId = parseData(deal.data).dealroom?.dealId;
+  if (dealroomId) {
+    const room = await prisma.deal.findUnique({ where: { id: dealroomId }, select: { id: true, sellerId: true, buyerId: true } });
+    if (room && room.sellerId === params.agencyUserId) {
+      await prisma.dealMessage.create({
+        data: {
+          dealId: room.id,
+          senderId: params.agencyUserId,
+          content: `Proponuję prezentację: ${when(params.startsAt)}. Proszę o potwierdzenie, że termin pasuje.`,
+        },
+      });
+    }
+  }
   await prisma.offerBuyerDeal.update({
     where: { id: deal.id },
     data: {

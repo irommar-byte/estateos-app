@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarClock, Check, Mail, Phone, User, X, Home } from 'lucide-react';
-import { buyerName, STAGE_SHORT, type ProDeal } from './CrmPulpit';
+import { CalendarClock, Check, Mail, Phone, User, X, Home, MessageSquareQuote } from 'lucide-react';
+import { buyerName, STAGE_SHORT, type ProDeal, type ProGuide } from './CrmPulpit';
 import { pln, relative } from './format';
 
 /** Okno transakcji: dlaczego kupujący jest w lejku, gdzie jest teraz i jaki jest następny krok — z przyciskami. */
@@ -78,6 +78,7 @@ function SheetBody({
   const [slots, setSlots] = useState<string[]>([localInput(1, 17), localInput(2, 11), '']);
   const [agreed, setAgreed] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [intentNote, setIntentNote] = useState('');
 
   const client = deal.buyer.kind === 'client' ? deal.buyer : null;
   const phone = deal.buyer.phone;
@@ -155,8 +156,91 @@ function SheetBody({
     </div>
   );
 
+  const guide = deal.guide || null;
+  const sellerCard = deal.seller ? (
+    <div className="crmx-dealsheet__people">
+      <div className="crmx-person">
+        <p className="crmx-eyebrow">Właściciel</p>
+        <p className="crmx-person__name">{deal.seller.name}</p>
+        <p className="crmx-person__line">{deal.seller.phone || 'brak telefonu'}{deal.seller.email ? ` · ${deal.seller.email}` : ''}</p>
+        <div className="crmx-dealsheet__row">
+          {deal.seller.phone ? <a className="crmx-btn crmx-btn--gold" href={`tel:${deal.seller.phone}`}><Phone size={15} /> Zadzwoń</a> : null}
+          {deal.seller.email ? <a className="crmx-btn" href={`mailto:${deal.seller.email}`}><Mail size={15} /> E-mail</a> : null}
+          <button type="button" className="crmx-btn" onClick={() => onOpenClient(deal.seller!.clientId)}><User size={15} /> Karta właściciela</button>
+        </div>
+      </div>
+      <button type="button" className="crmx-offerpeek" onClick={() => onOpenOffer(deal.offerId)}>
+        {deal.offer.imageUrl ? <img src={deal.offer.imageUrl} alt="" /> : <span className="crmx-offerpeek__ph" />}
+        <span className="min-w-0">
+          <span className="block truncate text-[13px] font-semibold">{deal.offer.title}</span>
+          <span className="block truncate text-[11.5px] crmx-muted">{deal.offer.address}</span>
+          <span className="block text-[12px] font-semibold crmx-num">{pln(deal.offer.price)}</span>
+        </span>
+      </button>
+    </div>
+  ) : null;
+  const buyerCard = (
+    <div className="crmx-person">
+      <p className="crmx-eyebrow">Kupujący</p>
+      <p className="crmx-person__name">{buyerName(deal)}{deal.buyer.kind === 'external' && deal.buyer.agency ? ` · ${deal.buyer.agency}` : ''}</p>
+      <p className="crmx-person__line">{phone || 'brak telefonu'}{email ? ` · ${email}` : ''}</p>
+      <div className="crmx-dealsheet__row">
+        {phone ? <a className="crmx-btn crmx-btn--gold" href={`tel:${phone}`}><Phone size={15} /> Zadzwoń</a> : null}
+        {email ? <a className="crmx-btn" href={`mailto:${email}`}><Mail size={15} /> E-mail</a> : null}
+      </div>
+    </div>
+  );
+  const guideAction = (action: ProGuide['steps'][number]['action']) => {
+    if (action === 'confirm_intent') {
+      return (
+        <div className="crmx-dealsheet__form">
+          <label className="crmx-input">
+            <CalendarClock />
+            <input value={intentNote} onChange={(e) => setIntentNote(e.target.value)} placeholder="Kiedy mu pasuje? np. wt–czw po 17" />
+          </label>
+          <div className="crmx-dealsheet__row">
+            <button type="button" className="crmx-btn crmx-btn--gold" disabled={busy} onClick={() => void dealAction('confirm_intent', { note: intentNote }, 'Zapisane — teraz ustal termin z właścicielem.')}>
+              <Check size={15} /> Chce obejrzeć
+            </button>
+            <button type="button" className="crmx-btn" disabled={busy} onClick={() => void dealAction('set_status', { status: 'LOST' }, 'Zamknięte — kupujący nie jest zainteresowany.')}>
+              Nie jest zainteresowany
+            </button>
+          </div>
+        </div>
+      );
+    }
+    if (action === 'schedule') return scheduleForm;
+    if (action === 'accept_client_slot') {
+      return (
+        <div className="crmx-dealsheet__form">
+          <p className="crmx-dealsheet__hint">Termin od kupującego: <b>{pres ? when(pres.startsAt) : '—'}</b></p>
+          <button
+            type="button"
+            className="crmx-btn crmx-btn--gold"
+            disabled={busy || !client}
+            onClick={() => client && void run(`/api/crm/clients/${client.clientId}`, { action: 'accept_schedule_change', kind: 'presentation' }, 'Termin potwierdzony — prezentacja umówiona.')}
+          >
+            <Check size={15} /> Właściciel może — potwierdź
+          </button>
+          <button type="button" className="crmx-btn" onClick={() => setFormOpen((v) => !v)}>Zaproponuj inne terminy</button>
+          {formOpen ? scheduleForm : null}
+        </div>
+      );
+    }
+    if (action === 'remind_buyer') {
+      return (
+        <div className="crmx-dealsheet__form">
+          <p className="crmx-dealsheet__hint">Wysłane terminy: {(pres?.proposedSlots || (pres ? [pres.startsAt] : [])).map(when).join(' · ') || '—'}</p>
+          <button type="button" className="crmx-btn" onClick={() => setFormOpen((v) => !v)}>Zmień terminy</button>
+          {formOpen ? scheduleForm : null}
+        </div>
+      );
+    }
+    return null;
+  };
+
   let step: { title: string; body: React.ReactNode } | null = null;
-  if (deal.status === 'ACTIVE' || deal.status === 'PAUSED') {
+  if ((deal.status === 'ACTIVE' || deal.status === 'PAUSED') && !guide) {
     if (stage === 'interested') {
       step = { title: 'Umów prezentację', body: scheduleForm };
     } else if (stage === 'scheduling') {
@@ -286,6 +370,36 @@ function SheetBody({
             </li>
           ))}
         </ol>
+      ) : null}
+
+      {guide ? (
+        <section className="crmx-card crmx-dealsheet__guide">
+          <p className="crmx-eyebrow">{guide.intent === 'unclear' ? 'Sytuacja · do wyjaśnienia' : 'Sytuacja'}</p>
+          <h4 className="crmx-dealsheet__steptitle">{guide.headline}</h4>
+          <p className="crmx-dealsheet__hint">{guide.story}</p>
+          {guide.lastMessage ? (
+            <blockquote className="crmx-dealsheet__quote">
+              <MessageSquareQuote size={15} />
+              <span>{guide.lastMessage.text}{guide.lastMessage.at ? <span className="crmx-muted"> · {relative(guide.lastMessage.at)}</span> : null}</span>
+            </blockquote>
+          ) : null}
+          <ol className="crmx-dealsheet__steps">
+            {guide.steps.map((g, i) => (
+              <li key={i}>
+                <span className="crmx-dealsheet__num">{i + 1}</span>
+                <div className="min-w-0 flex-1 space-y-2.5">
+                  <div>
+                    <p className="text-[14px] font-semibold">{g.title}</p>
+                    <p className="crmx-dealsheet__hint">{g.detail}</p>
+                  </div>
+                  {g.contact === 'seller' ? sellerCard : g.contact === 'buyer' ? buyerCard : null}
+                  {guideAction(g.action)}
+                </div>
+              </li>
+            ))}
+          </ol>
+          {msg ? <p className={`crmx-dealsheet__msg ${msg.ok ? 'is-ok' : 'is-bad'}`}>{msg.text}</p> : null}
+        </section>
       ) : null}
 
       {step ? (

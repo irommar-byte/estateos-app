@@ -34,15 +34,18 @@ export default function CrmDealsPro({
   const [query, setQuery] = useState('');
   const [mine, setMine] = useState(false);
   const [closed, setClosed] = useState(false);
+  const [origin, setOrigin] = useState<'all' | 'radar' | 'other'>('all');
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return (deals || []).filter((d) => {
       if (mine && d.turn.side !== 'agent') return false;
+      if (origin === 'radar' && d.source !== 'radar') return false;
+      if (origin === 'other' && d.source === 'radar') return false;
       if (!q) return true;
       return `${buyerName(d)} ${d.offer.title} ${d.offer.address} ${d.seller?.name || ''}`.toLowerCase().includes(q);
     });
-  }, [deals, query, mine]);
+  }, [deals, query, mine, origin]);
 
   const live = filtered.filter((d) => d.status === 'ACTIVE' || d.status === 'PAUSED');
   const done = filtered.filter((d) => d.status === 'WON' || d.status === 'LOST');
@@ -69,10 +72,12 @@ export default function CrmDealsPro({
             {d.entry.at ? <span className="crmx-muted"> · {relative(d.entry.at)}</span> : null}
           </p>
         ) : null}
-        <p className="mt-2 text-[12px] leading-snug" style={{ color: 'var(--x-ink-2)' }}>{d.nextAction}</p>
+        <p className="mt-2 text-[12px] leading-snug" style={{ color: 'var(--x-ink-2)' }}>{d.guide?.headline || d.nextAction}</p>
         <div className="mt-2 flex flex-wrap items-center gap-1">
           <span className="crmx-chip">{STAGE_SHORT[d.stage] || d.stage}</span>
           {d.source === 'dealroom' ? <span className="crmx-chip crmx-chip--info">Dealroom</span> : null}
+          {d.source === 'radar' ? <span className="crmx-chip crmx-chip--info">Agent poszukiwań</span> : null}
+          {d.guide?.intent === 'unclear' ? <span className="crmx-chip crmx-chip--warn">Do wyjaśnienia</span> : null}
           {d.turn.side === 'agent' ? <span className="crmx-chip crmx-chip--gold">Twój ruch</span> : null}
           {dl ? <span className="crmx-chip crmx-chip--warn"><Clock size={11} /> {dl}</span> : null}
         </div>
@@ -103,6 +108,13 @@ export default function CrmDealsPro({
         <div className="crmx-seg">
           <button type="button" aria-pressed={!mine} onClick={() => setMine(false)}>Wszystkie</button>
           <button type="button" aria-pressed={mine} onClick={() => setMine(true)}>Mój ruch <small>{myMoves}</small></button>
+        </div>
+        <div className="crmx-seg" title="Agent poszukiwań = kupujący, którzy zareagowali na oferty wysłane automatycznie z radaru.">
+          <button type="button" aria-pressed={origin === 'all'} onClick={() => setOrigin('all')}>Wszyscy</button>
+          <button type="button" aria-pressed={origin === 'radar'} onClick={() => setOrigin('radar')}>
+            Agent poszukiwań <small>{(deals || []).filter((d) => d.source === 'radar' && (d.status === 'ACTIVE' || d.status === 'PAUSED')).length}</small>
+          </button>
+          <button type="button" aria-pressed={origin === 'other'} onClick={() => setOrigin('other')}>Pozyskani</button>
         </div>
         <div className="crmx-seg ml-auto">
           <button type="button" aria-pressed={!closed} onClick={() => setClosed(false)}>W toku <small>{live.length}</small></button>

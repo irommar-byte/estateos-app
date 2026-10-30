@@ -28,6 +28,19 @@ type TodayPayload = {
   ownerCalls: Array<{ approvalId: number; clientName: string; offer: { title: string } | null }>;
 };
 
+export type ProGuide = {
+  intent: 'unclear' | 'wants';
+  headline: string;
+  story: string;
+  lastMessage: { text: string; at: string } | null;
+  steps: Array<{
+    title: string;
+    detail: string;
+    contact: 'buyer' | 'seller' | null;
+    action: 'confirm_intent' | 'schedule' | 'accept_client_slot' | 'remind_buyer' | null;
+  }>;
+};
+
 export type ProDeal = {
   id: number;
   offerId: number;
@@ -37,7 +50,8 @@ export type ProDeal = {
   sourceLabel: string;
   entry?: { reason: string; at: string | null; qualified: boolean };
   offer: { id: number; title: string; address: string; price: number | null; imageUrl: string | null };
-  seller: { clientId: number; name: string } | null;
+  seller: { clientId: number; name: string; phone?: string | null; email?: string | null } | null;
+  guide?: ProGuide | null;
   buyer:
     | { kind: 'client'; clientId: number; name: string; phone: string | null; email: string | null }
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
