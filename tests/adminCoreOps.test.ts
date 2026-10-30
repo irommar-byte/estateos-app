@@ -38,4 +38,5 @@ test('production inSync requires identical git env and process sha', () => {
   assert.equal(productionInSync('7d412ac9', '7d412ac9', '7d412ac9'), true);
   assert.equal(productionInSync('7d412ac9', '7d412ac9', '8cf5f49bc'), false);
   assert.equal(productionInSync('', '7d412ac9', '7d412ac9'), false);
+  assert.equal(productionInSync('b16ec863f', 'b16ec863f', 'b16ec863f2a1c0d4e5f60718293a4b5c6d7e8f90'), true);
 });

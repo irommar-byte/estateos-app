@@ -3,6 +3,7 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { promisify } from 'util';
+import { sameCommitSha } from './adminServerDiagnose';
 import { readPm2Processes, type Pm2Process } from './adminServerOps';
 
 const execFileAsync = promisify(execFile);
@@ -11,11 +12,9 @@ const HOME = (process.env.ADMIN_SERVER_HOME || process.env.HOME || '/home/rommar
 const APP_ROOT = process.env.ADMIN_CORE_CWD || path.join(HOME, 'estateos');
 const ENV_PATH = path.join(APP_ROOT, '.env');
 
+/** PM2 podaje pełny SHA, git i .env skrócony — porównujemy prefiks, jak diagnostyka. */
 export function productionInSync(git: string, env: string, processCommit: string) {
-  const a = String(git || '').trim();
-  const b = String(env || '').trim();
-  const c = String(processCommit || '').trim();
-  return Boolean(a) && a === b && a === c;
+  return sameCommitSha(git, env) && sameCommitSha(git, processCommit);
 }
 
 async function run(cmd: string, args: string[], timeout = 8000): Promise<string> {
