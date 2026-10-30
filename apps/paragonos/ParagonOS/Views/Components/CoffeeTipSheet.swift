@@ -17,6 +17,8 @@ struct CoffeeTipSheet: View {
             .presentationCornerRadius(32)
             .task {
                 CoffeeSounds.pour()
+                // The opening pour fills the highlighted cup in time with the sound.
+                if reduceMotion == false { drinking = store.selected }
                 await store.load()
                 if reduceMotion {
                     appeared = true
@@ -25,6 +27,8 @@ struct CoffeeTipSheet: View {
                         appeared = true
                     }
                 }
+                try? await Task.sleep(for: .seconds(CoffeeCupView.pourDuration))
+                if store.isPurchasing == false { drinking = nil }
             }
     }
 
