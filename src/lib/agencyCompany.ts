@@ -562,6 +562,10 @@ export async function transferCompanyCredits(params: {
   await prisma.$transaction(async (tx) => {
     const company = await tx.agencyCompany.findUnique({ where: { id: companyId } });
     if (!company || company.extraListings < amount) throw new Error('Za mało kredytów w puli firmy.');
+    // Zamrożona pula (po wygaśnięciu okresu biura) nie może być przekazywana — odmraża się dopiero po przedłużeniu.
+    if (!company.plusExpiresAt || company.plusExpiresAt.getTime() <= Date.now()) {
+      throw new Error('Pula jest zamrożona — przedłuż pakiet, aby ją wykorzystać.');
+    }
 
     const recipient = await tx.user.findUnique({
       where: { id: toUserId },
@@ -569,12 +573,8 @@ export async function transferCompanyCredits(params: {
     });
     if (!recipient) throw new Error('Nie znaleziono użytkownika.');
 
-    const companyExpiry = company.plusExpiresAt;
-    const recipientExpiry = recipient.plusExpiresAt;
-    const mergedExpiry =
-      companyExpiry && recipientExpiry
-        ? new Date(Math.max(companyExpiry.getTime(), recipientExpiry.getTime()))
-        : companyExpiry || recipientExpiry || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    // Kredyty od biura mają ważność biura — mrożą się i odmrażają razem z pakietem Partner.
+    const mergedExpiry = company.plusExpiresAt;
 
     await tx.agencyCompany.update({
       where: { id: companyId },

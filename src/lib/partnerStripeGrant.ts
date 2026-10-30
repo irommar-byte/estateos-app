@@ -63,6 +63,27 @@ function partnerTrialProductId(planId: PartnerPlanId): string {
   return `pl.estateos.partner.${planId}_trial`;
 }
 
+/**
+ * Kredyty przekazane agentom mrożą się razem z biurem — przy przedłużeniu pakietu
+ * odmrażamy je (przedłużamy ważność) aktywnym agentom biura, którzy mają kredyty.
+ */
+async function unfreezeMemberCredits(
+  tx: { $executeRawUnsafe: (query: string, ...values: unknown[]) => Promise<number> },
+  companyId: number,
+  expiry: Date,
+) {
+  await tx.$executeRawUnsafe(
+    `UPDATE \`User\` u
+       INNER JOIN AgencyCompanyMember m ON m.userId = u.id
+     SET u.plusExpiresAt = ?
+     WHERE m.companyId = ? AND m.status = 'ACTIVE' AND u.extraListings > 0
+       AND (u.plusExpiresAt IS NULL OR u.plusExpiresAt < ?)`,
+    expiry,
+    companyId,
+    expiry,
+  );
+}
+
 export async function isPartnerProTrialEligible(userId: number): Promise<boolean> {
   await ensureMobileIapTables();
   const prior = (await prisma.$queryRawUnsafe<Array<{ id: bigint }>>(
@@ -146,6 +167,8 @@ export async function grantPartnerPlanFromStripeCheckout(params: {
       select: { id: true, extraListings: true, plusExpiresAt: true },
     });
 
+    await unfreezeMemberCredits(tx, company.id, mergedExpiry);
+
     await tx.$executeRawUnsafe(
       `
         INSERT INTO MobileIapPurchase
@@ -204,6 +227,8 @@ async function grantPartnerPlanPeriod(params: {
         plusExpiresAt: mergedExpiry,
       },
     });
+
+    await unfreezeMemberCredits(tx, company.id, mergedExpiry);
 
     await tx.$executeRawUnsafe(
       `
@@ -419,6 +444,8 @@ export async function grantPartnerProTrial(userId: number): Promise<{
       },
     });
 
+    await unfreezeMemberCredits(tx, company.id, mergedExpiry);
+
     await tx.$executeRawUnsafe(
       `
         INSERT INTO MobileIapPurchase
@@ -499,6 +526,8 @@ export async function grantPartnerFreeTierOnSignup(userId: number): Promise<{
         plusExpiresAt: mergedExpiry,
       },
     });
+
+    await unfreezeMemberCredits(tx, company.id, mergedExpiry);
 
     await tx.$executeRawUnsafe(
       `
