@@ -1222,9 +1222,10 @@ enum PassStackMotion {
     /// Clear space left between the risen card and the cards that dropped away.
     static let pocketGap: CGFloat = 18
 
-    /// The card slides up out of the pile: quick, with a short settle.
-    static var slideOut: Animation { .spring(response: 0.46, dampingFraction: 0.78) }
-    static let slideOutPause: Double = 0.36
+    /// The card slides up out of the pile in one quick move with no settle, and the
+    /// flight takes over while it is still moving, so there is no stop at the top.
+    static var slideOut: Animation { .spring(response: 0.32, dampingFraction: 1.0) }
+    static let slideOutPause: Double = 0.22
 
     /// Back into its pocket: slides down behind the front cards, which close over it.
     static var slideIn: Animation { .spring(response: 0.56, dampingFraction: 0.76) }
@@ -1358,8 +1359,10 @@ final class CardFlight {
     var isFlying: Bool { phase == .opening || phase == .dragging || phase == .closing }
 
     /// Twice as slow as a standard push, with a springy landing (slight overshoot, settle).
-    static var opening: Animation { .spring(response: 0.78, dampingFraction: 0.8) }
-    static var closing: Animation { .spring(response: 0.66, dampingFraction: 0.82) }
+    static var opening: Animation { .spring(response: 1.2, dampingFraction: 0.72) }
+    /// Glides home and ends exactly on time (no spring tail), so the slide back into
+    /// the pile follows straight away instead of after a long hover.
+    static var closing: Animation { .timingCurve(0.32, 0.0, 0.18, 1.0, duration: 1.05) }
 
     func updateStackFrame(_ id: UUID, _ rect: CGRect) {
         stackFrames[id] = rect
