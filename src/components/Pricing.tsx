@@ -17,8 +17,7 @@ import {
   Users,
   Wallet,
   Scale,
-  Mail,
-} from "lucide-react";
+  Mail, Sparkles } from "lucide-react";
 import { useLocale } from "@/contexts/LocaleContext";
 import PermanentPurchases from "@/components/pricing/PermanentPurchases";
 import {
@@ -44,6 +43,7 @@ type PartnerCopy = {
   name: string;
   desc: string;
   features: string[];
+  spotlight?: { title: string; body: string };
 };
 
 function partnerCopyForPlan(
@@ -110,6 +110,7 @@ function partnerCopyForPlan(
   return {
     name: p.partnerEnterpriseName,
     desc: p.partnerEnterpriseDesc,
+    spotlight: { title: p.partnerEnterpriseSmartTitle, body: p.partnerEnterpriseSmartBody },
     features: [
       p.partnerEnterpriseF1,
       p.partnerEnterpriseF2,
@@ -216,6 +217,16 @@ function PartnerPlanCard({
           <p className="mt-2 text-xs text-[var(--eos-muted)]">{breakEvenLabel}</p>
         ) : null}
       </div>
+
+      {copy.spotlight ? (
+        <div className="eos-smart-spotlight mb-6">
+          <p className="eos-smart-spotlight__kicker">
+            <Sparkles size={14} /> Tylko w Partner Enterprise
+          </p>
+          <p className="eos-smart-spotlight__title">{copy.spotlight.title}</p>
+          <p className="eos-smart-spotlight__body">{copy.spotlight.body}</p>
+        </div>
+      ) : null}
 
       <ul className="flex flex-col gap-4 mb-8 flex-1">
         {copy.features.map((text, i) => (

@@ -35,7 +35,7 @@ export const PARTNER_PAID_PERIOD_DAYS = 30;
  * Płatne pakiety — drabinka zaprojektowana pod upsell:
  * - Start: próg <300 zł, ~20 zł/kredyt (−59% vs detal 49 zł)
  * - Pro: 2× cena Start, 3× kredyty — oczywisty sweet spot
- * - Enterprise: 100 kredytów po 10 zł — dla sieci i wolumenu
+ * - Enterprise: 100 kredytów po 10 zł, do 25 agentów + 1 stanowisko Smart Agent OS™
  */
 export const PARTNER_PAID_PLANS: readonly PartnerPlanConfig[] = [
   {
@@ -58,7 +58,7 @@ export const PARTNER_PAID_PLANS: readonly PartnerPlanConfig[] = [
     pricePln: 999,
     wasPricePln: 1499,
     creditsPerMonth: 100,
-    maxAgents: null,
+    maxAgents: 25,
   },
 ] as const;
 

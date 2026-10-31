@@ -723,6 +723,8 @@ export type Dictionary = {
     partnerEnterpriseF5: string;
     partnerEnterpriseF6: string;
     partnerEnterpriseF7: string;
+    partnerEnterpriseSmartTitle: string;
+    partnerEnterpriseSmartBody: string;
     modalTitle: string;
     modalSubtitle: string;
     modalBuy: string;
@@ -1564,9 +1566,12 @@ const pl: Dictionary = {
     partnerProF9: "Taśmy „Przy aktach” w katalogu i stały wskaźnik, jak daleko cena odbiega od transakcji notarialnych.",
     partnerEnterpriseName: "Partner Enterprise",
     partnerEnterpriseDesc:
-      "Sieci i duże biura — 100 publikacji po 10 zł, bez limitu agentów. Te same przywileje Pro dla całego zespołu co w Partner Pro.",
+      "Sieci i duże biura — 100 publikacji po 10 zł, zespół do 25 agentów i Smart Agent OS™ w pakiecie. Te same przywileje Pro dla całego zespołu co w Partner Pro.",
     partnerEnterpriseF1: "{credits} kredytów miesięcznie — {unitPrice} zł za publikację (−{savings}% vs detal).",
     partnerEnterpriseF2: "Agenci: {agents} — skaluj zespół bez dopłat za każde miejsce.",
+    partnerEnterpriseSmartTitle: "Smart Agent OS™ — 1 stanowisko w pakiecie",
+    partnerEnterpriseSmartBody:
+      "Inteligentny agent poszukiwań pracuje za Ciebie 24/7: sam dopasowuje oferty z całego rynku do Twoich kupujących, wysyła je, zbiera reakcje i przekazuje do lejka tylko tych, którzy naprawdę chcą oglądać. Na start stanowisko ma kierownik biura — w każdej chwili przeniesie je na wybranego agenta. Kolejni agenci mogą włączyć Smart Agent OS™ za 5 kredytów na 30 dni.",
     partnerEnterpriseF3: "Priorytetowy Concierge i wyróżnienie w katalogu agencji.",
     partnerEnterpriseF4: "Docelowo: synchronizacja XML / feed ofert (w przygotowaniu).",
     partnerEnterpriseF5: "Dedykowany onboarding — roczne pakiety kredytów na życzenie.",
@@ -2414,9 +2419,12 @@ const en: Dictionary = {
     partnerProF9: "“At deed prices” catalog tapes and a live indicator of how far the ask is from notarized deals.",
     partnerEnterpriseName: "Partner Enterprise",
     partnerEnterpriseDesc:
-      "Networks and large offices — 100 publications at 10 PLN each, unlimited agents. The same office-wide Pro perks as Partner Pro.",
+      "Networks and large offices — 100 publications at 10 PLN each, a team of up to 25 agents and Smart Agent OS™ included. The same office-wide Pro perks as Partner Pro.",
     partnerEnterpriseF1: "{credits} credits per month — {unitPrice} PLN per listing (−{savings}% vs retail).",
     partnerEnterpriseF2: "Agents: {agents} — scale the team without per-seat fees.",
+    partnerEnterpriseSmartTitle: "Smart Agent OS™ — 1 seat included",
+    partnerEnterpriseSmartBody:
+      "An intelligent search agent working for you 24/7: it matches listings from the whole market to your buyers, sends them, collects reactions and passes to your pipeline only those who really want a viewing. The seat starts with the office manager, who can move it to any agent at any time. Other agents can switch Smart Agent OS™ on for 5 credits per 30 days.",
     partnerEnterpriseF3: "Priority Concierge and featured placement in the agency catalog.",
     partnerEnterpriseF4: "Coming soon: XML / listing feed sync.",
     partnerEnterpriseF5: "Dedicated onboarding — annual credit packages on request.",
