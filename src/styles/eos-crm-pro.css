@@ -16,8 +16,8 @@
   --x-gold-soft: rgba(168, 132, 76, 0.12);
   --x-good: #1f7a55;
   --x-good-soft: rgba(31, 122, 85, 0.1);
-  --x-warn: #9a6512;
-  --x-warn-soft: rgba(201, 138, 27, 0.12);
+  --x-warn: #c2620a;
+  --x-warn-soft: rgba(217, 112, 12, 0.13);
   --x-bad: #a3283c;
   --x-bad-soft: rgba(163, 40, 60, 0.09);
   --x-info: #2f5d8a;
@@ -45,8 +45,8 @@ html:not(.light) .crmx {
   --x-gold-soft: rgba(207, 174, 116, 0.12);
   --x-good: #5fcf9c;
   --x-good-soft: rgba(95, 207, 156, 0.12);
-  --x-warn: #e7b765;
-  --x-warn-soft: rgba(231, 183, 101, 0.12);
+  --x-warn: #fb9e3c;
+  --x-warn-soft: rgba(251, 158, 60, 0.14);
   --x-bad: #f08a9b;
   --x-bad-soft: rgba(240, 138, 155, 0.1);
   --x-info: #8db8e3;

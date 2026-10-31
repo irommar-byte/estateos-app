@@ -4544,10 +4544,10 @@ html.dark .eos-reason--bad, [data-theme="dark"] .eos-reason--bad { color: #fda4a
    W CRM te same efekty mają .crmx-chip.crmx-chip--good / --warn / --bad.
    ════════════════════════════════════════════════════════════════════════════ */
 .eos-sig--ok, .crmx-chip.crmx-chip--good { --sig-rgb: 31 122 85; --sig-glow: 46 170 115; }
-.eos-sig--warn, .crmx-chip.crmx-chip--warn { --sig-rgb: 154 101 18; --sig-glow: 226 168 58; }
+.eos-sig--warn, .crmx-chip.crmx-chip--warn { --sig-rgb: 201 98 6; --sig-glow: 249 140 22; }
 .eos-sig--bad, .crmx-chip.crmx-chip--bad { --sig-rgb: 163 40 60; --sig-glow: 226 62 88; }
 html.dark :is(.eos-sig--ok, .crmx-chip.crmx-chip--good), html[data-theme="dark"] :is(.eos-sig--ok, .crmx-chip.crmx-chip--good) { --sig-rgb: 95 207 156; --sig-glow: 95 207 156; }
-html.dark :is(.eos-sig--warn, .crmx-chip.crmx-chip--warn), html[data-theme="dark"] :is(.eos-sig--warn, .crmx-chip.crmx-chip--warn) { --sig-rgb: 231 183 101; --sig-glow: 240 190 92; }
+html.dark :is(.eos-sig--warn, .crmx-chip.crmx-chip--warn), html[data-theme="dark"] :is(.eos-sig--warn, .crmx-chip.crmx-chip--warn) { --sig-rgb: 251 158 60; --sig-glow: 255 150 40; }
 html.dark :is(.eos-sig--bad, .crmx-chip.crmx-chip--bad), html[data-theme="dark"] :is(.eos-sig--bad, .crmx-chip.crmx-chip--bad) { --sig-rgb: 240 138 155; --sig-glow: 245 92 118; }
 
 /* Szklany znaczek: półprzezroczyste tło z refleksem u góry, stała ramka, miękki cień pod spodem */
@@ -4603,8 +4603,17 @@ html[data-theme="dark"] :is(.eos-sig, .crmx-chip.crmx-chip--good, .crmx-chip.crm
 /* Rytmy — każdy cykl idzie tam i z powrotem (alternate), krzywa sinusoidalna */
 .eos-sig--ok.eos-sig::after, .crmx-chip.crmx-chip--good::after { animation: eos-glow-breathe 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
 .eos-sig--ok.eos-sig::before, .eos-sig-dot.eos-sig--ok, .crmx-chip.crmx-chip--good::before, .crmx-chip.crmx-chip--good .crmx-dot { animation: eos-bead-breathe 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
-.eos-sig--warn.eos-sig::after, .crmx-chip.crmx-chip--warn::after { animation: eos-glow-blink 1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
-.eos-sig--warn.eos-sig::before, .eos-sig-dot.eos-sig--warn, .crmx-chip.crmx-chip--warn::before, .crmx-chip.crmx-chip--warn .crmx-dot { animation: eos-bead-blink 1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+.eos-sig--warn.eos-sig::after, .crmx-chip.crmx-chip--warn::after {
+  box-shadow: 0 0 16px 2px rgb(var(--sig-glow) / 0.6), 0 0 5px 0 rgb(var(--sig-glow) / 0.5);
+  animation: eos-glow-blink 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+.eos-sig--warn.eos-sig, .crmx-chip.crmx-chip--warn {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.5) 0%, rgb(255 255 255 / 0.1) 48%, rgb(255 255 255 / 0) 52%),
+    rgb(var(--sig-rgb) / 0.15);
+  border-color: rgb(var(--sig-rgb) / 0.75);
+}
+.eos-sig--warn.eos-sig::before, .eos-sig-dot.eos-sig--warn, .crmx-chip.crmx-chip--warn::before, .crmx-chip.crmx-chip--warn .crmx-dot { animation: eos-bead-blink 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
 .eos-sig--bad.eos-sig::after, .crmx-chip.crmx-chip--bad::after { opacity: 1; box-shadow: 0 0 20px 2px rgb(var(--sig-glow) / 0.5), 0 0 6px 0 rgb(var(--sig-glow) / 0.45); }
 .eos-sig--bad.eos-sig::before, .eos-sig-dot.eos-sig--bad, .crmx-chip.crmx-chip--bad::before, .crmx-chip.crmx-chip--bad .crmx-dot { box-shadow: 0 0 0 0.5px rgb(var(--sig-rgb) / 0.6), 0 0 6px 2px rgb(var(--sig-glow) / 0.75), 0 0 12px 3px rgb(var(--sig-glow) / 0.35); }
 
@@ -4615,8 +4624,8 @@ html[data-theme="dark"] :is(.eos-sig, .crmx-chip.crmx-chip--good, .crmx-chip.crm
   to { transform: scale(1.1); filter: brightness(1.12); }
 }
 @keyframes eos-bead-blink {
-  from { opacity: 1; filter: brightness(1.15); }
-  to { opacity: 0.32; filter: brightness(0.9); }
+  from { opacity: 1; transform: scale(1.15); filter: brightness(1.2); }
+  to { opacity: 0.25; transform: scale(0.85); filter: brightness(0.9); }
 }
 
 /* Większe bloki: szklana ramka (komunikaty) i sama poświata (paski, karty) */
@@ -4641,7 +4650,7 @@ html.dark .eos-sig-box, html[data-theme="dark"] .eos-sig-box {
   opacity: 0;
 }
 .eos-sig-box.eos-sig--ok::after, .eos-sig-glow.eos-sig--ok::after { animation: eos-glow-breathe 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
-.eos-sig-box.eos-sig--warn::after, .eos-sig-glow.eos-sig--warn::after { animation: eos-glow-blink 1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+.eos-sig-box.eos-sig--warn::after, .eos-sig-glow.eos-sig--warn::after { animation: eos-glow-blink 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
 .eos-sig-box.eos-sig--bad::after, .eos-sig-glow.eos-sig--bad::after { opacity: 1; box-shadow: 0 0 30px 0 rgb(var(--sig-glow) / 0.42), 0 10px 26px -12px rgb(var(--sig-glow) / 0.5); }
 .eos-sig-text { color: rgb(var(--sig-rgb)); }
 
