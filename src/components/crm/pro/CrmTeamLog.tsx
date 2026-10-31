@@ -98,9 +98,9 @@ export default function CrmTeamLog({ onOpenClient }: { onOpenClient: (clientId: 
                           <span className="block text-[13px] font-semibold">{e.title}</span>
                           {e.body ? (
                             e.refType === 'client' && e.refId ? (
-                              <button type="button" className="crmx-teamlog__ref" onClick={() => onOpenClient(Number(e.refId))}>{e.body}</button>
+                              <button type="button" className="crmx-teamlog__ref" onClick={() => onOpenClient(Number(e.refId))} title={e.body}>{e.body}</button>
                             ) : (
-                              <span className="block text-[12px] crmx-muted">{e.body}</span>
+                              <span className="crmx-teamlog__body crmx-muted">{e.body}</span>
                             )
                           ) : null}
                         </span>

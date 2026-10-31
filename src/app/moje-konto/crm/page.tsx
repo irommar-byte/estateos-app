@@ -1326,7 +1326,7 @@ export default function CRMDashboard() {
                 {activeTab === "planowanie" && <>Kalendarz <em>spotkań</em></>}
                 {activeTab === "transakcje" && <>Lejek <em>transakcji</em></>}
                 {activeTab === "smart" && <>Inteligentny agent <em>poszukiwań</em></>}
-                {activeTab === "zespol" && <>Co dziś <em>zrobił zespół</em></>}
+                {activeTab === "zespol" && <>Co <em>zrobił zespół</em></>}
               </h2>
               <p className="crmx-sub mt-1 max-w-2xl">
                 {activeTab === "wiadomosci" && "Wszystkie rozmowy z klientami, agentami i kupującymi — z załącznikami i powiadomieniami."}

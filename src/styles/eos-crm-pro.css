@@ -921,4 +921,6 @@ html:not(.light) .crmx .crmx-danger__title { color: #ff8a80; }
 .crmx-teamlog__list li { display: grid; grid-template-columns: 44px 10px minmax(0, 1fr); gap: 8px; align-items: start; }
 .crmx-teamlog__time { font-size: 12px; font-weight: 700; color: var(--x-ink-2); padding-top: 1px; }
 .crmx-teamlog__dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 99px; background: var(--x-gold); box-shadow: 0 0 0 3px var(--x-gold-soft); }
-.crmx-teamlog__ref { display: block; font-size: 12px; color: var(--x-gold-ink); text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.crmx-teamlog__ref, .crmx-teamlog__body { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; line-height: 1.45; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.crmx-teamlog__ref { color: var(--x-gold-ink); }
+.crmx-teamlog__ref:hover { text-decoration: underline; text-underline-offset: 3px; }
