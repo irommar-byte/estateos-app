@@ -308,13 +308,6 @@ a.crmx-row:hover, button.crmx-row:hover { background: var(--x-surface-2); }
 .crmx-facts dd { margin-top: 3px; font-size: 14px; font-weight: 650; color: var(--x-ink); font-variant-numeric: tabular-nums; }
 
 /* Lejek transakcji */
-.crmx-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); gap: 12px; overflow-x: auto; padding-bottom: 6px; }
-.crmx-col { display: flex; flex-direction: column; min-height: 160px; border-radius: 16px; background: var(--x-surface-2); border: 1px solid var(--x-line); }
-.crmx-col__head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 8px; }
-.crmx-col__title { font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--x-ink-2); }
-.crmx-col__body { display: flex; flex-direction: column; gap: 8px; padding: 0 8px 10px; }
-.crmx-deal { text-align: left; padding: 11px 12px; border-radius: 12px; background: var(--x-surface); border: 1px solid var(--x-line); box-shadow: var(--x-shadow); transition: transform 0.2s, box-shadow 0.2s; }
-.crmx-deal:hover { transform: translateY(-1px); box-shadow: var(--x-shadow-lift); }
 
 .crmx-section-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; margin-bottom: 18px; }
 .crmx-grid-2 { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); }
@@ -661,7 +654,6 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-nsearch__snip { font-size: 12.5px; line-height: 1.4; color: var(--x-ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .crmx-nsearch__snip mark { background: var(--x-gold-soft); color: var(--x-gold-ink); font-weight: 700; border-radius: 4px; padding: 0 2px; }
 
-.crmx .crmx-deal__why { margin-top: 8px; padding: 7px 9px; border-radius: 9px; background: var(--x-gold-soft); color: var(--x-ink-2); font-size: 11.5px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .crmx .crmx-deal__why b { color: var(--x-gold-ink); font-weight: 700; }
 
 /* Okno transakcji (lejek) */
@@ -734,3 +726,56 @@ html:not(.light) .crmx .crmx-dealsheet__lost:hover { color: #fff; background: #d
 .crmx-danger__title { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 700; color: #b42318; }
 html:not(.light) .crmx .crmx-danger__title { color: #ff8a80; }
 .crmx-danger__list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; line-height: 1.45; color: var(--x-ink-2); list-style: disc; }
+
+/* ───────── Lejek transakcji — wszystkie kolumny na ekranie, responsywnie ───────── */
+.crmx-funnel { container: funnel / inline-size; }
+.crmx-funnel__bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.crmx-funnel__search { flex: 1 1 220px; max-width: 340px; }
+.crmx-funnel__end { margin-left: auto; }
+.crmx-board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.crmx-col { position: relative; display: flex; flex-direction: column; min-width: 0; border-radius: 16px; background: var(--x-surface-2); border: 1px solid var(--x-line); overflow: hidden; }
+.crmx-col::before { content: ''; height: 3px; background: linear-gradient(90deg, var(--x-gold), color-mix(in srgb, var(--x-gold) 35%, transparent)); opacity: calc(0.25 + var(--step-o, 0)); }
+.crmx-col[data-step="1"] { --step-o: 0; } .crmx-col[data-step="2"] { --step-o: 0.18; } .crmx-col[data-step="3"] { --step-o: 0.36; } .crmx-col[data-step="4"] { --step-o: 0.55; } .crmx-col[data-step="5"] { --step-o: 0.75; }
+.crmx-col__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 11px 12px 9px; }
+.crmx-col__title { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--x-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crmx-col__meta { display: block; margin-top: 2px; font-size: 11px; color: var(--x-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crmx-col__count { flex-shrink: 0; min-width: 24px; height: 22px; padding: 0 7px; border-radius: 99px; display: grid; place-items: center; font-size: 11.5px; font-weight: 700; color: var(--x-ink); background: var(--x-surface); border: 1px solid var(--x-line); }
+.crmx-col__body { display: flex; flex-direction: column; gap: 7px; padding: 0 7px 8px; max-height: calc(100vh - 290px); min-height: 90px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.crmx-col__empty { padding: 22px 0; text-align: center; font-size: 12px; color: var(--x-ink-3); }
+
+.crmx-deal { position: relative; display: flex; flex-direction: column; gap: 7px; width: 100%; text-align: left; padding: 10px 10px 9px; border-radius: 12px; background: var(--x-surface); border: 1px solid var(--x-line); box-shadow: var(--x-shadow); transition: transform .18s, box-shadow .18s, border-color .18s; }
+.crmx-deal:hover { transform: translateY(-1px); box-shadow: var(--x-shadow-lift); border-color: color-mix(in srgb, var(--x-gold) 45%, var(--x-line)); }
+.crmx-deal[data-mine]::before { content: ''; position: absolute; left: -1px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--x-gold); }
+.crmx-deal__top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.crmx-deal__img { width: 34px; height: 34px; border-radius: 9px; object-fit: cover; flex-shrink: 0; background: var(--x-surface-2); }
+.crmx-deal__name { font-size: 13px; font-weight: 650; line-height: 1.25; color: var(--x-ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.crmx-deal__offer { font-size: 11px; color: var(--x-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.crmx-deal__src { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 99px; color: var(--x-info); background: var(--x-info-soft); }
+.crmx-deal__next { font-size: 12px; font-weight: 600; line-height: 1.35; color: var(--x-ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.crmx .crmx-deal__why { margin: 0; padding: 6px 8px; border-radius: 8px; background: var(--x-gold-soft); color: var(--x-ink-2); font-size: 11px; line-height: 1.38; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.crmx-deal__foot { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--x-ink-2); }
+.crmx-deal__flags { display: flex; flex-wrap: wrap; gap: 4px; }
+.crmx-deal__flags .crmx-chip { font-size: 10.5px; padding: 2px 7px; }
+.crmx-funnel__legend { font-size: 11px; color: var(--x-ink-3); }
+.crmx-funnel__bar-ico { display: inline-block; width: 3px; height: 11px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; background: var(--x-gold); }
+
+.crmx-stagetabs { display: none; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.crmx-stagetabs button { flex-shrink: 0; padding: 7px 12px; border-radius: 99px; font-size: 12.5px; font-weight: 600; color: var(--x-ink-2); background: var(--x-surface); border: 1px solid var(--x-line); }
+.crmx-stagetabs button[aria-selected="true"] { color: #fff; background: linear-gradient(180deg, #c3a06a, #a8844c); border-color: #9a7742; }
+.crmx-stagetabs small { margin-left: 3px; opacity: 0.75; }
+
+/* Węższy ekran (tablet, wąskie okno): kolumny przewijane w bok z przyciąganiem */
+@container funnel (max-width: 760px) {
+  .crmx-board { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(220px, 44%); overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 6px; }
+  .crmx-col { scroll-snap-align: start; }
+  .crmx-funnel__end { margin-left: 0; }
+}
+/* Telefon: jedna kolumna naraz, przełączana zakładkami etapów */
+@container funnel (max-width: 600px) {
+  .crmx-stagetabs { display: flex; }
+  .crmx-board { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: 1fr; overflow: visible; }
+  .crmx-col:not([data-active]) { display: none; }
+  .crmx-col__body { max-height: none; }
+  .crmx-funnel__search { max-width: none; flex-basis: 100%; }
+  .crmx-funnel__bar .crmx-seg { flex: 1 1 auto; }
+}

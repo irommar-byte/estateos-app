@@ -57,39 +57,38 @@ export default function CrmDealsPro({
   const openDeal = (deals || []).find((d) => d.id === openId) || null;
   const open = (d: ProDeal) => setOpenId(d.id);
 
+  const [mobileCol, setMobileCol] = useState(COLUMNS[0].id);
+
   const card = (d: ProDeal) => {
     const dl = d.turn.side ? deadlineLabel(d.turn.deadline) : null;
+    const early = d.stage === 'interested' || d.stage === 'scheduling';
+    const flags = [
+      d.guide?.intent === 'unclear' ? <span key="u" className="crmx-chip crmx-chip--warn">Do wyjaśnienia</span> : null,
+      d.source === 'radar' ? <span key="s" className="crmx-deal__src">Agent poszukiwań</span> : d.source === 'dealroom' ? <span key="s" className="crmx-deal__src">Dealroom</span> : null,
+      dl ? <span key="d" className="crmx-chip crmx-chip--warn"><Clock size={11} /> {dl}</span> : null,
+    ].filter(Boolean);
     return (
-      <button key={d.id} type="button" className="crmx-deal" onClick={() => open(d)}>
-        <div className="flex items-center gap-2.5">
-          {d.offer.imageUrl ? <img src={d.offer.imageUrl} alt="" className="crmx-thumb" style={{ width: 38, height: 38, borderRadius: 9 }} /> : <span className="crmx-thumb" style={{ width: 38, height: 38 }} />}
-          <div className="min-w-0">
-            <p className="truncate text-[13px] font-semibold">{buyerName(d)}</p>
-            <p className="truncate text-[11.5px] crmx-muted">{d.offer.title}</p>
+      <button key={d.id} type="button" className="crmx-deal" data-mine={d.turn.side === 'agent' || undefined} onClick={() => open(d)}>
+        <div className="crmx-deal__top">
+          {d.offer.imageUrl ? <img src={d.offer.imageUrl} alt="" className="crmx-deal__img" /> : <span className="crmx-deal__img" />}
+          <div className="min-w-0 flex-1">
+            <p className="crmx-deal__name">{buyerName(d)}</p>
+            <p className="crmx-deal__offer">{d.offer.title}</p>
           </div>
         </div>
-        {d.entry && (d.stage === 'interested' || d.stage === 'scheduling') ? (
-          <p className="crmx-deal__why" title={d.entry.reason}>
-            <b>Dlaczego tutaj:</b> {d.entry.reason}
-            {d.entry.at ? <span className="crmx-muted"> · {relative(d.entry.at)}</span> : null}
-          </p>
-        ) : null}
-        <p className="mt-2 text-[12px] leading-snug" style={{ color: 'var(--x-ink-2)' }}>{d.guide?.headline || d.nextAction}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          <span className="crmx-chip">{STAGE_SHORT[d.stage] || d.stage}</span>
-          {d.source === 'dealroom' ? <span className="crmx-chip crmx-chip--info">Dealroom</span> : null}
-          {d.source === 'radar' ? <span className="crmx-chip crmx-chip--info">Agent poszukiwań</span> : null}
-          {d.guide?.intent === 'unclear' ? <span className="crmx-chip crmx-chip--warn">Do wyjaśnienia</span> : null}
-          {d.turn.side === 'agent' ? <span className="crmx-chip crmx-chip--gold">Twój ruch</span> : null}
-          {dl ? <span className="crmx-chip crmx-chip--warn"><Clock size={11} /> {dl}</span> : null}
+        <p className="crmx-deal__next">{d.guide?.headline || d.nextAction}</p>
+        {early && d.entry ? <p className="crmx-deal__why" title={d.entry.reason}>{d.entry.reason}</p> : null}
+        <div className="crmx-deal__foot">
+          <span className="crmx-num">{pln(d.offer.price)}</span>
+          <span className="crmx-muted">{relative(d.updatedAt)}</span>
         </div>
-        <p className="mt-2 text-[11px] crmx-muted crmx-num">{pln(d.offer.price)} · {relative(d.updatedAt)}</p>
+        {flags.length ? <div className="crmx-deal__flags">{flags}</div> : null}
       </button>
     );
   };
 
   return (
-    <div className="space-y-4">
+    <div className="crmx-funnel space-y-4">
       <CrmDealSheet
         deal={openDeal}
         deals={deals || []}
@@ -104,23 +103,23 @@ export default function CrmDealsPro({
           onOpenOffer(id);
         }}
       />
-      <div className="flex flex-wrap items-center gap-2.5">
-        <label className="crmx-input" style={{ flex: '1 1 240px', maxWidth: 380 }}>
+      <div className="crmx-funnel__bar">
+        <label className="crmx-input crmx-funnel__search">
           <Search />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Szukaj: kupujący, oferta, sprzedający" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Szukaj: kupujący, oferta, właściciel" />
         </label>
         <div className="crmx-seg">
           <button type="button" aria-pressed={!mine} onClick={() => setMine(false)}>Wszystkie</button>
           <button type="button" aria-pressed={mine} onClick={() => setMine(true)}>Mój ruch <small>{myMoves}</small></button>
         </div>
-        <div className="crmx-seg" title="Agent poszukiwań = kupujący, którzy zareagowali na oferty wysłane automatycznie z radaru.">
+        <div className="crmx-seg" title="Agent poszukiwań = kupujący, którzy zareagowali na oferty wysłane automatycznie.">
           <button type="button" aria-pressed={origin === 'all'} onClick={() => setOrigin('all')}>Wszyscy</button>
           <button type="button" aria-pressed={origin === 'radar'} onClick={() => setOrigin('radar')}>
             Agent poszukiwań <small>{(deals || []).filter((d) => d.source === 'radar' && (d.status === 'ACTIVE' || d.status === 'PAUSED')).length}</small>
           </button>
           <button type="button" aria-pressed={origin === 'other'} onClick={() => setOrigin('other')}>Pozyskani</button>
         </div>
-        <div className="crmx-seg ml-auto">
+        <div className="crmx-seg crmx-funnel__end">
           <button type="button" aria-pressed={!closed} onClick={() => setClosed(false)}>W toku <small>{live.length}</small></button>
           <button type="button" aria-pressed={closed} onClick={() => setClosed(true)}>Zakończone <small>{done.length}</small></button>
         </div>
@@ -148,22 +147,40 @@ export default function CrmDealsPro({
           </div>
         </div>
       ) : (
-        <div className="crmx-board">
-          {COLUMNS.map((col) => {
-            const items = live.filter((d) => col.stages.includes(d.stage));
-            return (
-              <section key={col.id} className="crmx-col">
-                <header className="crmx-col__head">
-                  <span className="crmx-col__title">{col.label}</span>
-                  <span className="crmx-rail__count">{items.length}</span>
-                </header>
-                <div className="crmx-col__body">
-                  {items.length ? items.map(card) : <p className="px-2 py-6 text-center text-[12px] crmx-muted">—</p>}
-                </div>
-              </section>
-            );
-          })}
-        </div>
+        <>
+          <div className="crmx-stagetabs" role="tablist">
+            {COLUMNS.map((col) => {
+              const n = live.filter((d) => col.stages.includes(d.stage)).length;
+              return (
+                <button key={col.id} type="button" role="tab" aria-selected={mobileCol === col.id} onClick={() => setMobileCol(col.id)}>
+                  {col.label} <small>{n}</small>
+                </button>
+              );
+            })}
+          </div>
+          <div className="crmx-board">
+            {COLUMNS.map((col, i) => {
+              const items = live.filter((d) => col.stages.includes(d.stage));
+              const value = items.reduce((sum, d) => sum + (Number(d.offer.price) || 0), 0);
+              const mineCount = items.filter((d) => d.turn.side === 'agent').length;
+              return (
+                <section key={col.id} className="crmx-col" data-step={i + 1} data-active={mobileCol === col.id || undefined}>
+                  <header className="crmx-col__head">
+                    <div className="min-w-0">
+                      <span className="crmx-col__title">{col.label}</span>
+                      <span className="crmx-col__meta crmx-num">{value > 0 ? pln(value) : '—'}{mineCount ? ` · ${mineCount} Twój ruch` : ''}</span>
+                    </div>
+                    <span className="crmx-col__count">{items.length}</span>
+                  </header>
+                  <div className="crmx-col__body">
+                    {items.length ? items.map(card) : <p className="crmx-col__empty">Brak</p>}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+          <p className="crmx-funnel__legend"><span className="crmx-funnel__bar-ico" /> złoty pasek przy karcie = Twój ruch</p>
+        </>
       )}
     </div>
   );
