@@ -4541,17 +4541,17 @@ html.dark .eos-reason--bad, [data-theme="dark"] .eos-reason--bad { color: #fda4a
    dlatego ruch jest płynny i nigdy się nie „resetuje”.
    Użycie: <span class="eos-sig eos-sig--ok">…</span> · kropka: <i class="eos-sig-dot eos-sig--warn" />
            ramka: class="eos-sig-box eos-sig--bad" · poświata na bloku: class="eos-sig-glow eos-sig--warn"
-   W CRM te same efekty mają .crmx-chip--good / --warn / --bad.
+   W CRM te same efekty mają .crmx-chip.crmx-chip--good / --warn / --bad.
    ════════════════════════════════════════════════════════════════════════════ */
-.eos-sig--ok, .crmx-chip--good { --sig-rgb: 31 122 85; --sig-glow: 46 170 115; }
-.eos-sig--warn, .crmx-chip--warn { --sig-rgb: 154 101 18; --sig-glow: 226 168 58; }
-.eos-sig--bad, .crmx-chip--bad { --sig-rgb: 163 40 60; --sig-glow: 226 62 88; }
-html.dark :is(.eos-sig--ok, .crmx-chip--good), html[data-theme="dark"] :is(.eos-sig--ok, .crmx-chip--good) { --sig-rgb: 95 207 156; --sig-glow: 95 207 156; }
-html.dark :is(.eos-sig--warn, .crmx-chip--warn), html[data-theme="dark"] :is(.eos-sig--warn, .crmx-chip--warn) { --sig-rgb: 231 183 101; --sig-glow: 240 190 92; }
-html.dark :is(.eos-sig--bad, .crmx-chip--bad), html[data-theme="dark"] :is(.eos-sig--bad, .crmx-chip--bad) { --sig-rgb: 240 138 155; --sig-glow: 245 92 118; }
+.eos-sig--ok, .crmx-chip.crmx-chip--good { --sig-rgb: 31 122 85; --sig-glow: 46 170 115; }
+.eos-sig--warn, .crmx-chip.crmx-chip--warn { --sig-rgb: 154 101 18; --sig-glow: 226 168 58; }
+.eos-sig--bad, .crmx-chip.crmx-chip--bad { --sig-rgb: 163 40 60; --sig-glow: 226 62 88; }
+html.dark :is(.eos-sig--ok, .crmx-chip.crmx-chip--good), html[data-theme="dark"] :is(.eos-sig--ok, .crmx-chip.crmx-chip--good) { --sig-rgb: 95 207 156; --sig-glow: 95 207 156; }
+html.dark :is(.eos-sig--warn, .crmx-chip.crmx-chip--warn), html[data-theme="dark"] :is(.eos-sig--warn, .crmx-chip.crmx-chip--warn) { --sig-rgb: 231 183 101; --sig-glow: 240 190 92; }
+html.dark :is(.eos-sig--bad, .crmx-chip.crmx-chip--bad), html[data-theme="dark"] :is(.eos-sig--bad, .crmx-chip.crmx-chip--bad) { --sig-rgb: 240 138 155; --sig-glow: 245 92 118; }
 
 /* Szklany znaczek: półprzezroczyste tło z refleksem u góry, stała ramka, miękki cień pod spodem */
-.eos-sig, .crmx-chip--good, .crmx-chip--warn, .crmx-chip--bad {
+.eos-sig, .crmx-chip.crmx-chip--good, .crmx-chip.crmx-chip--warn, .crmx-chip.crmx-chip--bad {
   position: relative;
   isolation: isolate;
   display: inline-flex; align-items: center; gap: 6px;
@@ -4568,8 +4568,8 @@ html.dark :is(.eos-sig--bad, .crmx-chip--bad), html[data-theme="dark"] :is(.eos-
   -webkit-backdrop-filter: blur(6px) saturate(1.4);
   backdrop-filter: blur(6px) saturate(1.4);
 }
-html.dark :is(.eos-sig, .crmx-chip--good, .crmx-chip--warn, .crmx-chip--bad),
-html[data-theme="dark"] :is(.eos-sig, .crmx-chip--good, .crmx-chip--warn, .crmx-chip--bad) {
+html.dark :is(.eos-sig, .crmx-chip.crmx-chip--good, .crmx-chip.crmx-chip--warn, .crmx-chip.crmx-chip--bad),
+html[data-theme="dark"] :is(.eos-sig, .crmx-chip.crmx-chip--good, .crmx-chip.crmx-chip--warn, .crmx-chip.crmx-chip--bad) {
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.12) 0%, rgb(255 255 255 / 0.03) 48%, rgb(255 255 255 / 0) 52%),
     rgb(var(--sig-rgb) / 0.12);
@@ -4578,7 +4578,7 @@ html[data-theme="dark"] :is(.eos-sig, .crmx-chip--good, .crmx-chip--warn, .crmx-
 .eos-sig { padding: 3px 10px 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap; }
 
 /* Warstwa poświaty — osobna, za znaczkiem; animuje się tylko jej jasność */
-.eos-sig::after, .crmx-chip--good::after, .crmx-chip--warn::after, .crmx-chip--bad::after {
+.eos-sig::after, .crmx-chip.crmx-chip--good::after, .crmx-chip.crmx-chip--warn::after, .crmx-chip.crmx-chip--bad::after {
   content: "";
   position: absolute; inset: -1px;
   z-index: -1;
@@ -4590,8 +4590,8 @@ html[data-theme="dark"] :is(.eos-sig, .crmx-chip--good, .crmx-chip--warn, .crmx-
 
 /* Szklana kropka-koralik z refleksem */
 .eos-sig::before, .eos-sig-dot,
-.crmx-chip--good:not(:has(.crmx-dot))::before, .crmx-chip--warn:not(:has(.crmx-dot))::before, .crmx-chip--bad:not(:has(.crmx-dot))::before,
-.crmx-chip--good .crmx-dot, .crmx-chip--warn .crmx-dot, .crmx-chip--bad .crmx-dot {
+.crmx-chip.crmx-chip--good:not(:has(.crmx-dot))::before, .crmx-chip.crmx-chip--warn:not(:has(.crmx-dot))::before, .crmx-chip.crmx-chip--bad:not(:has(.crmx-dot))::before,
+.crmx-chip.crmx-chip--good .crmx-dot, .crmx-chip.crmx-chip--warn .crmx-dot, .crmx-chip.crmx-chip--bad .crmx-dot {
   content: "";
   display: inline-block; flex-shrink: 0;
   width: 7px; height: 7px; border-radius: 99px;
@@ -4601,12 +4601,12 @@ html[data-theme="dark"] :is(.eos-sig, .crmx-chip--good, .crmx-chip--warn, .crmx-
 .eos-sig-dot { width: 8px; height: 8px; }
 
 /* Rytmy — każdy cykl idzie tam i z powrotem (alternate), krzywa sinusoidalna */
-.eos-sig--ok.eos-sig::after, .crmx-chip--good::after { animation: eos-glow-breathe 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
-.eos-sig--ok.eos-sig::before, .eos-sig-dot.eos-sig--ok, .crmx-chip--good::before, .crmx-chip--good .crmx-dot { animation: eos-bead-breathe 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
-.eos-sig--warn.eos-sig::after, .crmx-chip--warn::after { animation: eos-glow-blink 1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
-.eos-sig--warn.eos-sig::before, .eos-sig-dot.eos-sig--warn, .crmx-chip--warn::before, .crmx-chip--warn .crmx-dot { animation: eos-bead-blink 1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
-.eos-sig--bad.eos-sig::after, .crmx-chip--bad::after { opacity: 1; box-shadow: 0 0 20px 2px rgb(var(--sig-glow) / 0.5), 0 0 6px 0 rgb(var(--sig-glow) / 0.45); }
-.eos-sig--bad.eos-sig::before, .eos-sig-dot.eos-sig--bad, .crmx-chip--bad::before, .crmx-chip--bad .crmx-dot { box-shadow: 0 0 0 0.5px rgb(var(--sig-rgb) / 0.6), 0 0 6px 2px rgb(var(--sig-glow) / 0.75), 0 0 12px 3px rgb(var(--sig-glow) / 0.35); }
+.eos-sig--ok.eos-sig::after, .crmx-chip.crmx-chip--good::after { animation: eos-glow-breathe 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+.eos-sig--ok.eos-sig::before, .eos-sig-dot.eos-sig--ok, .crmx-chip.crmx-chip--good::before, .crmx-chip.crmx-chip--good .crmx-dot { animation: eos-bead-breathe 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+.eos-sig--warn.eos-sig::after, .crmx-chip.crmx-chip--warn::after { animation: eos-glow-blink 1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+.eos-sig--warn.eos-sig::before, .eos-sig-dot.eos-sig--warn, .crmx-chip.crmx-chip--warn::before, .crmx-chip.crmx-chip--warn .crmx-dot { animation: eos-bead-blink 1s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+.eos-sig--bad.eos-sig::after, .crmx-chip.crmx-chip--bad::after { opacity: 1; box-shadow: 0 0 20px 2px rgb(var(--sig-glow) / 0.5), 0 0 6px 0 rgb(var(--sig-glow) / 0.45); }
+.eos-sig--bad.eos-sig::before, .eos-sig-dot.eos-sig--bad, .crmx-chip.crmx-chip--bad::before, .crmx-chip.crmx-chip--bad .crmx-dot { box-shadow: 0 0 0 0.5px rgb(var(--sig-rgb) / 0.6), 0 0 6px 2px rgb(var(--sig-glow) / 0.75), 0 0 12px 3px rgb(var(--sig-glow) / 0.35); }
 
 @keyframes eos-glow-breathe { from { opacity: 0.12; } to { opacity: 0.85; } }
 @keyframes eos-glow-blink { from { opacity: 1; } to { opacity: 0.05; } }
