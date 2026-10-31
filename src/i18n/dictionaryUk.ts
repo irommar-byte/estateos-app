@@ -659,7 +659,7 @@ export function buildUkDictionary(enBase: Dictionary): Dictionary {
       partnerEnterpriseName: "Partner Enterprise",
       partnerEnterpriseDesc: "Великі офіси та мережі — обсяг публікацій, команда до 25 агентів і Smart Agent OS™ у пакеті.",
       partnerEnterpriseF1: "{credits} кредитів публікації на місяць у пулі компанії.",
-      partnerEnterpriseF2: "Агенти: {agents} — без доплат за кожне місце.",
+      partnerEnterpriseF2: "Команда до {agents} агентів — без доплат за кожне місце.",
       partnerEnterpriseSmartTitle: "Smart Agent OS™ — 1 місце в пакеті",
       partnerEnterpriseSmartBody:
         "Інтелектуальний агент пошуку працює за вас 24/7: підбирає оголошення з усього ринку для ваших покупців, надсилає їх, збирає реакції та передає у воронку лише тих, хто справді хоче оглянути. Спочатку місце має керівник офісу — він будь-коли може передати його іншому агенту. Інші агенти можуть увімкнути Smart Agent OS™ за 5 кредитів на 30 днів.",

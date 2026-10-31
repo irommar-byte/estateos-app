@@ -1568,7 +1568,7 @@ const pl: Dictionary = {
     partnerEnterpriseDesc:
       "Sieci i duże biura — 100 publikacji po 10 zł, zespół do 25 agentów i Smart Agent OS™ w pakiecie. Te same przywileje Pro dla całego zespołu co w Partner Pro.",
     partnerEnterpriseF1: "{credits} kredytów miesięcznie — {unitPrice} zł za publikację (−{savings}% vs detal).",
-    partnerEnterpriseF2: "Agenci: {agents} — skaluj zespół bez dopłat za każde miejsce.",
+    partnerEnterpriseF2: "Zespół do {agents} agentów — bez dopłat za każde miejsce.",
     partnerEnterpriseSmartTitle: "Smart Agent OS™ — 1 stanowisko w pakiecie",
     partnerEnterpriseSmartBody:
       "Inteligentny agent poszukiwań pracuje za Ciebie 24/7: sam dopasowuje oferty z całego rynku do Twoich kupujących, wysyła je, zbiera reakcje i przekazuje do lejka tylko tych, którzy naprawdę chcą oglądać. Na start stanowisko ma kierownik biura — w każdej chwili przeniesie je na wybranego agenta. Kolejni agenci mogą włączyć Smart Agent OS™ za 5 kredytów na 30 dni.",
@@ -2421,7 +2421,7 @@ const en: Dictionary = {
     partnerEnterpriseDesc:
       "Networks and large offices — 100 publications at 10 PLN each, a team of up to 25 agents and Smart Agent OS™ included. The same office-wide Pro perks as Partner Pro.",
     partnerEnterpriseF1: "{credits} credits per month — {unitPrice} PLN per listing (−{savings}% vs retail).",
-    partnerEnterpriseF2: "Agents: {agents} — scale the team without per-seat fees.",
+    partnerEnterpriseF2: "A team of up to {agents} agents — no per-seat fees.",
     partnerEnterpriseSmartTitle: "Smart Agent OS™ — 1 seat included",
     partnerEnterpriseSmartBody:
       "An intelligent search agent working for you 24/7: it matches listings from the whole market to your buyers, sends them, collects reactions and passes to your pipeline only those who really want a viewing. The seat starts with the office manager, who can move it to any agent at any time. Other agents can switch Smart Agent OS™ on for 5 credits per 30 days.",
