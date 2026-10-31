@@ -847,9 +847,7 @@ export default function ContactInboxClient({
                               <div className={`flex max-w-[82%] flex-col md:max-w-[68%] ${isMe ? "items-end" : "items-start"}`}>
                                 <div
                                   className={`rounded-[20px] px-4 py-2.5 ${corner} ${
-                                    isMe
-                                      ? "bg-[var(--eos-text)] text-[var(--eos-bg)] shadow-[0_10px_24px_-16px_rgba(21,23,26,0.6)]"
-                                      : "border border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-text)] shadow-[0_8px_20px_-16px_rgba(21,23,26,0.35)]"
+                                    isMe ? "eos-chat-bubble eos-chat-bubble--me" : "eos-chat-bubble eos-chat-bubble--peer"
                                   } ${msg.id < 0 ? "opacity-70" : ""}`}
                                 >
                                   {text ? (

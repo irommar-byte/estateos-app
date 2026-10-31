@@ -4515,3 +4515,19 @@ html.dark .eos-reason--bad, [data-theme="dark"] .eos-reason--bad { color: #fda4a
 .eos-smart-spotlight__title { margin-top: 6px; font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; color: #fff7e8; }
 .eos-smart-spotlight__body { margin-top: 6px; font-size: 0.8rem; line-height: 1.55; color: rgba(246, 239, 226, 0.82); }
 @media (prefers-reduced-motion: reduce) { .eos-smart-spotlight::after { animation: none; } }
+
+/* Dymki czatu (Wiadomości): jasne i czytelne w obu motywach — moje szampańskie, rozmówcy białe */
+.eos-chat-bubble {
+  border: 1px solid transparent;
+  box-shadow: 0 8px 20px -16px rgba(21, 23, 26, 0.35);
+}
+.eos-chat-bubble--me {
+  background: #f1e6d0;
+  border-color: #e2cfa6;
+  color: #2a2216;
+}
+.eos-chat-bubble--peer {
+  background: #ffffff;
+  border-color: #e8e2d8;
+  color: #15171a;
+}
