@@ -7,7 +7,6 @@ import {
   HelpCircle,
   Inbox,
   LayoutList,
-  Sparkles,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
@@ -22,7 +21,6 @@ import {
 import {
   OFFER_STACKS,
   buildPortalTimeline,
-  buildSearchDirection,
   computePortalOfferStats,
   defaultOpenStacks,
   formatPortalWhen,
@@ -31,7 +29,6 @@ import {
   stackIdFromSentiment,
   type OfferStackId,
   type PortalBoardActivity,
-  type PortalSearchCriteria,
   type PortalTimelineItem,
 } from "@/lib/crm/clientPortalOfferBoard";
 import { usePortalLocale } from "@/components/portal/PortalLocale";
@@ -71,6 +68,8 @@ const STACK_ICON: Record<OfferStackId, typeof Inbox> = {
   dislike: ThumbsDown,
 };
 
+const HISTORY_PREVIEW = 6;
+
 function storageKey(token: string, name: string) {
   return `eos-portal-${name}:${token}`;
 }
@@ -93,80 +92,6 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
-function StatTile({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: number;
-  hint?: string;
-  tone: "new" | "ok" | "warn" | "danger" | "muted";
-}) {
-  const toneClass =
-    tone === "ok"
-      ? "text-[var(--lux-good)]"
-      : tone === "warn"
-        ? "text-[var(--lux-warn)]"
-        : tone === "danger"
-          ? "text-[var(--lux-danger)]"
-          : tone === "new"
-            ? "text-[var(--lux-gold-ink)]"
-            : "text-[var(--eos-text)]";
-  return (
-    <div className="eos-inset-well rounded-2xl px-3.5 py-3">
-      <p className="eos-portal-label">{label}</p>
-      <p className={`mt-1 text-2xl font-black tabular-nums ${toneClass}`}>{value}</p>
-      {hint ? <p className="mt-0.5 text-[11px] leading-snug text-[var(--eos-muted)]">{hint}</p> : null}
-    </div>
-  );
-}
-
-function DistributionBar({
-  sent,
-  like,
-  maybe,
-  dislike,
-  pending,
-}: {
-  sent: number;
-  like: number;
-  maybe: number;
-  dislike: number;
-  pending: number;
-}) {
-  const { t } = usePortalLocale();
-  if (!sent) return null;
-  const parts = [
-    { key: "like", n: like, className: "bg-emerald-500" },
-    { key: "maybe", n: maybe, className: "bg-amber-400" },
-    { key: "dislike", n: dislike, className: "bg-rose-400" },
-    { key: "pending", n: pending, className: "bg-sky-400" },
-  ];
-  return (
-    <div className="mt-4">
-      <div className="flex h-2.5 overflow-hidden rounded-full bg-[rgba(15,23,42,0.08)]">
-        {parts.map((part) =>
-          part.n ? (
-            <span
-              key={part.key}
-              className={part.className}
-              style={{ width: `${(part.n / sent) * 100}%` }}
-            />
-          ) : null,
-        )}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-semibold text-[var(--eos-muted)]">
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-emerald-500" /> {t("Chcę oglądać")}</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-amber-400" /> {t("Do przemyślenia")}</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-rose-400" /> {t("Nie pasuje")}</span>
-        <span className="inline-flex items-center gap-1"><i className="inline-block size-2 rounded-full bg-sky-400" /> {t("Do oceny")}</span>
-      </div>
-    </div>
-  );
-}
-
 function TimelineDot({ tone }: { tone: PortalTimelineItem["tone"] }) {
   const cls =
     tone === "ok"
@@ -185,9 +110,7 @@ export default function ClientPortalOfferBoard({
   token,
   matches,
   activities,
-  criteria,
   intelligenceEnabled,
-  live,
   unscoredCount,
   pendingCheckback,
   awaitingFirstOffer,
@@ -205,9 +128,7 @@ export default function ClientPortalOfferBoard({
   token: string;
   matches: PortalMatch[];
   activities: PortalBoardActivity[];
-  criteria: PortalSearchCriteria;
   intelligenceEnabled: boolean;
-  live: boolean;
   unscoredCount: number;
   pendingCheckback: boolean;
   awaitingFirstOffer: boolean;
@@ -238,7 +159,6 @@ export default function ClientPortalOfferBoard({
   const { t } = loc;
   const stats = useMemo(() => computePortalOfferStats(matches), [matches]);
   const stacks = useMemo(() => groupPortalOfferStacks(matches), [matches]);
-  const direction = useMemo(() => buildSearchDirection(criteria, matches, loc), [criteria, matches, loc]);
   const timeline = useMemo(() => buildPortalTimeline(matches, activities, loc), [matches, activities, loc]);
   const pulse = useMemo(
     () =>
@@ -252,9 +172,9 @@ export default function ClientPortalOfferBoard({
   );
   const pulseBeforeStacks = Boolean(pulse && pulse.mode !== "waiting_reaction");
   const pulseAfterStacks = pulse?.mode === "waiting_reaction";
-  const maxPhrase = Math.max(1, ...direction.phraseBars.map((bar) => bar.count));
 
   const [view, setView] = useState<ViewMode>("stacks");
+  const [historyAll, setHistoryAll] = useState(false);
   const [openStacks, setOpenStacks] = useState<OfferStackId[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -321,99 +241,6 @@ export default function ClientPortalOfferBoard({
 
   return (
     <section id="portal-matches" className="client-portal-board space-y-4 scroll-mt-24">
-      <div className="eos-inset-frame rounded-[1.75rem] p-5 sm:p-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <p className="eos-portal-label eos-portal-label--ok">{t("Twój przegląd")}</p>
-            <h2 className="mt-1 text-xl font-black text-[var(--eos-text)]">{t("Oferty od agenta")}</h2>
-          </div>
-          {live ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--lux-line)] px-2.5 py-1 text-[10px] font-semibold text-[var(--lux-good)]">
-              <span className="eos-live-dot shrink-0" aria-hidden />
-              Live
-            </span>
-          ) : null}
-        </div>
-
-        <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <StatTile
-            label={t("Wysłane")}
-            value={stats.sent}
-            hint={stats.lastSentAt ? t("ostatnia {date}", { date: formatPortalWhen(stats.lastSentAt, loc.dateLocale) }) : t("Czekamy na pierwszą")}
-            tone="muted"
-          />
-          <StatTile
-            label={t("Do oceny")}
-            value={stats.pending}
-            hint={stats.pending ? t("Tu zaczynasz") : t("Wszystko ocenione")}
-            tone="new"
-          />
-          <StatTile label={t("Chcę oglądać")} value={stats.like} hint={t("Do prezentacji")} tone="ok" />
-          <StatTile
-            label={t("Nie pasuje")}
-            value={stats.dislike}
-            hint={stats.maybe ? t("+ {n} do przemyślenia", { n: stats.maybe }) : t("Odłożone")}
-            tone="danger"
-          />
-        </div>
-        <DistributionBar sent={stats.sent} like={stats.like} maybe={stats.maybe} dislike={stats.dislike} pending={stats.pending} />
-        {stats.sent ? (
-          <p className="mt-3 text-[12px] text-[var(--eos-muted)]">
-            {t("Odpowiedziałeś na {pct}% propozycji", { pct: stats.responsePct })}
-            {stats.lastReactionAt
-              ? ` · ${t("ostatnia reakcja {date}", { date: formatPortalWhen(stats.lastReactionAt, loc.dateLocale) })}`
-              : ""}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="eos-inset-frame rounded-[1.75rem] p-5 sm:p-6">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-2xl bg-[var(--lux-gold-soft)] text-[var(--lux-gold-ink)]">
-            <Sparkles className="size-4" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="eos-portal-label eos-portal-label--ok">{direction.headline}</p>
-            <p className="mt-1 text-sm font-semibold leading-relaxed text-[var(--eos-text)]">{direction.summary}</p>
-          </div>
-        </div>
-        {direction.chips.length ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {direction.chips.map((chip) => (
-              <span key={chip.key} className="eos-raised-chip rounded-full px-3 py-1.5 text-[11px]">
-                <span className="text-[var(--eos-muted)]">{chip.label}: </span>
-                <span className="font-semibold text-[var(--eos-text)]">{chip.value}</span>
-              </span>
-            ))}
-          </div>
-        ) : null}
-        {direction.phraseBars.length ? (
-          <div className="mt-5 space-y-2">
-            <p className="eos-portal-label">{t("Co powtarzasz najczęściej")}</p>
-            {direction.phraseBars.map((bar) => (
-              <div key={bar.phrase} className="flex items-center gap-3">
-                <p className="w-36 shrink-0 truncate text-[12px] font-semibold text-[var(--eos-text)] sm:w-48">
-                  {bar.phrase}
-                </p>
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-[rgba(15,23,42,0.08)]">
-                  <div
-                    className={`h-full rounded-full ${bar.tone === "like" ? "bg-emerald-500" : "bg-rose-400"}`}
-                    style={{ width: `${Math.max(12, (bar.count / maxPhrase) * 100)}%` }}
-                  />
-                </div>
-                <span className="w-5 text-right text-[11px] font-black tabular-nums text-[var(--eos-muted)]">
-                  {bar.count}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : stats.sent ? (
-          <p className="mt-4 text-[12px] leading-relaxed text-[var(--eos-muted)]">
-            {t("Zaznacz plusy i minusy przy ofertach — tutaj pojawi się, w którą stronę idziemy.")}
-          </p>
-        ) : null}
-      </div>
-
       {freshBanner ? (
         <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-[var(--eos-text)]">
           {t("Nowa propozycja do oceny:")} {freshBanner}
@@ -430,7 +257,7 @@ export default function ClientPortalOfferBoard({
             }`}
           >
             <LayoutList className="size-3.5" />
-            {t("Stosy")}
+            {t("Oferty")}
           </button>
           <button
             type="button"
@@ -440,7 +267,7 @@ export default function ClientPortalOfferBoard({
             }`}
           >
             <CalendarClock className="size-3.5" />
-            {t("Oś czasu")}
+            {t("Historia")}
           </button>
         </div>
       </div>
@@ -457,13 +284,11 @@ export default function ClientPortalOfferBoard({
           </div>
         )
       ) : view === "timeline" ? (
-        <div className="space-y-3">
-          {pulseSlot}
-          <div className="eos-inset-frame rounded-[1.6rem] p-5 sm:p-6">
+        <div className="eos-inset-frame rounded-[1.6rem] p-5 sm:p-6">
           <p className="eos-portal-label eos-portal-label--ok">{t("Historia współpracy")}</p>
           {timeline.length ? (
             <ol className="relative mt-5 ml-2 space-y-4 border-l border-[var(--eos-border)] pl-5">
-              {timeline.map((item) => (
+              {(historyAll ? timeline : timeline.slice(0, HISTORY_PREVIEW)).map((item) => (
                 <li key={item.id} className="relative">
                   <TimelineDot tone={item.tone} />
                   <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--eos-muted)]">
@@ -488,7 +313,11 @@ export default function ClientPortalOfferBoard({
           ) : (
             <p className="mt-4 text-sm text-[var(--eos-muted)]">{t("Historia pojawi się po pierwszej wysłanej ofercie.")}</p>
           )}
-          </div>
+          {timeline.length > HISTORY_PREVIEW ? (
+            <button type="button" onClick={() => setHistoryAll((v) => !v)} className="mt-4 text-[12px] font-bold text-[var(--lux-gold-ink)]">
+              {historyAll ? t("Pokaż mniej") : t("Pokaż całą historię ({n})", { n: timeline.length })}
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3">

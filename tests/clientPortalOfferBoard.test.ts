@@ -3,13 +3,11 @@ import assert from 'node:assert/strict';
 import { serializeClientOfferFeedback } from '../src/lib/crm/clientPortalFeedback';
 import {
   buildPortalTimeline,
-  buildSearchDirection,
   computePortalOfferStats,
   defaultOpenStacks,
   groupPortalOfferStacks,
   initialOpenMatchIds,
   matchStackId,
-  phraseBarsFromMatches,
   polishPlural,
   resolveAssistantPulse,
 } from '../src/lib/crm/clientPortalOfferBoard';
@@ -77,40 +75,6 @@ test('default stacks keep new and liked open, archive collapsed', () => {
   );
 });
 
-test('search direction chips follow current criteria and phrase bars follow feedback', () => {
-  const direction = buildSearchDirection(
-    {
-      location: 'Warszawa · Mokotów',
-      areaLabel: 'od 55 m²',
-      minArea: 'od 55 m²',
-      maxBudget: 'Do 850 000 PLN',
-      propertyType: 'Mieszkanie',
-      transactionType: 'Kupno',
-      threshold: '70%',
-      districts: ['Mokotów'],
-      amenities: ['Balkon', 'Winda'],
-      minYear: 2015,
-      minRooms: 3,
-    },
-    [
-      match({ id: 1, sentiment: 'dislike', phrases: ['Za drogo', 'Brak balkonu'] }),
-      match({ id: 2, sentiment: 'dislike', phrases: ['Za drogo'] }),
-      match({ id: 3, sentiment: 'like', phrases: ['Świetna lokalizacja'] }),
-    ],
-  );
-  assert.match(direction.summary, /850 000/);
-  assert.match(direction.summary, /od 2015/);
-  assert.match(direction.summary, /Balkon/);
-  assert.equal(direction.chips.find((chip) => chip.key === 'rooms')?.value, 'min. 3');
-  const bars = phraseBarsFromMatches([
-    match({ id: 1, sentiment: 'dislike', phrases: ['Za drogo', 'Brak balkonu'] }),
-    match({ id: 2, sentiment: 'dislike', phrases: ['Za drogo'] }),
-  ]);
-  assert.equal(bars[0].phrase, 'Za drogo');
-  assert.equal(bars[0].count, 2);
-  assert.equal(bars[0].tone, 'dislike');
-});
-
 test('timeline lists sent offers, reactions and checkbacks without duplicating activity rows', () => {
   const matches = [
     match({
@@ -146,6 +110,19 @@ test('timeline lists sent offers, reactions and checkbacks without duplicating a
   assert.match(items[1].title, /oglądać/);
   assert.equal(items[2].kind, 'offer_sent');
   assert.equal(items.filter((item) => item.kind === 'offer_sent').length, 1);
+  assert.match(items[2].title, /^Nowa propozycja: /);
+});
+
+test('timeline never shows the client notes meant for the agent', () => {
+  const items = buildPortalTimeline(
+    [match({ id: 1 })],
+    [
+      { id: 1, kind: 'INTELLIGENCE_HANDOFF', title: 'Przekazanie do agenta', body: 'wybierz termin prezentacji', createdAt: '2026-08-12T09:00:00.000Z' },
+      { id: 2, kind: 'INTELLIGENCE_PLANNED', title: 'Plan: wyślę maila — X', body: 'Planowana wysyłka', createdAt: '2026-08-12T10:00:00.000Z' },
+      { id: 3, kind: 'FEEDBACK_REMINDER', title: 'Przypomnienie: czekamy na opinię', body: null, createdAt: '2026-08-12T11:00:00.000Z' },
+    ],
+  );
+  assert.deepEqual(items.map((item) => item.kind), ['offer_sent']);
 });
 
 test('initial open ids keep stored cards and only auto-open first new on first visit', () => {

@@ -52,27 +52,6 @@ export type SellerPortalV2 = {
 
 const FINANCING: Record<string, string> = { cash: "Gotówka", mortgage: "Kredyt", mixed: "Gotówka + kredyt" };
 
-export function SellerStatsTiles({ stats }: { stats: SellerPortalV2["stats"] }) {
-  const { p, dateLocale } = usePortalLocale();
-  if (!stats) return null;
-  const tiles: Array<[string, number, boolean]> = [
-    [p(stats.views, "wyświetlenie|wyświetlenia|wyświetleń"), stats.views, false],
-    [p(stats.matches, "dopasowanie|dopasowania|dopasowań"), stats.matches, false],
-    [p(stats.showings, "oglądanie|oglądania|oglądań"), stats.showings, false],
-    [p(stats.buyerOffers, "oferta|oferty|ofert"), stats.buyerOffers, true],
-  ];
-  return (
-    <div className="mt-3 grid grid-cols-4 gap-1.5">
-      {tiles.map(([label, value, gold]) => (
-        <div key={label} className={`rounded-[14px] px-1.5 py-2.5 text-center ${gold && value ? "bg-[#D8C3A0] text-black" : "bg-white/[0.07]"}`}>
-          <p className="text-[19px] font-extrabold">{value.toLocaleString(dateLocale)}</p>
-          <p className={`mt-0.5 text-[10px] ${gold && value ? "font-bold" : "text-[#BDB6AA]"}`}>{label}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function BuyerOfferCard({
   offer,
   listPrice,

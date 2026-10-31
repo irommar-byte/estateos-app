@@ -15,8 +15,13 @@ import {
   MapPinned,
   MessageCircle,
   Users,
-  Route,
   Sparkles,
+  Search,
+  MapPin,
+  Wallet,
+  UserRound,
+  CalendarDays,
+  TrendingUp,
   FolderOpen,
   LayoutGrid,
   MessagesSquare,
@@ -25,7 +30,7 @@ import {
   Gift,
 } from "lucide-react";
 import PortalLuxHeader from "@/components/portal/lux/PortalLuxHeader";
-import PortalJourneyAxis, { type LuxAxisStage } from "@/components/portal/lux/PortalJourneyAxis";
+import PortalOverview, { type LuxAxisStage, type PortalFact } from "@/components/portal/lux/PortalOverview";
 import PortalLuxFooter from "@/components/portal/lux/PortalLuxFooter";
 import PortalUiHost from "@/components/portal/lux/PortalUiHost";
 import PortalStickyBar from "@/components/portal/lux/PortalStickyBar";
@@ -43,7 +48,6 @@ import {
   SellerCompetition,
   SellerNetSheet,
   SellerShowingFeedback,
-  SellerStatsTiles,
   type SellerPortalV2,
 } from "@/components/portal/lux/SellerLux";
 import { portalAction } from "@/components/portal/lux/portalApi";
@@ -78,7 +82,7 @@ import type { Locale } from "@/i18n/config";
 import { collectAgentOfferReplies, type ClientOfferSentiment } from "@/lib/crm/clientPortalFeedback";
 import { initialOpenMatchIds } from "@/lib/crm/clientPortalOfferBoard";
 import ClientPortalAgentReplyInbox from "@/components/portal/ClientPortalAgentReplyInbox";
-import ClientPortalNowCard, { resolvePortalNow, type PortalNowInput } from "@/components/portal/ClientPortalNowCard";
+import { resolvePortalNow, type PortalNowInput } from "@/components/portal/ClientPortalNowCard";
 
 type SearchCriteria = {
   location: string;
@@ -752,6 +756,11 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     luxMatches.find((m) => m.favorite)?.offer.price || luxMatches[0]?.offer.price || 0,
   );
   const criteria = portal.searchCriteria;
+  const budgetText = (raw: string | null | undefined) => {
+    const value = String(raw || "").trim();
+    if (!value || value === "Bez limitu") return null;
+    return /^do\s/i.test(value) ? `${t("do")} ${value.replace(/^do\s+/i, "")}` : value;
+  };
   /** Rozwija grupę, w której jest element, przewija do niego i krótko go podświetla. */
   const focusAnchor = (anchor: string, fallbackGroup?: string) => {
     const el = document.getElementById(anchor);
@@ -797,7 +806,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         listingLive,
         purchasePhase: portal.purchase?.phase || null,
   };
-  const nowCard = <ClientPortalNowCard input={nowInput} />;
 
   const presentationBlock =
     portal.presentation && token ? (
@@ -833,7 +841,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       state: stateFor(0, buyerStageIndex),
       summary: criteria ? (
         <>
-          {[criteria.location, criteria.maxBudget ? t("do {v}", { v: criteria.maxBudget }) : null, criteria.minRooms ? t("od {n} pok.", { n: criteria.minRooms }) : null]
+          {[criteria.location, budgetText(criteria.maxBudget), criteria.minRooms ? t("od {n} pok.", { n: criteria.minRooms }) : null]
             .filter(Boolean)
             .join(" · ")}
           {!isPartner ? (
@@ -848,14 +856,14 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ) : (
         t("{agent} ustala z Tobą, czego szukamy.", { agent: agentFirst })
       ),
-      content: nowCard,
     },
     {
       id: "proposals",
-      label: luxMatches.length ? `${t("Propozycje")} · ${ratedCount} ${p(ratedCount, "oceniona|ocenione|ocenionych")}` : t("Propozycje"),
+      label: t("Propozycje"),
       state: stateFor(1, buyerStageIndex),
       summary: luxMatches.length ? (
         <>
+          {`${t("{n} z {total} ocenionych", { n: ratedCount, total: luxMatches.length })} · `}
           {favoriteCount ? `${favoriteCount} ${p(favoriteCount, "ulubiona|ulubione|ulubionych")} · ` : ""}
           <button type="button" onClick={() => scrollTo("portal-offers")} className="font-bold text-[var(--lux-accent)]">
             {t("zobacz wszystkie")}
@@ -874,7 +882,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       ),
       content: (
         <>
-          {nowCard}
           {portal.pendingCheckback && token && !isPartner ? (
             <ClientPortalIntelligenceCheckback token={token} checkback={portal.pendingCheckback} onDone={() => void load()} />
           ) : null}
@@ -890,7 +897,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         : t("Gdy coś się spodoba — umówimy oglądanie."),
       content: (
         <>
-          {nowCard}
           {presentationBlock}
           {canSelfBook ? (
             <button type="button" onClick={() => { setBookingOfferId(null); setBookingOpen(true); }} className="lux-btn lux-btn--ink w-full">
@@ -909,7 +915,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         : t("Propozycja ceny, odpowiedź sprzedającego, warunki."),
       content: (
         <>
-          {nowCard}
           {portal.purchase ? (
             <section className="lux-card p-4">
               <p className="text-[15px] font-bold">{portal.purchase.title}</p>
@@ -954,14 +959,12 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         : portal.meeting
           ? `${t("Spotkanie")}: ${fmtWhen(portal.meeting.startsAt)}`
           : t("{agent} przygotowuje umowę.", { agent: agentFirst }),
-      content: nowCard,
     },
     {
       id: "prep",
       label: t("Przygotowanie"),
       state: stateFor(1, sellerCurrentIndex),
       summary: portal.listing ? t("Zdjęcia, rzut i opis gotowe.") : t("Sesja zdjęciowa, rzut i opis."),
-      content: nowCard,
     },
     {
       id: "publish",
@@ -972,7 +975,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
           ? t("Aktywne na {n} portalach", { n: portal.activeChannels.length + 1 })
           : t("Aktywne")
         : t("Ogłoszenie zobaczysz tutaj po aktywacji — dostaniesz powiadomienie."),
-      content: nowCard,
     },
     {
       id: "viewings",
@@ -983,7 +985,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         : t("Pokazy i oferty kupujących."),
       content: (
         <>
-          {nowCard}
           {presentationBlock}
           {seller ? (
             <SellerShowingFeedback
@@ -1000,7 +1001,6 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
       label: t("Umowa przedwstępna"),
       state: stateFor(4, sellerCurrentIndex),
       summary: acceptedOffer ? `${t("Przyjęta oferta")}: ${acceptedOffer.buyerLabel.replace(/^Kupujący/, t("Kupujący"))} · ${acceptedOffer.amount.toLocaleString(dateLocale)} zł` : t("Zadatek, terminy, warunki kredytu kupującego."),
-      content: nowCard,
     },
     { id: "deed", label: t("Akt notarialny"), state: stateFor(5, sellerCurrentIndex), summary: t("Lista dokumentów do sprzedaży i termin u notariusza.") },
     { id: "handover", label: t("Przekazanie mieszkania"), state: stateFor(6, sellerCurrentIndex), summary: t("Protokół, liczniki, klucze.") },
@@ -1105,6 +1105,138 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
     focusAnchor(notice.anchor, NOTICE_TO_GROUP[notice.group]);
   };
 
+  // ── Przegląd: co, gdzie, za ile, z kim, kiedy i jak idzie ──
+  const sentimentCount = (sentiment: "like" | "maybe" | "dislike") => luxMatches.filter((m) => matchSentiment(m.clientFeedback) === sentiment).length;
+  const nextSlot = portal.presentation || (portal.type === "SELLER" ? portal.meeting : null);
+  const agentFact: PortalFact = {
+    key: "who",
+    label: t("Z kim"),
+    icon: UserRound,
+    value: portal.agentName,
+    hint: (
+      <>
+        {portal.agentTitle ? `${t(portal.agentTitle)} · ` : ""}
+        {portal.agentPhone || portal.agencyPhone ? <a href={`tel:${portal.agentPhone || portal.agencyPhone}`}>{t("Zadzwoń")}</a> : null}
+        {portal.agentPhone || portal.agencyPhone ? " · " : null}
+        <button type="button" onClick={() => scrollTo("portal-chat")}>{t("Napisz")}</button>
+      </>
+    ),
+  };
+  const whenFact: PortalFact = {
+    key: "when",
+    label: t("Kiedy"),
+    icon: CalendarDays,
+    value: nextSlot
+      ? fmtWhen(nextSlot.startsAt)
+      : t("Termin do ustalenia"),
+    hint: nextSlot
+      ? `${portal.presentation ? t("Oglądanie") : t("Spotkanie")} · ${nextSlot.status === "confirmed" ? t("potwierdzone") : t("czeka na potwierdzenie")}`
+      : canSelfBook
+        ? <button type="button" onClick={() => { setBookingOfferId(null); setBookingOpen(true); }}>{t("Wybierz termin oglądania")}</button>
+        : portal.type === "BUYER"
+          ? t("Umówimy, gdy coś Ci się spodoba.")
+          : t("Damy znać o pierwszym pokazie."),
+  };
+  const overviewFacts: PortalFact[] =
+    portal.type === "BUYER"
+      ? [
+          {
+            key: "what",
+            label: t("Czego szukamy"),
+            icon: Search,
+            value: portal.purchase
+              ? portal.purchase.title
+              : [
+                  criteria?.propertyType && criteria.propertyType !== "Wszystkie" ? t(criteria.propertyType) : null,
+                  criteria?.minRooms ? t("od {n} pok.", { n: criteria.minRooms }) : null,
+                  criteria?.areaLabel || criteria?.minArea ? t(criteria.areaLabel || criteria.minArea) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || t("Ustalamy z {agent}", { agent: agentFirst }),
+            hint: portal.purchase
+              ? null
+              : [criteria?.minYear && criteria.minYear > 1900 ? t("budynek od {year}", { year: criteria.minYear }) : null, ...(criteria?.amenities || []).map((a) => t(a))]
+                  .filter(Boolean)
+                  .join(" · ") || null,
+          },
+          {
+            key: "where",
+            label: t("Gdzie"),
+            icon: MapPin,
+            value: portal.purchase?.address || criteria?.location || t("Do ustalenia"),
+            hint: !portal.purchase && !isPartner ? (
+              <button type="button" onClick={() => setAreaOpen(true)}>{portal.searchPolygon ? t("Obszar na mapie ✓") : t("Zaznacz obszar na mapie")}</button>
+            ) : null,
+          },
+          {
+            key: "price",
+            label: t("Za ile"),
+            icon: Wallet,
+            value: portal.purchase?.price
+              ? `${Number(portal.purchase.price).toLocaleString(dateLocale)} zł`
+              : budgetText(criteria?.maxBudget) || t("Budżet do ustalenia"),
+            hint: portal.purchase ? portal.purchase.statusLabel : t("Twój budżet"),
+          },
+          agentFact,
+          whenFact,
+          {
+            key: "progress",
+            label: t("Jak idzie"),
+            icon: TrendingUp,
+            value: luxMatches.length
+              ? `${luxMatches.length} ${p(luxMatches.length, "propozycja|propozycje|propozycji")}`
+              : t("Szukamy pierwszych ofert"),
+            hint: luxMatches.length
+              ? [
+                  sentimentCount("like") ? t("{n} do oglądania", { n: sentimentCount("like") }) : null,
+                  sentimentCount("maybe") ? t("{n} do przemyślenia", { n: sentimentCount("maybe") }) : null,
+                  pendingMatches.length ? t("{n} czeka na ocenę", { n: pendingMatches.length }) : t("wszystkie ocenione"),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : null,
+          },
+        ]
+      : [
+          {
+            key: "what",
+            label: t("Co sprzedajemy"),
+            icon: Search,
+            value: portal.listing?.title || t("Przygotowujemy ogłoszenie"),
+            hint: portal.listing ? (listingLive ? t("Ogłoszenie aktywne") : t("Pokażemy je po aktywacji")) : null,
+          },
+          {
+            key: "where",
+            label: t("Gdzie"),
+            icon: MapPin,
+            value: portal.listing ? [portal.listing.district, portal.listing.city].filter(Boolean).join(", ") : t("Do ustalenia"),
+          },
+          {
+            key: "price",
+            label: t("Za ile"),
+            icon: Wallet,
+            value: portal.listing?.price ? `${portal.listing.price.toLocaleString(dateLocale)} zł` : t("Cena do ustalenia"),
+            hint: acceptedOffer
+              ? t("Przyjęta oferta: {amount} zł", { amount: acceptedOffer.amount.toLocaleString(dateLocale) })
+              : openBuyerOffers.length
+                ? t("Najlepsza oferta: {amount} zł", { amount: Math.max(...openBuyerOffers.map((o) => o.amount)).toLocaleString(dateLocale) })
+                : t("Cena ofertowa"),
+          },
+          agentFact,
+          whenFact,
+          {
+            key: "progress",
+            label: t("Jak idzie"),
+            icon: TrendingUp,
+            value: seller?.stats
+              ? `${seller.stats.views.toLocaleString(dateLocale)} ${p(seller.stats.views, "wyświetlenie|wyświetlenia|wyświetleń")}`
+              : t("Startujemy"),
+            hint: seller?.stats
+              ? `${seller.stats.showings} ${p(seller.stats.showings, "oglądanie|oglądania|oglądań")} · ${seller.stats.buyerOffers} ${p(seller.stats.buyerOffers, "oferta|oferty|ofert")}`
+              : null,
+          },
+        ];
+
   // Jedna rzecz do zrobienia teraz: najpierw to, co prowadzi etap, potem najnowsze powiadomienie z akcją.
   const now = resolvePortalNow(nowInput, portalLocale);
   const topAction = notices.find((n) => n.tone === "action" && !readNotices.has(n.id)) || notices.find((n) => n.tone === "action") || null;
@@ -1168,49 +1300,15 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
         nextStep={nextStep}
         languageSwitch={<PortalLanguageSwitch />}
       >
-        {portal.type === "SELLER" && seller ? (
-          <>
-            {portal.listing ? (
-              <div className="mt-4 flex gap-3 rounded-[20px] border border-[#D8C3A0]/20 bg-white/[0.06] p-3">
-                {portal.listing.imageUrl ? (
-                  <img src={portal.listing.imageUrl} alt="" className="size-[84px] shrink-0 rounded-[14px] object-cover" />
-                ) : null}
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-bold">{portal.listing.title}</p>
-                  <p className="lux-serif mt-0.5 text-[20px]">{portal.listing.price ? `${portal.listing.price.toLocaleString(dateLocale)} zł` : t("Cena na zapytanie")}</p>
-                  <p className="mt-0.5 text-[12px] text-[#BDB6AA]">{listingLive ? t("Aktywne") : t("Pokażemy je po aktywacji")}</p>
-                </div>
-              </div>
-            ) : null}
-            <SellerStatsTiles stats={seller.stats} />
-          </>
-        ) : null}
       </PortalLuxHeader>
 
       <div className="mx-auto max-w-3xl space-y-4 px-4 pt-6 sm:px-6">
-        <div className="flex items-center justify-between gap-3">
-          <p className="eos-group-divider flex-1">{t("Na teraz")}</p>
-          <div className="flex shrink-0 gap-3 text-[12px] font-bold text-[var(--lux-accent)]">
-            <button type="button" onClick={() => groups.setAll(groupIds, false)}>{t("Zwiń wszystko")}</button>
-            <button type="button" onClick={() => groups.setAll(groupIds, true)}>{t("Rozwiń")}</button>
-          </div>
-        </div>
-
-        <PortalGroup
-          id="journey"
+        <PortalOverview
           title={portal.type === "BUYER" ? t("Droga do kluczy") : t("Droga do aktu")}
-          summary={currentStage ? `${t("Etap {n} z {total}", { n: stages.indexOf(currentStage) + 1, total: stages.length })} · ${currentStage.label}` : t("Wszystkie etapy zakończone")}
-          icon={Route}
-          tone="ink"
-          open={groups.isOpen("journey")}
-          onToggle={() => groups.setOpen("journey", !groups.isOpen("journey"))}
-          badge={groupBadge("journey")}
-          blink={groupBlink("journey")}
-        >
-          <div id="portal-journey" className="scroll-mt-24">
-            <PortalJourneyAxis title={portal.type === "BUYER" ? t("Droga do kluczy") : t("Droga do aktu")} stages={stages} hideTitle />
-          </div>
-        </PortalGroup>
+          stages={stages}
+          facts={overviewFacts}
+          action={currentStage?.content || null}
+        />
 
         <p className="eos-group-divider pt-3">{t("Twoje sprawy")}</p>
 
@@ -1269,9 +1367,7 @@ export default function ClientPortalPage({ params }: { params: Promise<{ token: 
                   token={token}
                   matches={portal.matches}
                   activities={portal.activities}
-                  criteria={portal.searchCriteria}
                   intelligenceEnabled={portal.intelligenceEnabled}
-                  live={livePortalSync}
                   unscoredCount={portal.unscoredMatchCount}
                   pendingCheckback={Boolean(portal.pendingCheckback)}
                   awaitingFirstOffer={awaitingFirstOffer}

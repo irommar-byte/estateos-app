@@ -2947,6 +2947,38 @@ html body .portal-lux {
   color: var(--lux-ink);
   color-scheme: light;
 }
+/* Przegląd w panelu klienta: etapy z wynikiem + co / gdzie / z kim / za ile / kiedy (2026-10-31) */
+.portal-overview { background: var(--lux-card); border: 1px solid var(--lux-line); border-radius: 24px; box-shadow: var(--lux-shadow); padding: 22px 20px; }
+.portal-overview__steps { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.portal-overview__step { position: relative; display: flex; gap: 12px; padding-bottom: 14px; }
+.portal-overview__step:last-child { padding-bottom: 0; }
+.portal-overview__step:not(:last-child)::before { content: ""; position: absolute; left: 12px; top: 28px; bottom: 2px; width: 1px; background: var(--lux-line-strong); }
+.portal-overview__step[data-state="done"]:not(:last-child)::before { background: var(--lux-gold); }
+.portal-overview__dot { flex-shrink: 0; width: 25px; height: 25px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: var(--lux-ink-3); border: 1px solid var(--lux-line-strong); background: var(--lux-card); position: relative; z-index: 1; }
+.portal-overview__step[data-state="done"] .portal-overview__dot { background: var(--lux-gold); border-color: var(--lux-gold); color: #000; }
+.portal-overview__step[data-state="current"] .portal-overview__dot { background: #000; border-color: #000; color: #d8c3a0; box-shadow: 0 0 0 3px var(--lux-card), 0 0 0 4px #d8c3a0; }
+.portal-overview__text { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 8px; row-gap: 2px; padding-top: 3px; }
+.portal-overview__label { font-size: 14.5px; font-weight: 700; color: var(--lux-ink); }
+.portal-overview__step[data-state="future"] .portal-overview__label { font-weight: 600; color: var(--lux-ink-3); }
+.portal-overview__now { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--lux-gold-ink); background: var(--lux-gold-soft); border-radius: 999px; padding: 2px 8px; }
+.portal-overview__summary { flex-basis: 100%; font-size: 12.5px; line-height: 1.45; color: var(--lux-ink-2); }
+.portal-overview__summary button { font-weight: 700; color: var(--lux-gold-ink); }
+.portal-overview__facts { margin: 20px 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.portal-overview__fact { min-width: 0; background: var(--lux-well); border-radius: 16px; padding: 12px 13px; }
+.portal-overview__fact dt { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--lux-ink-3); }
+.portal-overview__fact dd { margin: 5px 0 0; font-size: 14.5px; font-weight: 650; line-height: 1.35; color: var(--lux-ink); overflow-wrap: anywhere; }
+.portal-overview__fact dd.portal-overview__hint { margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--lux-ink-3); }
+.portal-overview__fact a, .portal-overview__fact button { color: var(--lux-gold-ink); font-weight: 700; }
+.portal-overview__action { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--lux-line); }
+@media (min-width: 640px) {
+  .portal-overview { padding: 26px 26px 24px; }
+  .portal-overview__steps { display: grid; grid-template-columns: repeat(var(--steps), minmax(0, 1fr)); gap: 10px; }
+  .portal-overview__step { flex-direction: column; gap: 9px; padding-bottom: 0; }
+  .portal-overview__step:not(:last-child)::before { left: 30px; right: -8px; top: 12px; bottom: auto; width: auto; height: 1px; }
+  .portal-overview__text { flex-direction: column; align-items: flex-start; padding-top: 0; }
+  .portal-overview__summary { flex-basis: auto; }
+  .portal-overview__facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 html.dark body .portal-lux {
   --lux-bg: #0c0b0a;
   --lux-card: #161412;
@@ -3033,6 +3065,27 @@ html.dark body .portal-lux #portal-header {
 }
 .portal-lux .lux-sheet .sticky {
   background: color-mix(in srgb, var(--lux-bg) 94%, transparent);
+}
+/* Tło okienka ma przyciemniać panel, a nie przejmować pełnego tła strony z .portal-lux */
+html body .portal-lux.lux-sheet-backdrop {
+  background: rgba(10, 10, 10, 0.5);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: lux-fade-in 0.18s ease-out;
+}
+.portal-lux.lux-sheet-backdrop .lux-sheet {
+  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.45);
+  animation: lux-sheet-in 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes lux-fade-in {
+  from { opacity: 0; }
+}
+@keyframes lux-sheet-in {
+  from { opacity: 0; transform: translateY(18px) scale(0.98); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html body .portal-lux.lux-sheet-backdrop,
+  .portal-lux.lux-sheet-backdrop .lux-sheet { animation: none; }
 }
 .portal-lux :is(input, textarea, select) {
   color: var(--lux-ink);

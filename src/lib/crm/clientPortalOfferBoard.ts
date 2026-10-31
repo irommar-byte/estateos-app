@@ -1,5 +1,4 @@
 import {
-  LIKE_PHRASES,
   clientFeedbackHasContent,
   hasUnreadAgentReply,
   parseClientOfferFeedback,
@@ -98,24 +97,10 @@ export type PortalOfferStats = {
   lastReactionAt: string | null;
 };
 
-export type SearchDirectionChip = { key: string; label: string; value: string };
-
-export type PhraseBar = { phrase: string; count: number; tone: 'like' | 'dislike' };
-
-export type SearchDirection = {
-  headline: string;
-  summary: string;
-  chips: SearchDirectionChip[];
-  phraseBars: PhraseBar[];
-};
-
 export type PortalTimelineKind =
   | 'offer_sent'
   | 'reaction'
   | 'checkback'
-  | 'planned'
-  | 'handoff'
-  | 'reminder'
   | 'note';
 
 export type PortalTimelineTone = 'new' | 'ok' | 'warn' | 'danger' | 'info';
@@ -200,21 +185,6 @@ export function computePortalOfferStats(matches: PortalBoardMatch[]): PortalOffe
   };
 }
 
-export function phraseBarsFromMatches(matches: PortalBoardMatch[], limit = 5): PhraseBar[] {
-  const counts = new Map<string, PhraseBar>();
-  for (const match of matches) {
-    const feedback = parseClientOfferFeedback(match.clientFeedback);
-    if (!clientFeedbackHasContent(feedback)) continue;
-    for (const phrase of feedback.phrases) {
-      const tone: PhraseBar['tone'] = (LIKE_PHRASES as readonly string[]).includes(phrase) ? 'like' : 'dislike';
-      const current = counts.get(phrase);
-      if (current) current.count += 1;
-      else counts.set(phrase, { phrase, count: 1, tone });
-    }
-  }
-  return [...counts.values()].sort((a, b) => b.count - a.count || a.phrase.localeCompare(b.phrase, 'pl')).slice(0, limit);
-}
-
 export function defaultOpenStacks(stats: PortalOfferStats): OfferStackId[] {
   const open: OfferStackId[] = [];
   if (stats.pending > 0) open.push('new');
@@ -225,52 +195,6 @@ export function defaultOpenStacks(stats: PortalOfferStats): OfferStackId[] {
   }
   if (!open.length && stats.sent > 0) open.push('new');
   return open;
-}
-
-export function buildSearchDirection(
-  criteria: PortalSearchCriteria,
-  matches: PortalBoardMatch[],
-  tr: PortalTr = PORTAL_TR_PL,
-): SearchDirection {
-  const { t } = tr;
-  const chips: SearchDirectionChip[] = [];
-  if (criteria) {
-    if (criteria.location) chips.push({ key: 'location', label: t('Lokalizacja'), value: criteria.location });
-    if (criteria.maxBudget && criteria.maxBudget !== 'Bez limitu') {
-      chips.push({ key: 'budget', label: t('Budżet'), value: criteria.maxBudget });
-    }
-    if (criteria.minRooms && criteria.minRooms > 0) {
-      chips.push({
-        key: 'rooms',
-        label: t('Pokoje'),
-        value: t('min. {n}', { n: criteria.minRooms }),
-      });
-    }
-    if (criteria.minYear && criteria.minYear > 1900) {
-      chips.push({ key: 'year', label: t('Rok budowy'), value: t('od {date}', { date: criteria.minYear }) });
-    }
-    const area = criteria.areaLabel || criteria.minArea;
-    if (area && area !== 'Dowolny metraż') {
-      chips.push({ key: 'area', label: t('Metraż'), value: t(area) });
-    }
-    if (criteria.propertyType && criteria.propertyType !== 'Wszystkie') {
-      const tx = criteria.transactionType && criteria.transactionType !== '—' ? `${t(criteria.transactionType)} · ` : '';
-      chips.push({ key: 'type', label: t('Typ'), value: `${tx}${t(criteria.propertyType)}` });
-    }
-    for (const amenity of criteria.amenities || []) {
-      chips.push({ key: `amenity-${amenity}`, label: t('Musi być'), value: t(amenity) });
-    }
-  }
-
-  const phraseBars = phraseBarsFromMatches(matches);
-  const summary = chips.map((chip) => chip.value).join(' · ');
-
-  return {
-    headline: t('Asystent szuka teraz'),
-    summary: summary || t('Oceń kilka ofert — tu pojawi się, czego szukamy coraz precyzyjniej.'),
-    chips,
-    phraseBars,
-  };
 }
 
 function checkbackOptionLabel(optionId: string | null | undefined, tr: PortalTr): string | null {
@@ -299,7 +223,6 @@ export function buildPortalTimeline(
 ): PortalTimelineItem[] {
   const { t } = tr;
   const items: PortalTimelineItem[] = [];
-  const matchByOfferId = new Map(matches.map((match) => [match.offer.id, match]));
 
   for (const match of matches) {
     if (match.notifiedAt) {
@@ -307,7 +230,7 @@ export function buildPortalTimeline(
         id: `sent-${match.id}`,
         at: match.notifiedAt,
         kind: 'offer_sent',
-        title: `${match.intelligenceSent ? t('Asystent wysłał') : t('Agent wysłał')}: ${match.offer.title}`,
+        title: `${t('Nowa propozycja')}: ${match.offer.title}`,
         body: [match.offer.city, match.offer.district].filter(Boolean).join(' · ') || null,
         matchId: match.id,
         offerId: match.offer.id,
@@ -331,8 +254,6 @@ export function buildPortalTimeline(
 
   for (const activity of activities) {
     const meta = activity.metadata && typeof activity.metadata === 'object' ? activity.metadata : {};
-    const offerId = Number(activity.offerId || 0) || undefined;
-    const match = offerId ? matchByOfferId.get(offerId) : undefined;
 
     if (activity.kind === 'INTELLIGENCE_OFFER' || activity.kind === 'CLIENT_NOTIFIED' || activity.kind === 'OFFER_SHARED') {
       continue;
@@ -354,43 +275,6 @@ export function buildPortalTimeline(
         tone: pending ? 'warn' : status === 'rejected' ? 'danger' : 'ok',
       });
       continue;
-    }
-
-    if (activity.kind === 'INTELLIGENCE_PLANNED') {
-      items.push({
-        id: `act-${activity.id}`,
-        at: activity.createdAt,
-        kind: 'planned',
-        title: activity.title || t('Asystent planuje kolejną propozycję'),
-        body: activity.body,
-        tone: 'info',
-      });
-      continue;
-    }
-
-    if (activity.kind === 'INTELLIGENCE_HANDOFF') {
-      items.push({
-        id: `act-${activity.id}`,
-        at: activity.createdAt,
-        kind: 'handoff',
-        title: activity.title || t('Agent przejmuje temat'),
-        body: activity.body,
-        tone: 'warn',
-      });
-      continue;
-    }
-
-    if (activity.kind === 'FEEDBACK_REMINDER') {
-      items.push({
-        id: `act-${activity.id}`,
-        at: activity.createdAt,
-        kind: 'reminder',
-        title: activity.title || t('Przypomnienie o ocenie oferty'),
-        body: activity.body,
-        matchId: match?.id,
-        offerId,
-        tone: 'info',
-      });
     }
   }
 
