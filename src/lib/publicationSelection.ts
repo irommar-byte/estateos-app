@@ -1,6 +1,6 @@
 import type { PublicationRedemption } from "@/components/publication/PublicationChoiceModal";
 
-export type PublicationSelection = `coupon:${string}` | "plus_credit" | "buy_plus" | "pay_renewal";
+export type PublicationSelection = `coupon:${string}` | "plus_credit" | "office_credit" | "buy_plus" | "pay_renewal";
 
 export function defaultPublicationSelection(
   input: {
@@ -26,6 +26,9 @@ export function publicationSelectionToRedemption(
   if (selection === "plus_credit") {
     return { kind: "PLUS_CREDIT", consumePlusPublication: true };
   }
+  if (selection === "office_credit") {
+    return { kind: "OFFICE_CREDIT" };
+  }
   if (selection === "pay_renewal") {
     return { action: "pay_renewal" };
   }
@@ -45,6 +48,10 @@ export function publicationSelectionLabel(
   if (selection === "buy_plus") {
     if (locale === "uk") return "Перейти до оплати";
     return locale === "en" ? "Go to payment" : "Przejdź do płatności";
+  }
+  if (selection === "office_credit") {
+    if (locale === "uk") return "Кредит офісу";
+    return locale === "en" ? "Office credit" : "Kredyt biura";
   }
   if (selection === "plus_credit") {
     if (locale === "uk") return "Опублікувати кредитом Plus";

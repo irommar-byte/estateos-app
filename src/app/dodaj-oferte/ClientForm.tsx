@@ -18,6 +18,7 @@ import { Home,
 import ProPhotoSessionDialog from '@/components/photoSession/ProPhotoSessionDialog';
 import MarketValuationPanel from '@/components/market/MarketValuationPanel';
 import HomePublishSuccessModal from '@/components/offer/HomePublishSuccessModal';
+import type { OfficePublicationOption } from '@/lib/crm/officeCredits';
 import NoCreditsModal from '@/components/publication/NoCreditsModal';
 import PublishAuthGate, { type AuthGateContext } from '@/components/auth/PublishAuthGate';
 import AddOfferStepProgress from '@/components/offers/AddOfferStepProgress';
@@ -342,6 +343,8 @@ export default function ClientForm({
   const [errorFieldTarget, setErrorFieldTarget] = useState<FormFieldTarget>(null);
   const [walletCoupons, setWalletCoupons] = useState<PublicationCouponOption[]>([]);
   const [walletPlusCredits, setWalletPlusCredits] = useState(0);
+  const [walletOffice, setWalletOffice] = useState<OfficePublicationOption | null>(null);
+  const [publishNotice, setPublishNotice] = useState<string | null>(null);
   const [walletHasPlusCredit, setWalletHasPlusCredit] = useState(false);
   const [walletPlusExpiresAt, setWalletPlusExpiresAt] = useState<string | null>(null);
   const [publicationSelection, setPublicationSelection] = useState<PublicationSelection | null>(null);
@@ -1412,6 +1415,7 @@ export default function ClientForm({
         return;
       }
       clearAddOfferDraft();
+      setPublishNotice(activationData?.awaitingOffice || activationData?.awaitingModeration ? String(activationData?.message || '') || null : null);
       setSuccessOfferId(createdOfferId);
       setActionModal('success');
     } catch {
@@ -1641,6 +1645,7 @@ export default function ClientForm({
           : [];
       setWalletCoupons(coupons);
       setWalletPlusCredits(Number(data.plusCredits || 0));
+      setWalletOffice(data.office ?? null);
       setWalletHasPlusCredit(Boolean(data.hasPlusCredit));
       setWalletPlusExpiresAt(data.plusExpiresAt ? String(data.plusExpiresAt) : null);
       setPublicationSelection((prev) => {
@@ -2722,6 +2727,7 @@ export default function ClientForm({
                       meta: c.meta,
                     })),
                     plusCredits: walletPlusCredits,
+                    office: walletOffice,
                     hasPlusCredit: walletHasPlusCredit,
                     plusExpiresAt: walletPlusExpiresAt,
                   }}
@@ -2887,6 +2893,7 @@ export default function ClientForm({
       <HomePublishSuccessModal
         offerId={successOfferId}
         open={actionModal === "success"}
+        notice={publishNotice}
         onClose={() => {
           setActionModal("none");
           setSuccessOfferId(null);

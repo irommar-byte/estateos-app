@@ -17,6 +17,7 @@ import { dayLabel, daysSince, initials, pln, relative, timeHM } from './format';
 import type { CrmProTab } from './CrmProRail';
 import { DeskCalendar, DeskClock, DeskNoteSearch, DeskNotes, useDesk } from './CrmDesk';
 import CrmMarketPulse from './CrmMarketPulse';
+import CrmOfficeApprovals from './CrmOfficeApprovals';
 
 type TodayPayload = {
   counts: Record<string, number>;
@@ -264,6 +265,7 @@ export default function CrmPulpit({
 
   return (
     <div className="space-y-5">
+      <CrmOfficeApprovals />
       <section className="crmx-desk crmx-desk--band">
         <DeskClock desk={desk} />
         <CrmMarketPulse />

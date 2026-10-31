@@ -59,6 +59,9 @@ const SECTION_LABEL: Record<Section, string> = { ACTIVE: 'Aktywne', PENDING: 'Oc
 const VIEW_KEY = 'eos-crmx-listings-view';
 
 function statusChip(offer: any, section: Section, awaiting: boolean) {
+  const office = String(offer.officeReviewStatus || '');
+  if (office === 'OFFICE_REVIEW') return <span className="crmx-chip crmx-chip--warn"><span className="crmx-dot" />Czeka na kierownika</span>;
+  if (office === 'OFFICE_REJECTED' && section !== 'ACTIVE') return <span className="crmx-chip crmx-chip--bad"><span className="crmx-dot" />Do poprawy</span>;
   if (awaiting) return <span className="crmx-chip crmx-chip--info"><span className="crmx-dot" />Akceptacja biura</span>;
   if (section === 'ACTIVE') return <span className="crmx-chip crmx-chip--good"><span className="crmx-dot" />Na rynku</span>;
   if (section === 'PENDING') return <span className="crmx-chip crmx-chip--warn"><span className="crmx-dot" />Oczekuje</span>;
@@ -443,6 +446,8 @@ function ListingDrawer({
             <p className="crmx-display mt-3" style={{ fontSize: 30 }}>{pln(offer.price, offer.priceCurrency)}</p>
           </div>
 
+          <OfficeReviewBox offer={offer} />
+
           <dl className="crmx-facts">
             {facts.map(([k, v]) => (
               <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
@@ -513,5 +518,57 @@ function ListingDrawer({
         </div>
       </motion.aside>
     </>
+  );
+}
+
+/** Prośba do kierownika o publikację z kredytu biura: status, uwaga kierownika, wycofanie i ponowne wysłanie. */
+function OfficeReviewBox({ offer }: { offer: any }) {
+  const status = String(offer.officeReviewStatus || '');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  if (status !== 'OFFICE_REVIEW' && status !== 'OFFICE_REJECTED') return null;
+  if (status === 'OFFICE_REJECTED' && String(offer.status) === 'ACTIVE') return null;
+
+  const call = async (action: 'withdraw' | 'submit') => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch('/api/agency-company/offers/office-review', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, offerId: Number(offer.id) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error || 'Nie udało się.'));
+      setMsg({ ok: true, text: action === 'withdraw' ? 'Prośba wycofana.' : data?.status === 'OFFICE_REVIEW' ? 'Wysłane ponownie do kierownika.' : 'Opublikowane z kredytu biura.' });
+      window.dispatchEvent(new Event('crm-data-refresh'));
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Nie udało się.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className={`eos-sig-box ${status === 'OFFICE_REVIEW' ? 'eos-sig--warn' : 'eos-sig--bad'} space-y-2 px-4 py-3`}>
+      <p className="text-[13.5px] font-semibold">
+        {status === 'OFFICE_REVIEW'
+          ? `Czeka na zatwierdzenie kierownika${offer.officeSubmittedAt ? ` · wysłane ${relative(offer.officeSubmittedAt)}` : ''}`
+          : 'Kierownik odesłał ogłoszenie do poprawy'}
+      </p>
+      {status === 'OFFICE_REJECTED' && offer.officeReviewNote ? <p className="text-[13px]">„{offer.officeReviewNote}”</p> : null}
+      <div className="flex flex-wrap gap-2">
+        {status === 'OFFICE_REVIEW' ? (
+          <button type="button" className="crmx-btn crmx-btn--sm" disabled={busy} onClick={() => void call('withdraw')}>Wycofaj prośbę</button>
+        ) : (
+          <>
+            <a className="crmx-btn crmx-btn--sm" href={`/edytuj-oferte/${offer.id}`}>Popraw ogłoszenie</a>
+            <button type="button" className="crmx-btn crmx-btn--sm crmx-btn--primary" disabled={busy} onClick={() => void call('submit')}>Wyślij ponownie</button>
+          </>
+        )}
+      </div>
+      {msg ? <p className={`crmx-dealsheet__msg ${msg.ok ? 'is-ok' : 'is-bad'}`}>{msg.text}</p> : null}
+    </section>
   );
 }

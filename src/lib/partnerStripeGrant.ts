@@ -1,4 +1,5 @@
 import { PlanType } from '@prisma/client';
+import { writeOfficeLedger } from '@/lib/crm/officeCredits';
 import { prisma } from '@/lib/prisma';
 import { ensureAgencyCompanyForAgentUser, getUserAgencyMembership } from '@/lib/agencyCompany';
 import { ensureMobileIapTables } from '@/lib/mobileIapTables';
@@ -168,6 +169,7 @@ export async function grantPartnerPlanFromStripeCheckout(params: {
     });
 
     await unfreezeMemberCredits(tx, company.id, mergedExpiry);
+    await writeOfficeLedger(tx, { companyId: company.id, delta: plan.creditsPerMonth, kind: 'PARTNER', refType: 'partner', refId: `${company.id}:${Date.now()}`, note: `Pakiet Partner · +${plan.creditsPerMonth} kredytów` });
 
     await tx.$executeRawUnsafe(
       `
@@ -229,6 +231,7 @@ async function grantPartnerPlanPeriod(params: {
     });
 
     await unfreezeMemberCredits(tx, company.id, mergedExpiry);
+    await writeOfficeLedger(tx, { companyId: company.id, delta: params.plan.creditsPerMonth, kind: 'PARTNER', refType: 'partner', refId: `${company.id}:${Date.now()}`, note: `Pakiet Partner · +${params.plan.creditsPerMonth} kredytów` });
 
     await tx.$executeRawUnsafe(
       `
@@ -445,6 +448,7 @@ export async function grantPartnerProTrial(userId: number): Promise<{
     });
 
     await unfreezeMemberCredits(tx, company.id, mergedExpiry);
+    await writeOfficeLedger(tx, { companyId: company.id, delta: plan.creditsPerMonth, kind: 'PARTNER', refType: 'partner', refId: `${company.id}:${Date.now()}`, note: `Pakiet Partner · +${plan.creditsPerMonth} kredytów` });
 
     await tx.$executeRawUnsafe(
       `
@@ -528,6 +532,7 @@ export async function grantPartnerFreeTierOnSignup(userId: number): Promise<{
     });
 
     await unfreezeMemberCredits(tx, company.id, mergedExpiry);
+    await writeOfficeLedger(tx, { companyId: company.id, delta: plan.creditsPerMonth, kind: 'PARTNER', refType: 'partner', refId: `${company.id}:${Date.now()}`, note: `Pakiet Partner · +${plan.creditsPerMonth} kredytów` });
 
     await tx.$executeRawUnsafe(
       `

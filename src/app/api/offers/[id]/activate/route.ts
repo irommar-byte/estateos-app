@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { resolveWebUserId } from "@/lib/webSessionAuth";
 import { getPublicationQuote, submitOfferActivation } from "@/lib/offerPublication";
 import { markProfilePromoCardUsed } from "@/lib/profilePromoCards";
+import { notifyManagersAboutOwnCreditListing, submitOfferForOfficeActivation } from "@/lib/crm/officeOfferReview";
 
 type RouteContext = {
   params: Promise<{ id: string }> | { id: string };
@@ -33,6 +34,30 @@ export async function POST(req: Request, context: RouteContext) {
     }
 
     const pub = (body?.publication ?? body) as Record<string, unknown>;
+
+    // Kredyt biura: kierownik publikuje od razu, agent w ramach limitu też, pozostali wysyłają prośbę do kierownika.
+    if (pub?.kind === "OFFICE_CREDIT") {
+      const office = await submitOfferForOfficeActivation({ offerId, actorUserId: userId });
+      if (!office.ok) {
+        return NextResponse.json(
+          { errorCode: office.code || "OFFICE_REVIEW_FAILED", message: office.error },
+          { status: office.status || 400 },
+        );
+      }
+      const awaitingOffice = office.status === "OFFICE_REVIEW";
+      return NextResponse.json({
+        success: true,
+        offerId,
+        awaitingOffice,
+        awaitingModeration: Boolean(office.awaitingModeration),
+        publication: { status: awaitingOffice ? "PENDING" : office.awaitingModeration ? "PENDING" : "ACTIVE", kind: "OFFICE_CREDIT" },
+        message: awaitingOffice
+          ? "Prośba trafiła do kierownika biura. Gdy zatwierdzi, ogłoszenie zostanie opłacone z kredytu biura."
+          : office.awaitingModeration
+            ? "Opłacone z kredytu biura — ogłoszenie czeka na weryfikację EstateOS."
+            : "Ogłoszenie jest na rynku — opłacone z kredytu biura.",
+      });
+    }
     const txId = String(body?.iapTransactionId ?? pub?.iapTransactionId ?? "").trim();
     const bonusCouponId = String(pub?.bonusCouponId ?? body?.bonusCouponId ?? "").trim();
     const bypassPaymentRequirement =
@@ -72,6 +97,11 @@ export async function POST(req: Request, context: RouteContext) {
       iapProductId: quote.productId,
       onFreeFirstCouponUsed: markProfilePromoCardUsed,
     });
+
+    // Agent biura z własnych kredytów: publikacja liczy się jako biurowa, kierownik dostaje informację.
+    if (!staged.alreadyActive && activationKind === "PLUS_CREDIT") {
+      void notifyManagersAboutOwnCreditListing({ userId, offerId }).catch(() => undefined);
+    }
 
     if (staged.alreadyActive) {
       return NextResponse.json({

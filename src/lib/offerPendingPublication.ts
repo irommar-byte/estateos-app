@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 
-export type PendingPublicationKind = "FREE_FIRST" | "PLUS_CREDIT" | "PLUS_PAID";
+export type PendingPublicationKind = "FREE_FIRST" | "PLUS_CREDIT" | "PLUS_PAID" | "OFFICE_CREDIT";
 
 export async function ensureOfferPendingPublicationColumns() {
   // Schema is applied by prisma/manual/sql/2026-09-09_legacy_runtime_tables.sql
@@ -83,7 +83,8 @@ export async function readPendingPublication(offerId: number): Promise<{
   const kind =
     row.pendingPublicationKind === "FREE_FIRST" ||
     row.pendingPublicationKind === "PLUS_CREDIT" ||
-    row.pendingPublicationKind === "PLUS_PAID"
+    row.pendingPublicationKind === "PLUS_PAID" ||
+    row.pendingPublicationKind === "OFFICE_CREDIT"
       ? (row.pendingPublicationKind as PendingPublicationKind)
       : null;
   return {

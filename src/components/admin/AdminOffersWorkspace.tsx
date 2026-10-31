@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import AdminModerationToggles from "@/components/admin/AdminModerationToggles";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -390,6 +391,8 @@ export default function AdminOffersWorkspace() {
             </button>
           </div>
         </header>
+
+        <AdminModerationToggles />
 
         <nav className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-1 [scrollbar-width:none]">
           {tabs.map((tab) => {

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { writeOfficeLedger } from '@/lib/crm/officeCredits';
 import { logTeamEvent } from '@/lib/crm/teamLog';
 import type { AgencyMemberRole, AgencyMemberStatus, AgencyAgentTitle } from '@prisma/client';
 import {
@@ -588,7 +589,7 @@ export async function transferCompanyCredits(params: {
         plusExpiresAt: mergedExpiry,
       },
     });
-    await tx.agencyCompanyCreditTransfer.create({
+    const transfer = await tx.agencyCompanyCreditTransfer.create({
       data: {
         companyId,
         toUserId,
@@ -596,6 +597,17 @@ export async function transferCompanyCredits(params: {
         note: note?.trim() || null,
         createdById: adminUserId,
       },
+      select: { id: true },
+    });
+    await writeOfficeLedger(tx, {
+      companyId,
+      delta: -amount,
+      kind: 'TRANSFER',
+      userId: adminUserId,
+      forUserId: toUserId,
+      refType: 'transfer',
+      refId: String(transfer.id),
+      note: `transfer:${transfer.id}`,
     });
   });
   const recipient = await prisma.user.findUnique({ where: { id: toUserId }, select: { name: true } });

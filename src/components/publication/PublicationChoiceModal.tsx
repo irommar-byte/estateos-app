@@ -8,7 +8,8 @@ import EosModal from "@/components/ui/EosModal";
 export type PublicationRedemption =
   | { kind: "FREE_FIRST"; bonusCouponId: string }
   | { kind: "PLUS_CREDIT"; consumePlusPublication: true }
-  | { kind: "PLUS_PAID"; iapTransactionId?: string };
+  | { kind: "PLUS_PAID"; iapTransactionId?: string }
+  | { kind: "OFFICE_CREDIT" };
 
 export type PublicationCouponOption = {
   id: string;

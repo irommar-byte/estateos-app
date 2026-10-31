@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Ticket, ShoppingBag, Sparkles, Gift, CheckCircle2 } from "lucide-react";
+import { Ticket, ShoppingBag, Sparkles, Gift, CheckCircle2, Building2 } from "lucide-react";
+import type { OfficePublicationOption } from "@/lib/crm/officeCredits";
 import { PAKIET_PLUS_PRICE_LABEL } from "@/lib/publicationConstants";
 import type { PublicationSelection } from "@/lib/publicationSelection";
 import { defaultPublicationSelection } from "@/lib/publicationSelection";
@@ -22,6 +23,7 @@ type WalletData = {
   hasPlusCredit: boolean;
   coupons: WalletCoupon[];
   couponCount: number;
+  office?: OfficePublicationOption | null;
 };
 
 type WalletOverride = {
@@ -29,6 +31,7 @@ type WalletOverride = {
   plusCredits: number;
   hasPlusCredit: boolean;
   plusExpiresAt?: string | null;
+  office?: OfficePublicationOption | null;
 };
 
 type Props = {
@@ -106,6 +109,7 @@ export default function PublicationWalletPanel({
         hasPlusCredit: walletOverride.hasPlusCredit,
         coupons: walletOverride.coupons,
         couponCount: walletOverride.coupons.length,
+        office: walletOverride.office ?? null,
       });
       setLoading(false);
       setLoadError(null);
@@ -117,6 +121,7 @@ export default function PublicationWalletPanel({
   const coupons = wallet?.coupons ?? [];
   const hasPlusCredit = Boolean(wallet?.hasPlusCredit);
   const plusCredits = Number(wallet?.plusCredits || 0);
+  const office = wallet?.office ?? null;
 
   const expiryLabel =
     wallet?.plusExpiresAt && wallet.hasPlusCredit
@@ -257,6 +262,8 @@ export default function PublicationWalletPanel({
             </div>
           )}
 
+          {office ? <OfficeCreditOption office={office} active={resolvedSelection === "office_credit"} onPick={() => pick("office_credit")} /> : null}
+
           <div>
             <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
               <Sparkles size={14} /> {ao.walletPlusPackage}
@@ -321,6 +328,53 @@ export default function PublicationWalletPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Kredyt biura (granatowa moneta): kierownik publikuje od razu, agent w limicie też, pozostali wysyłają prośbę. */
+function OfficeCreditOption({ office, active, onPick }: { office: OfficePublicationOption; active: boolean; onPick: () => void }) {
+  const empty = !office.poolActive || (office.mode !== "request" && office.balance <= 0);
+  const title =
+    office.mode === "direct"
+      ? "Opublikuj z puli biura"
+      : office.mode === "limit"
+        ? "Z kredytu biura — bez czekania"
+        : "Wyślij do zatwierdzenia przez kierownika";
+  const line = !office.poolActive
+    ? "Kredyty biura są zamrożone — kierownik musi przedłużyć pakiet Partner."
+    : office.mode === "direct"
+      ? office.balance > 0
+        ? `W puli zostanie ${office.balance - 1}.`
+        : "Pula biura jest pusta — dokup kredyty biurowe w granatowej monecie."
+      : office.mode === "limit"
+        ? `W tym miesiącu zostało Ci ${office.remaining} bez zgody kierownika.`
+        : "Kierownik zatwierdzi publikację i opłaci ją kredytem biura. Dostaniesz powiadomienie.";
+  return (
+    <div>
+      <p className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[#4a6cc4]">
+        <Building2 size={14} /> Kredyt biura · {office.companyName}
+      </p>
+      <button
+        type="button"
+        disabled={empty}
+        onClick={onPick}
+        className={`flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-55 ${
+          active
+            ? "border-[#4a6cc4]/70 bg-[#2c4ea6]/10 shadow-[0_0_24px_rgba(44,78,166,0.18)]"
+            : "border-[color:var(--eos-border)] bg-[color:var(--eos-input)] hover:border-[color:var(--eos-border-strong)]"
+        }`}
+      >
+        <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl border border-[#4a6cc4]/35 bg-[linear-gradient(145deg,#22408f,#142b6b)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]">
+          <span className="text-xl font-black tabular-nums">{office.balance}</span>
+          <span className="text-[8px] font-black uppercase tracking-widest text-[#dbe4ff]">Biuro</span>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-[color:var(--eos-text)]">{title}</p>
+          <p className="mt-1 text-xs text-[color:var(--eos-muted)]">{line}</p>
+        </div>
+        <SelectRing active={active} />
+      </button>
     </div>
   );
 }

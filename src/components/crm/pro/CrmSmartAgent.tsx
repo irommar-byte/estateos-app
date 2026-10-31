@@ -11,10 +11,13 @@ type Triggers = { like: boolean; maybe: boolean; favorite: boolean };
 type Access = {
   active: boolean;
   mode: 'enterprise' | 'paid' | null;
+  paidWith: 'office' | 'personal' | null;
   from: string | null;
   until: string | null;
   seat: { enterprise: boolean; holderUserId: number | null; holderName: string | null; isAdmin: boolean } | null;
   canBuy: { ok: boolean; from: 'pool' | 'personal' | null; reason: string | null; missing: number };
+  canRequest: boolean;
+  requestedAt: string | null;
 };
 type Item = {
   matchId: number;
@@ -36,8 +39,24 @@ export type SmartAgentData = {
   triggers: Triggers;
   board: { items: Item[]; stats: { sent: number; reactions: number; toFunnel: number; toFunnelValue: number; buyers: number } };
   candidates: Array<{ userId: number; name: string }>;
-  search: { url: string; qrUrl: string; leads: number; lastLeadAt: string | null };
+  search: {
+    url: string | null;
+    qrUrl: string | null;
+    scope: 'enterprise' | 'office' | 'personal' | null;
+    canRegenerate: boolean;
+    leads: number;
+    lastLeadAt: string | null;
+  };
+  officeSeats: Array<{ userId: number; name: string; until: string }>;
+  isManager: boolean;
 };
+
+const PERSONAL_PRICE = 5;
+const OFFICE_PRICE = 10;
+
+function openOfficeCredits() {
+  window.dispatchEvent(new Event('openOfficeCredits'));
+}
 
 export function useSmartAgent() {
   const [data, setData] = useState<SmartAgentData | null>(null);
@@ -67,6 +86,7 @@ async function post(action: string, extra: Record<string, unknown> = {}) {
   if (!res.ok || json?.success === false) throw new Error(String(json?.error || 'Nie udało się.'));
   window.dispatchEvent(new Event('smart-agent-refresh'));
   window.dispatchEvent(new Event('crm-deals-refresh'));
+  window.dispatchEvent(new Event('officeCreditsRefresh'));
 }
 
 /** Przycisk płatności za brakujące kredyty — po opłaceniu wraca do CRM z kredytami na koncie. */
@@ -102,6 +122,83 @@ function BuyMissingCredits({ missing, className, onError }: { missing: number; c
   );
 }
 
+/**
+ * Jak włączyć Smart Agenta: kierownik — z puli biura (10 kredytów biurowych),
+ * agent — za 5 własnych kredytów albo prośbą do kierownika o włączenie z puli.
+ */
+function SmartEnableActions({
+  access,
+  isManager,
+  ctaClass,
+  ghostClass,
+  onDone,
+  onError,
+}: {
+  access: Access;
+  isManager: boolean;
+  ctaClass: string;
+  ghostClass: string;
+  onDone: (text: string) => void;
+  onError: (text: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const run = async (action: string, extra: Record<string, unknown>, ok: string) => {
+    setBusy(true);
+    try {
+      await post(action, extra);
+      onDone(ok);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Nie udało się.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const pool = access.canBuy.ok && access.canBuy.from === 'pool';
+  const personal = access.canBuy.ok && access.canBuy.from === 'personal';
+  return (
+    <>
+      {pool ? (
+        <button type="button" className={ctaClass} disabled={busy} onClick={() => void run('buy', { from: 'pool' }, 'Smart Agent OS™ włączony na 30 dni — z puli biura.')}>
+          <Zap size={14} /> Włącz za {OFFICE_PRICE} kredytów biura
+        </button>
+      ) : null}
+      {personal ? (
+        <button type="button" className={pool ? ghostClass : ctaClass} disabled={busy} onClick={() => void run('buy', { from: 'personal' }, 'Smart Agent OS™ włączony na 30 dni.')}>
+          <Zap size={14} /> Włącz za {PERSONAL_PRICE} kredytów
+        </button>
+      ) : null}
+      {!access.canBuy.ok ? (
+        <BuyMissingCredits missing={access.canBuy.missing} className={isManager || access.canRequest ? ghostClass : ctaClass} onError={onError} />
+      ) : null}
+      {isManager && !pool ? (
+        <button type="button" className={access.canBuy.ok ? ghostClass : ctaClass} onClick={openOfficeCredits}>
+          <Zap size={14} /> Dokup kredyty biurowe
+        </button>
+      ) : null}
+      {!isManager && access.canRequest ? (
+        access.requestedAt ? (
+          <span className="crmx-chip crmx-chip--warn">Prośba wysłana do kierownika · {stamp(access.requestedAt)}</span>
+        ) : (
+          <button
+            type="button"
+            className={personal ? ghostClass : ctaClass}
+            disabled={busy}
+            onClick={() => void run('request', {}, 'Prośba wysłana — kierownik włączy Smart Agenta z puli biura.')}
+          >
+            <Send size={14} /> Poproś kierownika ({OFFICE_PRICE} kredytów biura)
+          </button>
+        )
+      ) : null}
+    </>
+  );
+}
+
+const SCOPE_LABEL: Record<'enterprise' | 'office' | 'personal', string> = {
+  enterprise: 'Link biura — prowadzi do osoby, która ma teraz stanowisko Enterprise (bez niej: do kierownika).',
+  office: 'Link biura — stanowisko opłacone z puli; po przeniesieniu pokaże nowego agenta, a po wygaśnięciu kierownika.',
+  personal: 'Twój link — działa, dopóki masz aktywny Smart Agent OS™. Kod jest losowy, nie da się go podmienić.',
+};
+
 /* ───────── wyszukiwarka /szukam w imieniu agenta ───────── */
 
 const SHARE_TEXT = 'Dzień dobry, opisz proszę w dwie minuty, czego szukasz — od razu zacznę dobierać dla Ciebie oferty:';
@@ -113,11 +210,26 @@ function SmartSearchCard({ search, active }: { search: SmartAgentData['search'];
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const text = `${SHARE_TEXT} ${search.url}`;
+  const url = search.url || '';
+  const text = `${SHARE_TEXT} ${url}`;
+
+  const regenerate = async () => {
+    if (!window.confirm('Wygenerować nowy link? Stary przestanie działać — także w wysłanych wiadomościach i na wydrukach.')) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await post('regenerate_link');
+      setMsg({ ok: true, text: 'Nowy link gotowy — stary już nie działa.' });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Nie udało się.' });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(search.url);
+      await navigator.clipboard.writeText(url);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -156,21 +268,31 @@ function SmartSearchCard({ search, active }: { search: SmartAgentData['search'];
         </div>
       </div>
 
-      {active ? (
+      {active && url ? (
         <>
           <div className="crmx-smartsearch__link">
-            <span className="crmx-smartsearch__url">{search.url}</span>
+            <span className="crmx-smartsearch__url">{url}</span>
             <button type="button" className="crmx-btn crmx-btn--sm" onClick={() => void copy()}>
               {copied ? <><Check size={13} /> Skopiowano</> : <><Copy size={13} /> Kopiuj</>}
             </button>
           </div>
+          {search.scope ? (
+            <p className="crmx-smartsearch__label">
+              {SCOPE_LABEL[search.scope]}{' '}
+              {search.canRegenerate ? (
+                <button type="button" className="crmx-link" disabled={busy} onClick={() => void regenerate()}>
+                  Wygeneruj nowy link
+                </button>
+              ) : null}
+            </p>
+          ) : null}
           <div className="crmx-smartsearch__share">
             <a className="crmx-btn crmx-btn--sm" href={`sms:?&body=${encodeURIComponent(text)}`}><Smartphone size={13} /> SMS</a>
             <a className="crmx-btn crmx-btn--sm" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer"><MessageCircle size={13} /> WhatsApp</a>
             <a className="crmx-btn crmx-btn--sm" href={`mailto:?subject=${encodeURIComponent('Znajdę dla Ciebie nieruchomość')}&body=${encodeURIComponent(text)}`}><Mail size={13} /> Z Twojej poczty</a>
             <button type="button" className="crmx-btn crmx-btn--sm" aria-pressed={qr} onClick={() => setQr((v) => !v)}><QrCode size={13} /> Kod QR</button>
           </div>
-          {qr ? (
+          {qr && search.qrUrl ? (
             <div className="crmx-smartsearch__qr">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={search.qrUrl} alt="Kod QR do Twojej wyszukiwarki" width={168} height={168} />
@@ -235,7 +357,11 @@ export function SmartLifeBar({ access, compact = false }: { access: Access; comp
         <div className="crmx-life__fill" style={{ width: `${(ratio * 100).toFixed(2)}%` }} />
       </div>
       {!compact ? (
-        <p className="crmx-life__mode">{access.mode === 'enterprise' ? 'Stanowisko z pakietu Partner Enterprise' : 'Włączone za 5 kredytów'}</p>
+        <p className="crmx-life__mode">{access.mode === 'enterprise'
+            ? 'Stanowisko z pakietu Partner Enterprise'
+            : access.paidWith === 'office'
+              ? `Włączone z puli biura (${OFFICE_PRICE} kredytów biurowych)`
+              : `Włączone za ${PERSONAL_PRICE} kredytów`}</p>
       ) : null}
     </div>
   );
@@ -245,7 +371,6 @@ export function SmartLifeBar({ access, compact = false }: { access: Access; comp
 
 export function SmartAgentDock({ onOpen }: { onOpen: () => void }) {
   const { data } = useSmartAgent();
-  const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const access = data?.access;
   const active = Boolean(access?.active);
@@ -254,18 +379,6 @@ export function SmartAgentDock({ onOpen }: { onOpen: () => void }) {
     for (const i of data?.board.items || []) if (i.stage in c) c[i.stage as keyof typeof c] += 1;
     return c;
   }, [data]);
-
-  const buy = async () => {
-    setBusy(true);
-    setMsg(null);
-    try {
-      await post('buy');
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Nie udało się.');
-    } finally {
-      setBusy(false);
-    }
-  };
 
   return (
     <>
@@ -297,14 +410,17 @@ export function SmartAgentDock({ onOpen }: { onOpen: () => void }) {
             <p className="crmx-smartcol__fine">
               1 stanowisko w <b>Partner Enterprise</b>
               {access?.seat?.enterprise && access.seat.holderName ? ` (ma je: ${access.seat.holderName})` : ''} albo{' '}
-              <b>5 kredytów / 30 dni</b>.
+              <b>{OFFICE_PRICE} kredytów biura</b> albo <b>{PERSONAL_PRICE} własnych</b> na 30 dni.
             </p>
-            {access?.canBuy.ok ? (
-              <button type="button" className="crmx-smartcol__cta" disabled={busy} onClick={() => void buy()}>
-                <Zap size={14} /> Włącz za 5 kredytów
-              </button>
-            ) : access ? (
-              <BuyMissingCredits missing={access.canBuy.missing} className="crmx-smartcol__cta" onError={setMsg} />
+            {access ? (
+              <SmartEnableActions
+                access={access}
+                isManager={Boolean(data?.isManager)}
+                ctaClass="crmx-smartcol__cta"
+                ghostClass="crmx-smartcol__link"
+                onDone={() => setMsg(null)}
+                onError={setMsg}
+              />
             ) : null}
             <button type="button" className="crmx-smartcol__link" onClick={onOpen}>Zobacz, jak działa</button>
             {msg ? <p className="crmx-smartcol__err">{msg}</p> : null}
@@ -339,6 +455,8 @@ export default function CrmSmartAgentBoard({ onOpenClient }: { onOpenClient: (cl
   const { data, error } = useSmartAgent();
   const [draft, setDraft] = useState<Triggers | null>(null);
   const [seatTo, setSeatTo] = useState<string>('');
+  const [enableFor, setEnableFor] = useState<string>('');
+  const [moveTo, setMoveTo] = useState<Record<number, string>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const now = useNow(60_000);
@@ -379,23 +497,20 @@ export default function CrmSmartAgentBoard({ onOpenClient }: { onOpenClient: (cl
           <p className="crmx-smarthero__sub">
             {access.active
               ? `Dopasowuje oferty z całego rynku do Twoich kupujących, wysyła je i zbiera reakcje. Do lejka przekazuje tylko tych, którzy reagują tak, jak ustawisz niżej.`
-              : `Ta tablica i przekazywanie reakcji do lejka działają dla agentów z aktywnym stanowiskiem: 1 stanowisko w pakiecie Partner Enterprise (domyślnie kierownik biura, który może je przenieść) albo 5 kredytów na 30 dni.`}
+              : `Ta tablica i przekazywanie reakcji do lejka działają dla agentów z aktywnym stanowiskiem: 1 stanowisko w pakiecie Partner Enterprise (domyślnie kierownik biura, który może je przenieść), ${OFFICE_PRICE} kredytów biura albo ${PERSONAL_PRICE} własnych kredytów na 30 dni.`}
           </p>
           {access.active ? (
             <SmartLifeBar access={access} />
           ) : (
             <div className="crmx-dealsheet__row">
-              {access.canBuy.ok ? (
-                <button type="button" className="crmx-btn crmx-btn--gold" disabled={busy} onClick={() => void run(() => post('buy'), 'Smart Agent OS™ włączony na 30 dni.')}>
-                  <Zap size={15} /> Włącz za 5 kredytów ({access.canBuy.from === 'pool' ? 'z puli biura' : 'z Twoich kredytów'})
-                </button>
-              ) : (
-                <BuyMissingCredits
-                  missing={access.canBuy.missing}
-                  className="crmx-btn crmx-btn--gold"
-                  onError={(text) => setMsg({ ok: false, text })}
-                />
-              )}
+              <SmartEnableActions
+                access={access}
+                isManager={data.isManager}
+                ctaClass="crmx-btn crmx-btn--gold"
+                ghostClass="crmx-btn"
+                onDone={(text) => setMsg({ ok: true, text })}
+                onError={(text) => setMsg({ ok: false, text })}
+              />
               <Link href="/cennik?tab=partner" className="crmx-btn">Partner Enterprise <ArrowRight size={14} /></Link>
             </div>
           )}
@@ -409,7 +524,7 @@ export default function CrmSmartAgentBoard({ onOpenClient }: { onOpenClient: (cl
             <b className="crmx-num">{s.toFunnelValue > 0 ? pln(s.toFunnelValue * 0.02) : '0 zł'}</b>
             <span>
               {s.toFunnelValue > 0
-                ? `potencjalnej prowizji (2% od ${pln(s.toFunnelValue)} wartości ofert przekazanych do lejka) — koszt: 5 kredytów`
+                ? `potencjalnej prowizji (2% od ${pln(s.toFunnelValue)} wartości ofert przekazanych do lejka) — koszt: ${access.paidWith === 'office' && access.mode !== 'enterprise' ? `${OFFICE_PRICE} kredytów biura` : access.mode === 'enterprise' ? 'w pakiecie Enterprise' : `${PERSONAL_PRICE} kredytów`}`
                 : 'potencjalnej prowizji — zacznie rosnąć, gdy kupujący przejdą do lejka'}
             </span>
           </div>
@@ -473,6 +588,82 @@ export default function CrmSmartAgentBoard({ onOpenClient }: { onOpenClient: (cl
                   Przekaż stanowisko
                 </button>
               </>
+            ) : null}
+          </section>
+        ) : null}
+
+        {data.isManager ? (
+          <section className="crmx-card crmx-smartset">
+            <p className="crmx-eyebrow">Smart Agent dla zespołu · z puli biura</p>
+            <p className="crmx-dealsheet__hint">
+              Włącz agentowi na 30 dni za {OFFICE_PRICE} kredytów biurowych. Link wyszukiwarki takiego stanowiska należy do biura.
+            </p>
+            <label className="crmx-input">
+              <select value={enableFor} onChange={(e) => setEnableFor(e.target.value)}>
+                <option value="">Wybierz agenta…</option>
+                {data.candidates
+                  .filter((c) => !data.officeSeats.some((o) => o.userId === c.userId))
+                  .map((c) => (
+                    <option key={c.userId} value={c.userId}>
+                      {c.userId === data.userId ? `${c.name} (Ty)` : c.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <div className="crmx-dealsheet__row">
+              <button
+                type="button"
+                className="crmx-btn crmx-btn--gold"
+                disabled={busy || !enableFor}
+                onClick={() =>
+                  void run(async () => {
+                    await post('buy', { forUserId: Number(enableFor), from: 'pool' });
+                    setEnableFor('');
+                  }, 'Smart Agent OS™ włączony — agent dostał powiadomienie.')
+                }
+              >
+                <Zap size={14} /> Włącz · {OFFICE_PRICE} kredytów biura
+              </button>
+              <button type="button" className="crmx-btn" onClick={openOfficeCredits}>Kredyty biura</button>
+            </div>
+            {data.officeSeats.length ? (
+              <ul className="crmx-list">
+                {data.officeSeats.map((o) => (
+                  <li key={o.userId} className="crmx-approvals__item">
+                    <div className="crmx-approvals__main">
+                      <div className="min-w-0 flex-1">
+                        <span className="crmx-row__title block">{o.name}</span>
+                        <span className="crmx-row__sub block">z puli biura · do {stamp(o.until)}</span>
+                      </div>
+                    </div>
+                    <div className="crmx-approvals__actions">
+                      <label className="crmx-input" style={{ flex: 1 }}>
+                        <select value={moveTo[o.userId] || ''} onChange={(e) => setMoveTo({ ...moveTo, [o.userId]: e.target.value })}>
+                          <option value="">Przenieś na…</option>
+                          {data.candidates
+                            .filter((c) => c.userId !== o.userId && !data.officeSeats.some((x) => x.userId === c.userId))
+                            .map((c) => (
+                              <option key={c.userId} value={c.userId}>{c.name}</option>
+                            ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="crmx-btn crmx-btn--sm"
+                        disabled={busy || !moveTo[o.userId]}
+                        onClick={() =>
+                          void run(
+                            () => post('transfer_office_seat', { fromUserId: o.userId, toUserId: Number(moveTo[o.userId]) }),
+                            'Stanowisko przeniesione — pozostały czas i link biura przeszły na nowego agenta.',
+                          )
+                        }
+                      >
+                        Przenieś
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             ) : null}
           </section>
         ) : null}

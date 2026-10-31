@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { runTeamDaySummaries } from '@/lib/crm/teamDaySummary';
+import { remindStaleOfficeReviews } from '@/lib/crm/officeOfferReview';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -14,12 +15,19 @@ function isAuthorized(req: Request): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** Codzienne podsumowanie dnia każdego agenta w Dzienniku zespołu (od 20:00, raz na dzień). */
+/**
+ * Co godzinę: podsumowanie dnia każdego agenta w Dzienniku zespołu (od 20:00, raz na dzień)
+ * oraz przypomnienie kierownikom o prośbach o publikację czekających ponad 12 godzin.
+ */
 async function run(req: Request) {
   if (!isAuthorized(req)) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
   const force = new URL(req.url).searchParams.get('force') === '1';
+  const officeReminders = await remindStaleOfficeReviews().catch((error) => {
+    console.warn('[team-day-summary] przypomnienia o prośbach', error);
+    return 0;
+  });
   const result = await runTeamDaySummaries({ force });
-  return NextResponse.json({ ok: true, ...result });
+  return NextResponse.json({ ok: true, officeReminders, ...result });
 }
 
 export const GET = run;

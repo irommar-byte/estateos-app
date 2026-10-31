@@ -5,15 +5,19 @@ type Props = {
   loading?: boolean;
   spinning?: boolean;
   size?: "sm" | "md";
+  /** gold — kredyty osobiste; office — granatowa moneta puli biura */
+  variant?: "gold" | "office";
+  /** mało kredytów — moneta pulsuje pomarańczową poświatą (sygnał „wymaga uwagi”) */
+  alert?: boolean;
 };
 
-export default function EosCreditCoin({ count, loading, spinning, size = "sm" }: Props) {
+export default function EosCreditCoin({ count, loading, spinning, size = "sm", variant = "gold", alert = false }: Props) {
   const dim = size === "md" ? 44 : 36;
   const label = loading ? "…" : String(Math.max(0, count ?? 0));
 
   return (
     <div
-      className="eos-coin-scene relative flex items-center justify-center"
+      className={`eos-coin-scene relative flex items-center justify-center ${variant === "office" ? "is-office" : ""} ${alert ? "is-alert" : ""}`}
       style={{ width: dim, height: dim }}
       aria-hidden
     >
@@ -24,7 +28,7 @@ export default function EosCreditCoin({ count, loading, spinning, size = "sm" }:
         </div>
         <div className="eos-coin-face eos-coin-back">
           <span className="eos-coin-brand">EOS</span>
-          <span className="eos-coin-sub">PLUS</span>
+          <span className="eos-coin-sub">{variant === "office" ? "BIURO" : "PLUS"}</span>
         </div>
         <div className="eos-coin-rim" />
         <div className="eos-coin-shine" />
@@ -117,6 +121,48 @@ export default function EosCreditCoin({ count, loading, spinning, size = "sm" }:
           font-weight: 900;
           letter-spacing: 0.16em;
           color: #713f12;
+        }
+        /* Granatowa moneta biura */
+        .is-office .eos-coin-face {
+          box-shadow:
+            inset 0 1px 2px rgba(255, 255, 255, 0.4),
+            inset 0 -2px 5px rgba(8, 20, 60, 0.45),
+            0 2px 6px rgba(0, 0, 0, 0.25);
+        }
+        .is-office .eos-coin-front {
+          background:
+            radial-gradient(circle at 32% 28%, #e8eeff 0%, transparent 38%),
+            conic-gradient(from 210deg, #a9bdf0, #22408f, #4a6cc4, #142b6b, #a9bdf0);
+          border-color: rgba(74, 108, 196, 0.6);
+        }
+        .is-office .eos-coin-back {
+          background:
+            radial-gradient(circle at 35% 30%, #dfe7ff 0%, transparent 38%),
+            conic-gradient(from 30deg, #2c4ea6, #142b6b, #5b7bd0, #0c1d4f, #2c4ea6);
+          border-color: rgba(44, 78, 166, 0.55);
+        }
+        .is-office .eos-coin-rim {
+          background: linear-gradient(135deg, #0a1a4a, #1d3a8a 45%, #b9c9f5 58%, #08153d);
+        }
+        .is-office .eos-coin-brand { color: #dbe4ff; }
+        .is-office .eos-coin-count { color: #ffffff; text-shadow: 0 1px 1px rgba(8, 20, 60, 0.6); }
+        .is-office .eos-coin-sub { color: #dbe4ff; }
+        /* Mało kredytów: pomarańczowa poświata płynnie mruga */
+        .is-alert::after {
+          content: "";
+          position: absolute;
+          inset: -3px;
+          border-radius: 999px;
+          box-shadow: 0 0 12px 3px rgba(249, 140, 22, 0.75);
+          animation: eosCoinAlert 0.7s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+          pointer-events: none;
+        }
+        @keyframes eosCoinAlert {
+          from { opacity: 1; }
+          to { opacity: 0.1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .is-alert::after { animation: none; opacity: 0.8; }
         }
         @keyframes eosCoinFloat {
           0%,

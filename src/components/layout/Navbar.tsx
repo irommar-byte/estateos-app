@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import NotificationCenter from "@/components/NotificationCenter";
+import OfficeCreditNavButton from "@/components/wallet/OfficeCreditNavButton";
 import ContactMessagesNavButton from "@/components/contact/ContactMessagesNavButton";
 import PublicationWalletNavButton from "@/components/wallet/PublicationWalletNavButton";
 import NavbarProfileChip from "@/components/layout/NavbarProfileChip";
@@ -339,6 +340,7 @@ export default function Navbar() {
             {user && (
               <>
                 <PublicationWalletNavButton />
+                <OfficeCreditNavButton />
                 <ContactMessagesNavButton />
                 <NotificationCenter />
               </>
@@ -391,6 +393,7 @@ export default function Navbar() {
 
           <div className="flex shrink-0 items-center justify-end gap-1 lg:hidden">
             {user && mobileChrome.wallet ? <PublicationWalletNavButton /> : null}
+            {user && mobileChrome.wallet ? <OfficeCreditNavButton /> : null}
             {user && mobileChrome.messages ? <ContactMessagesNavButton /> : null}
             {user && mobileChrome.bell ? <NotificationCenter /> : null}
             {user ? (

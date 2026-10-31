@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveWebUserId } from "@/lib/webSessionAuth";
 import { getPublicationWallet } from "@/lib/publicationWallet";
+import { officePublicationOption } from "@/lib/crm/officeCredits";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,8 @@ export async function GET(req: Request) {
   const locale = searchParams.get("locale") === "en" ? "en" : "pl";
 
   try {
-    const wallet = await getPublicationWallet(userId, locale);
-    return NextResponse.json({ success: true, ...wallet });
+    const [wallet, office] = await Promise.all([getPublicationWallet(userId, locale), officePublicationOption(userId)]);
+    return NextResponse.json({ success: true, ...wallet, office });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ success: false, error: message }, { status: 500 });

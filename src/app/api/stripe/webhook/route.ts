@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import type { PropertyType, TransactionType } from '@prisma/client';
 import { grantInvestorProByEmail, isStripeInvestorProPlan } from '@/lib/investorProGrant';
 import { grantPlusCreditFromStripeCheckout } from '@/lib/stripePublication';
+import { grantOfficeCreditsFromCheckout, officeCreditPack } from '@/lib/crm/officeCredits';
 import {
   grantPartnerPlanFromStripeCheckout,
   grantPartnerPlanFromStripeInvoice,
@@ -103,6 +104,17 @@ export async function POST(req: Request) {
             console.log(
               `[stripe:webhook] partner_subscription email=${customerEmail} session=${checkoutSessionId} sub=${subscriptionId} trial=${isTrial} granted=${grant.granted}`,
             );
+          }
+        } else if (officeCreditPack(rawPlanType)) {
+          const companyId = Number(session.metadata?.company_id || 0);
+          if (companyId && session.payment_status === 'paid') {
+            const granted = await grantOfficeCreditsFromCheckout({
+              sessionId: checkoutSessionId,
+              companyId,
+              credits: Number(session.metadata?.credits || officeCreditPack(rawPlanType)?.credits || 0),
+              buyerUserId: metadataUserId || null,
+            });
+            console.log(`[stripe:webhook] office_credits company=${companyId} session=${checkoutSessionId} granted=${granted}`);
           }
         } else if (rawPlanType === 'pakiet_plus') {
           const user = await prisma.user.findUnique({

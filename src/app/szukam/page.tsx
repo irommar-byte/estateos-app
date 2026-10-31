@@ -23,8 +23,7 @@ export default async function SzukamPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const agentParam = Number(Array.isArray(sp.agent) ? sp.agent[0] : sp.agent);
-  if (agentParam > 0) redirect(`/szukam/a/${agentParam}`);
+  const linkInactive = sp.link === 'inactive';
   if (sp.agent != null || sp.ref != null || sp.invite != null) {
     redirect('/szukam');
   }
@@ -67,7 +66,13 @@ export default async function SzukamPage({
   }
 
   return (
-    <BuyerIntakeFlowClient
+    <>
+      {linkInactive ? (
+        <div role="status" className="fixed inset-x-0 top-3 z-50 mx-auto w-[min(92vw,30rem)] rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-4 py-3 text-center text-[13px] leading-relaxed text-[var(--eos-muted)] shadow-lg">
+          Ten link agenta jest chwilowo nieaktywny. Możesz opisać, czego szukasz — poprowadzi Cię agent EstateOS™.
+        </div>
+      ) : null}
+      <BuyerIntakeFlowClient
       agent={{
         displayName: agent.displayName,
         companyName: agent.companyName,
@@ -75,6 +80,7 @@ export default async function SzukamPage({
         image: agent.image,
       }}
       initialMission={initialMission}
-    />
+      />
+    </>
   );
 }

@@ -331,6 +331,8 @@ export default function AgencyMemberDetailPanel({
                 </div>
               </section>
 
+              <OfficeCreditLimit memberUserId={member.userId} />
+
               <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 text-sm">
                 <div className="flex items-center gap-2 text-[var(--eos-muted)]">
                   <Clock size={14} /> Ostatnie logowanie:{' '}
@@ -460,5 +462,77 @@ export default function AgencyMemberDetailPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Kierownik: ile kredytów biura agent może w miesiącu wykorzystać bez czekania na zgodę (0 = zawsze prośba). */
+function OfficeCreditLimit({ memberUserId }: { memberUserId: number }) {
+  const [limit, setLimit] = useState<string>("");
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/agency-company/office-credits?memberLimit=${memberUserId}`, { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (typeof d?.memberLimit === 'number') {
+          setLimit(String(d.memberLimit));
+          setLoaded(true);
+        }
+      })
+      .catch(() => undefined);
+  }, [memberUserId]);
+
+  if (!loaded) return null;
+
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch('/api/agency-company/office-credits', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_limit', memberUserId, limit: Number(limit) || 0 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(data?.error || 'Nie udało się zapisać.'));
+      setMsg({ ok: true, text: 'Zapisano' });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Nie udało się zapisać.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4">
+      <h3 className="mb-1 text-sm font-black uppercase tracking-widest text-[var(--eos-text)]">Kredyty biura bez zgody</h3>
+      <p className="mb-3 text-xs text-[var(--eos-muted)]">
+        Ile ogłoszeń w miesiącu agent może opublikować z puli biura bez czekania na Twoje zatwierdzenie. 0 — każda publikacja przychodzi do Ciebie jako prośba.
+      </p>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min={0}
+          max={100}
+          value={limit}
+          onChange={(e) => setLimit(e.target.value)}
+          className="eos-field w-24"
+          aria-label="Limit kredytów biura na miesiąc"
+        />
+        <span className="text-xs text-[var(--eos-muted)]">na miesiąc</span>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void save()}
+          className="ml-auto rounded-full bg-[#a8844c] px-4 py-2 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
+        >
+          Zapisz
+        </button>
+      </div>
+      {msg ? <p className={`eos-sig mt-2 ${msg.ok ? 'eos-sig--ok' : 'eos-sig--bad'}`}>{msg.text}</p> : null}
+    </section>
   );
 }

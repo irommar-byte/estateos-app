@@ -831,6 +831,14 @@ export default function CRMDashboard() {
     }
   }, [currentUser, isAgencyWorkspace, activeTab]);
 
+  // Odświeżenie danych CRM na żądanie (np. po wycofaniu prośby do kierownika).
+  useEffect(() => {
+    const onCrmDataRefresh = () => void initCrm();
+    window.addEventListener('crm-data-refresh', onCrmDataRefresh);
+    return () => window.removeEventListener('crm-data-refresh', onCrmDataRefresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     // Czytamy zakładkę z powiadomienia
     const sParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;

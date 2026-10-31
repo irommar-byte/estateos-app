@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { resolveSmartLink } from '@/lib/crm/smartSearch';
 import { prisma } from '@/lib/prisma';
 import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
 import { formatAgentTitle, pickAgentAvatar, resolveProfileMediaUrl } from '@/lib/agentProfile';
@@ -75,7 +76,7 @@ async function loadBuyerIntakeAgentUser(where: { id: number } | { email: string 
   });
 }
 
-/** Ciasteczko z agentem z osobistego linku `/szukam/a/{id}` — formularz trafia wtedy do tego agenta. */
+/** Ciasteczko z kodem linku `/szukam/s/{kod}` — formularz trafia do agenta, którego link wskazuje w chwili wysłania. */
 export const BUYER_AGENT_COOKIE = 'eos_buyer_agent';
 export const BUYER_AGENT_COOKIE_MAX_AGE_SEC = 60 * 60 * 24 * 30;
 
@@ -112,9 +113,11 @@ export type BuyerIntakeAgent = {
 };
 
 export async function resolveBuyerIntakeAgent(): Promise<BuyerIntakeAgent | null> {
-  const linked = Number((await cookies()).get(BUYER_AGENT_COOKIE)?.value || 0);
-  if (linked > 0) {
-    const user = await loadLinkableBuyerAgent(linked);
+  const linkCode = String((await cookies()).get(BUYER_AGENT_COOKIE)?.value || '');
+  // Stare ciasteczka z numerem agenta (/szukam/a/{id}) już nic nie przypisują.
+  if (linkCode && !/^\d+$/.test(linkCode)) {
+    const resolved = await resolveSmartLink(linkCode);
+    const user = resolved.agentUserId ? await loadLinkableBuyerAgent(resolved.agentUserId) : null;
     if (user) return { ...(await mapBuyerIntakeAgent(user)), viaLink: true };
   }
 

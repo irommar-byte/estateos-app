@@ -1047,3 +1047,10 @@ html:not(.light) .crmx .crmx-chip:not(.crmx-chip--good):not(.crmx-chip--warn):no
 .crmx-smartsearch__row .crmx-input { flex: 1 1 140px; }
 .crmx-smartsearch__locked { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--x-ink-3); }
 @media (max-width: 640px) { .crmx-smartsearch__stat { align-items: flex-start; text-align: left; } }
+
+/* Kierownik · prośby agentów do zatwierdzenia */
+.crmx-approvals__item { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.crmx-approvals__main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.crmx-approvals__actions, .crmx-approvals__reject { display: flex; flex-wrap: wrap; gap: 6px; padding-left: 56px; }
+.crmx-approvals__msg { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 0 16px 14px; }
+@media (max-width: 640px) { .crmx-approvals__actions, .crmx-approvals__reject { padding-left: 0; } }

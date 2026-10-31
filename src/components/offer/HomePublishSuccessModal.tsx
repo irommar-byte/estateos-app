@@ -8,6 +8,8 @@ type HomePublishSuccessModalProps = {
   offerId: number | null;
   open: boolean;
   onClose: () => void;
+  /** Gdy ogłoszenie czeka (na kierownika biura albo weryfikację EstateOS) — ta informacja zamiast „opublikowane”. */
+  notice?: string | null;
 };
 
 const BURST = Array.from({ length: 18 }, (_, i) => i);
@@ -16,6 +18,7 @@ export default function HomePublishSuccessModal({
   offerId,
   open,
   onClose,
+  notice = null,
 }: HomePublishSuccessModalProps) {
   if (!offerId) return null;
 
@@ -110,10 +113,10 @@ export default function HomePublishSuccessModal({
               id="home-publish-success-title"
               className="mt-3 text-3xl font-black tracking-tight text-[var(--eos-text)] sm:text-4xl"
             >
-              Gratulacje!
+              {notice ? "Gotowe!" : "Gratulacje!"}
             </h2>
             <p className="mt-3 text-base font-semibold leading-snug text-emerald-600 dark:text-emerald-300">
-              Ogłoszenie opublikowane i widoczne w katalogu nieruchomości.
+              {notice || "Ogłoszenie opublikowane i widoczne w katalogu nieruchomości."}
             </p>
             <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
               Możesz edytować zdjęcia i dane w każdej chwili — powiadomienia o zapytaniach trafią na Twoje

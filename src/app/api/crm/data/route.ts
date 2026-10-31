@@ -39,6 +39,8 @@ const CRM_OFFER_CARD_SELECT = {
   condition: true,
   managementStatus: true,
   officeReviewStatus: true,
+  officeReviewNote: true,
+  officeSubmittedAt: true,
   promotedUntil: true,
   floorPlanUrl: true,
   floorPlan3dUrl: true,
@@ -190,7 +192,7 @@ export async function GET(req: Request) {
     const myOffers = myOffersRaw.map((offer) => {
       const kind = pendingByOfferId.get(Number(offer.id));
       const pendingKind =
-        kind === 'FREE_FIRST' || kind === 'PLUS_CREDIT' || kind === 'PLUS_PAID' ? kind : null;
+        kind === 'FREE_FIRST' || kind === 'PLUS_CREDIT' || kind === 'PLUS_PAID' || kind === 'OFFICE_CREDIT' ? kind : null;
       return {
         ...offer,
         imageUrl: resolveOfferPrimaryImage(offer),

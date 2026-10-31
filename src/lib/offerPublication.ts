@@ -1,4 +1,6 @@
 import { prisma } from '@/lib/prisma';
+import { consumeOfficeCreditsInTx } from '@/lib/crm/officeCredits';
+import { publishesWithoutModeration } from '@/lib/platformSettings';
 import { clearPendingEditChanges } from '@/lib/offerEditReview';
 import { notifyAdminsOfferPending } from '@/lib/adminAttentionPush';
 import { logWalletCouponConsume, logWalletCreditConsume } from '@/lib/walletLedger';
@@ -20,7 +22,8 @@ const PAKIET_PLUS_PRODUCT_ID = 'pl.estateos.app.pakiet_plus_30d';
 /** Schema ensure + consume credit can exceed Prisma default 5s on cold deploy. */
 const PUBLICATION_TX_OPTIONS = { timeout: 15_000 } as const;
 
-export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID' | 'PLUS_CREDIT';
+/** OFFICE_CREDIT — kredyt z puli biura (granatowa moneta), zatwierdzony przez kierownika albo w limicie agenta. */
+export type PublicationKind = 'FREE_FIRST' | 'PLUS_PAID' | 'PLUS_CREDIT' | 'OFFICE_CREDIT';
 export type PublicationEndReason = 'MANUAL_ARCHIVE' | 'SOLD' | 'ADMIN' | 'SOURCE_GONE';
 export type PublicationQuoteReason =
   | 'NOT_FIRST_OFFER'
@@ -340,6 +343,8 @@ async function consumePublicationEntitlementInTx(
     iapProductId?: string | null;
     bonusCouponId?: string | null;
     consumeFreeFirst?: boolean;
+    /** kto zdecydował o kredycie biura (kierownik); brak = agent sam, w ramach limitu */
+    officeApprovedById?: number | null;
   },
 ) {
   const txId = params.kind === 'PLUS_PAID' ? String(params.iapTransactionId || '').trim() : null;
@@ -382,6 +387,16 @@ async function consumePublicationEntitlementInTx(
     if (Number(consumeCredit || 0) < 1) {
       throw new Error('NO_PLUS_CREDIT_AVAILABLE');
     }
+  } else if (params.kind === 'OFFICE_CREDIT') {
+    await consumeOfficeCreditsInTx(tx, {
+      forUserId: params.userId,
+      actorUserId: params.officeApprovedById ?? params.userId,
+      amount: 1,
+      kind: 'LISTING',
+      refType: 'offer',
+      refId: String(params.offerId),
+      note: `Ogłoszenie #${params.offerId}`,
+    });
   }
 
   if (params.kind === 'FREE_FIRST') {
@@ -435,8 +450,10 @@ async function submitOfferActivationRecord(params: {
   bonusCouponId?: string | null;
   iapTransactionId?: string | null;
   iapProductId?: string | null;
-  /** Agency owner/manager activation — skip platform admin moderation. */
+  /** Wymuszenie pominięcia moderacji; bez tego decydują włączniki w Centrali (biura / prywatne). */
   skipPlatformModeration?: boolean;
+  /** Kredyt biura zatwierdzony przez kierownika (OFFICE_CREDIT). */
+  officeApprovedById?: number | null;
   onFreeFirstCouponUsed?: (userId: number, couponId: string) => Promise<unknown>;
 }): Promise<{
   status: 'ACTIVE' | 'PENDING';
@@ -474,13 +491,15 @@ async function submitOfferActivationRecord(params: {
   const shouldGoLiveImmediately =
     params.skipPlatformModeration ||
     publicationQuoteSkipsModeration(quote.reason) ||
-    isReactivation;
+    isReactivation ||
+    (await publishesWithoutModeration(params.userId));
 
   if (shouldGoLiveImmediately) {
     const pendingKind =
       pending?.kind === 'FREE_FIRST' ||
       pending?.kind === 'PLUS_PAID' ||
-      pending?.kind === 'PLUS_CREDIT'
+      pending?.kind === 'PLUS_CREDIT' ||
+      pending?.kind === 'OFFICE_CREDIT'
         ? pending.kind
         : null;
     const activationKind = pendingKind || params.kind;
@@ -497,6 +516,7 @@ async function submitOfferActivationRecord(params: {
       bonusCouponId: bonusCouponId || null,
       // Pending już skonsumowało kredyt / IAP — nie ściągaj drugi raz.
       skipEntitlementConsume: Boolean(pending?.entitlementConsumed),
+      officeApprovedById: params.officeApprovedById ?? null,
     });
     await clearPendingPublication(params.offerId);
     if (
@@ -522,6 +542,7 @@ async function submitOfferActivationRecord(params: {
     bonusCouponId: params.bonusCouponId,
     iapTransactionId: txId,
     iapProductId: productId,
+    officeApprovedById: params.officeApprovedById ?? null,
   });
   const bonusCouponId = String(params.bonusCouponId || '').trim();
   if (bonusCouponId && params.kind === 'FREE_FIRST' && params.onFreeFirstCouponUsed) {
@@ -541,6 +562,7 @@ export async function stageOfferPublicationForReview(params: {
   bonusCouponId?: string | null;
   iapTransactionId?: string | null;
   iapProductId?: string | null;
+  officeApprovedById?: number | null;
   db?: DbClient;
 }) {
   const db = asDb(params.db);
@@ -586,6 +608,7 @@ export async function stageOfferPublicationForReview(params: {
       iapProductId,
       bonusCouponId: params.bonusCouponId,
       consumeFreeFirst: true,
+      officeApprovedById: params.officeApprovedById ?? null,
     });
 
     await writePendingPublicationInTx(tx, {
@@ -630,6 +653,7 @@ export async function activateOfferPublication(params: {
   iapProductId?: string | null;
   bonusCouponId?: string | null;
   skipEntitlementConsume?: boolean;
+  officeApprovedById?: number | null;
   db?: DbClient;
 }) {
   const db = asDb(params.db);
@@ -663,6 +687,7 @@ export async function activateOfferPublication(params: {
         iapProductId: params.iapProductId,
         bonusCouponId: params.bonusCouponId,
         consumeFreeFirst: true,
+        officeApprovedById: params.officeApprovedById ?? null,
       });
     }
 
