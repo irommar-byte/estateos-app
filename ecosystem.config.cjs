@@ -185,6 +185,19 @@ module.exports = {
       time: true,
     },
     {
+      // Raport dnia dla kierownika: od 20:00 (Warszawa) streszczenie dnia każdego agenta w Dzienniku zespołu.
+      name: "team-day-summary",
+      cwd: root,
+      script: "node",
+      args: "scripts/team-day-summary.cjs",
+      env_file: path.join(root, ".env"),
+      env: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
+      env_production: { ...sharedEnv, PRISMA_CONNECTION_LIMIT: "2" },
+      autorestart: false,
+      cron_restart: "5 * * * *",
+      time: true,
+    },
+    {
       name: "marketing-insights",
       cwd: root,
       script: "node",

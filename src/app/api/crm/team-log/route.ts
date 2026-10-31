@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
 import { prisma } from '@/lib/prisma';
-import { listTeamDay } from '@/lib/crm/teamLog';
+import { DAY_SUMMARY_KIND, listTeamDay } from '@/lib/crm/teamLog';
 
 /**
  * Dziennik zespołu. Kierownik biura widzi wszystkich agentów, agent — tylko siebie.
- * GET ?day=YYYY-MM-DD (domyślnie dziś)
+ * GET ?day=YYYY-MM-DD (domyślnie dziś, czas warszawski). Podsumowania dnia (20:00) widzi tylko kierownik.
  */
 export async function GET(req: Request) {
   const userId = await requireAgencyUserId(req);
@@ -13,7 +13,7 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const raw = url.searchParams.get('day') || '';
-  const day = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T00:00:00`) : new Date();
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T12:00:00Z`) : new Date();
 
   const member = await prisma.agencyCompanyMember.findUnique({ where: { userId }, select: { companyId: true, role: true } });
   const owned = await prisma.agencyCompany.findUnique({ where: { ownerUserId: userId }, select: { id: true } });
@@ -27,6 +27,6 @@ export async function GET(req: Request) {
     success: true,
     isManager: false,
     agents: data.agents.filter((a) => a.userId === userId),
-    events: data.events.filter((e) => e.userId === userId),
+    events: data.events.filter((e) => e.userId === userId && e.kind !== DAY_SUMMARY_KIND),
   });
 }

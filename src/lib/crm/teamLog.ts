@@ -14,6 +14,33 @@ export type TeamEventInput = {
   refId?: number | null;
 };
 
+/** Wpis z codziennym streszczeniem dnia agenta (dla kierownika). */
+export const DAY_SUMMARY_KIND = 'DAY_SUMMARY';
+
+const WARSAW = 'Europe/Warsaw';
+
+/** Dzień kalendarzowy w Warszawie, np. „2026-10-31”. */
+export function warsawYmd(date: Date): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: WARSAW, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+}
+
+export function warsawHour(date: Date): number {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: WARSAW, hour: '2-digit', hourCycle: 'h23' }).format(date));
+}
+
+/** Początek i koniec dnia w Warszawie (niezależnie od strefy serwera). */
+function warsawDayRange(ymd: string): { start: Date; end: Date } {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const offsetMinutes = (utc: number) => {
+    const name = new Intl.DateTimeFormat('en-US', { timeZone: WARSAW, timeZoneName: 'shortOffset' }).formatToParts(new Date(utc)).find((p) => p.type === 'timeZoneName')?.value || 'GMT+1';
+    const match = name.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+    return match ? (match[1] === '-' ? -1 : 1) * (Number(match[2]) * 60 + Number(match[3] || 0)) : 60;
+  };
+  const startUtc = Date.UTC(y, m - 1, d);
+  const endUtc = Date.UTC(y, m - 1, d + 1);
+  return { start: new Date(startUtc - offsetMinutes(startUtc) * 60_000), end: new Date(endUtc - offsetMinutes(endUtc) * 60_000) };
+}
+
 async function companyIdFor(userId: number): Promise<number | null> {
   const member = await prisma.agencyCompanyMember.findUnique({ where: { userId }, select: { companyId: true } });
   if (member?.companyId) return member.companyId;
@@ -85,10 +112,7 @@ export async function listTeamDay(params: { companyId: number; day: Date }): Pro
   agents: Array<{ userId: number; name: string; role: string }>;
   events: TeamDayEvent[];
 }> {
-  const start = new Date(params.day);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const { start, end } = warsawDayRange(warsawYmd(params.day));
 
   const company = await prisma.agencyCompany.findUnique({
     where: { id: params.companyId },

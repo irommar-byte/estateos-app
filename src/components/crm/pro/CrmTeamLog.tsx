@@ -12,6 +12,9 @@ function isoDay(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** Wpis serwera o 20:00 ze streszczeniem dnia agenta (widzi go tylko kierownik). */
+const DAY_SUMMARY = 'DAY_SUMMARY';
+
 /** Dziennik zespołu: co który agent danego dnia zrobił — z godziną i minutą. */
 export default function CrmTeamLog({ onOpenClient, onOpenOffer }: { onOpenClient: (clientId: number) => void; onOpenOffer: (offerId: number) => void }) {
   const [day, setDay] = useState(() => new Date());
@@ -37,9 +40,15 @@ export default function CrmTeamLog({ onOpenClient, onOpenOffer }: { onOpenClient
   });
   const isToday = isoDay(day) === isoDay(new Date());
 
+  const summaries = useMemo(() => {
+    const map = new Map<number, Ev>();
+    for (const e of data?.events || []) if (e.kind === DAY_SUMMARY) map.set(e.userId, e);
+    return map;
+  }, [data]);
+
   const perAgent = useMemo(() => {
     const map = new Map<number, Ev[]>();
-    for (const e of data?.events || []) map.set(e.userId, [...(map.get(e.userId) || []), e]);
+    for (const e of data?.events || []) if (e.kind !== DAY_SUMMARY) map.set(e.userId, [...(map.get(e.userId) || []), e]);
     return map;
   }, [data]);
 
@@ -59,7 +68,7 @@ export default function CrmTeamLog({ onOpenClient, onOpenOffer }: { onOpenClient
         {!isToday ? <button type="button" className="crmx-btn" onClick={() => setDay(new Date())}>Dziś</button> : null}
         {data?.isManager && agents.length > 1 ? (
           <div className="crmx-seg crmx-funnel__end" style={{ overflowX: 'auto', maxWidth: '100%' }}>
-            <button type="button" aria-pressed={agent === 'all'} onClick={() => setAgent('all')}>Wszyscy <small>{data.events.length}</small></button>
+            <button type="button" aria-pressed={agent === 'all'} onClick={() => setAgent('all')}>Wszyscy <small>{data.events.filter((e) => e.kind !== DAY_SUMMARY).length}</small></button>
             {agents.map((a) => (
               <button key={a.userId} type="button" aria-pressed={agent === a.userId} onClick={() => setAgent(a.userId)}>
                 {a.name.split(' ')[0]} <small>{perAgent.get(a.userId)?.length || 0}</small>
@@ -75,6 +84,7 @@ export default function CrmTeamLog({ onOpenClient, onOpenOffer }: { onOpenClient
         <div className="crmx-teamlog">
           {shown.map((a) => {
             const list = perAgent.get(a.userId) || [];
+            const summary = summaries.get(a.userId) || null;
             const first = list[list.length - 1];
             const last = list[0];
             return (
@@ -88,6 +98,12 @@ export default function CrmTeamLog({ onOpenClient, onOpenOffer }: { onOpenClient
                     </p>
                   </div>
                 </header>
+                {summary ? (
+                  <div className="crmx-teamlog__summary">
+                    <p className="crmx-eyebrow">Podsumowanie dnia · {timeHM(summary.at)}</p>
+                    <p>{summary.body}</p>
+                  </div>
+                ) : null}
                 {list.length ? (
                   <ol className="crmx-teamlog__list">
                     {list.map((e) => (
