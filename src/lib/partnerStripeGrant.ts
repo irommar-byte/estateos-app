@@ -39,7 +39,7 @@ export function getPartnerPlanByStripePlan(raw: unknown): PartnerPlanConfig | nu
   return PARTNER_PAID_PLANS.find((p) => p.id === id) ?? null;
 }
 
-async function setAgencyPlanTypeKeepInvestorPro(userId: number) {
+export async function setAgencyPlanTypeKeepInvestorPro(userId: number) {
   const existing = await prisma.user.findUnique({
     where: { id: userId },
     select: { isPro: true, proExpiresAt: true },
@@ -68,7 +68,7 @@ function partnerTrialProductId(planId: PartnerPlanId): string {
  * Kredyty przekazane agentom mrożą się razem z biurem — przy przedłużeniu pakietu
  * odmrażamy je (przedłużamy ważność) aktywnym agentom biura, którzy mają kredyty.
  */
-async function unfreezeMemberCredits(
+export async function unfreezeMemberCredits(
   tx: { $executeRawUnsafe: (query: string, ...values: unknown[]) => Promise<number> },
   companyId: number,
   expiry: Date,

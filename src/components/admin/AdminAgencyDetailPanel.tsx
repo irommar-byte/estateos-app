@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import type { AdminAgencyDetail } from "@/lib/adminAgencyDetail";
 import ProfileMediaAvatar from "@/components/profile/ProfileMediaAvatar";
+import AdminOfficePlanSection, { AdminGoldCreditsQuick } from "@/components/admin/AdminOfficePlanSection";
 
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
@@ -59,7 +60,6 @@ export default function AdminAgencyDetailPanel({
     website: "",
     officePhone: "",
     officeEmail: "",
-    extraListings: "",
   });
 
   const load = useCallback(async () => {
@@ -80,7 +80,6 @@ export default function AdminAgencyDetailPanel({
         website: data.agency.website || "",
         officePhone: data.agency.officePhone || "",
         officeEmail: data.agency.officeEmail || "",
-        extraListings: String(data.agency.extraListings ?? 0),
       });
     } catch {
       setError("Błąd połączenia.");
@@ -107,7 +106,6 @@ export default function AdminAgencyDetailPanel({
           website: draft.website.trim() || null,
           officePhone: draft.officePhone.trim() || null,
           officeEmail: draft.officeEmail.trim() || null,
-          extraListings: Number(draft.extraListings),
         }),
       });
       const data = await res.json();
@@ -254,16 +252,6 @@ export default function AdminAgencyDetailPanel({
                   />
                 </label>
               </div>
-              <label className="block text-xs">
-                <span className="mb-1 block font-bold text-[var(--eos-muted)]">Kredyty w puli firmy</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={draft.extraListings}
-                  onChange={(e) => setDraft((d) => ({ ...d, extraListings: e.target.value }))}
-                  className="w-full rounded-lg border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-2 text-sm"
-                />
-              </label>
               <button
                 type="button"
                 disabled={saving}
@@ -290,6 +278,14 @@ export default function AdminAgencyDetailPanel({
               {agency.officeEmail ? <InfoRow label="E-mail" value={agency.officeEmail} /> : null}
             </div>
           )}
+
+          <AdminOfficePlanSection
+            companyId={agency.id}
+            onChanged={() => {
+              void load();
+              onUpdated?.();
+            }}
+          />
 
           <h3 className="mb-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
             <Users size={12} /> Zespół ({agency.members.length})
@@ -319,11 +315,12 @@ export default function AdminAgencyDetailPanel({
                     <p className="text-xs text-[var(--eos-muted)]">{m.titleLabel} · {m.user.email}</p>
                     <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-[var(--eos-subtle)]">
                       <span>{m.user.activeOffers} ofert</span>
-                      <span>{m.user.walletCredits} kred.</span>
+                      <span>{m.user.walletCredits} kred. złotych</span>
                       <span>Ostatnie log.: {fmtDate(m.user.lastLoginAt)}</span>
                     </div>
                   </div>
                 </div>
+                <AdminGoldCreditsQuick userId={m.userId} onChanged={() => void load()} />
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Link
                     href={`/centrala/uzytkownicy?userId=${m.userId}`}

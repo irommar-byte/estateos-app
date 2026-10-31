@@ -24,6 +24,7 @@ import type { AdminUserDetail } from "@/lib/adminUserDetail";
 import type { AdminUserActivityBundle } from "@/lib/adminUserActivity";
 import AdminUserAccessSection from "@/components/admin/AdminUserAccessSection";
 import AdminWalletSection from "@/components/admin/AdminWalletSection";
+import AdminOfficePlanSection from "@/components/admin/AdminOfficePlanSection";
 import {
   labelPropertyType,
   labelSearchType,
@@ -625,6 +626,14 @@ export default function AdminUserDetailPanel({
           <AdminWalletSection userId={user.id} initialSnapshot={user.wallet} onSnapshotChange={() => onRefresh?.()} />
         </div>
       </Section>
+
+      {user.agencyMembership && user.agencyMembership.memberRole === "ADMIN" ? (
+        <Section title={`Biuro kierownika: ${user.agencyMembership.companyName}`} icon={<Wallet size={12} className="text-emerald-500" />}>
+          <div className="px-4 py-4">
+            <AdminOfficePlanSection companyId={user.agencyMembership.companyId} onChanged={() => onRefresh?.()} />
+          </div>
+        </Section>
+      ) : null}
 
       <Section title="Aktywność" icon={<Activity size={12} className="text-emerald-500" />}>
         <InfoRow label="Rejestracja" value={formatDate(user.createdAt)} />

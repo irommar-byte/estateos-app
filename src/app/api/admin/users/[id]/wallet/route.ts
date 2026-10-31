@@ -103,8 +103,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       plusExpiresAt = parsed;
     } else if (setExpiresDays != null && Number.isFinite(setExpiresDays) && setExpiresDays > 0) {
       plusExpiresAt = new Date(Date.now() + Math.floor(setExpiresDays) * 24 * 60 * 60 * 1000);
-    } else if (applied > 0 && !user.plusExpiresAt) {
-      // Przy nadaniu kredytów bez ważności — domyślnie 30 dni.
+    } else if (applied > 0 && (!user.plusExpiresAt || user.plusExpiresAt.getTime() < Date.now())) {
+      // Przy nadaniu kredytów bez ważności (albo po wygaśnięciu) — 30 dni, żeby od razu działały.
       plusExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     }
 

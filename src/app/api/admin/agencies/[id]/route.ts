@@ -52,7 +52,6 @@ export async function PATCH(req: Request, ctx: Ctx) {
       website: body.website as string | null | undefined,
       officePhone: body.officePhone as string | null | undefined,
       officeEmail: body.officeEmail as string | null | undefined,
-      extraListings: body.extraListings as number | undefined,
     });
     const agency = await getAdminAgencyDetail(companyId);
     return NextResponse.json({ success: true, agency });

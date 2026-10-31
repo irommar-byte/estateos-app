@@ -274,7 +274,6 @@ export async function updateAdminAgencyCompany(
     website?: string | null;
     officePhone?: string | null;
     officeEmail?: string | null;
-    extraListings?: number;
   },
 ) {
   const patch: Record<string, unknown> = {};
@@ -294,11 +293,6 @@ export async function updateAdminAgencyCompany(
     const e = String(data.officeEmail || '').toLowerCase().trim();
     if (e && !e.includes('@')) throw new Error('Nieprawidłowy e-mail biura.');
     patch.officeEmail = e || null;
-  }
-  if (data.extraListings !== undefined) {
-    const n = Number(data.extraListings);
-    if (!Number.isFinite(n) || n < 0) throw new Error('Nieprawidłowa liczba kredytów.');
-    patch.extraListings = Math.floor(n);
   }
   if (!Object.keys(patch).length) throw new Error('Brak danych do zapisania.');
 

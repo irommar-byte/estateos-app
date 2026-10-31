@@ -20,7 +20,7 @@ export function officeCreditPack(id: unknown) {
   return OFFICE_CREDIT_PACKS.find((p) => p.id === String(id || '').trim().toLowerCase()) || null;
 }
 
-export type OfficeLedgerKind = 'PURCHASE' | 'PARTNER' | 'LISTING' | 'SMART_AGENT' | 'TRANSFER' | 'REFUND';
+export type OfficeLedgerKind = 'PURCHASE' | 'PARTNER' | 'LISTING' | 'SMART_AGENT' | 'TRANSFER' | 'REFUND' | 'ADMIN';
 
 const LEDGER_LABEL: Record<string, string> = {
   PURCHASE: 'Zakup kredytów biurowych',
@@ -29,6 +29,7 @@ const LEDGER_LABEL: Record<string, string> = {
   SMART_AGENT: 'Smart Agent OS™',
   TRANSFER: 'Przydział kredytów agentowi',
   REFUND: 'Zwrot',
+  ADMIN: 'Korekta EstateOS™',
 };
 
 type Db = typeof prisma | Prisma.TransactionClient;
