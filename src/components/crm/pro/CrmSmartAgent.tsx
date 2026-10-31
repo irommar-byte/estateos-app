@@ -14,7 +14,7 @@ type Access = {
   from: string | null;
   until: string | null;
   seat: { enterprise: boolean; holderUserId: number | null; holderName: string | null; isAdmin: boolean } | null;
-  canBuy: { ok: boolean; from: 'pool' | 'personal' | null; reason: string | null };
+  canBuy: { ok: boolean; from: 'pool' | 'personal' | null; reason: string | null; missing: number };
 };
 type Item = {
   matchId: number;
@@ -66,6 +66,39 @@ async function post(action: string, extra: Record<string, unknown> = {}) {
   if (!res.ok || json?.success === false) throw new Error(String(json?.error || 'Nie udało się.'));
   window.dispatchEvent(new Event('smart-agent-refresh'));
   window.dispatchEvent(new Event('crm-deals-refresh'));
+}
+
+/** Przycisk płatności za brakujące kredyty — po opłaceniu wraca do CRM z kredytami na koncie. */
+function BuyMissingCredits({ missing, className, onError }: { missing: number; className: string; onError: (text: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const n = Math.max(1, missing);
+  const buy = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: 'pakiet_plus',
+          credits: n,
+          returnUrl: `${window.location.origin}/moje-konto/crm`,
+          cancelUrl: window.location.href,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.url) throw new Error(String(json?.error || 'Nie udało się rozpocząć płatności.'));
+      window.location.href = json.url;
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Nie udało się rozpocząć płatności.');
+      setBusy(false);
+    }
+  };
+  return (
+    <button type="button" className={className} disabled={busy} onClick={() => void buy()}>
+      <Zap size={14} /> {busy ? 'Przechodzę do płatności…' : `Dokup ${n} ${n === 1 ? 'kredyt' : n < 5 ? 'kredyty' : 'kredytów'}`}
+    </button>
+  );
 }
 
 /* ───────── pasek życia: odliczanie + kolor gasnący z zielonego ───────── */
@@ -171,11 +204,9 @@ export function SmartAgentDock({ onOpen }: { onOpen: () => void }) {
               <button type="button" className="crmx-smartcol__cta" disabled={busy} onClick={() => void buy()}>
                 <Zap size={14} /> Włącz za 5 kredytów
               </button>
-            ) : (
-              <Link href="/cennik?tab=partner" className="crmx-smartcol__cta">
-                Partner Enterprise <ArrowRight size={14} />
-              </Link>
-            )}
+            ) : access ? (
+              <BuyMissingCredits missing={access.canBuy.missing} className="crmx-smartcol__cta" onError={setMsg} />
+            ) : null}
             <button type="button" className="crmx-smartcol__link" onClick={onOpen}>Zobacz, jak działa</button>
             {msg ? <p className="crmx-smartcol__err">{msg}</p> : null}
           </>
@@ -260,7 +291,11 @@ export default function CrmSmartAgentBoard({ onOpenClient }: { onOpenClient: (cl
                   <Zap size={15} /> Włącz za 5 kredytów ({access.canBuy.from === 'pool' ? 'z puli biura' : 'z Twoich kredytów'})
                 </button>
               ) : (
-                <span className="crmx-dealsheet__hint">{access.canBuy.reason}</span>
+                <BuyMissingCredits
+                  missing={access.canBuy.missing}
+                  className="crmx-btn crmx-btn--gold"
+                  onError={(text) => setMsg({ ok: false, text })}
+                />
               )}
               <Link href="/cennik?tab=partner" className="crmx-btn">Partner Enterprise <ArrowRight size={14} /></Link>
             </div>

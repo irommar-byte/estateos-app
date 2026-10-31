@@ -57,9 +57,9 @@ export function calculatePlusCreditExpiresAt(now = new Date()) {
   return new Date(now.getTime() + PLUS_CREDIT_DAYS * 24 * 60 * 60 * 1000);
 }
 
-export function buildPakietPlusUserUpdate(now = new Date()) {
+export function buildPakietPlusUserUpdate(now = new Date(), credits = 1) {
   return {
-    extraListings: { increment: 1 },
+    extraListings: { increment: Math.max(1, Math.floor(credits)) },
     plusExpiresAt: calculatePlusCreditExpiresAt(now),
   };
 }

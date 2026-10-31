@@ -115,6 +115,7 @@ export async function POST(req: Request) {
             await grantPlusCreditFromStripeCheckout({
               userId: Number(user.id),
               checkoutSessionId,
+              credits: Number(session.metadata?.credits || 1),
             });
             console.log(`[stripe:webhook] pakiet_plus credit granted email=${customerEmail} session=${checkoutSessionId}`);
           }

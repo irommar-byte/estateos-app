@@ -54,6 +54,7 @@ export async function POST(req: Request) {
       await grantPlusCreditFromStripeCheckout({
         userId: Number(user.id),
         checkoutSessionId: String(sessionId),
+        credits: Number(session.metadata?.credits || 1),
       });
       return NextResponse.json({ success: true, planType: 'PAKIET_PLUS', plusCreditGranted: true });
     }

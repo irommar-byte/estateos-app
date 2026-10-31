@@ -51,6 +51,7 @@ export async function POST(req: Request) {
     let productName = 'EstateOS™ Partner';
     let productDesc = 'Pakiet biura nieruchomości — CRM, pula kredytów publikacji i Concierge.';
     let unitAmount = 149900;
+    let quantity = 1;
     const metadata: Record<string, string> = { plan_type: normalizedPlan };
     if (offerPayload) {
       metadata.offer_payload = JSON.stringify(offerPayload);
@@ -66,6 +67,12 @@ export async function POST(req: Request) {
       productDesc =
         'Jeden kredyt na wystawienie oferty. Oferta jest na rynku, dopóki się nie sprzeda albo jej nie wycofasz. To nie abonament.';
       unitAmount = PAKIET_PLUS_STRIPE_AMOUNT;
+      quantity = Math.min(50, Math.max(1, Math.floor(Number(body.credits) || 1)));
+      if (quantity > 1) {
+        productName = 'Pakiet Plus (kredyty)';
+        productDesc = 'Kredyty EstateOS™ — do publikacji ofert i usług, m.in. Smart Agent OS™. To nie abonament.';
+        metadata.credits = String(quantity);
+      }
     } else if (normalizedPlan === 'market_report') {
       productName = 'EstateOS™ Market — raport wyceny';
       productDesc =
@@ -161,7 +168,7 @@ export async function POST(req: Request) {
             product_data: { name: productName, description: productDesc },
             unit_amount: unitAmount,
           },
-          quantity: 1,
+          quantity,
         },
       ],
       mode: 'payment',

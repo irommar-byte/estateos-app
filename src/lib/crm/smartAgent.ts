@@ -24,7 +24,7 @@ export type SmartAgentAccess = {
   until: string | null;
   /** Kto w biurze ma stanowisko z pakietu Enterprise (gdy biuro ma Enterprise). */
   seat: { enterprise: boolean; holderUserId: number | null; holderName: string | null; isAdmin: boolean } | null;
-  canBuy: { ok: boolean; from: 'pool' | 'personal' | null; reason: string | null };
+  canBuy: { ok: boolean; from: 'pool' | 'personal' | null; reason: string | null; /** ile kredytów brakuje do włączenia */ missing: number };
 };
 
 type SeatRow = { userId: number; settings: unknown; paidUntil: Date | null; paidFrom: Date | null };
@@ -134,11 +134,13 @@ export async function getSmartAgentAccess(userId: number): Promise<SmartAgentAcc
   const personalOk = Boolean(
     (user?.extraListings ?? 0) >= SMART_AGENT_PRICE_CREDITS && user?.plusExpiresAt && new Date(user.plusExpiresAt).getTime() > now,
   );
+  const personalActive = user?.plusExpiresAt && new Date(user.plusExpiresAt).getTime() > now ? (user.extraListings ?? 0) : 0;
+  const missing = Math.max(1, SMART_AGENT_PRICE_CREDITS - personalActive);
   const canBuy: SmartAgentAccess['canBuy'] = poolOk
-    ? { ok: true, from: 'pool', reason: null }
+    ? { ok: true, from: 'pool', reason: null, missing: 0 }
     : personalOk
-      ? { ok: true, from: 'personal', reason: null }
-      : { ok: false, from: null, reason: `Potrzebujesz ${SMART_AGENT_PRICE_CREDITS} aktywnych kredytów.` };
+      ? { ok: true, from: 'personal', reason: null, missing: 0 }
+      : { ok: false, from: null, reason: `Brakuje ${missing} z ${SMART_AGENT_PRICE_CREDITS} kredytów.`, missing };
 
   if (ctx?.enterprise && ctx.holderUserId === userId) {
     const until = ctx.company.plusExpiresAt ? new Date(ctx.company.plusExpiresAt) : null;
