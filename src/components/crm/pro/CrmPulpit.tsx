@@ -55,7 +55,7 @@ export type ProDeal = {
   buyer:
     | { kind: 'client'; clientId: number; name: string; phone: string | null; email: string | null }
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
-  turn: { side: string | null; label: string; deadline: string | null };
+  turn: { side: 'agent' | 'buyer' | 'seller' | null; label: string; deadline: string | null; offerId?: string | null };
   nextAction: string;
   presentation: {
     startsAt: string;
@@ -67,6 +67,31 @@ export type ProDeal = {
   } | null;
   phases?: Array<{ id: string; label: string; done: boolean; current: boolean; skipped: boolean; summary: string | null }>;
   feedback?: { sentiment: 'like' | 'maybe' | 'dislike'; note: string | null; by: string; at: string | null } | null;
+  negotiation?: {
+    startedAt?: string | null;
+    skippedPresentation?: boolean;
+    offers: Array<{
+      id: string;
+      at: string;
+      by: 'buyer' | 'seller';
+      amount: number;
+      note: string | null;
+      status: 'open' | 'accepted' | 'rejected' | 'countered' | 'withdrawn';
+      sentToSellerAt?: string | null;
+      sentToBuyerAt?: string | null;
+      response?: { kind: 'accept' | 'counter' | 'reject'; amount?: number | null; comment?: string | null; at: string; via: 'panel' | 'agent' } | null;
+    }>;
+    financing?: { kind: 'cash' | 'mortgage' | 'mixed'; bank?: string | null; decision?: 'none' | 'pending' | 'approved' | 'rejected' } | null;
+    terms?: { deposit?: number | null; preliminaryAt?: string | null; deedAt?: string | null; handoverAt?: string | null; note?: string | null } | null;
+    reservation?: { until: string; at: string } | null;
+    reservationSkipped?: boolean;
+    agreedPrice?: number | null;
+    othersDecision?: 'paused' | 'backup' | null;
+  };
+  transaction?: Partial<
+    Record<'preliminary' | 'deed' | 'handover' | 'commission', { date?: string | null; done?: boolean; doneAt?: string | null; place?: string | null; amount?: number | null; note?: string | null; fileUrl?: string | null; fileName?: string | null }>
+  >;
+  documentsVisible?: boolean;
   updatedAt: string;
 };
 

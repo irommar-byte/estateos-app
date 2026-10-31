@@ -689,6 +689,37 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-dealsheet__steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
 .crmx-dealsheet__steps > li { display: flex; gap: 12px; }
 .crmx-dealsheet__num { width: 24px; height: 24px; flex-shrink: 0; border-radius: 99px; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff; background: linear-gradient(180deg, #c3a06a, #a8844c); }
+/* Domknięcie transakcji: negocjacje → rezerwacja → umowa/akt/klucze/prowizja → dokumenty */
+.crmx-close__step { display: flex; gap: 12px; }
+.crmx-close__step[data-locked] { opacity: 0.55; }
+.crmx-close__step[data-done] .crmx-dealsheet__num { background: var(--x-good); }
+.crmx-close__steptitle { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; text-align: left; color: var(--x-ink); }
+.crmx-close__offer, .crmx-close__new, .crmx-close__others { display: flex; flex-direction: column; gap: 9px; padding: 12px; border-radius: 12px; background: var(--x-surface-2); border: 1px solid var(--x-line); }
+.crmx-close__others { border-color: var(--x-gold); }
+.crmx-close__offerhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.crmx-close__offerhead b { font-size: 18px; color: var(--x-ink); }
+.crmx-close__buyer, .crmx-close__seller { font-size: 12px; font-weight: 700; }
+.crmx-close__buyer { color: var(--x-warn); }
+.crmx-close__seller { color: var(--x-good); }
+.crmx-close__hist { display: flex; flex-direction: column; gap: 6px; }
+.crmx-close__histrow { display: grid; grid-template-columns: 92px auto 1fr auto; align-items: center; gap: 10px; font-size: 13px; padding: 6px 0; border-top: 1px solid var(--x-line); }
+.crmx-close__seg { align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.crmx-close__dates { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.crmx-close__date { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; font-weight: 650; color: var(--x-ink-3); }
+.crmx-close__date input { height: 38px; padding: 0 10px; border-radius: 10px; font-size: 13px; color: var(--x-ink); background: var(--x-surface); border: 1px solid var(--x-line); }
+.crmx-close__steps { display: flex; flex-direction: column; gap: 8px; }
+.crmx-close__tx { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; border: 1px solid var(--x-line); background: var(--x-surface); }
+.crmx-close__tx[data-done] { border-color: var(--x-good); }
+.crmx-close__txhead { display: flex; align-items: center; gap: 10px; }
+.crmx-close__txicon { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--x-surface-2); color: var(--x-ink); flex-shrink: 0; }
+.crmx-close__tx[data-done] .crmx-close__txicon { background: var(--x-good-soft); color: var(--x-good); }
+.crmx-close__tx > .crmx-btn { align-self: flex-start; }
+.crmx-close__doc { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--x-line); }
+.crmx-close__doc .crmx-chip { margin-top: 3px; }
+.crmx-close__link { color: var(--x-gold-ink); margin-left: 8px; }
+.crmx-close__link:hover { text-decoration: underline; }
+.crmx-close__pick { cursor: pointer; gap: 4px; }
+@media (max-width: 560px) { .crmx-close__histrow { grid-template-columns: auto 1fr auto; } .crmx-close__histrow > .crmx-muted { display: none; } }
 .crmx-dealsheet__people { display: flex; flex-direction: column; gap: 8px; }
 .crmx-person { padding: 12px; border-radius: 12px; border: 1px solid var(--x-line); background: var(--x-surface); display: flex; flex-direction: column; gap: 6px; }
 .crmx-person__name { font-size: 15px; font-weight: 600; color: var(--x-ink); }

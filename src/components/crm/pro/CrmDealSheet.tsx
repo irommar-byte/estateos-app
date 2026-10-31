@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowLeft, CalendarClock, RotateCcw, Trash2, Check, Exte
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { buyerName, STAGE_SHORT, type ProDeal, type ProGuide } from './CrmPulpit';
 import { pln, relative } from './format';
+import CrmDealClosing, { DealDocumentsPanel } from './CrmDealClosing';
 
 /** Okno transakcji: dlaczego kupujący jest w lejku, gdzie jest teraz i jaki jest następny krok — z przyciskami. */
 
@@ -22,7 +23,10 @@ function localInput(offsetDays: number, hour: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-type View = { kind: 'deal'; id: number } | { kind: 'offer'; id: number } | { kind: 'client'; id: number };
+/** Etapy po uzgodnieniu chęci kupna — prowadzone w module domknięcia (negocjacje → akt). */
+const CLOSING_STAGES = new Set(['negotiation', 'reserved', 'preliminary', 'deed', 'closed']);
+
+type View = { kind: 'deal'; id: number } | { kind: 'offer'; id: number } | { kind: 'client'; id: number } | { kind: 'docs'; id: number; name: string };
 
 /**
  * Jedno okno boczne z nawigacją: transakcja → oferta → klient → kolejna transakcja…
@@ -77,13 +81,14 @@ export default function CrmDealSheet({
 
   const key = (v: View) => `${v.kind}:${v.id}`;
   const prev = stack.length > 1 ? stack[stack.length - 2] : null;
-  const prevTitle = prev ? titles.current.get(key(prev)) || (prev.kind === 'deal' ? 'Transakcja' : prev.kind === 'offer' ? 'Oferta' : 'Klient') : null;
+  const prevTitle = prev ? titles.current.get(key(prev)) || (prev.kind === 'deal' ? 'Transakcja' : prev.kind === 'offer' ? 'Oferta' : prev.kind === 'docs' ? 'Dokumenty' : 'Klient') : null;
   const setTitle = (v: View, t: string) => titles.current.set(key(v), t);
 
   const nav = {
     openClient: (id: number) => push({ kind: 'client', id }),
     openOffer: (id: number) => push({ kind: 'offer', id }),
     openDeal: (id: number) => push({ kind: 'deal', id }),
+    openDocs: (id: number, name: string) => push({ kind: 'docs', id, name }),
   };
 
   let body: React.ReactNode = null;
@@ -92,7 +97,7 @@ export default function CrmDealSheet({
     const d = deals.find((x) => x.id === top.id) || (deal && deal.id === top.id ? deal : null);
     if (d) {
       setTitle(top, buyerName(d));
-      body = <SheetBody key={key(top)} deal={d} onClose={onClose} onOpenClient={nav.openClient} onOpenOffer={nav.openOffer} onFullClient={onOpenClient} />;
+      body = <SheetBody key={key(top)} deal={d} onOpenClient={nav.openClient} onOpenOffer={nav.openOffer} onOpenDocs={nav.openDocs} />;
     }
   } else if (top?.kind === 'offer') {
     const offer = (offers || []).find((o) => Number(o.id) === top.id) || null;
@@ -100,6 +105,10 @@ export default function CrmDealSheet({
     setTitle(top, offer?.title || fallback?.title || `Oferta #${top.id}`);
     full = () => onOpenOffer(top.id);
     body = <OfferPanel key={key(top)} offerId={top.id} offer={offer} fallback={fallback} deals={deals} onOpenDeal={nav.openDeal} onOpenClient={nav.openClient} />;
+  } else if (top?.kind === 'docs') {
+    setTitle(top, `Dokumenty · ${top.name}`);
+    full = () => onOpenClient(top.id);
+    body = <DealDocumentsPanel key={key(top)} clientId={top.id} name={top.name} />;
   } else if (top?.kind === 'client') {
     full = () => onOpenClient(top.id);
     body = <ClientPanel key={key(top)} clientId={top.id} deals={deals} onOpenDeal={nav.openDeal} onOpenOffer={nav.openOffer} onTitle={(t) => setTitle(top, t)} />;
@@ -337,16 +346,14 @@ function ClientPanel({
 
 function SheetBody({
   deal,
-  onClose,
   onOpenClient,
   onOpenOffer,
-  onFullClient,
+  onOpenDocs,
 }: {
   deal: ProDeal;
-  onClose: () => void;
   onOpenClient: (clientId: number) => void;
   onOpenOffer: (offerId: number) => void;
-  onFullClient: (clientId: number) => void;
+  onOpenDocs: (clientId: number, name: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -604,18 +611,9 @@ function SheetBody({
           </div>
         ),
       };
-    } else {
-      step = {
-        title: deal.nextAction,
-        body: (
-          <div className="crmx-dealsheet__form">
-            <p className="crmx-dealsheet__hint">Negocjacje, rezerwację i dokumenty prowadzisz na karcie kupującego.</p>
-            {client ? <button type="button" className="crmx-btn crmx-btn--gold" onClick={() => onFullClient(client.clientId)}>Przejdź do negocjacji</button> : null}
-          </div>
-        ),
-      };
     }
   }
+  const closing = CLOSING_STAGES.has(stage);
 
   return (
     <div className="crmx-dealsheet">
@@ -678,6 +676,8 @@ function SheetBody({
           {msg ? <p className={`crmx-dealsheet__msg ${msg.ok ? 'is-ok' : 'is-bad'}`}>{msg.text}</p> : null}
         </section>
       ) : null}
+
+      {closing ? <CrmDealClosing deal={deal} onOpenDocs={onOpenDocs} /> : null}
 
       {step ? (
         <section className="crmx-card crmx-dealsheet__step">
