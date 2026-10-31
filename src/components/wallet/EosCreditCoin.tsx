@@ -7,7 +7,7 @@ type Props = {
   loading?: boolean;
   /** kursor nad monetą: złota rozkręca się, granatowa obraca się na rewers „BIURO” */
   spinning?: boolean;
-  size?: "sm" | "md";
+  size?: "sm" | "md" | "lg";
   /** gold — kredyty osobiste; office — granatowa moneta puli biura */
   variant?: "gold" | "office";
   /** mało kredytów — moneta pulsuje pomarańczową poświatą (sygnał „wymaga uwagi”) */
@@ -119,17 +119,18 @@ function useOfficeStamp(hovered: boolean, enabled: boolean) {
 }
 
 export default function EosCreditCoin({ count, loading, spinning = false, size = "sm", variant = "gold", alert = false }: Props) {
-  const dim = size === "md" ? 44 : 36;
+  const dim = size === "lg" ? 76 : size === "md" ? 44 : 36;
+  const scale = dim / 36;
   const label = loading ? "…" : String(Math.max(0, count ?? 0));
   const office = variant === "office";
   const { coinRef, settling } = useGoldSpin(spinning, !office);
   const stamping = useOfficeStamp(spinning, office);
-  const thick = size === "md" ? 4.4 : 3.6;
+  const thick = size === "lg" ? 7.5 : size === "md" ? 4.4 : 3.6;
 
   return (
     <div
       className={`eos-coin-scene relative flex items-center justify-center ${office ? "is-office" : ""} ${alert ? "is-alert" : ""} ${settling ? "is-settling" : ""} ${office && spinning ? "is-flipped" : ""} ${stamping ? "is-stamp" : ""}`}
-      style={{ width: dim, height: dim, ["--coin-t" as string]: `${thick}px` }}
+      style={{ width: dim, height: dim, ["--coin-t" as string]: `${thick}px`, ["--coin-s" as string]: scale }}
       aria-hidden
     >
       {office ? (
@@ -275,7 +276,7 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
         }
 
         .eos-coin-brand {
-          font-size: 6px;
+          font-size: calc(6px * var(--coin-s, 1));
           font-weight: 900;
           letter-spacing: 0.2em;
           color: #78350f;
@@ -283,7 +284,7 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
         }
         .eos-coin-count {
           margin-top: 1px;
-          font-size: 12px;
+          font-size: calc(12px * var(--coin-s, 1));
           font-weight: 900;
           line-height: 1;
           color: #451a03;
@@ -292,7 +293,7 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
         }
         .eos-coin-sub {
           margin-top: 1px;
-          font-size: 5px;
+          font-size: calc(5px * var(--coin-s, 1));
           font-weight: 900;
           letter-spacing: 0.16em;
           color: #713f12;

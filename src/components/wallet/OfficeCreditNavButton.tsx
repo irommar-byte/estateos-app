@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Building2, Eye, Loader2 } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ClipboardCheck, Loader2, Sparkles } from "lucide-react";
 import EosCreditCoin from "@/components/wallet/EosCreditCoin";
-import EosModal from "@/components/ui/EosModal";
+import { VaultHero, VaultLink, VaultModal, VaultNotice, VaultSection, VaultSwitch } from "@/components/wallet/Vault";
 import type { OfficeCreditsSummary } from "@/lib/crm/officeCredits";
 
 /** Granatowa moneta puli biura — obok złotej monety kredytów osobistych. */
@@ -81,6 +81,13 @@ function fmtDate(iso: string | null) {
   return iso ? new Date(iso).toLocaleDateString("pl-PL", { day: "numeric", month: "long", year: "numeric" }) : "—";
 }
 
+function creditsWord(n: number) {
+  if (n === 1) return "kredyt";
+  const d = n % 10;
+  const t = n % 100;
+  return d >= 2 && d <= 4 && (t < 12 || t > 14) ? "kredyty" : "kredytów";
+}
+
 function OfficeCreditsModal({
   open,
   office,
@@ -95,6 +102,7 @@ function OfficeCreditsModal({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState("");
   const manager = office.role === "manager";
+  const bestPack = office.packs.reduce<(typeof office.packs)[number] | null>((best, p) => (!best || p.unitPln < best.unitPln ? p : best), null);
 
   const call = async (payload: Record<string, unknown>) => {
     const res = await fetch("/api/agency-company/office-credits", {
@@ -120,11 +128,11 @@ function OfficeCreditsModal({
     }
   };
 
-  const toggleVisibility = async () => {
+  const toggleVisibility = async (visible: boolean) => {
     setBusy("visibility");
     setError("");
     try {
-      await call({ action: "set_visibility", visible: !office.visibleToAgents });
+      await call({ action: "set_visibility", visible });
       onChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Nie udało się zapisać.");
@@ -134,127 +142,114 @@ function OfficeCreditsModal({
   };
 
   const status = office.frozen
-    ? { cls: "eos-sig--bad", text: "Zamrożone — przedłuż pakiet Partner, kredyty wrócą do użytku" }
+    ? { tone: "bad" as const, text: "Zamrożone" }
     : office.low
-      ? { cls: "eos-sig--warn", text: `Kończą się — zostało ${office.balance}` }
-      : { cls: "eos-sig--ok", text: `Aktywne do ${fmtDate(office.poolExpiresAt)}` };
+      ? { tone: "warn" as const, text: "Kończą się" }
+      : { tone: "ok" as const, text: "Aktywne" };
 
   return (
-    <EosModal
-      open={open}
-      onClose={onClose}
-      title="Kredyty biurowe"
-      subtitle={office.companyName}
-      icon={<Building2 className="size-5" />}
-      iconWrapClassName="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2c4ea6]/30 bg-[#2c4ea6]/10 text-[#2c4ea6]"
-      maxWidth="max-w-lg"
-    >
-      <div className="space-y-5">
-        <div className="flex items-center gap-4">
-          <EosCreditCoin count={office.balance} size="md" variant="office" alert={office.low} />
-          <div className="min-w-0">
-            <p className="text-[28px] font-semibold leading-none tracking-tight text-[var(--eos-text)]">{office.balance}</p>
-            <p className="mt-1 text-[12.5px] text-[var(--eos-muted)]">kredytów w puli biura</p>
-          </div>
-          <span className={`eos-sig ${status.cls} ml-auto`}>{status.text}</span>
-        </div>
+    <VaultModal open={open} onClose={onClose} variant="office" label="Kredyty biurowe">
+      <VaultHero
+        variant="office"
+        kicker={`Kredyty biurowe · ${office.companyName}`}
+        balance={office.balance}
+        unit={`${creditsWord(office.balance)} w puli biura`}
+        status={status}
+        alert={office.low}
+        onClose={onClose}
+      >
+        {office.frozen
+          ? "Pakiet Partner wygasł — kredyty czekają zamrożone i wrócą do użytku po jego przedłużeniu."
+          : `Ważne do ${fmtDate(office.poolExpiresAt)}. Publikacja ogłoszenia agenta — 1 kredyt, Smart Agent OS™ — 10 kredytów.`}
+      </VaultHero>
 
-        <p className="text-[13px] leading-relaxed text-[var(--eos-muted)]">
-          Kredyty biurowe idą wyłącznie na ogłoszenia i usługi biura: publikację ogłoszeń agentów (1 kredyt) i Smart Agent OS™ (10 kredytów).
-          Działają przy aktywnym pakiecie Partner.
-        </p>
-
+      <div className="vault-body">
         {office.frozen ? (
-          <a href="/cennik?tab=partner" className="flex items-center justify-between rounded-2xl border border-[var(--eos-border)] px-4 py-3 text-[13.5px] font-semibold text-[var(--eos-text)] hover:border-[#2c4ea6]/40">
-            Przedłuż pakiet Partner <ArrowUpRight className="size-4" />
-          </a>
+          <VaultLink href="/cennik?tab=partner" icon={<Sparkles size={17} />} title="Przedłuż pakiet Partner" sub="Odmraża kredyty biura i agentów" />
         ) : null}
 
         {manager && office.pendingApprovals > 0 ? (
-          <a href="/moje-konto/crm?tab=pulpit#do-zatwierdzenia" className="eos-sig-box eos-sig--warn flex items-center justify-between px-4 py-3 text-[13.5px] font-semibold">
-            Prośby agentów do zatwierdzenia: {office.pendingApprovals} <ArrowUpRight className="size-4" />
-          </a>
+          <VaultLink
+            href="/moje-konto/crm?tab=pulpit#do-zatwierdzenia"
+            icon={<ClipboardCheck size={17} />}
+            title={`Prośby agentów do zatwierdzenia: ${office.pendingApprovals}`}
+            sub="Publikacje i Smart Agent OS™ czekają na Twoją decyzję"
+            warn
+          />
         ) : null}
 
         {!manager ? (
-          <p className="rounded-2xl bg-[var(--eos-input)] px-4 py-3 text-[13px] text-[var(--eos-text)]">
+          <VaultNotice tone="info">
             {office.monthlyLimit > 0
               ? `W tym miesiącu możesz jeszcze wykorzystać ${office.trustedRemaining} z ${office.monthlyLimit} kredytów biura bez czekania na zgodę kierownika.`
               : "Publikacja z kredytu biura trafia do zatwierdzenia przez kierownika."}
-          </p>
+          </VaultNotice>
         ) : null}
 
         {manager ? (
-          <section>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--eos-muted)]">Dokup kredyty biurowe</p>
+          <VaultSection title="Dokup kredyty biurowe">
             {office.canBuy ? (
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="vault-packs">
                 {office.packs.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    disabled={busy != null}
-                    onClick={() => void buy(p.id)}
-                    className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)] p-3 text-left shadow-[0_1px_0_rgba(255,255,255,0.6)_inset,0_6px_16px_-10px_rgba(20,43,107,0.35)] transition hover:-translate-y-px hover:border-[#2c4ea6]/45 disabled:opacity-60"
-                  >
-                    <span className="block text-[20px] font-semibold text-[var(--eos-text)]">{p.credits}</span>
-                    <span className="block text-[12px] text-[var(--eos-muted)]">kredytów · {p.unitPln} zł/szt.</span>
-                    <span className="mt-2 flex items-center gap-1 text-[13px] font-bold text-[#22408f] dark:text-[#a9bdf0]">
-                      {busy === p.id ? <Loader2 className="size-3.5 animate-spin" /> : null}
+                  <button key={p.id} type="button" className="vault-pack" disabled={busy != null} onClick={() => void buy(p.id)}>
+                    {bestPack?.id === p.id ? <span className="vault-pack__badge">Najtaniej</span> : null}
+                    <span className="vault-pack__credits">{p.credits}</span>
+                    <span className="vault-pack__unit">{creditsWord(p.credits)} · {p.unitPln} zł/szt.</span>
+                    <span className="vault-pack__price">
+                      {busy === p.id ? <Loader2 size={14} className="animate-spin" /> : null}
                       {p.totalPln} zł
                     </span>
                   </button>
                 ))}
               </div>
             ) : (
-              <p className="eos-sig-box eos-sig--warn px-4 py-3 text-[13px]">{office.buyBlockedReason}</p>
+              <VaultNotice tone="warn">{office.buyBlockedReason}</VaultNotice>
             )}
-            <p className="mt-2 text-[11.5px] text-[var(--eos-muted)]">Faktura na biuro — nazwa i NIP z danych firmy.</p>
-          </section>
+            <p className="vault-note mt-2.5">Faktura VAT na biuro — nazwa i NIP z danych firmy.</p>
+          </VaultSection>
         ) : null}
 
         {manager ? (
-          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-[var(--eos-border)] px-4 py-3">
-            <span className="flex items-center gap-2 text-[13.5px] text-[var(--eos-text)]">
-              <Eye className="size-4 text-[var(--eos-muted)]" /> Agenci widzą monetę biura
-            </span>
-            <input
-              type="checkbox"
-              className="size-4 accent-[#2c4ea6]"
-              checked={office.visibleToAgents}
-              disabled={busy === "visibility"}
-              onChange={() => void toggleVisibility()}
-            />
-          </label>
+          <VaultSwitch
+            title="Agenci widzą monetę biura"
+            sub="Granatowa moneta z saldem puli pojawi się także w nagłówku agentów."
+            checked={office.visibleToAgents}
+            disabled={busy === "visibility"}
+            onChange={(next) => void toggleVisibility(next)}
+          />
         ) : null}
 
-        {error ? <p className="eos-sig-box eos-sig--bad px-4 py-3 text-[13px]">{error}</p> : null}
+        {error ? <VaultNotice tone="bad">{error}</VaultNotice> : null}
 
-        {manager && office.history.length ? (
-          <section>
-            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--eos-muted)]">Historia puli</p>
-            <ul className="divide-y divide-[var(--eos-border)] rounded-2xl border border-[var(--eos-border)]">
-              {office.history.map((h) => (
-                <li key={h.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-semibold text-[var(--eos-text)]">
-                      {h.label}
-                      {h.who ? ` · ${h.who}` : ""}
+        {manager ? (
+          <VaultSection title="Historia puli">
+            {office.history.length ? (
+              <div className="vault-list">
+                {office.history.map((h) => (
+                  <div key={h.id} className="vault-row">
+                    <span className={`vault-row__icon ${h.delta > 0 ? "vault-row__icon--in" : ""}`}>
+                      {h.delta > 0 ? <ArrowDownLeft size={15} /> : <ArrowUpRight size={15} />}
                     </span>
-                    <span className="block truncate text-[11.5px] text-[var(--eos-muted)]">
-                      {new Date(h.at).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-                      {h.note ? ` · ${h.note}` : ""}
+                    <span className="vault-row__text">
+                      <span className="vault-row__title">
+                        {h.label}
+                        {h.who ? ` · ${h.who}` : ""}
+                      </span>
+                      <span className="vault-row__meta">
+                        {new Date(h.at).toLocaleString("pl-PL", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                        {h.note ? ` · ${h.note}` : ""}
+                      </span>
                     </span>
-                  </span>
-                  <span className={`shrink-0 text-[14px] font-bold tabular-nums ${h.delta > 0 ? "text-[#1f7a55]" : "text-[var(--eos-text)]"}`}>
-                    {h.delta > 0 ? `+${h.delta}` : h.delta}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
+                    <span className={`vault-row__delta ${h.delta > 0 ? "vault-row__delta--in" : ""}`}>{h.delta > 0 ? `+${h.delta}` : h.delta}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="vault-empty">Pula nie ma jeszcze ruchów.</p>
+            )}
+          </VaultSection>
         ) : null}
       </div>
-    </EosModal>
+    </VaultModal>
   );
 }
