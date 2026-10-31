@@ -52,11 +52,16 @@ export default function CrmDealsPro({
     });
   }, [deals, query, mine, origin]);
 
-  const live = filtered.filter((d) => d.status === 'ACTIVE' || d.status === 'PAUSED');
-  const done = filtered.filter((d) => d.status === 'WON' || d.status === 'LOST');
+  const live = filtered.filter((d) => !d.archived && (d.status === 'ACTIVE' || d.status === 'PAUSED'));
+  const done = filtered.filter((d) => d.archived || d.status === 'WON' || d.status === 'LOST');
   const myMoves = (deals || []).filter((d) => d.status === 'ACTIVE' && d.turn.side === 'agent').length;
 
-  const [openId, setOpenId] = useState<number | null>(null);
+  // Odnośnik z archiwum klientów: /moje-konto/crm?tab=transakcje&funnelDeal=ID otwiera tę transakcję.
+  const [openId, setOpenId] = useState<number | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const id = Number(new URLSearchParams(window.location.search).get('funnelDeal'));
+    return Number.isFinite(id) && id > 0 ? id : null;
+  });
   const openDeal = (deals || []).find((d) => d.id === openId) || null;
   const open = (d: ProDeal) => setOpenId(d.id);
 
@@ -118,7 +123,7 @@ export default function CrmDealsPro({
         <div className="crmx-seg" title="Agent poszukiwań = kupujący, którzy zareagowali na oferty wysłane automatycznie.">
           <button type="button" aria-pressed={origin === 'all'} onClick={() => setOrigin('all')}>Wszyscy</button>
           <button type="button" aria-pressed={origin === 'radar'} onClick={() => setOrigin('radar')}>
-            Agent poszukiwań <small>{(deals || []).filter((d) => d.source === 'radar' && (d.status === 'ACTIVE' || d.status === 'PAUSED')).length}</small>
+            Agent poszukiwań <small>{(deals || []).filter((d) => d.source === 'radar' && !d.archived && (d.status === 'ACTIVE' || d.status === 'PAUSED')).length}</small>
           </button>
           <button type="button" aria-pressed={origin === 'other'} onClick={() => setOrigin('other')}>Pozyskani</button>
         </div>
@@ -143,7 +148,9 @@ export default function CrmDealsPro({
                     <span className="crmx-row__title block">{buyerName(d)} · {d.offer.title}</span>
                     <span className="crmx-row__sub block">{d.offer.address}</span>
                   </span>
-                  <span className={`crmx-chip ${d.status === 'WON' ? 'crmx-chip--good' : ''}`}>{d.status === 'WON' ? 'Sprzedana' : 'Zamknięta'}</span>
+                  <span className={`crmx-chip ${d.status === 'WON' ? 'crmx-chip--good' : d.archived?.action === 'pause' ? 'crmx-chip--warn' : ''}`}>
+                    {d.status === 'WON' ? 'Sprzedana' : d.archived ? (d.archived.action === 'pause' ? 'Wstrzymana · archiwum' : 'Zamknięta · archiwum') : 'Zamknięta'}
+                  </span>
                 </button>
               ))
             )}

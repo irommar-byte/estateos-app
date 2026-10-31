@@ -116,6 +116,16 @@ export type DealData = {
   intent?: { confirmedAt: string; note: string | null } | null;
   negotiation?: Negotiation;
   transaction?: Transaction;
+  /** Ścieżkę wstrzymano albo zamknięto przy archiwizacji klienta (po przywróceniu klienta wstrzymane wracają). */
+  archived?: DealArchiveMark | null;
+};
+
+export type DealArchiveMark = {
+  clientId: number;
+  clientName: string;
+  action: 'pause' | 'close';
+  prevStatus: DealStatus;
+  at: string;
 };
 
 export type GuideStep = {
@@ -179,6 +189,8 @@ export type DealView = {
   transaction: Transaction;
   /** Agent zaczął etap dokumentów (cena uzgodniona, rezerwacja albo ręcznie). */
   documentsVisible: boolean;
+  /** Klient tej ścieżki jest w archiwum — ścieżka wstrzymana albo zamknięta razem z nim. */
+  archived: DealArchiveMark | null;
   nextAction: string;
   timeline: DealEvent[];
   updatedAt: string;
@@ -1064,6 +1076,7 @@ function shapeDeal(deal: DealRow, ctx: Context): DealView {
     turn,
     transaction: tx,
     documentsVisible: Boolean(agreedPrice || reservationActive || tx.documentsStartedAt || stage === 'preliminary' || stage === 'deed' || stage === 'closed'),
+    archived: data.archived ?? null,
     nextAction,
     timeline: buildTimeline(rows, deal, matchFeedback, [...sellerMerge.events, ...(parseData(deal.data).dealroom?.events || [])]),
     updatedAt: deal.updatedAt.toISOString(),
@@ -1209,6 +1222,15 @@ export async function listBuyerClientDeals(agencyUserId: number, buyerClientId: 
   const deals = await prisma.offerBuyerDeal.findMany({ where: { agencyUserId, buyerClientId } });
   const views = shapeAll(deals, await buildContext(deals));
   return sortDeals(views.filter((view) => view.stage !== 'interested' || view.source !== 'radar'));
+}
+
+/** Wszystkie ścieżki, w których klient jest kupującym albo sprzedającym — w każdym statusie (archiwum klientów). */
+export async function listClientDealsAll(agencyUserId: number, clientId: number): Promise<DealView[]> {
+  const deals = await prisma.offerBuyerDeal.findMany({
+    where: { agencyUserId, OR: [{ buyerClientId: clientId }, { sellerClientId: clientId }] },
+    orderBy: { updatedAt: 'desc' },
+  });
+  return shapeAll(deals, await buildContext(deals));
 }
 
 export async function getDeal(agencyUserId: number, dealId: number): Promise<DealView | null> {

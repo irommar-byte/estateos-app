@@ -92,6 +92,8 @@ export type ProDeal = {
     Record<'preliminary' | 'deed' | 'handover' | 'commission', { date?: string | null; done?: boolean; doneAt?: string | null; place?: string | null; amount?: number | null; note?: string | null; fileUrl?: string | null; fileName?: string | null }>
   >;
   documentsVisible?: boolean;
+  /** Klient ścieżki jest w archiwum — ścieżka wstrzymana albo zamknięta razem z nim. */
+  archived?: { clientId: number; clientName: string; action: 'pause' | 'close'; at: string } | null;
   updatedAt: string;
 };
 

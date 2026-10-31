@@ -20,7 +20,7 @@ import { ensureAgencyClientLinkedUser } from '@/lib/crm/linkedUser';
 import { seedAcquisitionForm } from '@/lib/crm/acquisitionOffer';
 import { findDuplicateAgencyClients, findPeselCollision } from '@/lib/crm/clientDuplicate';
 import { hashPesel, normalizePeselDigits } from '@/lib/crm/peselHash';
-import { archiveAgencyClients } from '@/lib/crm/clientArchive';
+import { ArchiveDecisionError, archiveAgencyClients, getArchiveImpact, listArchivedClients } from '@/lib/crm/clientArchive';
 import {
   apartmentNumberForType,
   parseSellerPropertyType,
@@ -50,6 +50,14 @@ export async function GET(req: Request) {
   if (url.searchParams.get('report') === '1') {
     const report = await buildAgencyClientReport(agencyUserId);
     return NextResponse.json({ success: true, report });
+  }
+  if (url.searchParams.get('archived') === '1') {
+    return NextResponse.json({ success: true, clients: await listArchivedClients(agencyUserId) });
+  }
+  const impactIds = url.searchParams.get('archiveImpact');
+  if (impactIds) {
+    const ids = impactIds.split(',').map(Number);
+    return NextResponse.json({ success: true, impact: await getArchiveImpact(agencyUserId, ids) });
   }
 
   const type = url.searchParams.get('type');
@@ -419,12 +427,31 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400 });
   }
   const clientIds = Array.isArray(body.clientIds) ? body.clientIds.map((id: unknown) => Number(id)) : [];
-  const result = await archiveAgencyClients({ agencyUserId, clientIds });
-  return NextResponse.json({
-    success: true,
-    ...result,
-    message: result.archivedIds.length
-      ? `Przeniesiono ${result.archivedIds.length} klientów do archiwum. Spotkania zostały wyczyszczone.`
-      : 'Nie znaleziono aktywnych klientów do archiwizacji.',
-  });
+  const raw = body.decisions && typeof body.decisions === 'object' ? body.decisions : null;
+  const decisions = raw
+    ? {
+        deals: raw.deals === 'close' ? ('close' as const) : raw.deals === 'pause' ? ('pause' as const) : undefined,
+        offer: raw.offer === 'withdraw' ? ('withdraw' as const) : raw.offer === 'keep' ? ('keep' as const) : undefined,
+        confirmCritical: raw.confirmCritical === true,
+      }
+    : undefined;
+  try {
+    const result = await archiveAgencyClients({ agencyUserId, clientIds, decisions });
+    const n = result.archivedIds.length;
+    const parts = [
+      result.pausedDeals ? `wstrzymano ${result.pausedDeals} transakcji` : null,
+      result.closedDeals ? `zamknięto ${result.closedDeals} transakcji` : null,
+      result.withdrawnOffers ? `wycofano ${result.withdrawnOffers} ogłoszeń` : null,
+    ].filter(Boolean);
+    return NextResponse.json({
+      success: true,
+      ...result,
+      message: n
+        ? `Przeniesiono do archiwum: ${n} ${n === 1 ? 'klient' : 'klientów'}${parts.length ? ` — ${parts.join(', ')}` : ''}.`
+        : 'Nie znaleziono aktywnych klientów do archiwizacji.',
+    });
+  } catch (error) {
+    if (error instanceof ArchiveDecisionError) return NextResponse.json({ error: error.message }, { status: 409 });
+    throw error;
+  }
 }

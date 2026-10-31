@@ -957,3 +957,36 @@ html:not(.light) .crmx .crmx-danger__title { color: #ff8a80; }
 .crmx-teamlog__ref, .crmx-teamlog__body { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 12px; line-height: 1.45; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .crmx-teamlog__ref { color: var(--x-gold-ink); }
 .crmx-teamlog__ref:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Archiwum klientów (2026-10-31): etap, co zostało, co wstrzymane — z odnośnikami */
+.crmx .crmx-archive { padding: 18px 20px; }
+.crmx .crmx-archive__head { display: flex; align-items: center; gap: 12px; }
+.crmx .crmx-archive__note { margin-top: 10px; font-size: 13px; color: var(--x-ink-2); }
+.crmx .crmx-archive__grid { display: grid; gap: 16px; margin-top: 14px; }
+@media (min-width: 900px) { .crmx .crmx-archive__grid { grid-template-columns: 1fr 1fr; } }
+.crmx .crmx-archive__grid .crmx-eyebrow { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.crmx .crmx-archive__deal { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--x-line); border-radius: 14px; background: var(--x-surface-2); color: var(--x-ink); transition: border-color 0.15s, background 0.15s; }
+.crmx .crmx-archive__deal:hover { border-color: var(--x-gold); background: var(--x-gold-soft); }
+.crmx .crmx-archive__deal-title { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crmx .crmx-archive__deal-sub { display: block; margin-top: 2px; font-size: 12px; color: var(--x-ink-3); }
+.crmx .crmx-archive__go { flex-shrink: 0; color: var(--x-ink-3); }
+.crmx .crmx-archive__none { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--x-ink-3); margin: 2px 0 6px; }
+.crmx .crmx-archive__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--x-line); }
+.crmx .crmx-archive__hint { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 12px; color: var(--x-ink-3); }
+
+/* Okno archiwizacji: decyzje agenta */
+.crmx-archdlg__client { border: 1px solid var(--eos-border); border-radius: 16px; padding: 12px 14px; }
+.crmx-archdlg__client + .crmx-archdlg__client { margin-top: 8px; }
+.crmx-archdlg__deal { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 4px 0; color: var(--eos-muted); }
+.crmx-archdlg__deal b { color: var(--eos-text); font-weight: 600; }
+.crmx-archdlg__crit { color: #a3283c; font-weight: 700; }
+.crmx-archdlg__q { margin-top: 14px; }
+.crmx-archdlg__q > p { font-size: 13px; font-weight: 700; color: var(--eos-text); margin-bottom: 6px; }
+.crmx-archdlg__opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--eos-border); border-radius: 14px; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.crmx-archdlg__opt + .crmx-archdlg__opt { margin-top: 6px; }
+.crmx-archdlg__opt:has(input:checked) { border-color: #a8844c; background: rgba(168, 132, 76, 0.1); }
+.crmx-archdlg__opt input { margin-top: 3px; accent-color: #a8844c; }
+.crmx-archdlg__opt b { display: block; font-size: 13px; color: var(--eos-text); }
+.crmx-archdlg__opt span { display: block; font-size: 12px; color: var(--eos-muted); margin-top: 1px; }
+.crmx-archdlg__warn { margin-top: 14px; border-color: rgba(163, 40, 60, 0.35); }
+.crmx-archdlg__warn:has(input:checked) { border-color: #a3283c; background: rgba(163, 40, 60, 0.07); }

@@ -56,6 +56,8 @@ import type { BuyerAgentTask } from "@/lib/crm/buyerAgentTasks";
 import type { ShowingCard } from "@/lib/crm/showingKind";
 import CrmClientStatusLamps, { clientHasUpcomingMeeting } from "@/components/crm/CrmClientStatusLamps";
 import CrmClientsList, { type ClientTypeFilter } from "@/components/crm/pro/CrmClientsList";
+import CrmArchivedClients, { useArchivedClients } from "@/components/crm/pro/CrmArchivedClients";
+import type { ArchiveImpact } from "@/lib/crm/clientArchive";
 import CrmClientMeetingCountdown from "@/components/crm/CrmClientMeetingCountdown";
 import MatchImportAgentMeta, { type MatchImportBrief } from "@/components/crm/MatchImportAgentMeta";
 import CrmSellerCollaborationPanel from "@/components/crm/CrmSellerCollaborationPanel";
@@ -331,6 +333,13 @@ export default function CrmClientsWorkspace() {
   const [selectedClientIds, setSelectedClientIds] = useState<Set<number>>(new Set());
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  const [archiveImpact, setArchiveImpact] = useState<ArchiveImpact[] | null>(null);
+  const [archiveDeals, setArchiveDeals] = useState<"pause" | "close" | null>(null);
+  const [archiveOffer, setArchiveOffer] = useState<"withdraw" | "keep" | null>(null);
+  const [archiveCritical, setArchiveCritical] = useState(false);
+  const [archiveError, setArchiveError] = useState("");
+  const [archiveReload, setArchiveReload] = useState(0);
+  const archivedRows = useArchivedClients(archiveReload);
   const [presentationOfferId, setPresentationOfferId] = useState("");
   const [presentationAt, setPresentationAt] = useState("");
   const [guestAgencyMode, setGuestAgencyMode] = useState(false);
@@ -645,28 +654,63 @@ export default function CrmClientsWorkspace() {
     });
   };
 
+  // Przed archiwizacją: co jest powiązane z klientami (transakcje, ogłoszenie, spotkania) — agent decyduje, co z tym zrobić.
+  useEffect(() => {
+    if (!archiveConfirmOpen) return;
+    setArchiveImpact(null);
+    setArchiveDeals(null);
+    setArchiveOffer(null);
+    setArchiveCritical(false);
+    setArchiveError("");
+    const ids = [...selectedClientIds].join(",");
+    let alive = true;
+    fetch(`/api/crm/clients?archiveImpact=${ids}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => alive && setArchiveImpact(Array.isArray(d?.impact) ? d.impact : []))
+      .catch(() => alive && setArchiveError("Nie udało się sprawdzić, co jest powiązane z klientami."));
+    return () => {
+      alive = false;
+    };
+  }, [archiveConfirmOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const impactOpenDeals = (archiveImpact || []).flatMap((i) => i.deals.filter((d) => d.status === "ACTIVE" || d.status === "PAUSED"));
+  const impactOffers = (archiveImpact || []).filter((i) => i.offer?.open);
+  const impactCritical = impactOpenDeals.filter((d) => d.critical);
+  const archiveReady =
+    archiveImpact != null &&
+    (!impactOpenDeals.length || archiveDeals != null) &&
+    (!impactOffers.length || archiveOffer != null) &&
+    (!impactCritical.length || archiveCritical);
+
   const confirmBulkArchive = async () => {
     const clientIds = [...selectedClientIds];
-    if (!clientIds.length) return;
+    if (!clientIds.length || !archiveReady) return;
     setArchiveBusy(true);
+    setArchiveError("");
     setToast("");
     try {
       const res = await fetch("/api/crm/clients", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "archive_bulk", clientIds }),
+        body: JSON.stringify({
+          action: "archive_bulk",
+          clientIds,
+          decisions: { deals: archiveDeals || "pause", offer: archiveOffer || "keep", confirmCritical: archiveCritical },
+        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(json?.error || "Nie udało się zarchiwizować klientów."));
       if (selectedId && clientIds.includes(selectedId)) setSelectedId(null);
       setSelectedClientIds(new Set());
       setArchiveConfirmOpen(false);
+      setArchiveReload((n) => n + 1);
+      window.dispatchEvent(new Event("crm-deals-refresh"));
       await loadClients();
       setToast(
         String(json.message || `Zarchiwizowano ${json.archivedIds?.length ?? clientIds.length} klientów.`),
       );
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "Błąd archiwizacji.");
+      setArchiveError(e instanceof Error ? e.message : "Błąd archiwizacji.");
     } finally {
       setArchiveBusy(false);
       window.setTimeout(() => setToast(""), 4500);
@@ -1067,7 +1111,9 @@ export default function CrmClientsWorkspace() {
                 BUYER: clients.filter((x) => x.type === "BUYER").length,
                 SELLER: clients.filter((x) => x.type === "SELLER").length,
                 attention: clients.filter((x) => clientNeedsContactVerification(x) || x.matchCount === 0).length,
+                archived: archivedRows ? archivedRows.length : null,
               }}
+              archivedView={<CrmArchivedClients rows={archivedRows} />}
               typeFilter={typeFilter}
               onTypeFilter={setTypeFilter}
               query={query}
@@ -2296,12 +2342,13 @@ export default function CrmClientsWorkspace() {
         title="Archiwizować klientów?"
         subtitle={`Zaznaczono ${selectedClientIds.size} ${
           selectedClientIds.size === 1 ? "klienta" : "klientów"
-        }. Ta operacja jest odwracalna tylko przez administratora.`}
+        }. Zdecyduj, co ma się stać ze wszystkim, co jest z nimi powiązane.`}
         icon={<Archive className="size-5" />}
         iconWrapClassName="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-rose-500/25 bg-rose-500/10 text-rose-500 shadow-[0_8px_24px_rgba(244,63,94,0.12)]"
-        maxWidth="max-w-lg"
+        maxWidth="max-w-xl"
         footer={
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {archiveError ? <p className="mr-auto text-[12.5px] font-semibold text-rose-600">{archiveError}</p> : null}
             <button
               type="button"
               disabled={archiveBusy}
@@ -2312,29 +2359,110 @@ export default function CrmClientsWorkspace() {
             </button>
             <button
               type="button"
-              disabled={archiveBusy}
+              disabled={archiveBusy || !archiveReady}
               onClick={() => void confirmBulkArchive()}
               className={eosBtn("danger", { size: "sm" })}
+              title={archiveReady ? undefined : "Najpierw wybierz, co zrobić z powiązanymi sprawami."}
             >
               {archiveBusy ? "Archiwizowanie…" : "Archiwizuj"}
             </button>
           </div>
         }
       >
-        <ul className="space-y-2 text-sm leading-relaxed text-[var(--eos-muted)]">
-          <li className="flex gap-2">
-            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-rose-500" />
-            Wyczyści zaplanowane spotkania, prezentacje, wpisy kalendarza i powiadomienia push.
-          </li>
-          <li className="flex gap-2">
-            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-            Karta klienta, podpisane dokumenty i historia pozostają dostępne dla administratora.
-          </li>
-          <li className="flex gap-2">
-            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
-            Klient znika z radaru dopasowań i automatyzacji Intelligence.
-          </li>
-        </ul>
+        {archiveImpact == null ? (
+          <p className="text-sm text-[var(--eos-muted)]">{archiveError ? "" : "Sprawdzam, co jest powiązane z klientami…"}</p>
+        ) : (
+          <div>
+            {archiveImpact.map((c) => {
+              const open = c.deals.filter((d) => d.status === "ACTIVE" || d.status === "PAUSED");
+              return (
+                <div key={c.clientId} className="crmx-archdlg__client">
+                  <p className="text-[14px] font-semibold text-[var(--eos-text)]">
+                    {c.name} <span className="font-normal text-[var(--eos-muted)]">· {c.type === "SELLER" ? "sprzedający" : "kupujący"} · {c.stageLabel}</span>
+                  </p>
+                  {c.offer ? (
+                    <div className="crmx-archdlg__deal">
+                      <span>Ogłoszenie <b>{c.offer.title}</b></span>
+                      <span>{c.offer.statusLabel}</span>
+                    </div>
+                  ) : null}
+                  {open.map((d) => (
+                    <div key={d.id} className="crmx-archdlg__deal">
+                      <span>
+                        <b>{d.offerTitle}</b> · {d.side === "buyer" ? "od" : "kupujący"} {d.counterpart}
+                      </span>
+                      <span className={d.critical ? "crmx-archdlg__crit" : ""}>{d.stageLabel}</span>
+                    </div>
+                  ))}
+                  <div className="crmx-archdlg__deal">
+                    <span>Zaplanowane spotkania i prezentacje</span>
+                    <span>{c.upcomingMeetings ? `${c.upcomingMeetings} — zostaną odwołane` : "brak"}</span>
+                  </div>
+                  {c.hasPortal ? (
+                    <div className="crmx-archdlg__deal">
+                      <span>Panel klienta</span>
+                      <span>zostanie wyłączony</span>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+
+            {impactOpenDeals.length ? (
+              <div className="crmx-archdlg__q">
+                <p>Transakcje w lejku ({impactOpenDeals.length}) — co z nimi?</p>
+                <label className="crmx-archdlg__opt">
+                  <input type="radio" name="arch-deals" checked={archiveDeals === "pause"} onChange={() => setArchiveDeals("pause")} />
+                  <span>
+                    <b>Wstrzymaj</b>
+                    <span>Znikną z kolumn lejka, zostaną w „Zakończone” i w archiwum klienta. Po przywróceniu klienta wrócą w to samo miejsce.</span>
+                  </span>
+                </label>
+                <label className="crmx-archdlg__opt">
+                  <input type="radio" name="arch-deals" checked={archiveDeals === "close"} onChange={() => setArchiveDeals("close")} />
+                  <span>
+                    <b>Zakończ jako utracone</b>
+                    <span>Transakcje zostaną zamknięte na stałe. Historia zostaje.</span>
+                  </span>
+                </label>
+              </div>
+            ) : null}
+
+            {impactOffers.length ? (
+              <div className="crmx-archdlg__q">
+                <p>Ogłoszenie sprzedającego na rynku — co z nim?</p>
+                <label className="crmx-archdlg__opt">
+                  <input type="radio" name="arch-offer" checked={archiveOffer === "withdraw"} onChange={() => setArchiveOffer("withdraw")} />
+                  <span>
+                    <b>Wycofaj z rynku</b>
+                    <span>Ogłoszenie przestanie być widoczne na portalu. Ponowna publikacja zużyje kredyt.</span>
+                  </span>
+                </label>
+                <label className="crmx-archdlg__opt">
+                  <input type="radio" name="arch-offer" checked={archiveOffer === "keep"} onChange={() => setArchiveOffer("keep")} />
+                  <span>
+                    <b>Zostaw na rynku</b>
+                    <span>Ogłoszenie zostaje opublikowane, a nowi kupujący nadal mogą się zgłaszać.</span>
+                  </span>
+                </label>
+              </div>
+            ) : null}
+
+            {impactCritical.length ? (
+              <label className="crmx-archdlg__opt crmx-archdlg__warn">
+                <input type="checkbox" checked={archiveCritical} onChange={(e) => setArchiveCritical(e.target.checked)} />
+                <span>
+                  <b>Rozumiem, że przerywam trwające negocjacje, rezerwację lub umowy ({impactCritical.length})</b>
+                  <span>Druga strona nie dostanie automatycznej wiadomości — poinformuj ją sam.</span>
+                </span>
+              </label>
+            ) : null}
+
+            {!impactOpenDeals.length && !impactOffers.length ? (
+              <p className="mt-3 text-[13px] text-[var(--eos-muted)]">Brak trwających transakcji i ogłoszeń — wystarczy potwierdzić.</p>
+            ) : null}
+          </div>
+        )}
       </EosModal>
     </div>
   );

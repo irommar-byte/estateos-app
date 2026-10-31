@@ -1,7 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import {
+  Archive,
   ArrowDownUp,
   Building2,
   CalendarClock,
@@ -20,7 +22,7 @@ import type { AgencyClientListItem } from '@/lib/agencyClientShape';
 import { initials, pln, relative, stamp } from './format';
 
 type Group = { key: string; primary: AgencyClientListItem; members: AgencyClientListItem[]; types: Array<'BUYER' | 'SELLER'>; ids: number[] };
-export type ClientTypeFilter = 'ALL' | 'BUYER' | 'SELLER';
+export type ClientTypeFilter = 'ALL' | 'BUYER' | 'SELLER' | 'ARCHIVED';
 
 const ONLINE_MS = 10 * 60 * 1000;
 
@@ -73,10 +75,11 @@ export default function CrmClientsList({
   onSendCard,
   cardBusyId,
   compact,
+  archivedView,
 }: {
   groups: Group[];
   total: number;
-  counts: { ALL: number; BUYER: number; SELLER: number; attention: number };
+  counts: { ALL: number; BUYER: number; SELLER: number; attention: number; archived: number | null };
   typeFilter: ClientTypeFilter;
   onTypeFilter: (v: ClientTypeFilter) => void;
   query: string;
@@ -93,7 +96,10 @@ export default function CrmClientsList({
   onSendCard: (id: number) => void;
   cardBusyId: number | null;
   compact: boolean;
+  /** Widok zakładki „Archiwum” — zamiast listy aktywnych klientów. */
+  archivedView: ReactNode;
 }) {
+  const archived = typeFilter === 'ARCHIVED';
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -101,15 +107,18 @@ export default function CrmClientsList({
           <button type="button" aria-pressed={typeFilter === 'ALL' && !onlyAttention} onClick={() => { onTypeFilter('ALL'); onOnlyAttention(false); }}>Wszyscy <small>{counts.ALL}</small></button>
           <button type="button" aria-pressed={typeFilter === 'BUYER' && !onlyAttention} onClick={() => { onTypeFilter('BUYER'); onOnlyAttention(false); }}>Kupujący <small>{counts.BUYER}</small></button>
           <button type="button" aria-pressed={typeFilter === 'SELLER' && !onlyAttention} onClick={() => { onTypeFilter('SELLER'); onOnlyAttention(false); }}>Sprzedający <small>{counts.SELLER}</small></button>
+          <button type="button" aria-pressed={archived} onClick={() => { onTypeFilter('ARCHIVED'); onOnlyAttention(false); }}><Archive size={13} /> Archiwum <small>{counts.archived ?? '·'}</small></button>
           {!compact ? (
             <button type="button" aria-pressed={onlyAttention} onClick={() => { onTypeFilter('ALL'); onOnlyAttention(!onlyAttention); }}>Wymaga uwagi <small>{counts.attention}</small></button>
           ) : null}
         </div>
-        <label className="crmx-input" style={{ flex: '1 1 200px' }}>
-          <Search />
-          <input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="Szukaj: imię, e-mail, telefon" />
-        </label>
-        {!compact ? (
+        {!archived ? (
+          <label className="crmx-input" style={{ flex: '1 1 200px' }}>
+            <Search />
+            <input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="Szukaj: imię, e-mail, telefon" />
+          </label>
+        ) : null}
+        {!compact && !archived ? (
           <>
             <label className="crmx-input">
               <ArrowDownUp />
@@ -124,7 +133,9 @@ export default function CrmClientsList({
         ) : null}
       </div>
 
-      {groups.length === 0 ? (
+      {archived ? (
+        archivedView
+      ) : groups.length === 0 ? (
         <div className="crmx-card crmx-empty" style={{ padding: '44px 20px' }}>
           {total === 0 ? 'Nie masz jeszcze klientów. Dodaj pierwszego.' : 'Brak klientów w tym widoku.'}
         </div>

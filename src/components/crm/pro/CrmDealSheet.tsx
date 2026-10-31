@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { AlertTriangle, ArrowLeft, CalendarClock, RotateCcw, Trash2, Check, ExternalLink, Mail, Maximize2, Phone, User, X, Home, MessageSquareQuote } from 'lucide-react';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { buyerName, STAGE_SHORT, type ProDeal, type ProGuide } from './CrmPulpit';
-import { pln, relative } from './format';
+import { pln, relative, stamp } from './format';
 import CrmDealClosing, { DealDocumentsPanel } from './CrmDealClosing';
 
 /** Okno transakcji: dlaczego kupujący jest w lejku, gdzie jest teraz i jaki jest następny krok — z przyciskami. */
@@ -188,7 +188,7 @@ function OfferPanel({
   const title = offer?.title || fallback?.title || `Oferta #${offerId}`;
   const addr = offer ? [offer.street, offer.district !== 'OTHER' ? offer.district : null, offer.city].filter(Boolean).join(', ') : fallback?.address || '';
   const price = offer?.price ?? fallback?.price ?? null;
-  const buyers = deals.filter((d) => d.offerId === offerId && (d.status === 'ACTIVE' || d.status === 'PAUSED'));
+  const buyers = deals.filter((d) => d.offerId === offerId && !d.archived && (d.status === 'ACTIVE' || d.status === 'PAUSED'));
   const seller = deals.find((d) => d.offerId === offerId && d.seller)?.seller || null;
   const facts: Array<[string, string]> = offer
     ? [
@@ -525,7 +525,8 @@ function SheetBody({
   };
 
   let step: { title: string; body: React.ReactNode } | null = null;
-  if ((deal.status === 'ACTIVE' || deal.status === 'PAUSED') && !guide) {
+  const frozen = Boolean(deal.archived);
+  if ((deal.status === 'ACTIVE' || deal.status === 'PAUSED') && !guide && !frozen) {
     if (stage === 'interested') {
       step = { title: 'Umów prezentację', body: scheduleForm };
     } else if (stage === 'scheduling') {
@@ -647,7 +648,19 @@ function SheetBody({
         </ol>
       ) : null}
 
-      {guide ? (
+      {frozen && deal.archived ? (
+        <section className="crmx-card crmx-dealsheet__guide">
+          <p className="crmx-eyebrow">{deal.archived.action === 'pause' ? 'Wstrzymana · klient w archiwum' : 'Zamknięta · klient w archiwum'}</p>
+          <p className="mt-1 text-[13.5px]">
+            {deal.archived.clientName} trafił do archiwum {stamp(deal.archived.at)}.{' '}
+            {deal.archived.action === 'pause'
+              ? 'Ta transakcja czeka w miejscu, w którym była — wróci do lejka, gdy administrator przywróci klienta.'
+              : 'Transakcję zamknięto razem z archiwizacją klienta. Historia zostaje poniżej.'}
+          </p>
+        </section>
+      ) : null}
+
+      {guide && !frozen ? (
         <section className="crmx-card crmx-dealsheet__guide">
           <p className="crmx-eyebrow">{guide.intent === 'unclear' ? 'Sytuacja · do wyjaśnienia' : 'Sytuacja'}</p>
           <h4 className="crmx-dealsheet__steptitle">{guide.headline}</h4>
@@ -695,7 +708,7 @@ function SheetBody({
         <button type="button" className="crmx-btn" onClick={() => onOpenOffer(deal.offerId)}><Home size={15} /> Oferta</button>
       </div>
 
-      {deal.status === 'ACTIVE' || deal.status === 'PAUSED' ? (
+      {(deal.status === 'ACTIVE' || deal.status === 'PAUSED') && !frozen ? (
         confirmLost ? (
           <section className="crmx-danger" role="alertdialog" aria-label="Potwierdź zamknięcie">
             <p className="crmx-danger__title"><AlertTriangle size={17} /> Na pewno zamknąć transakcję: {buyerName(deal)}?</p>
