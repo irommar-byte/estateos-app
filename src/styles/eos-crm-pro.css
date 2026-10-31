@@ -223,23 +223,10 @@ button.crmx-kpi:hover { transform: translateY(-2px); box-shadow: var(--x-shadow-
   padding: 3px 9px; border-radius: 99px;
   font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap;
   color: var(--x-ink-2); background: var(--x-surface-2); border: 1px solid var(--x-line);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 1px 2px rgba(28, 25, 20, 0.05);
 }
 .crmx-chip--gold { color: var(--x-gold-ink); background: var(--x-gold-soft); border-color: transparent; }
-.crmx-chip--good { color: var(--x-good); background: var(--x-good-soft); border-color: color-mix(in srgb, var(--x-good) 42%, transparent); }
-.crmx-chip--warn { color: var(--x-warn); background: var(--x-warn-soft); border-color: color-mix(in srgb, var(--x-warn) 42%, transparent); }
-.crmx-chip--bad { color: var(--x-bad); background: var(--x-bad-soft); border-color: color-mix(in srgb, var(--x-bad) 42%, transparent); }
-/* Sygnały statusu: każdy zielony/żółty/czerwony znaczek dostaje kropkę i swój rytm (definicja w eos-components.css → .eos-sig) */
-.crmx-chip--good, .crmx-chip--warn, .crmx-chip--bad { --sig: currentColor; }
-.crmx-chip--good:not(:has(.crmx-dot))::before,
-.crmx-chip--warn:not(:has(.crmx-dot))::before,
-.crmx-chip--bad:not(:has(.crmx-dot))::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: currentColor; flex-shrink: 0; }
-.crmx-chip--good { animation: eos-sig-breathe 6s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
-.crmx-chip--good::before, .crmx-chip--good .crmx-dot { animation: eos-sig-breathe-dot 6s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
-.crmx-chip--warn::before, .crmx-chip--warn .crmx-dot { animation: eos-sig-blink 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
-.crmx-chip--warn { animation: eos-sig-warn-halo 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
-.crmx-chip--bad { box-shadow: 0 0 18px 0 color-mix(in srgb, currentColor 40%, transparent), 0 0 4px 0 color-mix(in srgb, currentColor 30%, transparent); }
-.crmx-chip--bad::before, .crmx-chip--bad .crmx-dot { box-shadow: 0 0 4px 1px color-mix(in srgb, currentColor 90%, transparent), 0 0 10px 3px color-mix(in srgb, currentColor 45%, transparent); }
+/* Zielony / żółty / czerwony znaczek: szkło, poświata i rytm — definicja w eos-components.css („Sygnały statusu”) */
 .crmx-chip--info { color: var(--x-info); background: var(--x-info-soft); border-color: transparent; }
 .crmx-dot { width: 7px; height: 7px; border-radius: 99px; background: currentColor; flex-shrink: 0; }
 
@@ -474,7 +461,7 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 .crmx-planner__ev { display: block; padding: 2px 6px; border-radius: 6px; font-size: 11px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-left: 2px solid currentColor; background: var(--x-surface-2); }
 .crmx-planner__ev b { font-weight: 700; font-variant-numeric: tabular-nums; }
 .crmx-planner__ev--good { color: var(--x-good); background: var(--x-good-soft); }
-.crmx-planner__ev--warn { color: var(--x-warn); background: var(--x-warn-soft); --sig: var(--x-warn); animation: eos-sig-warn-halo 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
+.crmx-planner__ev--warn { color: var(--x-warn); background: var(--x-warn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--x-warn) 40%, transparent); }
 .crmx-planner__ev--bad { color: var(--x-bad); background: var(--x-bad-soft); }
 .crmx-planner__ev--info { color: var(--x-info); background: var(--x-info-soft); }
 .crmx-planner__ev--gold, .crmx-planner__ev--plain { color: var(--x-gold-ink); background: var(--x-gold-soft); }
@@ -619,7 +606,7 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 .crmx-check.is-on { background: var(--x-ink); border-color: var(--x-ink); }
 .crmx-client__avatar { position: relative; width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; color: var(--x-info); background: var(--x-info-soft); }
 .crmx-client__avatar.is-seller { color: var(--x-gold-ink); background: var(--x-gold-soft); }
-.crmx-client__online { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 99px; background: var(--x-good); border: 2px solid var(--x-surface); --sig: var(--x-good); animation: eos-sig-breathe-dot 6s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
+.crmx-client__online { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 99px; background: var(--x-good); border: 2px solid var(--x-surface); --sig-rgb: 35 133 90; --sig-glow: 52 199 120; background: radial-gradient(circle at 34% 30%, rgb(255 255 255 / 0.9) 0 14%, rgb(var(--sig-glow)) 48%, rgb(var(--sig-rgb)) 100%); animation: eos-online-breathe 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
 .crmx-client__name { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crmx-client__role { margin-top: 1px; font-size: 12px; color: var(--x-ink-3); }
 .crmx-client__contact { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -697,7 +684,7 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-dealsheet__row { display: flex; flex-wrap: wrap; gap: 8px; }
 .crmx-dealsheet .crmx-btn { justify-content: center; }
 .crmx-dealsheet__msg { font-size: 12.5px; font-weight: 600; }
-.crmx-dealsheet__msg.is-ok { color: var(--x-good); --sig: var(--x-good); padding: 8px 12px; border-radius: 12px; background: var(--x-good-soft); animation: eos-sig-breathe 6s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
+.crmx-dealsheet__msg.is-ok { color: var(--x-good); --sig: var(--x-good); padding: 8px 12px; border-radius: 12px; background: var(--x-good-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--x-good) 35%, transparent); }
 .crmx-dealsheet__msg.is-bad { color: var(--x-bad); --sig: var(--x-bad); padding: 8px 12px; border-radius: 12px; background: var(--x-bad-soft); box-shadow: 0 0 14px -4px color-mix(in srgb, var(--x-bad) 50%, transparent); }
 .crmx-chip--dotonly { padding: 5px; gap: 0; }
 .crmx-chip--dotonly::before { display: none; }
