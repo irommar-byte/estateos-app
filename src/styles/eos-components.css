@@ -4571,21 +4571,21 @@ html.dark .eos-sig--bad, html[data-theme="dark"] .eos-sig--bad { --sig: #f08a9b;
 
 /* Zielony: spokojny, ledwie widoczny oddech — długi cykl, miękka poświata */
 @keyframes eos-sig-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
-  50% { box-shadow: 0 0 10px -3px color-mix(in srgb, var(--sig, currentColor) 26%, transparent); }
+  0%, 100% { box-shadow: 0 0 6px -2px color-mix(in srgb, var(--sig, currentColor) 8%, transparent); }
+  50% { box-shadow: 0 0 14px 0 color-mix(in srgb, var(--sig, currentColor) 30%, transparent); }
 }
 @keyframes eos-sig-breathe-dot {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sig, currentColor) 0%, transparent); transform: scale(1); }
-  50% { box-shadow: 0 0 5px 1px color-mix(in srgb, var(--sig, currentColor) 40%, transparent); transform: scale(1.08); }
+  0%, 100% { box-shadow: 0 0 2px 0 color-mix(in srgb, var(--sig, currentColor) 20%, transparent); transform: scale(1); }
+  50% { box-shadow: 0 0 6px 2px color-mix(in srgb, var(--sig, currentColor) 50%, transparent); transform: scale(1.1); }
 }
 /* Żółty: równomierne, płynne mruganie — pół cyklu jasno, pół przygaszone, bez przystanków */
 @keyframes eos-sig-blink {
   0%, 100% { opacity: 1; box-shadow: 0 0 6px 1px color-mix(in srgb, var(--sig, currentColor) 60%, transparent); }
-  50% { opacity: 0.22; box-shadow: 0 0 0 0 color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
+  50% { opacity: 0.22; box-shadow: 0 0 6px 1px color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
 }
 @keyframes eos-sig-warn-halo {
   0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig, currentColor) 22%, transparent), 0 0 12px -3px color-mix(in srgb, var(--sig, currentColor) 45%, transparent); }
-  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig, currentColor) 6%, transparent), 0 0 0 -3px color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
+  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig, currentColor) 6%, transparent), 0 0 12px -3px color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
   .eos-sig, .eos-sig::before, .eos-sig-dot, .eos-sig-box, .eos-sig-glow,
