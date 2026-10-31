@@ -21,6 +21,7 @@ const ACCEL = 300; // °/s² — rozkręcanie pod kursorem
 const MAX_SPEED = 1260; // °/s
 const SETTLE_MS = 900;
 const EDGE_LAYERS = 9;
+const STAMP_MS = 1100;
 
 function setTransform(el: HTMLElement | null, angle: number) {
   if (el) el.style.transform = `rotateX(${REST_X}deg) rotateY(${REST_Y + angle}deg)`;
@@ -96,19 +97,46 @@ function useGoldSpin(hovered: boolean, enabled: boolean) {
   return { coinRef, settling };
 }
 
+/**
+ * Granatowa moneta: pod kursorem podrywa się i obraca jak rzucona moneta, lądując rewersem „BIURO”.
+ * Po zabraniu kursora wraca i „przybija pieczęć”: krótkie dociśnięcie i dwa granatowe kręgi rozchodzące się po blacie.
+ */
+function useOfficeStamp(hovered: boolean, enabled: boolean) {
+  const [stamping, setStamping] = useState(false);
+  const wasHovered = useRef(false);
+  useEffect(() => {
+    if (!enabled) return;
+    if (wasHovered.current && !hovered) {
+      setStamping(true);
+      const t = window.setTimeout(() => setStamping(false), STAMP_MS);
+      wasHovered.current = false;
+      return () => window.clearTimeout(t);
+    }
+    wasHovered.current = hovered;
+  }, [hovered, enabled]);
+  return stamping;
+}
+
 export default function EosCreditCoin({ count, loading, spinning = false, size = "sm", variant = "gold", alert = false }: Props) {
   const dim = size === "md" ? 44 : 36;
   const label = loading ? "…" : String(Math.max(0, count ?? 0));
   const office = variant === "office";
   const { coinRef, settling } = useGoldSpin(spinning, !office);
+  const stamping = useOfficeStamp(spinning, office);
   const thick = size === "md" ? 4.4 : 3.6;
 
   return (
     <div
-      className={`eos-coin-scene relative flex items-center justify-center ${office ? "is-office" : ""} ${alert ? "is-alert" : ""} ${settling ? "is-settling" : ""} ${office && spinning ? "is-flipped" : ""}`}
+      className={`eos-coin-scene relative flex items-center justify-center ${office ? "is-office" : ""} ${alert ? "is-alert" : ""} ${settling ? "is-settling" : ""} ${office && spinning ? "is-flipped" : ""} ${stamping ? "is-stamp" : ""}`}
       style={{ width: dim, height: dim, ["--coin-t" as string]: `${thick}px` }}
       aria-hidden
     >
+      {office ? (
+        <>
+          <span className="eos-coin-ring" />
+          <span className="eos-coin-ring eos-coin-ring--2" />
+        </>
+      ) : null}
       <div className="eos-coin-float">
         <div ref={coinRef} className="eos-coin">
           {Array.from({ length: EDGE_LAYERS }, (_, i) => (
@@ -152,10 +180,34 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
           transform: rotateX(${REST_X}deg) rotateY(${REST_Y}deg);
         }
         .is-office .eos-coin {
-          transition: transform 0.75s cubic-bezier(0.45, 0.05, 0.2, 1);
+          animation: eosOfficeBack 0.8s cubic-bezier(0.3, 0.9, 0.3, 1) both;
         }
         .is-office.is-flipped .eos-coin {
-          transform: rotateX(${REST_X}deg) rotateY(${REST_Y + 180}deg);
+          animation: eosOfficeToss 1.05s cubic-bezier(0.25, 0.7, 0.3, 1) both;
+        }
+        .is-office.is-stamp .eos-coin-float {
+          animation: eosOfficeStamp ${STAMP_MS}ms cubic-bezier(0.3, 1.2, 0.4, 1) both;
+        }
+        .is-office.is-stamp .eos-coin-gleam {
+          animation: eosCoinGleam ${STAMP_MS}ms ease-out 0.25s both;
+          background: linear-gradient(115deg, transparent 40%, rgba(214, 226, 255, 0.9) 50%, transparent 60%);
+        }
+        /* Kręgi „pieczęci” rozchodzące się po blacie */
+        .eos-coin-ring {
+          position: absolute;
+          inset: 0;
+          border-radius: 999px;
+          border: 1.5px solid rgba(74, 108, 196, 0.9);
+          box-shadow: 0 0 10px rgba(74, 108, 196, 0.45);
+          opacity: 0;
+          transform: scale(0.85);
+          pointer-events: none;
+        }
+        .is-stamp .eos-coin-ring {
+          animation: eosOfficeRing 0.9s cubic-bezier(0.2, 0.7, 0.4, 1) 0.18s both;
+        }
+        .is-stamp .eos-coin-ring--2 {
+          animation-delay: 0.36s;
         }
 
         /* Rant: warstwy krążków tworzą pełną, metaliczną grubość */
@@ -304,6 +356,52 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
             transform: translateY(-1px) rotateY(3deg);
           }
         }
+        @keyframes eosOfficeToss {
+          0% {
+            transform: translateY(0) rotateX(${REST_X}deg) rotateY(${REST_Y}deg);
+          }
+          35% {
+            transform: translateY(-5px) rotateX(${REST_X + 34}deg) rotateY(${REST_Y + 110}deg);
+          }
+          70% {
+            transform: translateY(-1px) rotateX(${REST_X - 12}deg) rotateY(${REST_Y + 205}deg);
+          }
+          100% {
+            transform: translateY(0) rotateX(${REST_X}deg) rotateY(${REST_Y + 180}deg);
+          }
+        }
+        @keyframes eosOfficeBack {
+          0% {
+            transform: rotateX(${REST_X}deg) rotateY(${REST_Y + 180}deg);
+          }
+          100% {
+            transform: rotateX(${REST_X}deg) rotateY(${REST_Y}deg);
+          }
+        }
+        @keyframes eosOfficeStamp {
+          0% {
+            transform: scale(1);
+          }
+          30% {
+            transform: scale(0.86) translateY(1.5px);
+          }
+          55% {
+            transform: scale(1.1) translateY(-0.5px);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+        @keyframes eosOfficeRing {
+          0% {
+            opacity: 0.95;
+            transform: scale(0.85);
+          }
+          100% {
+            opacity: 0;
+            transform: scale(1.9);
+          }
+        }
         @keyframes eosCoinSettle {
           0% {
             transform: scale(1);
@@ -334,8 +432,15 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
         @media (prefers-reduced-motion: reduce) {
           .eos-coin-float,
           .is-settling .eos-coin-float,
-          .is-settling .eos-coin-gleam {
+          .is-settling .eos-coin-gleam,
+          .is-office .eos-coin,
+          .is-office.is-flipped .eos-coin,
+          .is-office.is-stamp .eos-coin-float,
+          .is-stamp .eos-coin-ring {
             animation: none;
+          }
+          .is-office.is-flipped .eos-coin {
+            transform: rotateX(${REST_X}deg) rotateY(${REST_Y + 180}deg);
           }
           .is-alert::after {
             animation: none;
