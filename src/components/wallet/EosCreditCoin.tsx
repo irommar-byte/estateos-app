@@ -17,8 +17,9 @@ type Props = {
 /** Spoczynek: lekko obrócona na bok — widać rant i grubość, a liczba zostaje czytelna. */
 const REST_Y = -26;
 const REST_X = 9;
-const ACCEL = 300; // °/s² — rozkręcanie pod kursorem
-const MAX_SPEED = 1260; // °/s
+const ACCEL = 1100; // °/s² — rozkręcanie pod kursorem
+const MAX_SPEED = 1500; // °/s
+const BRAKE = 700; // °/s² — naturalne hamowanie po zabraniu kursora
 const SETTLE_MS = 900;
 const EDGE_LAYERS = 9;
 const STAMP_MS = 1100;
@@ -45,7 +46,7 @@ function useGoldSpin(hovered: boolean, enabled: boolean) {
     if (!hovered) {
       // Hamowanie ze stałym opóźnieniem tak, by zatrzymać się na pełnym obrocie (liczbą do przodu).
       if (s.vel > 0) {
-        const natural = (s.vel * s.vel) / (2 * 520);
+        const natural = (s.vel * s.vel) / (2 * BRAKE);
         s.target = Math.ceil((s.angle + natural) / 360) * 360;
         s.decel = (s.vel * s.vel) / (2 * Math.max(1, s.target - s.angle));
       }
@@ -169,7 +170,7 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
           transform-style: preserve-3d;
           animation: eosCoinFloat 4.6s ease-in-out infinite;
         }
-        .is-settling .eos-coin-float {
+        .is-settling {
           animation: eosCoinSettle ${SETTLE_MS}ms cubic-bezier(0.34, 1.4, 0.5, 1) both;
         }
         .eos-coin {
@@ -185,7 +186,7 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
         .is-office.is-flipped .eos-coin {
           animation: eosOfficeToss 1.05s cubic-bezier(0.25, 0.7, 0.3, 1) both;
         }
-        .is-office.is-stamp .eos-coin-float {
+        .is-office.is-stamp {
           animation: eosOfficeStamp ${STAMP_MS}ms cubic-bezier(0.3, 1.2, 0.4, 1) both;
         }
         .is-office.is-stamp .eos-coin-gleam {
@@ -431,11 +432,11 @@ export default function EosCreditCoin({ count, loading, spinning = false, size =
         }
         @media (prefers-reduced-motion: reduce) {
           .eos-coin-float,
-          .is-settling .eos-coin-float,
+          .is-settling,
           .is-settling .eos-coin-gleam,
           .is-office .eos-coin,
           .is-office.is-flipped .eos-coin,
-          .is-office.is-stamp .eos-coin-float,
+          .is-office.is-stamp,
           .is-stamp .eos-coin-ring {
             animation: none;
           }
