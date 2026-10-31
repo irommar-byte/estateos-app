@@ -370,7 +370,7 @@ export function SmartLifeBar({ access, compact = false }: { access: Access; comp
 /* ───────── kolumna w lejku + połączenie (iskrzy, gdy odłączone) ───────── */
 
 export function SmartAgentDock({ onOpen }: { onOpen: () => void }) {
-  const { data } = useSmartAgent();
+  const { data, error, reload } = useSmartAgent();
   const [msg, setMsg] = useState<string | null>(null);
   const access = data?.access;
   const active = Boolean(access?.active);
@@ -387,8 +387,19 @@ export function SmartAgentDock({ onOpen }: { onOpen: () => void }) {
           <span className="crmx-smartcol__badge"><Sparkles size={12} /> Smart Agent OS™</span>
           {active ? <span className="crmx-smartcol__live">online</span> : <Lock size={13} />}
         </header>
-        {!data ? (
+        {!data && !error ? (
           <p className="crmx-smartcol__text">Ładowanie…</p>
+        ) : !data ? (
+          <>
+            <p className="crmx-smartcol__text">
+              Nie udało się sprawdzić stanu <b>Smart Agent OS™</b>. Inteligentny agent sam dopasowuje oferty, zbiera reakcje
+              kupujących i przekazuje do lejka tylko tych, którzy chcą oglądać.
+            </p>
+            <button type="button" className="crmx-smartcol__cta" onClick={reload}>
+              Spróbuj ponownie
+            </button>
+            <button type="button" className="crmx-smartcol__link" onClick={onOpen}>Zobacz, jak działa</button>
+          </>
         ) : active ? (
           <>
             <div className="crmx-smartcol__stats">
@@ -452,7 +463,7 @@ const STAGES: Array<{ id: Item['stage']; label: string; hint: string }> = [
 ];
 
 export default function CrmSmartAgentBoard({ onOpenClient }: { onOpenClient: (clientId: number) => void }) {
-  const { data, error } = useSmartAgent();
+  const { data, error, reload } = useSmartAgent();
   const [draft, setDraft] = useState<Triggers | null>(null);
   const [seatTo, setSeatTo] = useState<string>('');
   const [enableFor, setEnableFor] = useState<string>('');
@@ -478,7 +489,13 @@ export default function CrmSmartAgentBoard({ onOpenClient }: { onOpenClient: (cl
     }
   };
 
-  if (error) return <div className="crmx-card crmx-empty">{error}</div>;
+  if (error && !data)
+    return (
+      <div className="crmx-card crmx-empty">
+        <p>{error}</p>
+        <button type="button" className="crmx-btn crmx-btn--sm" onClick={reload}>Spróbuj ponownie</button>
+      </div>
+    );
   if (!data || !draft) return <div className="crmx-card crmx-empty">Ładowanie Smart Agent OS™…</div>;
   const { access, board } = data;
   const s = board.stats;
