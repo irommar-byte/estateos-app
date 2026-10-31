@@ -4559,7 +4559,7 @@ html.dark :is(.eos-sig--bad, .crmx-chip.crmx-chip--bad), html[data-theme="dark"]
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.55) 0%, rgb(255 255 255 / 0.12) 48%, rgb(255 255 255 / 0) 52%),
     rgb(var(--sig-rgb) / 0.1);
-  border: 1.5px solid rgb(var(--sig-rgb) / 0.8);
+  border: 1px solid rgb(var(--sig-rgb) / 0.65);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.75),
     inset 0 -1px 2px rgb(var(--sig-rgb) / 0.14),
@@ -4623,7 +4623,7 @@ html[data-theme="dark"] :is(.eos-sig, .crmx-chip.crmx-chip--good, .crmx-chip.crm
 .eos-sig-box {
   position: relative; isolation: isolate;
   color: var(--eos-text);
-  border: 1.5px solid rgb(var(--sig-rgb) / 0.7);
+  border: 1px solid rgb(var(--sig-rgb) / 0.55);
   border-radius: 16px;
   background:
     linear-gradient(180deg, rgb(255 255 255 / 0.5) 0%, rgb(255 255 255 / 0) 42%),
