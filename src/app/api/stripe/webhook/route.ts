@@ -76,8 +76,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Nieprawidłowa sygnatura' }, { status: 400 });
     }
 
-    // 🔥 reszta Twojej logiki BEZ ZMIAN
-    if (event.type === 'checkout.session.completed') {
+    // Płatności z opóźnionym potwierdzeniem kończą się osobnym zdarzeniem — zapisy są jednorazowe, więc oba przechodzą tę samą ścieżkę.
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const session = event.data.object as Stripe.Checkout.Session;
 
       const customerEmail = session.customer_details?.email;

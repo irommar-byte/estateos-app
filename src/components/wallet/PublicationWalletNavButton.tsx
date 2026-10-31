@@ -49,11 +49,22 @@ export default function PublicationWalletNavButton() {
 
     const params = new URLSearchParams(window.location.search);
     const plusState = params.get("plus");
+    const sessionId = params.get("session_id");
     if (plusState === "success") {
-      void refreshWallet(true);
+      // Powrót z płatności: dopisujemy kredyty od razu, nie czekając na webhook (zapis jest jednorazowy).
+      void (sessionId
+        ? fetch("/api/stripe/force-sync", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ plan: "pakiet_plus", sessionId }),
+          }).catch(() => undefined)
+        : Promise.resolve()
+      ).then(() => refreshWallet(true));
     }
     if (plusState === "success" || plusState === "cancel") {
       params.delete("plus");
+      params.delete("session_id");
       const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}`;
       window.history.replaceState({}, "", next);
     }

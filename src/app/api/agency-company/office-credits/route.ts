@@ -11,6 +11,7 @@ import {
   setOfficeCoinVisibility,
 } from '@/lib/crm/officeCredits';
 import { logTeamEvent } from '@/lib/crm/teamLog';
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,8 +63,10 @@ export async function POST(req: Request) {
       const origin = req.headers.get('origin') || 'https://estateos.pl';
       const back = String(body.returnPath || '/moje-konto/crm').replace(/^(?!\/)/, '/').slice(0, 200);
       const sep = back.includes('?') ? '&' : '?';
+      const buyer = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
       const session = await stripeClient().checkout.sessions.create({
         mode: 'payment',
+        customer_email: buyer?.email || undefined,
         payment_method_types: ['card', 'blik'],
         line_items: [
           {
