@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Check, Lock, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Check, Copy, Lock, Mail, MessageCircle, QrCode, Search, Send, Smartphone, Sparkles, Zap } from 'lucide-react';
 import { pln, stamp } from './format';
 
 /* ───────── dane ───────── */
@@ -36,6 +36,7 @@ export type SmartAgentData = {
   triggers: Triggers;
   board: { items: Item[]; stats: { sent: number; reactions: number; toFunnel: number; toFunnelValue: number; buyers: number } };
   candidates: Array<{ userId: number; name: string }>;
+  search: { url: string; qrUrl: string; leads: number; lastLeadAt: string | null };
 };
 
 export function useSmartAgent() {
@@ -98,6 +99,104 @@ function BuyMissingCredits({ missing, className, onError }: { missing: number; c
     <button type="button" className={className} disabled={busy} onClick={() => void buy()}>
       <Zap size={14} /> {busy ? 'Przechodzę do płatności…' : `Dokup ${n} ${n === 1 ? 'kredyt' : n < 5 ? 'kredyty' : 'kredytów'}`}
     </button>
+  );
+}
+
+/* ───────── wyszukiwarka /szukam w imieniu agenta ───────── */
+
+const SHARE_TEXT = 'Dzień dobry, opisz proszę w dwie minuty, czego szukasz — od razu zacznę dobierać dla Ciebie oferty:';
+
+function SmartSearchCard({ search, active }: { search: SmartAgentData['search']; active: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const [qr, setQr] = useState(false);
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const text = `${SHARE_TEXT} ${search.url}`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(search.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setMsg({ ok: false, text: 'Nie udało się skopiować — zaznacz link i skopiuj ręcznie.' });
+    }
+  };
+  const invite = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await post('send_search_invite', { email, name });
+      setMsg({ ok: true, text: `Wysłano do ${email.trim()}. Gdy wypełni formularz, trafi do Twoich klientów.` });
+      setEmail('');
+      setName('');
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Nie udało się wysłać.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className={`crmx-card crmx-smartsearch ${active ? '' : 'is-locked'}`}>
+      <div className="crmx-smartsearch__head">
+        <div className="min-w-0">
+          <p className="crmx-eyebrow"><Search size={12} /> Wyszukiwarka w Twoim imieniu</p>
+          <h3 className="crmx-smartsearch__title">Wyślij kupującemu swoją wyszukiwarkę</h3>
+          <p className="crmx-smartsearch__sub">
+            Kupujący opisuje, czego szuka — z Twoim zdjęciem i nazwiskiem. Trafia od razu do Twoich klientów, dostaje panel,
+            a Smart Agent OS™ sam dopasowuje i wysyła mu oferty.
+          </p>
+        </div>
+        <div className="crmx-smartsearch__stat">
+          <b className="crmx-num">{search.leads}</b>
+          <span>{search.lastLeadAt ? `kupujących z wyszukiwarki · ostatni ${stamp(search.lastLeadAt)}` : 'kupujących z wyszukiwarki'}</span>
+        </div>
+      </div>
+
+      {active ? (
+        <>
+          <div className="crmx-smartsearch__link">
+            <span className="crmx-smartsearch__url">{search.url}</span>
+            <button type="button" className="crmx-btn crmx-btn--sm" onClick={() => void copy()}>
+              {copied ? <><Check size={13} /> Skopiowano</> : <><Copy size={13} /> Kopiuj</>}
+            </button>
+          </div>
+          <div className="crmx-smartsearch__share">
+            <a className="crmx-btn crmx-btn--sm" href={`sms:?&body=${encodeURIComponent(text)}`}><Smartphone size={13} /> SMS</a>
+            <a className="crmx-btn crmx-btn--sm" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer"><MessageCircle size={13} /> WhatsApp</a>
+            <a className="crmx-btn crmx-btn--sm" href={`mailto:?subject=${encodeURIComponent('Znajdę dla Ciebie nieruchomość')}&body=${encodeURIComponent(text)}`}><Mail size={13} /> Z Twojej poczty</a>
+            <button type="button" className="crmx-btn crmx-btn--sm" aria-pressed={qr} onClick={() => setQr((v) => !v)}><QrCode size={13} /> Kod QR</button>
+          </div>
+          {qr ? (
+            <div className="crmx-smartsearch__qr">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={search.qrUrl} alt="Kod QR do Twojej wyszukiwarki" width={168} height={168} />
+              <p>Pokaż kupującemu na telefonie albo wydrukuj na wizytówce czy ulotce.</p>
+            </div>
+          ) : null}
+          <form
+            className="crmx-smartsearch__invite"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void invite();
+            }}
+          >
+            <p className="crmx-smartsearch__label">Albo wyślę za Ciebie e-mail — w Twoim imieniu, z Twoim podpisem</p>
+            <div className="crmx-smartsearch__row">
+              <label className="crmx-input"><input value={name} onChange={(e) => setName(e.target.value)} placeholder="Imię (opcjonalnie)" /></label>
+              <label className="crmx-input" style={{ flex: '2 1 220px' }}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail kupującego" required /></label>
+              <button type="submit" className="crmx-btn crmx-btn--gold" disabled={busy || !email.trim()}><Send size={14} /> {busy ? 'Wysyłam…' : 'Wyślij'}</button>
+            </div>
+          </form>
+          {msg ? <p className={`crmx-dealsheet__msg ${msg.ok ? 'is-ok' : 'is-bad'}`}>{msg.text}</p> : null}
+        </>
+      ) : (
+        <p className="crmx-smartsearch__locked"><Lock size={13} /> Wyszukiwarka w Twoim imieniu działa przy aktywnym Smart Agent OS™ — włącz go powyżej.</p>
+      )}
+    </section>
   );
 }
 
@@ -316,6 +415,8 @@ export default function CrmSmartAgentBoard({ onOpenClient }: { onOpenClient: (cl
           </div>
         </div>
       </section>
+
+      <SmartSearchCard search={data.search} active={access.active} />
 
       <div className="crmx-smartgrid">
         <section className="crmx-card crmx-smartset">

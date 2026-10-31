@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getSmartAgentAccess } from '@/lib/crm/smartAgent';
+import { recordSmartSearchLead } from '@/lib/crm/smartSearch';
 import { cookies } from 'next/headers';
 import {
   BUYER_MISSION_COOKIE,
@@ -52,14 +54,26 @@ export async function POST(req: Request) {
 
     const phone = contact.phone;
 
+    // Link agenta z aktywnym Smart Agent OS™: Smart Agent od razu dopasowuje i wysyła oferty.
+    const smartActive = agent.viaLink ? (await getSmartAgentAccess(agent.userId)).active : false;
+
     const result = await persistBuyerIntakeContact({
       mission,
       firstName: contact.firstName,
       lastName: contact.lastName,
       email: contact.email,
       phone,
-      autoFirstOffer: !agent.viaLink,
+      autoFirstOffer: !agent.viaLink || smartActive,
     });
+    if (agent.viaLink) {
+      await recordSmartSearchLead({
+        agentUserId: agent.userId,
+        clientId: result.clientId,
+        name: `${contact.firstName} ${contact.lastName}`.trim(),
+        reused: result.reusedClient,
+        city: mission.city,
+      }).catch((error) => console.warn('[buyer-intake] zapis leada z linku', error));
+    }
 
     const nextMission = mergeBuyerMission(mission, agent.userId, {
       firstName: contact.firstName,
