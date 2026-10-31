@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAgencyUserId } from '@/lib/agencyClientAuth';
+import { withTeamLog } from '@/lib/crm/teamLog';
 import { withOutboxResponse } from '@/lib/crm/clientOutbox';
 import { prisma } from '@/lib/prisma';
 import { saveAcquisitionPaperFile } from '@/lib/upload/acquisitionDocumentUpload';
@@ -82,7 +83,7 @@ export async function GET(req: Request) {
   return fail('Podaj ofertę, kupującego albo ścieżkę.');
 }
 
-export async function POST(req: Request) {
+async function handlePost(req: Request) {
   const agencyUserId = await requireAgencyUserId(req);
   if (!agencyUserId) return fail('Dostęp tylko dla agencji i agentów.', 403);
 
@@ -228,4 +229,8 @@ export async function POST(req: Request) {
       return fail(e instanceof Error ? e.message : 'Coś poszło nie tak.');
     }
   });
+}
+
+export async function POST(req: Request) {
+  return withTeamLog(req, 'deal', () => requireAgencyUserId(req), null, () => handlePost(req));
 }

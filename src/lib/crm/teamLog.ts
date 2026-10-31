@@ -125,3 +125,119 @@ export async function listTeamDay(params: { companyId: number; day: Date }): Pro
 
   return { agents: [...agentMap.values()], events };
 }
+
+/* ───────── automatyczny zapis akcji z API CRM ───────── */
+
+const CLIENT_ACTION_LABELS: Record<string, string> = {
+  accept_schedule_change: 'Potwierdził termin zaproponowany przez klienta',
+  add_external_portal: 'Dodał ogłoszenie na portalu zewnętrznym',
+  add_marketing_note: 'Dodał notatkę marketingową',
+  complete_presentation_visit: 'Zakończył prezentację (podsumowanie wizyty)',
+  create_offer_from_acquisition: 'Utworzył ofertę z pozyskania',
+  create_person_project: 'Założył nowy projekt klienta',
+  intelligence_approve: 'Zatwierdził wysyłkę ofert z agenta poszukiwań',
+  intelligence_send: 'Wysłał oferty z agenta poszukiwań',
+  intelligence_skip: 'Pominął propozycję agenta poszukiwań',
+  link_offer: 'Powiązał ofertę z klientem',
+  mark_presentation_held: 'Oznaczył prezentację jako odbytą',
+  notify_offer: 'Wysłał ofertę klientowi',
+  notify_offers: 'Wysłał oferty klientowi',
+  portal_hunt: 'Uruchomił poszukiwanie na portalach',
+  propose_auction: 'Zaproponował aukcję',
+  propose_meeting: 'Zaproponował spotkanie',
+  propose_open_house: 'Zaproponował dzień otwarty',
+  propose_presentation: 'Zaproponował terminy prezentacji',
+  publish_latest_estateos_promotion: 'Opublikował promocję EstateOS',
+  publish_other_agencies: 'Udostępnił ofertę innym agencjom',
+  record_facebook_group_post: 'Zapisał publikację w grupie Facebook',
+  remove_external_portal: 'Usunął ogłoszenie z portalu zewnętrznego',
+  reply_to_offer_feedback: 'Odpowiedział na opinię klienta o ofercie',
+  request_client_decision: 'Poprosił klienta o decyzję',
+  request_listing_showing: 'Poprosił inną agencję o prezentację',
+  resend_attendance_email: 'Wysłał ponownie potwierdzenie obecności',
+  resolve_buyer_agent_task: 'Załatwił zadanie kupującego',
+  resume_intelligence: 'Wznowił agenta poszukiwań',
+  send_business_card: 'Wysłał wizytówkę',
+  send_portal_message: 'Napisał do klienta w panelu',
+  send_visit_prep_packet: 'Wysłał pakiet przed wizytą',
+  set_marketing_visibility: 'Zmienił widoczność marketingu',
+  set_seller_next_step: 'Ustalił następny krok ze sprzedającym',
+  start_auction: 'Rozpoczął aukcję',
+  start_open_house: 'Rozpoczął dzień otwarty',
+  update_external_portal: 'Zaktualizował ogłoszenie na portalu',
+};
+
+const DEAL_ACTION_LABELS: Record<string, string> = {
+  add_buyer: 'Dodał kupującego do oferty',
+  confirm_intent: 'Potwierdził zainteresowanie kupującego',
+  schedule_external: 'Ustalił termin prezentacji',
+  mark_viewed: 'Oznaczył prezentację jako odbytą',
+  set_feedback: 'Zapisał opinię kupującego',
+  request_feedback: 'Poprosił kupującego o opinię',
+  inform_seller: 'Poinformował sprzedającego',
+  set_status: 'Zmienił status transakcji',
+  start_negotiation: 'Rozpoczął negocjacje',
+  add_offer: 'Zapisał propozycję ceny',
+  set_offer_status: 'Zmienił status propozycji ceny',
+  send_offer_to_seller: 'Wysłał propozycję ceny sprzedającemu',
+  message_buyer: 'Napisał do kupującego',
+  set_negotiation: 'Zaktualizował negocjacje',
+  set_reservation: 'Zapisał rezerwację',
+  decide_others: 'Zdecydował o pozostałych kupujących',
+  set_step: 'Zaktualizował etap transakcji',
+  send_offer: 'Wysłał propozycję ceny',
+  record_response: 'Zapisał odpowiedź strony',
+  approve_response: 'Zatwierdził odpowiedź strony',
+  skip_reservation: 'Pominął rezerwację',
+  start_documents: 'Rozpoczął etap dokumentów',
+};
+
+/**
+ * Owija handler POST: po udanej akcji zapisuje ją w dzienniku zespołu.
+ * Odczytuje akcję z kopii żądania, więc handler dostaje nienaruszone body.
+ */
+export async function withTeamLog(
+  req: Request,
+  scope: 'client' | 'deal',
+  userId: () => Promise<number | null>,
+  refId: number | null,
+  handler: () => Promise<Response>,
+): Promise<Response> {
+  let action = '';
+  let ref = refId;
+  try {
+    if ((req.headers.get('content-type') || '').includes('application/json')) {
+      const body = (await req.clone().json().catch(() => ({}))) as Record<string, unknown>;
+      action = String(body.action || '');
+      if (!ref && body.dealId) ref = Number(body.dealId) || null;
+    }
+  } catch {
+    action = '';
+  }
+  const res = await handler();
+  const labels = scope === 'client' ? CLIENT_ACTION_LABELS : DEAL_ACTION_LABELS;
+  if (res.ok && action && labels[action]) {
+    const uid = await userId().catch(() => null);
+    if (uid) {
+      let title = labels[action];
+      let body: string | null = null;
+      try {
+        const data = await res.clone().json();
+        const deal = data?.deal;
+        if (deal?.offer?.title) {
+          const buyer = deal.buyer?.name || deal.buyer?.agency || 'kupujący';
+          body = `${buyer} · ${deal.offer.title}`;
+        }
+      } catch {
+        body = null;
+      }
+      if (scope === 'client' && ref) {
+        const client = await prisma.agencyClient.findUnique({ where: { id: ref }, select: { firstName: true, lastName: true } }).catch(() => null);
+        if (client) body = `${client.firstName} ${client.lastName}`.trim();
+      }
+      if (action === 'set_status') title = 'Zmienił status transakcji (zamknięcie / wznowienie)';
+      void logTeamEvent({ userId: uid, kind: `${scope.toUpperCase()}_${action.toUpperCase()}`.slice(0, 48), title, body, refType: scope, refId: ref });
+    }
+  }
+  return res;
+}

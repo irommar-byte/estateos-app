@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { parseAutoSendCategories, withOutboxResponse } from '@/lib/crm/clientOutbox';
 import { prisma } from '@/lib/prisma';
 import { getAgencyClientForUser, getAgencyClientLiteForUser, requireAgencyUserId } from '@/lib/agencyClientAuth';
+import { withTeamLog } from '@/lib/crm/teamLog';
 import {
   buyerPrefToWebRadarFilters,
   explainOfferForBuyerPref,
@@ -584,7 +585,7 @@ export async function DELETE(req: Request, ctx: RouteCtx) {
   return NextResponse.json({ success: true, ...result });
 }
 
-export async function POST(req: Request, ctx: RouteCtx) {
+async function handlePost(req: Request, ctx: RouteCtx) {
   return withOutboxResponse(() => handlePOST(req, ctx));
 }
 
@@ -2002,4 +2003,9 @@ async function handlePOST(req: Request, ctx: RouteCtx) {
   }
 
   return NextResponse.json({ error: 'Nieznana akcja.' }, { status: 400 });
+}
+
+export async function POST(req: Request, ctx: RouteCtx) {
+  const { id } = await ctx.params;
+  return withTeamLog(req, 'client', () => requireAgencyUserId(req), Number(id) || null, () => handlePost(req, ctx));
 }

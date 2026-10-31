@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { logTeamEvent } from '@/lib/crm/teamLog';
 import type { AgencyMemberRole, AgencyMemberStatus, AgencyAgentTitle } from '@prisma/client';
 import {
   AGENCY_AGENT_TITLES,
@@ -597,6 +598,8 @@ export async function transferCompanyCredits(params: {
       },
     });
   });
+  const recipient = await prisma.user.findUnique({ where: { id: toUserId }, select: { name: true } });
+  void logTeamEvent({ userId: adminUserId, kind: 'CREDITS_TRANSFER', title: `Przekazał ${amount} kredytów z puli: ${recipient?.name || `agent #${toUserId}`}` });
 }
 
 export async function setMemberStatus(params: {

@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Radar, Sparkles, ArrowLeftRight, Building2, CalendarDays, Camera, Heart, LayoutDashboard, MessageCircle, Users } from 'lucide-react';
+import { Radar, Sparkles, ScrollText, ArrowLeftRight, Building2, CalendarDays, Camera, Heart, LayoutDashboard, MessageCircle, Users } from 'lucide-react';
 
-export type CrmProTab = 'pulpit' | 'klienci' | 'wiadomosci' | 'my_offers' | 'transakcje' | 'planowanie' | 'offers' | 'radar' | 'smart';
+export type CrmProTab = 'pulpit' | 'klienci' | 'wiadomosci' | 'my_offers' | 'transakcje' | 'planowanie' | 'offers' | 'radar' | 'smart' | 'zespol';
 
 const ITEMS: Array<{ id: CrmProTab; label: string; Icon: typeof Users }> = [
   { id: 'pulpit', label: 'Pulpit', Icon: LayoutDashboard },
@@ -15,6 +15,7 @@ const ITEMS: Array<{ id: CrmProTab; label: string; Icon: typeof Users }> = [
   { id: 'smart', label: 'Smart Agent OS™', Icon: Sparkles },
   { id: 'planowanie', label: 'Planowanie', Icon: CalendarDays },
   { id: 'offers', label: 'Ulubione', Icon: Heart },
+  { id: 'zespol', label: 'Dziennik zespołu', Icon: ScrollText },
 ];
 
 /** Boczne menu CRM (na telefonie poziomy pasek) z licznikami — jedno miejsce nawigacji po całym systemie. */
