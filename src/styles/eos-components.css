@@ -4552,38 +4552,42 @@ html.dark .eos-reason--bad, [data-theme="dark"] .eos-reason--bad { color: #fda4a
 html.dark .eos-sig--ok, html[data-theme="dark"] .eos-sig--ok { --sig: #5fcf9c; }
 html.dark .eos-sig--warn, html[data-theme="dark"] .eos-sig--warn { --sig: #e7b765; }
 html.dark .eos-sig--bad, html[data-theme="dark"] .eos-sig--bad { --sig: #f08a9b; }
-.eos-sig.eos-sig--ok { animation: eos-sig-breathe 3.6s ease-in-out infinite; }
-.eos-sig--ok::before, .eos-sig-dot.eos-sig--ok { animation: eos-sig-breathe-dot 3.6s ease-in-out infinite; }
-.eos-sig.eos-sig--warn { animation: eos-sig-warn-halo 1.5s ease-in-out infinite; }
-.eos-sig--warn::before, .eos-sig-dot.eos-sig--warn { animation: eos-sig-blink 1.5s steps(1, end) infinite; }
-.eos-sig.eos-sig--bad { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig) 22%, transparent), 0 0 12px -2px color-mix(in srgb, var(--sig) 45%, transparent); }
-.eos-sig--bad::before, .eos-sig-dot.eos-sig--bad { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--sig) 70%, transparent); }
+.eos-sig.eos-sig--ok { animation: eos-sig-breathe 5s ease-in-out infinite; }
+.eos-sig--ok::before, .eos-sig-dot.eos-sig--ok { animation: eos-sig-breathe-dot 5s ease-in-out infinite; }
+.eos-sig.eos-sig--warn { animation: eos-sig-warn-halo 1.8s ease-in-out infinite; }
+.eos-sig--warn::before, .eos-sig-dot.eos-sig--warn { animation: eos-sig-blink 1.8s ease-in-out infinite; }
+.eos-sig.eos-sig--bad { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig) 32%, transparent), 0 0 18px 0 color-mix(in srgb, var(--sig) 42%, transparent), 0 0 4px 0 color-mix(in srgb, var(--sig) 30%, transparent); }
+.eos-sig--bad::before, .eos-sig-dot.eos-sig--bad { box-shadow: 0 0 4px 1px color-mix(in srgb, var(--sig) 90%, transparent), 0 0 10px 3px color-mix(in srgb, var(--sig) 45%, transparent); }
 /* Większe komunikaty (paski, ramki) — ta sama zasada, spokojniej */
-.eos-sig-box { border: 1px solid color-mix(in srgb, var(--sig) 30%, transparent); background: color-mix(in srgb, var(--sig) 8%, transparent); color: var(--eos-text); border-radius: 16px; }
-.eos-sig-box.eos-sig--ok { animation: eos-sig-breathe 3.6s ease-in-out infinite; }
-.eos-sig-box.eos-sig--warn { animation: eos-sig-warn-halo 1.5s ease-in-out infinite; }
-.eos-sig-box.eos-sig--bad { box-shadow: 0 0 18px -6px color-mix(in srgb, var(--sig) 55%, transparent); }
+.eos-sig-box { border: 1px solid color-mix(in srgb, var(--sig) 30%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--sig) 10%, transparent), color-mix(in srgb, var(--sig) 5%, transparent)); color: var(--eos-text); border-radius: 16px; }
+.eos-sig-box.eos-sig--ok { animation: eos-sig-breathe 5s ease-in-out infinite; }
+.eos-sig-box.eos-sig--warn { animation: eos-sig-warn-halo 1.8s ease-in-out infinite; }
+.eos-sig-box.eos-sig--bad { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig) 18%, transparent), 0 0 28px -4px color-mix(in srgb, var(--sig) 45%, transparent); }
 .eos-sig-text { color: var(--sig); }
 /* Sama poświata na istniejącym bloku (pasek, karta), bez zmiany jego tła */
-.eos-sig-glow.eos-sig--ok { animation: eos-sig-breathe 3.6s ease-in-out infinite; }
-.eos-sig-glow.eos-sig--warn { animation: eos-sig-warn-halo 1.5s ease-in-out infinite; }
-.eos-sig-glow.eos-sig--bad { box-shadow: 0 0 20px -6px color-mix(in srgb, var(--sig) 60%, transparent); }
+.eos-sig-glow.eos-sig--ok { animation: eos-sig-breathe 5s ease-in-out infinite; }
+.eos-sig-glow.eos-sig--warn { animation: eos-sig-warn-halo 1.8s ease-in-out infinite; }
+.eos-sig-glow.eos-sig--bad { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig) 16%, transparent), 0 10px 30px -10px color-mix(in srgb, var(--sig) 50%, transparent), 0 0 24px -6px color-mix(in srgb, var(--sig) 40%, transparent); }
 
+/* Zielony: spokojny, ledwie widoczny oddech — długi cykl, miękka poświata */
 @keyframes eos-sig-breathe {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
-  50% { box-shadow: 0 0 14px -2px color-mix(in srgb, var(--sig, currentColor) 38%, transparent); }
+  50% { box-shadow: 0 0 10px -3px color-mix(in srgb, var(--sig, currentColor) 26%, transparent); }
 }
 @keyframes eos-sig-breathe-dot {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sig, currentColor) 0%, transparent); opacity: 0.85; }
-  50% { box-shadow: 0 0 7px 2px color-mix(in srgb, var(--sig, currentColor) 55%, transparent); opacity: 1; }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sig, currentColor) 0%, transparent); transform: scale(1); }
+  50% { box-shadow: 0 0 5px 1px color-mix(in srgb, var(--sig, currentColor) 40%, transparent); transform: scale(1.08); }
 }
+/* Żółty: wyraźne, ale płynne mrugnięcie — szybkie zgaszenie i miękki powrót poświaty */
 @keyframes eos-sig-blink {
-  0%, 60% { opacity: 1; }
-  60.01%, 100% { opacity: 0.15; }
+  0%, 46% { opacity: 1; box-shadow: 0 0 6px 1px color-mix(in srgb, var(--sig, currentColor) 60%, transparent); }
+  58%, 72% { opacity: 0.2; box-shadow: 0 0 0 0 transparent; }
+  86%, 100% { opacity: 1; box-shadow: 0 0 6px 1px color-mix(in srgb, var(--sig, currentColor) 60%, transparent); }
 }
 @keyframes eos-sig-warn-halo {
-  0%, 60% { box-shadow: 0 0 10px -3px color-mix(in srgb, var(--sig, currentColor) 50%, transparent); }
-  60.01%, 100% { box-shadow: 0 0 0 0 transparent; }
+  0%, 46% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig, currentColor) 22%, transparent), 0 0 12px -3px color-mix(in srgb, var(--sig, currentColor) 45%, transparent); }
+  58%, 72% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig, currentColor) 6%, transparent), 0 0 0 0 transparent; }
+  86%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig, currentColor) 22%, transparent), 0 0 12px -3px color-mix(in srgb, var(--sig, currentColor) 45%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
   .eos-sig, .eos-sig::before, .eos-sig-dot, .eos-sig-box, .eos-sig-glow,
@@ -4591,5 +4595,5 @@ html.dark .eos-sig--bad, html[data-theme="dark"] .eos-sig--bad { --sig: #f08a9b;
   .crmx-chip--good .crmx-dot, .crmx-chip--warn .crmx-dot { animation: none !important; }
 }
 /* Kropka „online” — zielona, oddycha */
-.eos-online { --sig: #23855a; background: var(--sig); animation: eos-sig-breathe-dot 3.6s ease-in-out infinite; }
+.eos-online { --sig: #23855a; background: var(--sig); animation: eos-sig-breathe-dot 5s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .eos-online { animation: none; } }

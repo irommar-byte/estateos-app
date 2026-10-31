@@ -22,8 +22,10 @@
   --x-bad-soft: rgba(163, 40, 60, 0.09);
   --x-info: #2f5d8a;
   --x-info-soft: rgba(47, 93, 138, 0.1);
-  --x-shadow: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 1px 2px rgba(28, 25, 20, 0.04), 0 12px 32px -18px rgba(28, 25, 20, 0.18);
-  --x-shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.8) inset, 0 2px 6px rgba(28, 25, 20, 0.05), 0 24px 48px -24px rgba(28, 25, 20, 0.28);
+  --x-shadow: 0 1px 0 rgba(255, 255, 255, 0.95) inset, 0 -1px 0 rgba(28, 25, 20, 0.03) inset, 0 1px 2px rgba(28, 25, 20, 0.05), 0 6px 14px -8px rgba(28, 25, 20, 0.12), 0 22px 44px -26px rgba(28, 25, 20, 0.32);
+  --x-shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.95) inset, 0 2px 4px rgba(28, 25, 20, 0.06), 0 10px 22px -10px rgba(28, 25, 20, 0.16), 0 32px 60px -30px rgba(28, 25, 20, 0.4);
+  --x-shadow-inner: 0 1px 0 rgba(255, 255, 255, 0.85) inset, 0 1px 2px rgba(28, 25, 20, 0.04), 0 4px 10px -6px rgba(28, 25, 20, 0.12);
+  --x-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 38%);
   --x-serif: var(--eos-font-display);
   --x-radius: 18px;
   color: var(--x-ink);
@@ -49,8 +51,10 @@ html:not(.light) .crmx {
   --x-bad-soft: rgba(240, 138, 155, 0.1);
   --x-info: #8db8e3;
   --x-info-soft: rgba(141, 184, 227, 0.12);
-  --x-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 32px -18px rgba(0, 0, 0, 0.7);
-  --x-shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 24px 48px -24px rgba(0, 0, 0, 0.85);
+  --x-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 -1px 0 rgba(0, 0, 0, 0.4) inset, 0 2px 4px rgba(0, 0, 0, 0.35), 0 10px 24px -12px rgba(0, 0, 0, 0.6), 0 28px 56px -28px rgba(0, 0, 0, 0.9);
+  --x-shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 4px 8px rgba(0, 0, 0, 0.4), 0 16px 32px -14px rgba(0, 0, 0, 0.7), 0 40px 72px -32px rgba(0, 0, 0, 0.95);
+  --x-shadow-inner: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 2px 6px -2px rgba(0, 0, 0, 0.5);
+  --x-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 40%);
 }
 
 /* ── Rama ─────────────────────────────────────────────────────────── */
@@ -169,11 +173,13 @@ html:not(.light) .crmx {
 
 /* ── Karty i elementy ─────────────────────────────────────────────── */
 .crmx-card {
-  background: var(--x-surface);
+  background: var(--x-sheen), var(--x-surface);
   border: 1px solid var(--x-line);
   border-radius: var(--x-radius);
   box-shadow: var(--x-shadow);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
 }
+.crmx-card:hover { box-shadow: var(--x-shadow-lift); }
 .crmx-card--pad { padding: 20px 22px; }
 .crmx-card__head {
   display: flex;
@@ -217,6 +223,7 @@ button.crmx-kpi:hover { transform: translateY(-2px); box-shadow: var(--x-shadow-
   padding: 3px 9px; border-radius: 99px;
   font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap;
   color: var(--x-ink-2); background: var(--x-surface-2); border: 1px solid var(--x-line);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
 }
 .crmx-chip--gold { color: var(--x-gold-ink); background: var(--x-gold-soft); border-color: transparent; }
 .crmx-chip--good { color: var(--x-good); background: var(--x-good-soft); border-color: transparent; }
@@ -227,12 +234,12 @@ button.crmx-kpi:hover { transform: translateY(-2px); box-shadow: var(--x-shadow-
 .crmx-chip--good:not(:has(.crmx-dot))::before,
 .crmx-chip--warn:not(:has(.crmx-dot))::before,
 .crmx-chip--bad:not(:has(.crmx-dot))::before { content: ""; width: 6px; height: 6px; border-radius: 99px; background: currentColor; flex-shrink: 0; }
-.crmx-chip--good { animation: eos-sig-breathe 3.6s ease-in-out infinite; }
-.crmx-chip--good::before, .crmx-chip--good .crmx-dot { animation: eos-sig-breathe-dot 3.6s ease-in-out infinite; }
-.crmx-chip--warn::before, .crmx-chip--warn .crmx-dot { animation: eos-sig-blink 1.5s steps(1, end) infinite; }
-.crmx-chip--warn { animation: eos-sig-warn-halo 1.5s ease-in-out infinite; }
-.crmx-chip--bad { box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent), 0 0 12px -2px color-mix(in srgb, currentColor 45%, transparent); }
-.crmx-chip--bad::before, .crmx-chip--bad .crmx-dot { box-shadow: 0 0 6px 1px color-mix(in srgb, currentColor 70%, transparent); }
+.crmx-chip--good { animation: eos-sig-breathe 5s ease-in-out infinite; }
+.crmx-chip--good::before, .crmx-chip--good .crmx-dot { animation: eos-sig-breathe-dot 5s ease-in-out infinite; }
+.crmx-chip--warn::before, .crmx-chip--warn .crmx-dot { animation: eos-sig-blink 1.8s ease-in-out infinite; }
+.crmx-chip--warn { animation: eos-sig-warn-halo 1.8s ease-in-out infinite; }
+.crmx-chip--bad { box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 32%, transparent), 0 0 18px 0 color-mix(in srgb, currentColor 40%, transparent), 0 0 4px 0 color-mix(in srgb, currentColor 30%, transparent); }
+.crmx-chip--bad::before, .crmx-chip--bad .crmx-dot { box-shadow: 0 0 4px 1px color-mix(in srgb, currentColor 90%, transparent), 0 0 10px 3px color-mix(in srgb, currentColor 45%, transparent); }
 .crmx-chip--info { color: var(--x-info); background: var(--x-info-soft); border-color: transparent; }
 .crmx-dot { width: 7px; height: 7px; border-radius: 99px; background: currentColor; flex-shrink: 0; }
 
@@ -467,7 +474,7 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 .crmx-planner__ev { display: block; padding: 2px 6px; border-radius: 6px; font-size: 11px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-left: 2px solid currentColor; background: var(--x-surface-2); }
 .crmx-planner__ev b { font-weight: 700; font-variant-numeric: tabular-nums; }
 .crmx-planner__ev--good { color: var(--x-good); background: var(--x-good-soft); }
-.crmx-planner__ev--warn { color: var(--x-warn); background: var(--x-warn-soft); --sig: var(--x-warn); animation: eos-sig-warn-halo 1.5s ease-in-out infinite; }
+.crmx-planner__ev--warn { color: var(--x-warn); background: var(--x-warn-soft); --sig: var(--x-warn); animation: eos-sig-warn-halo 1.8s ease-in-out infinite; }
 .crmx-planner__ev--bad { color: var(--x-bad); background: var(--x-bad-soft); }
 .crmx-planner__ev--info { color: var(--x-info); background: var(--x-info-soft); }
 .crmx-planner__ev--gold, .crmx-planner__ev--plain { color: var(--x-gold-ink); background: var(--x-gold-soft); }
@@ -612,7 +619,7 @@ html:not(.light) .crmx { --x-dial-hi: #23211c; --x-dial-lo: #0f0e0c; --x-tick: r
 .crmx-check.is-on { background: var(--x-ink); border-color: var(--x-ink); }
 .crmx-client__avatar { position: relative; width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; color: var(--x-info); background: var(--x-info-soft); }
 .crmx-client__avatar.is-seller { color: var(--x-gold-ink); background: var(--x-gold-soft); }
-.crmx-client__online { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 99px; background: var(--x-good); border: 2px solid var(--x-surface); --sig: var(--x-good); animation: eos-sig-breathe-dot 3.6s ease-in-out infinite; }
+.crmx-client__online { position: absolute; right: -2px; bottom: -2px; width: 11px; height: 11px; border-radius: 99px; background: var(--x-good); border: 2px solid var(--x-surface); --sig: var(--x-good); animation: eos-sig-breathe-dot 5s ease-in-out infinite; }
 .crmx-client__name { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crmx-client__role { margin-top: 1px; font-size: 12px; color: var(--x-ink-3); }
 .crmx-client__contact { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -690,7 +697,7 @@ html:not(.light) .crmx { --x-red: #ff6b74; }
 .crmx-dealsheet__row { display: flex; flex-wrap: wrap; gap: 8px; }
 .crmx-dealsheet .crmx-btn { justify-content: center; }
 .crmx-dealsheet__msg { font-size: 12.5px; font-weight: 600; }
-.crmx-dealsheet__msg.is-ok { color: var(--x-good); --sig: var(--x-good); padding: 8px 12px; border-radius: 12px; background: var(--x-good-soft); animation: eos-sig-breathe 3.6s ease-in-out infinite; }
+.crmx-dealsheet__msg.is-ok { color: var(--x-good); --sig: var(--x-good); padding: 8px 12px; border-radius: 12px; background: var(--x-good-soft); animation: eos-sig-breathe 5s ease-in-out infinite; }
 .crmx-dealsheet__msg.is-bad { color: var(--x-bad); --sig: var(--x-bad); padding: 8px 12px; border-radius: 12px; background: var(--x-bad-soft); box-shadow: 0 0 14px -4px color-mix(in srgb, var(--x-bad) 50%, transparent); }
 .crmx-chip--dotonly { padding: 5px; gap: 0; }
 .crmx-chip--dotonly::before { display: none; }
@@ -981,13 +988,13 @@ html:not(.light) .crmx .crmx-danger__title { color: #ff8a80; }
 .crmx .crmx-archive__stage span { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--x-ink-3); }
 .crmx .crmx-archive__stage b { margin-top: 2px; font-size: 14px; font-weight: 600; color: var(--x-gold-ink); }
 .crmx .crmx-archive__note { margin-top: 12px; font-size: 13px; color: var(--x-ink-2); }
-.crmx .crmx-archive__empty { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--x-surface-2); font-size: 13px; color: var(--x-ink-3); }
+.crmx .crmx-archive__empty { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--x-surface-2); box-shadow: 0 1px 3px rgba(28, 25, 20, 0.06) inset; font-size: 13px; color: var(--x-ink-3); }
 .crmx .crmx-archive__body { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
 .crmx .crmx-archive__label { margin-bottom: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--x-gold-ink); }
-.crmx .crmx-archive__row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--x-line); border-radius: 14px; background: var(--x-surface-2); color: var(--x-ink); transition: border-color 0.15s, background 0.15s; }
+.crmx .crmx-archive__row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--x-line); border-radius: 14px; background: var(--x-sheen), var(--x-surface-2); color: var(--x-ink); box-shadow: var(--x-shadow-inner); transition: border-color 0.2s, background 0.2s, box-shadow 0.2s, transform 0.2s; }
 .crmx .crmx-archive__row + .crmx-archive__row { margin-top: 6px; }
-.crmx .crmx-archive__row:hover { border-color: var(--x-gold); background: var(--x-gold-soft); }
-.crmx .crmx-archive__ico { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px; background: var(--x-surface); border: 1px solid var(--x-line); color: var(--x-gold-ink); }
+.crmx .crmx-archive__row:hover { border-color: var(--x-gold); background: var(--x-gold-soft); box-shadow: var(--x-shadow); transform: translateY(-1px); }
+.crmx .crmx-archive__ico { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px; background: var(--x-surface); border: 1px solid var(--x-line); color: var(--x-gold-ink); box-shadow: var(--x-shadow-inner); }
 .crmx .crmx-archive__text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .crmx .crmx-archive__title { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crmx .crmx-archive__sub { margin-top: 1px; font-size: 12px; color: var(--x-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1017,3 +1024,17 @@ html:not(.light) .crmx .crmx-danger__title { color: #ff8a80; }
 .crmx-archdlg__opt span { display: block; font-size: 12px; color: var(--eos-muted); margin-top: 1px; }
 .crmx-archdlg__warn { margin-top: 14px; border-color: rgba(163, 40, 60, 0.35); }
 .crmx-archdlg__warn:has(input:checked) { border-color: #a3283c; background: rgba(163, 40, 60, 0.07); }
+
+/* Głębia ramek (2026-10-31): wierzchnie światło, warstwowe cienie, wklęsłe pola */
+.crmx-strip, .crmx-client, .crmx-deal { background: var(--x-sheen), var(--x-surface); }
+.crmx-col { box-shadow: 0 1px 3px rgba(28, 25, 20, 0.05) inset, 0 1px 0 rgba(255, 255, 255, 0.6); }
+.crmx-input { box-shadow: 0 1px 2px rgba(28, 25, 20, 0.06) inset, 0 1px 0 rgba(255, 255, 255, 0.7); }
+.crmx-seg { box-shadow: 0 1px 3px rgba(28, 25, 20, 0.07) inset, 0 1px 0 rgba(255, 255, 255, 0.7); }
+.crmx-seg button[aria-pressed="true"] { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 1px 2px rgba(28, 25, 20, 0.1), 0 4px 10px -4px rgba(28, 25, 20, 0.18), inset 0 0 0 1px var(--x-line); }
+.crmx-btn { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 1px 2px rgba(28, 25, 20, 0.06), 0 4px 10px -6px rgba(28, 25, 20, 0.16); }
+.crmx-btn:hover { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 2px 4px rgba(28, 25, 20, 0.08), 0 10px 20px -10px rgba(28, 25, 20, 0.24); }
+.crmx-dealsheet__quote { box-shadow: 0 1px 2px rgba(28, 25, 20, 0.05) inset; }
+html:not(.light) .crmx .crmx-col, html:not(.light) .crmx .crmx-input, html:not(.light) .crmx .crmx-seg { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45) inset, 0 1px 0 rgba(255, 255, 255, 0.04); }
+html:not(.light) .crmx .crmx-btn { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 16px -8px rgba(0, 0, 0, 0.6); }
+html:not(.light) .crmx .crmx-seg button[aria-pressed="true"] { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.07) inset, 0 2px 6px rgba(0, 0, 0, 0.5), inset 0 0 0 1px var(--x-line); }
+html:not(.light) .crmx .crmx-chip:not(.crmx-chip--good):not(.crmx-chip--warn):not(.crmx-chip--bad) { box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset; }
