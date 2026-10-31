@@ -5,6 +5,7 @@ import { Clock, Search } from 'lucide-react';
 import { buyerName, STAGE_SHORT, useAgentDeals, type ProDeal } from './CrmPulpit';
 import { pln, relative } from './format';
 import CrmDealSheet from './CrmDealSheet';
+import { SmartAgentDock } from './CrmSmartAgent';
 
 const COLUMNS: Array<{ id: string; label: string; stages: string[] }> = [
   { id: 'lead', label: 'Zainteresowani', stages: ['interested', 'scheduling'] },
@@ -27,10 +28,12 @@ export default function CrmDealsPro({
   onOpenClient,
   onOpenOffer,
   offers,
+  onOpenSmart,
 }: {
   onOpenClient: (clientId: number) => void;
   onOpenOffer: (offerId: number) => void;
   offers?: any[];
+  onOpenSmart?: () => void;
 }) {
   const deals = useAgentDeals();
   const [query, setQuery] = useState('');
@@ -158,7 +161,8 @@ export default function CrmDealsPro({
               );
             })}
           </div>
-          <div className="crmx-board">
+          <div className="crmx-board crmx-board--smart">
+            <SmartAgentDock onOpen={() => onOpenSmart?.()} />
             {COLUMNS.map((col, i) => {
               const items = live.filter((d) => col.stages.includes(d.stage));
               const value = items.reduce((sum, d) => sum + (Number(d.offer.price) || 0), 0);

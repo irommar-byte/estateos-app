@@ -32,6 +32,7 @@ import CrmPulpit from "@/components/crm/pro/CrmPulpit";
 import ContactInboxClient from "@/components/contact/ContactInboxClient";
 import CrmListingsPro from "@/components/crm/pro/CrmListingsPro";
 import CrmDealsPro from "@/components/crm/pro/CrmDealsPro";
+import CrmSmartAgentBoard from "@/components/crm/pro/CrmSmartAgent";
 import CrmPlanner from "@/components/crm/pro/CrmPlanner";
 import CrmAppointmentSheet from "@/components/crm/pro/CrmAppointmentSheet";
 import { greeting as crmGreeting } from "@/components/crm/pro/format";
@@ -68,7 +69,7 @@ import { parseDealEvent } from "@/components/crm/dealRoomUtils";
 import { fmtDict } from "@/i18n/crmExtendedDictionary";
 import type { CrmExtendedDictionary } from "@/i18n/crmExtendedDictionary";
 
-type CrmTab = "pulpit" | "klienci" | "wiadomosci" | "radar" | "my_offers" | "offers" | "planowanie" | "transakcje";
+type CrmTab = "pulpit" | "klienci" | "wiadomosci" | "radar" | "my_offers" | "offers" | "planowanie" | "transakcje" | "smart";
 
 const WowOverlay = ({
   type,
@@ -834,7 +835,7 @@ export default function CRMDashboard() {
     const sParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     if (sParams && sParams.get('tab')) {
         const t = sParams.get('tab');
-        if (['pulpit', 'klienci', 'wiadomosci', 'radar', 'my_offers', 'offers', 'planowanie', 'transakcje'].includes(t as string)) {
+        if (['pulpit', 'klienci', 'wiadomosci', 'radar', 'my_offers', 'offers', 'planowanie', 'transakcje', 'smart'].includes(t as string)) {
             setActiveTab(t as CrmTab);
         }
     }
@@ -1201,7 +1202,7 @@ export default function CRMDashboard() {
 
   const offersVisibleInSection = isFavoritesTab ? baseOffersForView : offersBySection[offerSectionFilter];
   const profileTabs: CrmTab[] = isAgencyWorkspace
-    ? ["pulpit", "klienci", "wiadomosci", "my_offers", "transakcje", "planowanie", "offers"]
+    ? ["pulpit", "klienci", "wiadomosci", "my_offers", "transakcje", "smart", "planowanie", "offers"]
     : ["radar", "wiadomosci", "my_offers", "offers", "planowanie", "transakcje"];
 
   return (
@@ -1312,6 +1313,7 @@ export default function CRMDashboard() {
                 {activeTab === "offers" && "Ulubione"}
                 {activeTab === "planowanie" && "Planowanie"}
                 {activeTab === "transakcje" && "Transakcje"}
+                {activeTab === "smart" && "Smart Agent OS™"}
               </p>
               <h2 className="crmx-display crmx-h2 mt-1.5">
                 {activeTab === "klienci" && <>Kupujący i <em>sprzedający</em></>}
@@ -1321,6 +1323,7 @@ export default function CRMDashboard() {
                 {activeTab === "offers" && <>Zapisane <em>oferty</em></>}
                 {activeTab === "planowanie" && <>Kalendarz <em>spotkań</em></>}
                 {activeTab === "transakcje" && <>Lejek <em>transakcji</em></>}
+                {activeTab === "smart" && <>Inteligentny agent <em>poszukiwań</em></>}
               </h2>
               <p className="crmx-sub mt-1 max-w-2xl">
                 {activeTab === "wiadomosci" && "Wszystkie rozmowy z klientami, agentami i kupującymi — z załącznikami i powiadomieniami."}
@@ -1329,6 +1332,7 @@ export default function CRMDashboard() {
                 {activeTab === "my_offers" && "Każde ogłoszenie z ceną, zasięgiem i kupującymi w procesie. Kliknij wiersz, żeby zobaczyć szczegóły i działać."}
                 {activeTab === "offers" && "Oferty z rynku, które zapisałeś — gotowe do wysłania klientom."}
                 {activeTab === "planowanie" && "Prezentacje, spotkania pozyskania i terminy w jednym kalendarzu."}
+                {activeTab === "smart" && "Oferty dopasowane automatycznie do Twoich kupujących i ich reakcje — do lejka trafiają tylko ci, których wybierzesz."}
                 {activeTab === "transakcje" && "Każdy kupujący przy każdej ofercie — od zainteresowania po akt notarialny. Rozmowy z Dealroomu trafiają tu automatycznie."}
               </p>
             </div>
@@ -1584,10 +1588,11 @@ export default function CRMDashboard() {
             }}
           />
         )}
+        {activeTab === "smart" && <CrmSmartAgentBoard onOpenClient={openClientFromAnywhere} />}
         {/* --- TRANSAKCJE / DEAL ROOMY --- */}
         {activeTab === 'transakcje' && !selectedDealId && (
           <div className="mb-8">
-            <CrmDealsPro onOpenClient={openClientFromAnywhere} onOpenOffer={openOfferFromAnywhere} offers={crmData.offers || []} />
+            <CrmDealsPro onOpenClient={openClientFromAnywhere} onOpenOffer={openOfferFromAnywhere} offers={crmData.offers || []} onOpenSmart={() => handleTabSwitch("smart")} />
             <p className="crmx-kicker mt-10 mb-3">Rozmowy w Dealroomie</p>
           </div>
         )}

@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { Radar, ArrowLeftRight, Building2, CalendarDays, Camera, Heart, LayoutDashboard, MessageCircle, Users } from 'lucide-react';
+import { Radar, Sparkles, ArrowLeftRight, Building2, CalendarDays, Camera, Heart, LayoutDashboard, MessageCircle, Users } from 'lucide-react';
 
-export type CrmProTab = 'pulpit' | 'klienci' | 'wiadomosci' | 'my_offers' | 'transakcje' | 'planowanie' | 'offers' | 'radar';
+export type CrmProTab = 'pulpit' | 'klienci' | 'wiadomosci' | 'my_offers' | 'transakcje' | 'planowanie' | 'offers' | 'radar' | 'smart';
 
 const ITEMS: Array<{ id: CrmProTab; label: string; Icon: typeof Users }> = [
   { id: 'pulpit', label: 'Pulpit', Icon: LayoutDashboard },
@@ -12,6 +12,7 @@ const ITEMS: Array<{ id: CrmProTab; label: string; Icon: typeof Users }> = [
   { id: 'wiadomosci', label: 'Wiadomości', Icon: MessageCircle },
   { id: 'my_offers', label: 'Ogłoszenia', Icon: Building2 },
   { id: 'transakcje', label: 'Transakcje', Icon: ArrowLeftRight },
+  { id: 'smart', label: 'Smart Agent OS™', Icon: Sparkles },
   { id: 'planowanie', label: 'Planowanie', Icon: CalendarDays },
   { id: 'offers', label: 'Ulubione', Icon: Heart },
 ];

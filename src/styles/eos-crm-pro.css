@@ -779,3 +779,133 @@ html:not(.light) .crmx .crmx-danger__title { color: #ff8a80; }
   .crmx-funnel__search { max-width: none; flex-basis: 100%; }
   .crmx-funnel__bar .crmx-seg { flex: 1 1 auto; }
 }
+
+/* ───────── Smart Agent OS™ — kolumna w lejku, kabel, pasek życia, tablica ───────── */
+.crmx-board--smart { grid-template-columns: minmax(150px, 0.82fr) 20px repeat(5, minmax(0, 1fr)); column-gap: 8px; }
+.crmx-smartcol { position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border-radius: 16px; color: #f4ecdd; overflow: hidden;
+  background: radial-gradient(130% 90% at 0% 0%, rgba(214, 178, 108, 0.26), transparent 60%), linear-gradient(165deg, #17140f, #2a2318);
+  border: 1px solid rgba(201, 162, 90, 0.5); box-shadow: 0 18px 40px -24px rgba(120, 90, 40, 0.8), inset 0 1px 0 rgba(255, 236, 200, 0.14); }
+.crmx-smartcol.is-off { filter: saturate(0.75); }
+.crmx-smartcol__head { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: #e2c48a; }
+.crmx-smartcol__badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: #e9cf98; }
+.crmx-smartcol__live { font-size: 9.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #7ee2a8; display: inline-flex; align-items: center; gap: 5px; }
+.crmx-smartcol__live::before { content: ''; width: 6px; height: 6px; border-radius: 99px; background: #3ddc84; box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.6); animation: crmxLivePulse 1.8s infinite; }
+@keyframes crmxLivePulse { 0% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.55); } 70% { box-shadow: 0 0 0 7px rgba(61, 220, 132, 0); } 100% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0); } }
+.crmx-smartcol__text { font-size: 11.5px; line-height: 1.45; color: rgba(244, 236, 221, 0.86); }
+.crmx-smartcol__text b, .crmx-smartcol__fine b { color: #f3dca8; }
+.crmx-smartcol__fine { font-size: 10.5px; line-height: 1.4; color: rgba(244, 236, 221, 0.62); }
+.crmx-smartcol__stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.crmx-smartcol__stats div { padding: 6px 4px; border-radius: 9px; text-align: center; background: rgba(255, 240, 210, 0.06); border: 1px solid rgba(226, 196, 138, 0.16); }
+.crmx-smartcol__stats b { display: block; font-size: 16px; font-weight: 700; color: #fff4dc; }
+.crmx-smartcol__stats span { display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: rgba(244, 236, 221, 0.6); }
+.crmx-smartcol__cta { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; color: #1b150c; background: linear-gradient(180deg, #e6c88c, #c39a57); border: 1px solid #a9813f; }
+.crmx-smartcol__cta:hover { filter: brightness(1.06); }
+.crmx-smartcol__link { font-size: 11px; font-weight: 600; color: #e2c48a; text-decoration: underline; text-underline-offset: 3px; align-self: center; }
+.crmx-smartcol__err { font-size: 11px; font-weight: 600; color: #ff9a8f; }
+
+/* Kabel między Smart Agent OS™ a lejkiem: podłączony = płynie złoty impuls, odłączony = przerwany i iskrzy */
+.crmx-wire { position: relative; min-height: 120px; }
+.crmx-wire__a, .crmx-wire__b { position: absolute; top: 74px; height: 3px; border-radius: 2px; background: linear-gradient(90deg, #8a6a35, #d9b26a); }
+.crmx-wire__a { left: -8px; width: 13px; }
+.crmx-wire__b { right: -8px; width: 13px; }
+.crmx-wire.is-on .crmx-wire__a { width: calc(100% + 16px); box-shadow: 0 0 10px rgba(226, 190, 120, 0.7); }
+.crmx-wire.is-on .crmx-wire__b { display: none; }
+.crmx-wire__pulse { position: absolute; top: 72px; left: -8px; width: 8px; height: 7px; border-radius: 99px; background: #fff3d1; box-shadow: 0 0 12px 3px rgba(255, 214, 140, 0.9); animation: crmxWireFlow 1.6s linear infinite; }
+@keyframes crmxWireFlow { from { transform: translateX(0); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } to { transform: translateX(30px); opacity: 0; } }
+.crmx-wire.is-off .crmx-wire__a::after, .crmx-wire.is-off .crmx-wire__b::before { content: ''; position: absolute; top: -2px; width: 3px; height: 7px; border-radius: 1px; background: #c9c3b6; }
+.crmx-wire.is-off .crmx-wire__a::after { right: -2px; }
+.crmx-wire.is-off .crmx-wire__b::before { left: -2px; }
+.crmx-wire__sparks { position: absolute; top: 75px; left: 50%; width: 0; height: 0; }
+.crmx-wire__sparks::before { content: ''; position: absolute; left: -6px; top: -6px; width: 12px; height: 12px; border-radius: 99px; background: radial-gradient(circle, rgba(255, 244, 200, 0.95), rgba(255, 170, 60, 0.4) 45%, transparent 70%); animation: crmxSparkFlash 1.3s steps(1) infinite; }
+.crmx-wire__sparks i { position: absolute; left: 0; top: 0; width: 2px; height: 2px; border-radius: 99px; background: #ffd27a; box-shadow: 0 0 4px 1px rgba(255, 190, 80, 0.9); opacity: 0; animation: crmxSpark 1.3s ease-out infinite; }
+.crmx-wire__sparks i:nth-child(1) { --dx: -9px; --dy: -13px; animation-delay: 0s; }
+.crmx-wire__sparks i:nth-child(2) { --dx: 10px; --dy: -11px; animation-delay: .12s; }
+.crmx-wire__sparks i:nth-child(3) { --dx: -7px; --dy: 12px; animation-delay: .25s; }
+.crmx-wire__sparks i:nth-child(4) { --dx: 8px; --dy: 14px; animation-delay: .05s; }
+.crmx-wire__sparks i:nth-child(5) { --dx: 1px; --dy: -16px; animation-delay: .35s; }
+@keyframes crmxSpark { 0% { opacity: 0; transform: translate(0, 0); } 8% { opacity: 1; } 45% { opacity: 0; transform: translate(var(--dx), var(--dy)); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); } }
+@keyframes crmxSparkFlash { 0%, 100% { opacity: 0; } 4% { opacity: 1; } 10% { opacity: 0.2; } 14% { opacity: 0.9; } 22% { opacity: 0; } 58% { opacity: 0.7; } 62% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .crmx-wire__pulse, .crmx-wire__sparks i, .crmx-wire__sparks::before, .crmx-smartcol__live::before { animation: none; } }
+
+/* Pasek życia: pełny zielony na starcie, z czasem gaśnie (krótszy, mniej nasycony, w stronę czerwieni) */
+.crmx-life { display: flex; flex-direction: column; gap: 6px; }
+.crmx-life__row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.crmx-life__count { font-size: 13px; font-weight: 700; color: hsl(var(--life-h) calc(var(--life-s) + 10%) 70%); }
+.crmx-life__until { font-size: 11.5px; color: rgba(244, 236, 221, 0.66); }
+.crmx-life__track { position: relative; height: 8px; border-radius: 99px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.08); overflow: hidden; }
+.crmx-life__fill { position: relative; height: 100%; border-radius: 99px; overflow: hidden;
+  background: linear-gradient(90deg, hsl(var(--life-h) var(--life-s) 34%), hsl(var(--life-h) var(--life-s) 50%));
+  box-shadow: 0 0 12px hsl(var(--life-h) var(--life-s) 45% / 0.55); transition: width 1s ease; }
+.crmx-life__fill::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent); transform: translateX(-100%); animation: crmxLifeWork 2.2s ease-in-out infinite; }
+@keyframes crmxLifeWork { to { transform: translateX(100%); } }
+.crmx-life__mode { font-size: 11px; color: rgba(244, 236, 221, 0.62); }
+.crmx-life--compact .crmx-life__count { font-size: 11.5px; }
+
+/* Pełna tablica */
+.crmx-smarthero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; padding: 20px; border-radius: 20px; color: #f4ecdd;
+  background: radial-gradient(120% 120% at 0% 0%, rgba(214, 178, 108, 0.24), transparent 55%), linear-gradient(160deg, #15120d, #2b2419);
+  border: 1px solid rgba(201, 162, 90, 0.5); box-shadow: 0 24px 60px -30px rgba(120, 90, 40, 0.9); }
+.crmx-smarthero__main { display: flex; flex-direction: column; gap: 10px; }
+.crmx-smarthero__title { font-family: var(--eos-font-display); font-size: 24px; font-weight: 600; letter-spacing: -0.015em; color: #fff6e3; }
+.crmx-smarthero__sub { font-size: 13px; line-height: 1.55; color: rgba(244, 236, 221, 0.78); }
+.crmx-smarthero__stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
+.crmx-smarthero__stats div { padding: 10px 12px; border-radius: 12px; background: rgba(255, 240, 210, 0.06); border: 1px solid rgba(226, 196, 138, 0.16); }
+.crmx-smarthero__stats b { display: block; font-size: 22px; font-weight: 700; color: #fff4dc; }
+.crmx-smarthero__stats span { display: block; font-size: 11px; line-height: 1.35; color: rgba(244, 236, 221, 0.64); }
+.crmx-smarthero__stats .is-money { grid-column: 1 / -1; border-color: rgba(126, 226, 168, 0.35); background: rgba(61, 220, 132, 0.08); }
+.crmx-smarthero__stats .is-money b { color: #9cf0bf; }
+.crmx-smarthero .crmx-btn:not(.crmx-btn--gold) { color: #f4ecdd; background: rgba(255, 255, 255, 0.06); border-color: rgba(226, 196, 138, 0.3); }
+.crmx-smarthero .crmx-dealsheet__hint { color: rgba(244, 236, 221, 0.7); }
+.crmx-smartgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.crmx-smartset { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.crmx-smartset__opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--x-line); background: var(--x-surface); cursor: pointer; }
+.crmx-smartset__opt:has(input:checked) { border-color: var(--x-gold); box-shadow: 0 0 0 3px var(--x-gold-soft); }
+.crmx-smartset__opt input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--x-gold); }
+.crmx-smartset__opt b { display: block; font-size: 13px; color: var(--x-ink); }
+.crmx-smartset__opt small { display: block; font-size: 11.5px; line-height: 1.4; color: var(--x-ink-3); }
+.crmx-smartset select { width: 100%; background: transparent; border: 0; outline: 0; font-size: 13px; color: var(--x-ink); }
+.crmx-smartboard { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.crmx-smartboard.is-locked > .crmx-col { filter: blur(2.5px) grayscale(0.4); opacity: 0.55; pointer-events: none; }
+.crmx-smartboard__lock { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 20px; color: var(--x-ink); }
+.crmx-smartboard__lock p { font-family: var(--eos-font-display); font-size: 20px; font-weight: 600; }
+.crmx-smartboard__lock small { max-width: 360px; font-size: 12.5px; color: var(--x-ink-2); }
+.crmx-smartcard__time { font-size: 11px; color: var(--x-ink-3); font-variant-numeric: tabular-nums; }
+
+/* Węższy ekran: Smart Agent OS™ jako pas nad lejkiem, kabel pionowo w dół do kolumn */
+@container funnel (max-width: 1250px) {
+  .crmx-board--smart { grid-template-columns: repeat(5, minmax(0, 1fr)); row-gap: 0; }
+  .crmx-board--smart .crmx-smartcol { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 16px; }
+  .crmx-board--smart .crmx-smartcol__head { flex: 0 0 auto; }
+  .crmx-board--smart .crmx-smartcol__text { flex: 1 1 340px; }
+  .crmx-board--smart .crmx-smartcol__fine { flex: 1 1 220px; }
+  .crmx-board--smart .crmx-smartcol__stats { flex: 0 1 260px; }
+  .crmx-board--smart .crmx-life { flex: 1 1 200px; }
+  .crmx-board--smart .crmx-smartcol__cta { flex: 0 0 auto; }
+  .crmx-board--smart .crmx-wire { grid-column: 1 / -1; min-height: 46px; }
+  .crmx-board--smart .crmx-wire__a, .crmx-board--smart .crmx-wire__b { left: 10%; right: auto; width: 4px; height: 19px; background: linear-gradient(180deg, #8a6a35, #d9b26a); }
+  .crmx-board--smart .crmx-wire__a { top: -6px; }
+  .crmx-board--smart .crmx-wire__b { top: auto; bottom: -6px; }
+  .crmx-board--smart .crmx-wire.is-on .crmx-wire__a { width: 4px; height: calc(100% + 12px); }
+  .crmx-board--smart .crmx-wire.is-off .crmx-wire__a::after { right: auto; left: -3px; top: auto; bottom: -2px; width: 10px; height: 3px; }
+  .crmx-board--smart .crmx-wire.is-off .crmx-wire__b::before { left: -3px; top: -2px; width: 10px; height: 3px; }
+  .crmx-board--smart .crmx-wire__sparks { top: 23px; left: calc(10% + 2px); transform: scale(1.5); }
+  .crmx-board--smart .crmx-wire__pulse { top: -6px; left: calc(10% - 2px); width: 7px; height: 8px; animation-name: crmxWireFlowY; }
+}
+@keyframes crmxWireFlowY { from { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } to { transform: translateY(36px); opacity: 0; } }
+@container funnel (max-width: 760px) {
+  .crmx-board--smart { grid-template-columns: none; grid-auto-flow: column; }
+  .crmx-board--smart .crmx-smartcol, .crmx-board--smart .crmx-wire { grid-column: auto; }
+  .crmx-board--smart .crmx-wire { display: none; }
+  .crmx-board--smart .crmx-smartcol { flex-direction: column; align-items: stretch; scroll-snap-align: start; }
+}
+@container funnel (max-width: 600px) {
+  .crmx-board--smart { grid-auto-flow: row; }
+  .crmx-board--smart .crmx-smartcol { order: -1; }
+}
+@media (max-width: 900px) {
+  .crmx-smarthero { grid-template-columns: 1fr; }
+  .crmx-smartboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .crmx-smartboard { grid-template-columns: 1fr; }
+}

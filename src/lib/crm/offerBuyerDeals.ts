@@ -4,6 +4,7 @@ import { JOURNEY_ACTIVITY, resolvePresentation, type ActivityLike, type Schedule
 import { parseClientOfferFeedback } from '@/lib/crm/clientPortalFeedback';
 import { resolveOfferPrimaryImage } from '@/lib/offers/primaryImage';
 import { tidySentence } from '@/lib/crm/clientMessageEmail';
+import { getSmartAgentAccess, getSmartAgentTriggers } from '@/lib/crm/smartAgent';
 
 /**
  * Kupujący na nieruchomości — jedno miejsce, które łączy sprzedającego, kupującego i ofertę.
@@ -147,7 +148,7 @@ export type DealView = {
     | { kind: 'external'; agency: string | null; name: string | null; phone: string | null; email: string | null };
   stage: DealStage;
   /** Dlaczego kupujący pojawił się w lejku — konkretna akcja i kiedy. */
-  entry: { reason: string; at: string | null; qualified: boolean };
+  entry: { reason: string; at: string | null; qualified: boolean; signal?: 'like' | 'maybe' | 'favorite' | null };
   /** Wyjaśnienie sytuacji i kroki dla agenta — co zrobić teraz, z kim i w jakiej kolejności. */
   guide: DealGuide | null;
   phases: Array<{
@@ -678,13 +679,13 @@ function dealEntry(
   switch (deal.source) {
     case 'radar': {
       if (parsed.sentiment === 'like') {
-        return { reason: `Klik „Chcę obejrzeć” przy ofercie od agenta poszukiwań${note}`, at: feedbackAt, qualified: true };
+        return { reason: `Klik „Chcę obejrzeć” przy ofercie od agenta poszukiwań${note}`, at: feedbackAt, qualified: true, signal: 'like' };
       }
       if (parsed.sentiment === 'maybe') {
-        return { reason: `Odpowiedź „Do przemyślenia” na ofertę od agenta poszukiwań${note}`, at: feedbackAt, qualified: true };
+        return { reason: `Odpowiedź „Do przemyślenia” na ofertę od agenta poszukiwań${note}`, at: feedbackAt, qualified: true, signal: 'maybe' };
       }
       if (match?.clientFavorite) {
-        return { reason: 'Oferta dodana do ulubionych w panelu klienta', at: iso(match.favoriteAt) || null, qualified: true };
+        return { reason: 'Oferta dodana do ulubionych w panelu klienta', at: iso(match.favoriteAt) || null, qualified: true, signal: 'favorite' };
       }
       const viaSchedule = scheduleEntry();
       if (viaSchedule) return viaSchedule;
@@ -1186,7 +1187,20 @@ export async function listAgentDeals(agencyUserId: number): Promise<DealView[]> 
     take: 300,
   });
   const views = shapeAll(deals, await buildContext(deals));
-  return sortDeals(views.filter((view) => view.entry.qualified || view.stage !== 'interested'));
+  // Reakcje z agenta poszukiwań trafiają do lejka tylko przy aktywnym Smart Agent OS™ i wg ustawień agenta.
+  const [access, triggers] = await Promise.all([getSmartAgentAccess(agencyUserId), getSmartAgentTriggers(agencyUserId)]);
+  const radarAllowed = (view: DealView) => {
+    const signal = view.entry.signal;
+    if (!signal) return true;
+    return access.active && Boolean(triggers[signal]);
+  };
+  return sortDeals(
+    views.filter((view) => {
+      if (view.stage !== 'interested') return true;
+      if (!view.entry.qualified) return false;
+      return view.source !== 'radar' || radarAllowed(view);
+    }),
+  );
 }
 
 /** Nieruchomości, przy których kupujący jest w procesie (karta kupującego). Samo wysłanie z radaru pomijamy. */
