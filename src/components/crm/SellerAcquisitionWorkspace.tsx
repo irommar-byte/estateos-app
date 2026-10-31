@@ -187,7 +187,7 @@ function Toggle({
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="mt-0.5 size-4 accent-emerald-500"
+        className="mt-0.5 size-4 accent-[#a8844c]"
       />
       <span className="text-sm font-semibold leading-snug text-[var(--eos-text)]">{label}</span>
     </label>
@@ -449,14 +449,14 @@ export default function SellerAcquisitionWorkspace({
   if (loading || !form) {
     return (
       <div className="flex min-h-44 items-center justify-center rounded-2xl border border-[var(--eos-border)]">
-        <Loader2 className="size-6 animate-spin text-emerald-500" />
+        <Loader2 className="size-6 animate-spin text-[#a8844c]" />
       </div>
     );
   }
 
   return (
     <section className="overflow-hidden rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_18px_50px_rgba(0,0,0,0.1)]">
-      <div className="border-b border-[var(--eos-border)] bg-gradient-to-br from-emerald-500/12 to-transparent p-5 sm:p-6">
+      <div className="border-b border-[var(--eos-border)] bg-gradient-to-br from-[#a8844c]/12 to-transparent p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="flex items-center gap-2 eos-portal-label eos-portal-label--ok">
@@ -474,9 +474,7 @@ export default function SellerAcquisitionWorkspace({
                 Widok klienta <ExternalLink className="size-3.5" />
               </Link>
             ) : null}
-            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[9px] font-black uppercase tracking-wider ${
-              signed ? "bg-emerald-500/15 text-emerald-700" : "bg-amber-500/15 text-amber-700"
-            }`}>
+            <span className={`eos-sig ${signed ? "eos-sig--ok" : "eos-sig--warn"}`}>
               {signed ? <BadgeCheck className="size-3.5" /> : <PenLine className="size-3.5" />}
               {signed ? "Podpisano" : record ? "W toku" : "Nowy proces"}
             </span>
@@ -486,7 +484,7 @@ export default function SellerAcquisitionWorkspace({
         <div className="relative mt-6">
           <div className="absolute left-[7%] right-[7%] top-[13px] h-1 rounded-full bg-[rgba(15,23,42,0.1)]" />
           <div
-            className="absolute top-[13px] h-1 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.45)]"
+            className="absolute top-[13px] h-1 rounded-full bg-[#a8844c] shadow-[0_0_12px_rgba(168,132,76,0.45)]"
             style={{
               left: "7%",
               width: `${Math.max(0, ((signed ? 6 : Math.max(0, step - 1)) / 6) * 86)}%`,
@@ -505,9 +503,9 @@ export default function SellerAcquisitionWorkspace({
             >
               <span className={`flex size-7 items-center justify-center rounded-full border text-[11px] font-black shadow-[0_6px_14px_rgba(15,23,42,0.14)] ${
                 done
-                  ? "border-emerald-500 bg-emerald-500 text-white"
+                  ? "border-[#a8844c] bg-[#a8844c] text-white"
                   : current
-                    ? "border-emerald-300 bg-emerald-700 text-white"
+                    ? "border-[#cfae74] bg-[#7a5a26] text-white"
                     : "border-[var(--eos-border)] bg-[var(--eos-card)] text-[var(--eos-muted)]"
               }`}>
                 {done ? <Check className="size-3.5" strokeWidth={3} /> : item.id}
@@ -600,10 +598,10 @@ export default function SellerAcquisitionWorkspace({
             <div className="eos-inset-well rounded-2xl p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="flex items-center gap-2 text-sm font-black text-[var(--eos-text)]">
-                  <FileCheck2 className="size-4 text-emerald-500" />
+                  <FileCheck2 className="size-4 text-[#a8844c]" />
                   Dokumenty klienta
                 </p>
-                <span className="text-xs font-bold text-emerald-600">{checkedDocuments}/{ACQUISITION_DOCUMENTS.length}</span>
+                <span className="text-xs font-bold text-[#7a5a26]">{checkedDocuments}/{ACQUISITION_DOCUMENTS.length}</span>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 {ACQUISITION_DOCUMENTS.map((item) => (
@@ -704,8 +702,8 @@ export default function SellerAcquisitionWorkspace({
                       }}
                       className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${
                         active
-                          ? "bg-emerald-500 text-black"
-                          : "border border-[var(--eos-border)] text-[var(--eos-text)] hover:border-emerald-500/40"
+                          ? "bg-[#a8844c] text-black"
+                          : "border border-[var(--eos-border)] text-[var(--eos-text)] hover:border-[#a8844c]/40"
                       }`}
                     >
                       {item.label}
@@ -869,7 +867,7 @@ export default function SellerAcquisitionWorkspace({
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-[var(--eos-border)] p-6 text-center">
-                <FileCheck2 className="mx-auto size-8 text-emerald-500/60" />
+                <FileCheck2 className="mx-auto size-8 text-[#a8844c]/60" />
                 <p className="mt-3 text-sm font-bold text-[var(--eos-text)]">Przygotuj utrwalony dokument z danych spotkania</p>
                 <button type="button" disabled={Boolean(busy)} onClick={() => void action("prepare_terms")} className={eosBtn("home", { className: "mt-4" })}>
                   {busy === "prepare_terms" ? <Loader2 className="size-4 animate-spin" /> : <FileCheck2 className="size-4" />}
@@ -880,7 +878,7 @@ export default function SellerAcquisitionWorkspace({
 
             <div className="rounded-2xl border border-[var(--eos-border)] p-4">
               <p className="flex items-center gap-2 text-sm font-black text-[var(--eos-text)]">
-                <FileUp className="size-4 text-emerald-500" />
+                <FileUp className="size-4 text-[#a8844c]" />
                 Skan podpisanej ręcznie umowy
               </p>
               <p className="mt-1 text-xs text-[var(--eos-muted)]">
@@ -894,7 +892,7 @@ export default function SellerAcquisitionWorkspace({
                       href={publicAssetUrl(file.url) || file.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center justify-between eos-inset-well rounded-xl px-3 py-2 text-sm font-semibold text-emerald-700"
+                      className="flex items-center justify-between eos-inset-well rounded-xl px-3 py-2 text-sm font-semibold text-[#7a5a26]"
                     >
                       {file.name}
                       <ExternalLink className="size-3.5" />
@@ -926,7 +924,7 @@ export default function SellerAcquisitionWorkspace({
                 Podpis na ekranie jest prostym podpisem elektronicznym. Przed użyciem produkcyjnym firma powinna zatwierdzić wzór i sposób zawarcia umowy z prawnikiem lub wdrożyć kwalifikowany podpis elektroniczny.
               </p>
               <label className="mt-3 flex items-start gap-3">
-                <input type="checkbox" checked={templateConfirmed} disabled={signed} onChange={(event) => setTemplateConfirmed(event.target.checked)} className="mt-0.5 size-4 accent-emerald-500" />
+                <input type="checkbox" checked={templateConfirmed} disabled={signed} onChange={(event) => setTemplateConfirmed(event.target.checked)} className="mt-0.5 size-4 accent-[#a8844c]" />
                 <span className="text-sm font-bold text-[var(--eos-text)]">Potwierdzam, że używam zatwierdzonego przez moją firmę wzoru i właściwego sposobu podpisu.</span>
               </label>
             </div>
@@ -945,7 +943,7 @@ export default function SellerAcquisitionWorkspace({
                   type="button"
                   disabled={!record?.agreementSnapshot || !templateConfirmed || !signatureData || !signerName.trim() || !signerEmail.includes("@") || Boolean(busy)}
                   onClick={() => void action("sign")}
-                  className={eosBtn("home", { className: "w-full py-4 shadow-[0_14px_34px_rgba(16,185,129,0.24)]" })}
+                  className={eosBtn("home", { className: "w-full py-4 shadow-[0_14px_34px_rgba(168,132,76,0.24)]" })}
                 >
                   {busy === "sign" ? <Loader2 className="size-4 animate-spin" /> : <PenLine className="size-4" />}
                   Podpisz i wyślij kopię e-mailem
@@ -953,8 +951,8 @@ export default function SellerAcquisitionWorkspace({
               </>
             ) : (
               <div className="space-y-4">
-                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5">
-                  <p className="flex items-center gap-2 font-black text-emerald-700"><BadgeCheck className="size-5" /> Oferta pozyskana — umowa zamknięta</p>
+                <div className="rounded-2xl border border-[#a8844c]/30 bg-[#a8844c]/10 p-5">
+                  <p className="eos-sig eos-sig--ok"><BadgeCheck className="size-4" /> Oferta pozyskana — umowa zamknięta</p>
                   <p className="mt-2 text-sm text-[var(--eos-text)]">{record.signerName} · {record.signedAt ? new Date(record.signedAt).toLocaleString("pl-PL") : ""}</p>
                   <p className="mt-1 text-sm text-[var(--eos-muted)]">Szkic ogłoszenia nie jest publiczny. Od tej pory umowa jest tylko do podglądu.</p>
                   <p className="mt-1 break-all text-[10px] text-[var(--eos-muted)]">SHA-256: {record.documentHash}</p>
@@ -965,7 +963,7 @@ export default function SellerAcquisitionWorkspace({
                   <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)]/70 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">Aktywacja ogłoszenia</p>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7a5a26]">Aktywacja ogłoszenia</p>
                         <p className="mt-1 text-sm font-bold text-[var(--eos-text)]">
                           {linkedOffer.title?.trim() || `Szkic oferty #${linkedOffer.id}`}
                         </p>
@@ -975,7 +973,7 @@ export default function SellerAcquisitionWorkspace({
                         {linkedOffer.landRegistryNumber ? (
                           <p className="mt-2 flex items-center gap-1.5 text-xs font-bold text-[var(--eos-text)]">
                             {(linkedOffer.isLegalSafeVerified || String(linkedOffer.legalCheckStatus || "").toUpperCase() === "VERIFIED") ? (
-                              <BadgeCheck className="size-3.5 text-emerald-600" />
+                              <BadgeCheck className="size-3.5 text-[#7a5a26]" />
                             ) : null}
                             KW {linkedOffer.landRegistryNumber}
                           </p>
@@ -1028,7 +1026,7 @@ export default function SellerAcquisitionWorkspace({
         ) : null}
 
         {notice ? (
-          <p className={`mt-5 rounded-xl px-4 py-3 text-sm font-semibold ${notice.includes("Błąd") || notice.includes("nie ") ? "bg-red-500/10 text-red-600" : "bg-emerald-500/10 text-emerald-700"}`}>
+          <p className={`mt-5 rounded-xl px-4 py-3 text-sm font-semibold ${notice.includes("Błąd") || notice.includes("nie ") ? "bg-red-500/10 text-red-600" : "bg-[#a8844c]/10 text-[#7a5a26]"}`}>
             {notice}
           </p>
         ) : null}
@@ -1048,7 +1046,7 @@ export default function SellerAcquisitionWorkspace({
             ) : null}
           </div>
         ) : (
-          <p className="mt-5 flex items-center gap-2 border-t border-[var(--eos-border)] pt-5 text-xs font-bold text-emerald-700">
+          <p className="mt-5 flex items-center gap-2 border-t border-[var(--eos-border)] pt-5 text-xs font-bold text-[#7a5a26]">
             <Check className="size-4" /> Podpisany proces pozostaje tylko do odczytu.
           </p>
         )}

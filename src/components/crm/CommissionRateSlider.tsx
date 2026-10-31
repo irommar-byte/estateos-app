@@ -103,7 +103,7 @@ export default function CommissionRateSlider({
             onClick={() => setMode('percent')}
             className={`rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition ${
               mode === 'percent'
-                ? 'bg-emerald-500 text-white shadow-sm'
+                ? 'bg-[#a8844c] text-white shadow-sm'
                 : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)]'
             }`}
           >
@@ -115,7 +115,7 @@ export default function CommissionRateSlider({
             onClick={() => amountModeAvailable && setMode('amount')}
             className={`rounded-lg px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide transition ${
               mode === 'amount'
-                ? 'bg-emerald-500 text-white shadow-sm'
+                ? 'bg-[#a8844c] text-white shadow-sm'
                 : 'text-[var(--eos-muted)] hover:text-[var(--eos-text)] disabled:cursor-not-allowed disabled:opacity-40'
             }`}
           >

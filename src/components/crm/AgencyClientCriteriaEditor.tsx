@@ -63,8 +63,8 @@ function choiceChip(active: boolean) {
   return [
     "rounded-xl border px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all",
     active
-      ? "border-emerald-500 bg-emerald-500 text-black"
-      : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-emerald-500/35 hover:text-[var(--eos-text)]",
+      ? "border-[#a8844c] bg-[#a8844c] text-black"
+      : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-[#a8844c]/35 hover:text-[var(--eos-text)]",
   ].join(" ");
 }
 
@@ -72,8 +72,8 @@ function amenityChip(active: boolean) {
   return [
     "rounded-xl border px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all",
     active
-      ? "border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-      : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-emerald-500/30",
+      ? "border-[#a8844c] bg-[#a8844c]/15 text-[#7a5a26] dark:text-[#cfae74]"
+      : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-[#a8844c]/30",
   ].join(" ");
 }
 
@@ -104,7 +104,7 @@ function LockToggle({
       className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
         locked
           ? "border-amber-400/50 bg-amber-400/15 text-amber-600"
-          : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-emerald-500/40 hover:text-[var(--eos-text)]"
+          : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-[#a8844c]/40 hover:text-[var(--eos-text)]"
       }`}
     >
       {locked ? <Lock size={13} /> : <LockOpen size={13} />}
@@ -176,8 +176,8 @@ export default function AgencyClientCriteriaEditor({
       onPointerDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10">
-          <SlidersHorizontal className="size-4 text-emerald-500" />
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#a8844c]/30 bg-[#a8844c]/10">
+          <SlidersHorizontal className="size-4 text-[#a8844c]" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-[var(--eos-text)]">Parametry dopasowań</p>
@@ -213,7 +213,7 @@ export default function AgencyClientCriteriaEditor({
           step={5}
           value={value.matchThreshold}
           onChange={(e) => patch({ matchThreshold: Number(e.target.value) })}
-          className="w-full accent-emerald-500"
+          className="w-full accent-[#a8844c]"
         />
         <div className="mt-2 flex justify-between text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
           <span>50%</span>
@@ -222,8 +222,8 @@ export default function AgencyClientCriteriaEditor({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4">
-        <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400/90">
+      <div className="rounded-2xl border border-[#a8844c]/25 bg-[#a8844c]/5 p-4">
+        <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#7a5a26] dark:text-[#c9a86a]/90">
           Lokalizacja · wybierz sposób
         </p>
         <LuxurySegmentSwitch
@@ -243,10 +243,10 @@ export default function AgencyClientCriteriaEditor({
           <button
             type="button"
             onClick={() => setAreaPickerOpen(true)}
-            className="flex w-full items-center gap-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-left transition-all hover:border-emerald-500/60 hover:bg-emerald-500/15 sm:p-5"
+            className="flex w-full items-center gap-4 rounded-2xl border border-[#a8844c]/30 bg-[#a8844c]/10 p-4 text-left transition-all hover:border-[#a8844c]/60 hover:bg-[#a8844c]/15 sm:p-5"
           >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
-              <MapPin className="text-emerald-600 dark:text-emerald-400" size={22} />
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#a8844c]/20">
+              <MapPin className="text-[#7a5a26] dark:text-[#c9a86a]" size={22} />
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-[var(--eos-text)]">Ustaw obszar na mapie</p>
@@ -254,7 +254,7 @@ export default function AgencyClientCriteriaEditor({
                 Przesuń mapę i ustaw promień wyszukiwania.
               </p>
               {mapAreaLabel ? (
-                <p className="mt-2 text-[11px] font-bold text-emerald-600 dark:text-emerald-400/90 break-words">
+                <p className="mt-2 text-[11px] font-bold text-[#7a5a26] dark:text-[#c9a86a]/90 break-words">
                   {mapAreaLabel}
                 </p>
               ) : null}

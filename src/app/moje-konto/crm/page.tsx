@@ -97,9 +97,9 @@ const WowOverlay = ({
   const cfg = config[type];
   const isGold = type === "investor" || type === "agency";
   const isBlue = type === "renewal";
-  const glowColor = isGold ? "#facc15" : isBlue ? "#3b82f6" : "#10b981";
-  const textColor = isGold ? "text-yellow-500" : isBlue ? "text-blue-500" : "text-emerald-500";
-  const bgGlow = isGold ? "bg-yellow-500" : isBlue ? "bg-blue-500" : "bg-emerald-500";
+  const glowColor = isGold ? "#facc15" : isBlue ? "#3b82f6" : "#a8844c";
+  const textColor = isGold ? "text-yellow-500" : isBlue ? "text-blue-500" : "text-[#a8844c]";
+  const bgGlow = isGold ? "bg-yellow-500" : isBlue ? "bg-blue-500" : "bg-[#a8844c]";
   
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 eos-z-modal-nested flex flex-col items-center justify-center bg-[var(--eos-bg)]/95 backdrop-blur-3xl overflow-hidden">
@@ -108,7 +108,7 @@ const WowOverlay = ({
             <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: [1, 4, 0], opacity: [1, 0] }} transition={{ duration: 1.5, ease: "easeOut" }} className={`absolute inset-0 rounded-full blur-[100px] pointer-events-none z-0 ${bgGlow}`} />
          )}
          
-         <div className={`w-40 h-40 rounded-full flex items-center justify-center mx-auto mb-8 relative transition-all duration-700 z-10 ${step >= 2 ? (isGold ? 'bg-gradient-to-br from-yellow-300 to-yellow-600 shadow-[0_0_150px_rgba(250,204,21,0.8)] scale-110' : isBlue ? 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-[0_0_150px_rgba(59,130,246,0.8)] scale-110' : 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-[0_0_150px_rgba(16,185,129,0.8)] scale-110') : 'bg-[#111] border border-[var(--eos-border)] shadow-[0_0_30px_rgba(255,255,255,0.05)]'}`}>
+         <div className={`w-40 h-40 rounded-full flex items-center justify-center mx-auto mb-8 relative transition-all duration-700 z-10 ${step >= 2 ? (isGold ? 'bg-gradient-to-br from-yellow-300 to-yellow-600 shadow-[0_0_150px_rgba(250,204,21,0.8)] scale-110' : isBlue ? 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-[0_0_150px_rgba(59,130,246,0.8)] scale-110' : 'bg-gradient-to-br from-[#c9a86a] to-[#7a5a26] shadow-[0_0_150px_rgba(168,132,76,0.8)] scale-110') : 'bg-[#111] border border-[var(--eos-border)] shadow-[0_0_30px_rgba(255,255,255,0.05)]'}`}>
             {step >= 2 ? (
                type === 'investor' ? <Home size={80} className="text-black relative z-10" /> :
                type === 'agency' ? <Unlock size={80} className="text-black relative z-10" /> :
@@ -978,7 +978,7 @@ export default function CRMDashboard() {
   if (isBooting) {
     return (
         <div className="fixed inset-0 eos-z-modal bg-[var(--eos-bg)] flex flex-col items-center justify-center font-sans overflow-hidden">
-           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-br from-[#D4AF37]/5 to-emerald-500/5 rounded-full blur-[100px] opacity-50 animate-pulse"></div>
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-br from-[#D4AF37]/5 to-[#a8844c]/5 rounded-full blur-[100px] opacity-50 animate-pulse"></div>
            
            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ duration: 1, ease: "easeOut" }} className="relative z-10 flex flex-col items-center">
               
@@ -996,14 +996,14 @@ export default function CRMDashboard() {
                     {greeting.split(',').map((part, i, arr) => (
                        <span key={i}>
                           {part}
-                          {i !== arr.length - 1 && <span className="text-emerald-500">,</span>}
+                          {i !== arr.length - 1 && <span className="text-[#a8844c]">,</span>}
                        </span>
                     ))}
                  </h1>
               </motion.div>
               
               <motion.div className="w-64 h-1 bg-white/10 rounded-full mt-12 overflow-hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1 }}>
-                 <motion.div className="h-full bg-gradient-to-r from-[#D4AF37] to-emerald-500" initial={{ width: "0%" }} animate={{ width: "100%" }} transition={{ duration: 2, ease: "easeInOut" }} />
+                 <motion.div className="h-full bg-gradient-to-r from-[#D4AF37] to-[#a8844c]" initial={{ width: "0%" }} animate={{ width: "100%" }} transition={{ duration: 2, ease: "easeInOut" }} />
               </motion.div>
               
            </motion.div>
@@ -1372,7 +1372,7 @@ export default function CRMDashboard() {
             
             <>
             <div className="eos-lux-panel eos-crm-radar-panel eos-radar-widget eos-crm-section-panel relative mb-8 w-full overflow-hidden p-6 md:p-10 group">
-              <div className="pointer-events-none absolute -top-16 left-1/4 h-64 w-64 rounded-full bg-emerald-500/10 blur-[90px]" />
+              <div className="pointer-events-none absolute -top-16 left-1/4 h-64 w-64 rounded-full bg-[#a8844c]/10 blur-[90px]" />
               
               <div className="relative z-10 flex flex-col items-start justify-between gap-8 border-b border-[rgba(196,163,90,0.22)] pb-8 md:flex-row md:items-center">
                 <div className="flex items-center gap-6">
@@ -1380,12 +1380,12 @@ export default function CRMDashboard() {
                      {showDualRadarPro ? (
                        <>
                          <span className="relative z-10 flex items-center -space-x-2">
-                           <Radar size={26} className="shrink-0 text-emerald-600" strokeWidth={1.6} />
+                           <Radar size={26} className="shrink-0 text-[#7a5a26]" strokeWidth={1.6} />
                            <Radar size={26} className="shrink-0 text-amber-600" strokeWidth={1.6} />
                          </span>
                        </>
                      ) : (
-                       <Radar size={28} className="relative z-10 text-emerald-600" strokeWidth={1.6} />
+                       <Radar size={28} className="relative z-10 text-[#7a5a26]" strokeWidth={1.6} />
                      )}
                   </div>
                   <div>
@@ -1399,8 +1399,8 @@ export default function CRMDashboard() {
                       )}
                     </h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${showDualRadarPro ? 'bg-amber-400 shadow-amber-500/60' : 'bg-emerald-500 shadow-emerald-500/50'}`} />
-                      <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${showDualRadarPro ? 'text-amber-500/85' : 'text-emerald-500/80'}`}>
+                      <span className={`w-2 h-2 rounded-full animate-pulse shadow-[0_0_10px] ${showDualRadarPro ? 'bg-amber-400 shadow-amber-500/60' : 'bg-[#a8844c] shadow-[#a8844c]/50'}`} />
+                      <span className={`text-[10px] uppercase font-bold tracking-[0.3em] ${showDualRadarPro ? 'text-amber-500/85' : 'text-[#a8844c]/80'}`}>
                         {showDualRadarPro
                           ? c.radarProDual
                           : radarDisplayFilters?.pushNotifications === false
@@ -1439,15 +1439,15 @@ export default function CRMDashboard() {
                     <span className="eos-radar-value font-black text-sm truncate">{radarSummary.minArea}</span>
                  </div>
                  <div className="eos-radar-stat-card eos-radar-stat-card--budget flex flex-col justify-center relative overflow-hidden group/price col-span-2 md:col-span-1">
-                    <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-emerald-500/10 to-transparent pointer-events-none group-hover/price:w-full transition-all duration-700" />
+                    <div className="absolute right-0 top-0 bottom-0 w-1/2 bg-gradient-to-l from-[#a8844c]/10 to-transparent pointer-events-none group-hover/price:w-full transition-all duration-700" />
                     <span className="eos-radar-budget-label text-[9px] uppercase tracking-[0.2em] font-bold mb-2 relative z-10">{c.budget}</span>
-                    <span className="eos-radar-value text-emerald-600 dark:text-emerald-400 font-black text-sm truncate relative z-10">{radarSummary.maxBudget}</span>
+                    <span className="eos-radar-value text-[#7a5a26] dark:text-[#c9a86a] font-black text-sm truncate relative z-10">{radarSummary.maxBudget}</span>
                  </div>
               </div>
               
               <div className="relative z-10 mt-4 flex flex-wrap items-center gap-2">
                 <span className="eos-radar-label text-[9px] uppercase tracking-[0.2em] font-bold">{c.matchThreshold}:</span>
-                <span className="eos-radar-threshold-pill rounded-xl border border-[var(--eos-border)] bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                <span className="eos-radar-threshold-pill rounded-xl border border-[var(--eos-border)] bg-[#161616] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[#7a5a26] dark:text-[#c9a86a]">
                   {radarSummary.threshold}
                 </span>
               </div>
@@ -1465,15 +1465,15 @@ export default function CRMDashboard() {
             <AnimatePresence>
               {isRadarUpdating && (
                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 eos-z-cinematic bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-center p-4">
-                    <motion.div animate={{ scale: [1, 1.3, 1], rotate: [0, 120, 240, 360] }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} className="w-48 h-48 rounded-full border border-emerald-500/30 flex items-center justify-center shadow-[0_0_150px_rgba(16,185,129,0.2)] mb-10 relative overflow-hidden">
-                       <div className="absolute inset-0 rounded-full border-4 border-emerald-500/10 animate-[ping_3s_linear_infinite]" />
-                       <div className="absolute inset-0 bg-gradient-to-b from-emerald-500/20 to-transparent animate-[pulse_2s_linear_infinite]" />
-                       <Radar size={80} className="text-emerald-500 drop-shadow-[0_0_20px_#10b981]" strokeWidth={1} />
+                    <motion.div animate={{ scale: [1, 1.3, 1], rotate: [0, 120, 240, 360] }} transition={{ duration: 3, repeat: Infinity, ease: "linear" }} className="w-48 h-48 rounded-full border border-[#a8844c]/30 flex items-center justify-center shadow-[0_0_150px_rgba(168,132,76,0.2)] mb-10 relative overflow-hidden">
+                       <div className="absolute inset-0 rounded-full border-4 border-[#a8844c]/10 animate-[ping_3s_linear_infinite]" />
+                       <div className="absolute inset-0 bg-gradient-to-b from-[#a8844c]/20 to-transparent animate-[pulse_2s_linear_infinite]" />
+                       <Radar size={80} className="text-[#a8844c] drop-shadow-[0_0_20px_#10b981]" strokeWidth={1} />
                     </motion.div>
                     <motion.h2 initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="text-4xl md:text-7xl font-black text-white tracking-tighter text-center">
                        {c.radar.recalibratingTitle}
                     </motion.h2>
-                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="text-emerald-500 font-bold uppercase tracking-[0.5em] text-[11px] md:text-sm mt-8 animate-pulse text-center">
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="text-[#a8844c] font-bold uppercase tracking-[0.5em] text-[11px] md:text-sm mt-8 animate-pulse text-center">
                        {c.radar.recalibratingSub}
                     </motion.p>
                  </motion.div>
@@ -1491,17 +1491,17 @@ export default function CRMDashboard() {
                      resolveOfferPrimaryImage(card) || "/placeholder.jpg";
                    const txRent = card.transactionType === "rent";
                    return (
-                     <div key={offer.id} className="bg-[var(--eos-bg-elevated)] border border-emerald-500/30 rounded-[2.5rem] p-6 relative overflow-hidden shadow-[0_0_30px_rgba(16,185,129,0.05)] hover:border-emerald-500 transition-all">
-                        <div className="absolute top-0 right-0 bg-emerald-500 text-black font-black px-4 py-1 rounded-bl-2xl rounded-tr-[2.5rem] text-xs z-20 shadow-[0_0_15px_rgba(16,185,129,0.5)]">
+                     <div key={offer.id} className="bg-[var(--eos-bg-elevated)] border border-[#a8844c]/30 rounded-[2.5rem] p-6 relative overflow-hidden shadow-[0_0_30px_rgba(168,132,76,0.05)] hover:border-[#a8844c] transition-all">
+                        <div className="absolute top-0 right-0 bg-[#a8844c] text-black font-black px-4 py-1 rounded-bl-2xl rounded-tr-[2.5rem] text-xs z-20 shadow-[0_0_15px_rgba(168,132,76,0.5)]">
                            {c.matchLabel} {offer.matchScore || 100}%
                         </div>
                         <div className="flex gap-4 mb-4 relative z-10">
-                           <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 border border-emerald-500/30 bg-[#111]">
+                           <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 border border-[#a8844c]/30 bg-[#111]">
                               <img src={thumb} className="w-full h-full object-cover" alt={offer.title || c.offers.thumbAlt} onError={(e) => { (e.target as HTMLImageElement).src = '/placeholder.jpg'; }} />
                            </div>
                            <div className="flex-1 min-w-0 flex flex-col justify-center">
-                              <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${txRent ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-emerald-500/30 text-emerald-400 bg-emerald-500/10'}`}>{txRent ? c.rent : c.sale}</span>
-                              <a href={`/oferta/${offer.id}`} target="_blank" className="font-bold text-[var(--eos-text)] text-sm truncate hover:text-emerald-400 transition-colors">
+                              <span className={`self-start px-2 py-0.5 rounded border text-[7px] font-black uppercase tracking-widest mb-1 ${txRent ? 'border-blue-500/30 text-blue-400 bg-blue-500/10' : 'border-[#a8844c]/30 text-[#c9a86a] bg-[#a8844c]/10'}`}>{txRent ? c.rent : c.sale}</span>
+                              <a href={`/oferta/${offer.id}`} target="_blank" className="font-bold text-[var(--eos-text)] text-sm truncate hover:text-[#c9a86a] transition-colors">
                                  {offer.title}
                               </a>
                               
@@ -1515,7 +1515,7 @@ export default function CRMDashboard() {
                                         </p>
                                     </>
                                 ) : (
-                                    <p className="font-black text-xs text-emerald-500">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN</p>
+                                    <p className="font-black text-xs text-[#a8844c]">{Number(String(offer.price).replace(/\D/g,'') || 0).toLocaleString(locale === 'en' ? 'en-US' : 'pl-PL')} PLN</p>
                                 )}
                               </div>
                            </div>
@@ -1526,9 +1526,9 @@ export default function CRMDashboard() {
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[10px] text-[var(--eos-muted)] uppercase tracking-widest font-bold mb-4">
                            <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><Building2 size={12}/> {offer.rooms} {c.rooms}</span>
-                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><span className="text-emerald-500 animate-pulse">●</span> {c.statusActive}</span>
+                           <span className="bg-[#111] px-3 py-2 rounded-xl border border-[var(--eos-border)] truncate flex items-center gap-1"><i className="eos-sig-dot eos-sig--ok" /> {c.statusActive}</span>
                         </div>
-                        <button onClick={() => window.open(`/oferta/${offer.id}`, '_blank')} className="w-full mt-2 py-3 bg-transparent border border-emerald-500/50 text-emerald-500 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-500 hover:text-black transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] cursor-pointer">
+                        <button onClick={() => window.open(`/oferta/${offer.id}`, '_blank')} className="w-full mt-2 py-3 bg-transparent border border-[#a8844c]/50 text-[#a8844c] rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-[#a8844c] hover:text-black transition-all duration-300 shadow-sm hover:shadow-[0_0_20px_rgba(168,132,76,0.4)] cursor-pointer">
                            {c.viewOffer}
                         </button>
                      </div>
@@ -1536,13 +1536,13 @@ export default function CRMDashboard() {
                  })}
               </div>
             ) : ( /* Przestrzeń na zmatchowane wyniki (Pusty stan) */
-            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[var(--eos-bg)] relative overflow-hidden ${showDualRadarPro ? 'border-amber-500/25' : 'border-emerald-500/20'}`}>
+            <div className={`col-span-full flex flex-col items-center justify-center py-20 border border-dashed rounded-[2.5rem] bg-[var(--eos-bg)] relative overflow-hidden ${showDualRadarPro ? 'border-amber-500/25' : 'border-[#a8844c]/20'}`}>
                 <div className={`flex items-center gap-4 mb-6 relative z-10`}>
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
                   >
-                  <Radar size={48} className={showDualRadarPro ? 'text-emerald-500/25' : 'text-emerald-500/20'} />
+                  <Radar size={48} className={showDualRadarPro ? 'text-[#a8844c]/25' : 'text-[#a8844c]/20'} />
                   </motion.div>
                   {showDualRadarPro && (
                     <motion.div
@@ -1557,9 +1557,9 @@ export default function CRMDashboard() {
                   {c.radar.emptyHint}
                 </p>
                 <div className="mt-6 flex gap-2">
-                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse delay-75" />
-                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse delay-150" />
+                   <div className="w-2 h-2 rounded-full bg-[#a8844c] animate-pulse" />
+                   <div className="w-2 h-2 rounded-full bg-[#a8844c] animate-pulse delay-75" />
+                   <div className="w-2 h-2 rounded-full bg-[#a8844c] animate-pulse delay-150" />
                 </div>
             </div>
             )}
@@ -1638,8 +1638,8 @@ export default function CRMDashboard() {
                       </p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                         <span className="crmx-chip crmx-chip--gold">{Number(String(deal.offer?.price || 0).replace(/\D/g,'')).toLocaleString('pl-PL')} zł</span>
-                        {deal.unreadCount > 0 ? <span className="crmx-chip crmx-chip--good">{c.deals.unread.replace('{n}', String(deal.unreadCount))}</span> : null}
-                        {deal.pendingBidCount > 0 ? <span className="crmx-chip crmx-chip--bad">{c.deals.pendingBids.replace('{n}', String(deal.pendingBidCount))}</span> : null}
+                        {deal.unreadCount > 0 ? <span className="crmx-chip crmx-chip--warn">{c.deals.unread.replace('{n}', String(deal.unreadCount))}</span> : null}
+                        {deal.pendingBidCount > 0 ? <span className="crmx-chip crmx-chip--warn">{c.deals.pendingBids.replace('{n}', String(deal.pendingBidCount))}</span> : null}
                         {deal.pendingAppointmentCount > 0 ? <span className="crmx-chip crmx-chip--warn">{c.deals.pendingAppointments.replace('{n}', String(deal.pendingAppointmentCount))}</span> : null}
                         <span className="text-[11.5px] crmx-muted">{new Date(deal.lastMessageAt || deal.updatedAt || deal.createdAt).toLocaleString('pl-PL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
@@ -1749,7 +1749,7 @@ export default function CRMDashboard() {
                             </>
                           );
                         })()}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '24px', padding: '4px 12px', backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: '100px', border: '1px solid rgba(16,185,129,0.2)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '24px', padding: '4px 12px', backgroundColor: 'rgba(168,132,76,0.1)', borderRadius: '100px', border: '1px solid rgba(168,132,76,0.2)' }}>
                             <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block', boxShadow: '0 0 10px #10b981' }}></span>
                             <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.2em', color: '#10b981', fontWeight: '900' }}>{c.profile.verified}</span>
                         </div>
@@ -1804,9 +1804,9 @@ export default function CRMDashboard() {
                                 <span style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold', display: 'block', marginBottom: '12px' }}>{c.profile.activeOffers.replace('{n}', String(viewingProfile.publicOffers.length))}</span>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                     {viewingProfile.publicOffers.map((o:any) => (
-                                        <a key={o.id} href={`/oferta/${o.id}`} target="_blank" rel="noreferrer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.02)', textDecoration: 'none', color: '#fff', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.borderColor = 'rgba(16,185,129,0.3)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.02)'}>
+                                        <a key={o.id} href={`/oferta/${o.id}`} target="_blank" rel="noreferrer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', backgroundColor: '#0a0a0a', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.02)', textDecoration: 'none', color: '#fff', transition: 'all 0.2s' }} onMouseOver={(e) => e.currentTarget.style.borderColor = 'rgba(168,132,76,0.3)'} onMouseOut={(e) => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.02)'}>
                                             <span style={{ fontSize: '11px', fontWeight: 'bold', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '160px' }}>{o.title || `Oferta ID: ${o.id}`}</span>
-                                            <span style={{ fontSize: '9px', color: '#10b981', fontWeight: '900', backgroundColor: 'rgba(16,185,129,0.1)', padding: '4px 8px', borderRadius: '8px', flexShrink: 0 }}>ID: {o.id} ↗</span>
+                                            <span style={{ fontSize: '9px', color: '#10b981', fontWeight: '900', backgroundColor: 'rgba(168,132,76,0.1)', padding: '4px 8px', borderRadius: '8px', flexShrink: 0 }}>ID: {o.id} ↗</span>
                                         </a>
                                     ))}
                                 </div>
@@ -1844,7 +1844,7 @@ export default function CRMDashboard() {
               <EliteStatusBadges subject={profileModalData?.user || profileModalUser} isDark compact className="mb-5" />
 
               {profileModalLoading ? (
-                <div className="py-12 flex items-center justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>
+                <div className="py-12 flex items-center justify-center"><Loader2 className="animate-spin text-[#a8844c]" /></div>
               ) : profileModalData ? (
                 <div className="space-y-5">
                   <div className="grid grid-cols-3 gap-3">
@@ -1862,7 +1862,7 @@ export default function CRMDashboard() {
                     </div>
                     <div className="rounded-xl bg-white/5 border border-[var(--eos-border)] p-3 text-center">
                       <p className="text-[9px] uppercase tracking-widest text-[var(--eos-subtle)] font-black">{c.profileModal.otherOffers}</p>
-                      <p className="text-lg font-black text-emerald-400">{Array.isArray(profileModalData.offers) ? profileModalData.offers.length : 0}</p>
+                      <p className="text-lg font-black text-[#c9a86a]">{Array.isArray(profileModalData.offers) ? profileModalData.offers.length : 0}</p>
                     </div>
                   </div>
 
@@ -1883,9 +1883,9 @@ export default function CRMDashboard() {
                     <p className="text-[10px] uppercase tracking-widest text-[var(--eos-subtle)] font-black mb-3">{c.profileModal.otherOffers}</p>
                     <div className="space-y-2 max-h-40 overflow-auto">
                       {(profileModalData.offers || []).slice(0, 10).map((o: any) => (
-                        <Link key={o.id} href={`/oferta/${o.id}`} target="_blank" className="block rounded-lg bg-black/40 border border-[var(--eos-border)] p-3 hover:border-emerald-500/30 transition-colors">
+                        <Link key={o.id} href={`/oferta/${o.id}`} target="_blank" className="block rounded-lg bg-black/40 border border-[var(--eos-border)] p-3 hover:border-[#a8844c]/30 transition-colors">
                           <p className="text-xs text-white font-bold truncate">{o.title || `Oferta #${o.id}`}</p>
-                          <p className="text-[10px] text-emerald-400 font-black">{Number(String(o.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</p>
+                          <p className="text-[10px] text-[#c9a86a] font-black">{Number(String(o.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</p>
                         </Link>
                       ))}
                       {(!profileModalData.offers || profileModalData.offers.length === 0) && <p className="text-xs text-white/35">{c.profileModal.noOffers}</p>}

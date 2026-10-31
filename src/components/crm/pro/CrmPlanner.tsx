@@ -20,8 +20,8 @@ function kindOf(a: Enriched): { label: string; cls: string } {
   const type = String(a.type || '').toUpperCase();
   const status = String(a.status || '').toUpperCase();
   if (type === 'ACQUISITION') return { label: 'Pozyskanie', cls: 'info' };
-  if (a.needsMyResponse) return { label: 'Do akceptacji', cls: 'bad' };
-  if (a.waitingOnOther) return { label: 'Twoja propozycja', cls: 'warn' };
+  if (a.needsMyResponse) return { label: 'Do akceptacji', cls: 'warn' };
+  if (a.waitingOnOther) return { label: 'Twoja propozycja', cls: 'info' };
   if (status === 'ACCEPTED') return { label: 'Potwierdzone', cls: 'good' };
   if (status === 'COMPLETED') return { label: 'Odbyte', cls: '' };
   return { label: 'Termin', cls: 'gold' };
@@ -86,8 +86,8 @@ export default function CrmPlanner({
             <h3 className="crmx-planner__title">{new Date(y, m, 1).toLocaleDateString('pl-PL', { month: 'long', year: 'numeric' })}</h3>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="crmx-chip crmx-chip--bad"><span className="crmx-dot" />Do akceptacji</span>
-            <span className="crmx-chip crmx-chip--warn"><span className="crmx-dot" />Twoja propozycja</span>
+            <span className="crmx-chip crmx-chip--warn"><span className="crmx-dot" />Do akceptacji</span>
+            <span className="crmx-chip crmx-chip--info"><span className="crmx-dot" />Twoja propozycja</span>
             <span className="crmx-chip crmx-chip--good"><span className="crmx-dot" />Potwierdzone</span>
             <span className="crmx-chip crmx-chip--info"><span className="crmx-dot" />Pozyskanie</span>
             <button type="button" className="crmx-btn crmx-btn--sm" onClick={() => { setY(today.getFullYear()); setM(today.getMonth()); pick(today); }}>Dziś</button>
@@ -184,7 +184,7 @@ export default function CrmPlanner({
                       <span className="crmx-row__title block">{a.offerTitle}</span>
                       <span className="crmx-row__sub block">{a.counterpartyDisplay?.name || a.offerAddress}</span>
                     </span>
-                    <span className={`crmx-dot`} style={{ color: `var(--x-${k.cls || 'gold'})` }} />
+                    <span className={`crmx-chip crmx-chip--dotonly ${k.cls ? `crmx-chip--${k.cls}` : ''}`} title={k.label}><span className="crmx-dot" /></span>
                   </button>
                 );
               })

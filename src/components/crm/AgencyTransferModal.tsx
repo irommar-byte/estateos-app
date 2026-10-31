@@ -250,8 +250,8 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
 
         {step === 3 ? (
           <div className="py-6 text-center">
-            <CheckCircle2 className="mx-auto size-12 text-emerald-400" />
-            <p className="mt-4 text-2xl font-black text-emerald-400">Zapytanie wysłane</p>
+            <CheckCircle2 className="eos-sig-text eos-sig--ok mx-auto size-12" />
+            <p className="mt-4 text-2xl font-black text-[#c9a86a]">Zapytanie wysłane</p>
             <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
               Agencja otrzymała powiadomienie i przeanalizuje Twoje ogłoszenie. Gdy prześle warunki
               współpracy, dostaniesz alert — zaakceptujesz je jednym kliknięciem w panelu CRM.
@@ -262,7 +262,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
           </div>
         ) : step === 1 ? (
           <>
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-400">Concierge</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#c9a86a]">Concierge</p>
             <h3 className="mt-2 text-2xl font-black text-[var(--eos-text)]">Oddaj sprzedaż profesjonalnej agencji</h3>
             <p className="mt-3 text-sm leading-relaxed text-[var(--eos-muted)]">
               {offerTitle ? `„${offerTitle}”` : `Oferta #${offerId}`} — wybierz biuro, które przejmie
@@ -271,18 +271,18 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
 
             <div className="mt-6 space-y-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-sm text-[var(--eos-muted)]">
               <p className="flex items-center gap-2 font-bold text-[var(--eos-text)]">
-                <Shield className="size-4 text-emerald-400" />
+                <Shield className="size-4 text-[#c9a86a]" />
                 Co się stanie?
               </p>
               <ul className="space-y-2 pl-1">
                 <li className="flex gap-2">
-                  <span className="text-emerald-400">1.</span> Wybierasz agencję — wysyłamy im podgląd ogłoszenia.
+                  <span className="text-[#c9a86a]">1.</span> Wybierasz agencję — wysyłamy im podgląd ogłoszenia.
                 </li>
                 <li className="flex gap-2">
-                  <span className="text-emerald-400">2.</span> Biuro proponuje prowizję i zakres usług.
+                  <span className="text-[#c9a86a]">2.</span> Biuro proponuje prowizję i zakres usług.
                 </li>
                 <li className="flex gap-2">
-                  <span className="text-emerald-400">3.</span> Po Twojej akceptacji agencja przejmuje sprzedaż.
+                  <span className="text-[#c9a86a]">3.</span> Po Twojej akceptacji agencja przejmuje sprzedaż.
                 </li>
               </ul>
             </div>
@@ -310,7 +310,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
             <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
               {detailLoading ? (
                 <div className="flex justify-center py-12">
-                  <Loader2 className="size-6 animate-spin text-emerald-500" />
+                  <Loader2 className="size-6 animate-spin text-[#a8844c]" />
                 </div>
               ) : detail ? (
                 <div className="space-y-4">
@@ -319,7 +319,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                       {getBestUserAvatarUrl({ image: detail.image }) ? (
                         <img src={getBestUserAvatarUrl({ image: detail.image })!} alt="" className="size-full object-cover" />
                       ) : (
-                        <Building2 className="size-7 text-emerald-500" />
+                        <Building2 className="size-7 text-[#a8844c]" />
                       )}
                     </div>
                     <div className="min-w-0">
@@ -366,18 +366,18 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                       <p className="font-bold text-[var(--eos-text)]">Kontakt</p>
                       {detail.address ? (
                         <p className="mt-2 flex items-start gap-2">
-                          <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-400" />
+                          <MapPin className="mt-0.5 size-4 shrink-0 text-[#c9a86a]" />
                           {detail.address}
                         </p>
                       ) : null}
                       {detail.phone ? (
                         <p className="mt-2 flex items-center gap-2">
-                          <Phone className="size-4 shrink-0 text-emerald-400" />
+                          <Phone className="size-4 shrink-0 text-[#c9a86a]" />
                           {detail.phone}
                         </p>
                       ) : null}
                       {detail.website ? (
-                        <a href={detail.website} target="_blank" rel="noreferrer" className="mt-2 block text-emerald-400">
+                        <a href={detail.website} target="_blank" rel="noreferrer" className="mt-2 block text-[#c9a86a]">
                           {detail.website}
                         </a>
                       ) : null}
@@ -413,7 +413,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                               {o.area ? ` · ${o.area} m²` : ""}
                             </p>
                           </div>
-                          <p className="shrink-0 font-black text-emerald-400">{fmtPrice(o.price)}</p>
+                          <p className="shrink-0 font-black text-[#c9a86a]">{fmtPrice(o.price)}</p>
                         </div>
                       ))}
                     </div>
@@ -446,7 +446,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
             <p className="mt-2 text-sm text-[var(--eos-muted)]">Dotknij biuro, aby zobaczyć szczegóły przed wysłaniem zapytania.</p>
             {loading ? (
               <div className="flex justify-center py-12">
-                <Loader2 className="size-6 animate-spin text-emerald-500" />
+                <Loader2 className="size-6 animate-spin text-[#a8844c]" />
               </div>
             ) : (
               <div className="mt-6 max-h-[50vh] space-y-2 overflow-y-auto pr-1">
@@ -457,13 +457,13 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                       key={a.id}
                       type="button"
                       onClick={() => void openDetail(a)}
-                      className="flex w-full items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-left transition hover:border-emerald-500/40"
+                      className="flex w-full items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] p-4 text-left transition hover:border-[#a8844c]/40"
                     >
                       <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-black">
                         {avatar ? (
                           <img src={avatar} alt="" className="size-full object-cover" />
                         ) : (
-                          <Building2 className="size-5 text-emerald-500" />
+                          <Building2 className="size-5 text-[#a8844c]" />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -473,7 +473,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
                           {a.reviewsCount} opinii · {a.activeListings} ofert
                         </p>
                         {a.conciergeManaged ? (
-                          <p className="text-[10px] font-bold text-emerald-400">{a.conciergeManaged} przekazań Concierge</p>
+                          <p className="text-[10px] font-bold text-[#c9a86a]">{a.conciergeManaged} przekazań Concierge</p>
                         ) : null}
                       </div>
                       <ChevronRight className="size-4 text-[var(--eos-subtle)]" />
@@ -484,7 +484,7 @@ export default function AgencyTransferModal({ offerId, offerTitle, open, onClose
             )}
             <Link
               href="/agencje"
-              className="mt-4 block text-center text-[10px] font-black uppercase tracking-widest text-emerald-500"
+              className="mt-4 block text-center text-[10px] font-black uppercase tracking-widest text-[#a8844c]"
             >
               Pełny katalog agencji
             </Link>

@@ -212,7 +212,7 @@ export default function CrmPulpit({
     for (const o of activeOffers) {
       const imgs = String(o.images || '').trim();
       const days = daysSince(o.createdAt) ?? 0;
-      if (!imgs || imgs === '[]') rows.push({ offer: o, reason: 'Brak zdjęć', tone: 'bad' });
+      if (!imgs || imgs === '[]') rows.push({ offer: o, reason: 'Brak zdjęć', tone: 'warn' });
       else if (days > 45 && !(o.buyersInProcess > 0)) rows.push({ offer: o, reason: `${days} dni bez kupującego w procesie`, tone: 'warn' });
       else if (!o.floorPlanUrl && !o.floorPlan3dUrl && String(o.propertyType) === 'FLAT') rows.push({ offer: o, reason: 'Brak rzutu mieszkania', tone: 'info' });
     }

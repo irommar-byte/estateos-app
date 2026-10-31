@@ -187,8 +187,8 @@ export default function CrmClientLiveChat({
     open && typeof document !== "undefined"
       ? createPortal(
           <div className="fixed inset-0 eos-z-modal-nested flex items-end justify-center bg-black/45 p-3 backdrop-blur-[2px] sm:items-center">
-            <section className="flex max-h-[min(760px,90svh)] w-full max-w-xl flex-col overflow-hidden rounded-[1.75rem] border border-emerald-500/25 bg-[var(--eos-card)] shadow-[0_30px_100px_rgba(0,0,0,0.38)]">
-              <header className="flex items-center justify-between border-b border-[var(--eos-border)] bg-gradient-to-r from-emerald-500/12 to-transparent px-5 py-4">
+            <section className="flex max-h-[min(760px,90svh)] w-full max-w-xl flex-col overflow-hidden rounded-[1.75rem] border border-[#a8844c]/25 bg-[var(--eos-card)] shadow-[0_30px_100px_rgba(0,0,0,0.38)]">
+              <header className="flex items-center justify-between border-b border-[var(--eos-border)] bg-gradient-to-r from-[#a8844c]/12 to-transparent px-5 py-4">
                 <div className="min-w-0">
                   <p className="inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-red-500">
                     <Radio className="size-3 animate-pulse" />
@@ -219,7 +219,7 @@ export default function CrmClientLiveChat({
               >
                 {messages.length === 0 ? (
                   <div className="flex h-full flex-col items-center justify-center text-center">
-                    <MessageSquare className="size-9 text-emerald-500/50" />
+                    <MessageSquare className="size-9 text-[#a8844c]/50" />
                     <p className="mt-3 text-sm font-bold text-[var(--eos-text)]">Napisz pierwszą wiadomość</p>
                     <p className="mt-1 text-xs text-[var(--eos-muted)]">
                       Klient zobaczy ją w wyróżnionym kafelku Live Chat i dostanie powiadomienie.
@@ -237,7 +237,7 @@ export default function CrmClientLiveChat({
                         isAgentNote
                           ? "ml-auto border border-amber-400/40 bg-amber-500/12"
                           : message.fromMe
-                            ? "ml-auto bg-emerald-500/16"
+                            ? "ml-auto bg-[#a8844c]/16"
                             : "mr-auto border border-[var(--eos-border)] bg-[var(--eos-input)]"
                       }`}
                     >
@@ -275,16 +275,16 @@ export default function CrmClientLiveChat({
                 )}
                 {peerTyping ? (
                   <div className="mr-auto inline-flex items-center gap-1 rounded-full bg-[var(--eos-input)] px-3 py-2">
-                    <span className="size-1.5 animate-bounce rounded-full bg-emerald-500 [animation-delay:-0.2s]" />
-                    <span className="size-1.5 animate-bounce rounded-full bg-emerald-500" />
-                    <span className="size-1.5 animate-bounce rounded-full bg-emerald-500 [animation-delay:0.2s]" />
+                    <span className="size-1.5 animate-bounce rounded-full bg-[#a8844c] [animation-delay:-0.2s]" />
+                    <span className="size-1.5 animate-bounce rounded-full bg-[#a8844c]" />
+                    <span className="size-1.5 animate-bounce rounded-full bg-[#a8844c] [animation-delay:0.2s]" />
                   </div>
                 ) : null}
               </div>
 
               {pendingFile ? (
                 <div className="eos-inset-well mx-4 mb-2 flex items-center gap-3 rounded-2xl px-4 py-2.5">
-                  <Paperclip className="size-4 shrink-0 text-emerald-500" />
+                  <Paperclip className="size-4 shrink-0 text-[#a8844c]" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold">{formatContactAttachmentName(pendingFile.name)}</p>
                     <p className="text-[10px] text-[var(--eos-muted)]">{formatContactBytes(pendingFile.size)}</p>
@@ -297,7 +297,7 @@ export default function CrmClientLiveChat({
               {error ? <p className="px-4 pb-2 text-xs font-semibold text-red-500">{error}</p> : null}
 
               <footer className="flex gap-2 border-t border-[var(--eos-border)] p-3 sm:p-4">
-                <label className="eos-inset-well flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--eos-muted)] hover:text-emerald-600">
+                <label className="eos-inset-well flex size-12 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--eos-muted)] hover:text-[#7a5a26]">
                   <Plus className="size-5" />
                   <input
                     type="file"

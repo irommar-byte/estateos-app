@@ -116,13 +116,13 @@ function stageChipClass(id: string | undefined) {
       return "bg-amber-500/15 text-amber-800 border-amber-500/30";
     case "live":
     case "upcoming":
-      return "bg-emerald-500/15 text-emerald-800 border-emerald-500/30";
+      return "bg-[#a8844c]/15 text-[#5c4626] border-[#a8844c]/30";
     case "rejected":
       return "bg-rose-500/15 text-rose-700 border-rose-500/30";
     case "ended":
       return "bg-[var(--eos-input)] text-[var(--eos-muted)] border-[var(--eos-border)]";
     default:
-      return "bg-emerald-500/10 text-emerald-700 border-emerald-500/25";
+      return "bg-[#a8844c]/10 text-[#7a5a26] border-[#a8844c]/25";
   }
 }
 
@@ -369,8 +369,8 @@ export default function CrmSellerCollaborationPanel({
           reportEmail={clientEmail}
         />
       ) : null}
-      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.05] p-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">
+      <div className="rounded-xl border border-[#a8844c]/20 bg-[#a8844c]/[0.05] p-4">
+        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#7a5a26]">
           Inny portal
         </p>
         <p className="mt-1 text-xs leading-relaxed text-[var(--eos-muted)]">
@@ -382,13 +382,13 @@ export default function CrmSellerCollaborationPanel({
             value={portalLinkDraft}
             onChange={(e) => setPortalLinkDraft(e.target.value)}
             placeholder="https://www.otodom.pl/pl/oferta/… albo facebook.com/groups/…"
-            className="min-w-0 flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+            className="min-w-0 flex-1 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-3 py-2.5 text-sm text-[var(--eos-text)] outline-none focus:border-[#a8844c]/50"
           />
           <button
             type="button"
             disabled={busy || !portalLinkDraft.trim()}
             onClick={() => void savePortal()}
-            className="rounded-full bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+            className="rounded-full bg-[#a8844c] px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
           >
             {showPortalToClient ? "Zapisz i pokaż" : "Zapisz szkic"}
           </button>
@@ -506,8 +506,8 @@ export default function CrmSellerCollaborationPanel({
           </button>
         </div>
 
-        <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">
+        <div className="mt-4 rounded-xl border border-[#a8844c]/20 bg-[#a8844c]/[0.04] p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#7a5a26]">
             Wydarzenie sprzedaży
           </p>
           <p className="mt-1 text-xs text-[var(--eos-muted)]">
@@ -527,7 +527,7 @@ export default function CrmSellerCollaborationPanel({
               type="button"
               disabled={busy || !linkedOfferId || eventBusy}
               onClick={() => setEventMode(eventMode === "open_house" ? null : "open_house")}
-              className="rounded-full border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-700 disabled:opacity-50"
+              className="rounded-full border border-[#a8844c]/30 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[#7a5a26] disabled:opacity-50"
             >
               Dzień otwarty
             </button>
@@ -535,14 +535,14 @@ export default function CrmSellerCollaborationPanel({
               type="button"
               disabled={busy || !linkedOfferId || eventBusy}
               onClick={() => setEventMode(eventMode === "auction" ? null : "auction")}
-              className="rounded-full border border-emerald-500/30 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-700 disabled:opacity-50"
+              className="rounded-full border border-[#a8844c]/30 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-[#7a5a26] disabled:opacity-50"
             >
               Licytacja
             </button>
           </div>
 
           {eventMode ? (
-            <div className="mt-3 space-y-2 border-t border-emerald-500/15 pt-3">
+            <div className="mt-3 space-y-2 border-t border-[#a8844c]/15 pt-3">
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className="text-xs text-[var(--eos-muted)]">
                   Start
@@ -603,7 +603,7 @@ export default function CrmSellerCollaborationPanel({
                   type="button"
                   disabled={busy || eventBusy}
                   onClick={() => void submitEvent("start")}
-                  className="rounded-full bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                  className="rounded-full bg-[#a8844c] px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                 >
                   {eventBusy
                     ? "Uruchamiam…"
@@ -615,7 +615,7 @@ export default function CrmSellerCollaborationPanel({
                   type="button"
                   disabled={busy || eventBusy}
                   onClick={() => void submitEvent("propose")}
-                  className="rounded-full border border-emerald-500/30 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 disabled:opacity-50"
+                  className="rounded-full border border-[#a8844c]/30 px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-[#7a5a26] disabled:opacity-50"
                 >
                   {eventBusy ? "Wysyłam…" : "Wyślij do akceptacji"}
                 </button>
@@ -644,7 +644,7 @@ export default function CrmSellerCollaborationPanel({
               onClick={() => setDecisionKind(item.id)}
               className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${
                 decisionKind === item.id
-                  ? "border-emerald-500/50 bg-emerald-500/15 text-emerald-800"
+                  ? "border-[#a8844c]/50 bg-[#a8844c]/15 text-[#5c4626]"
                   : "border-[var(--eos-border)] text-[var(--eos-muted)]"
               }`}
             >
@@ -669,7 +669,7 @@ export default function CrmSellerCollaborationPanel({
           type="button"
           disabled={busy}
           onClick={() => void requestDecision()}
-          className="mt-2 rounded-full border border-emerald-500/30 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-700 disabled:opacity-50"
+          className="mt-2 rounded-full border border-[#a8844c]/30 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[#7a5a26] disabled:opacity-50"
         >
           Wyślij do klienta
         </button>

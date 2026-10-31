@@ -329,7 +329,12 @@ export default function CrmClientsWorkspace() {
   const [typeFilter, setTypeFilter] = useState<ClientTypeFilter>("ALL");
   const [sortBy, setSortBy] = useState<"recent" | "name" | "match">("recent");
   const [cardBusyId, setCardBusyId] = useState<number | null>(null);
-  const [toast, setToast] = useState("");
+  const [toast, setToastText] = useState("");
+  const [toastBad, setToastBad] = useState(false);
+  const setToast = useCallback((text: string, bad = false) => {
+    setToastText(text);
+    setToastBad(bad);
+  }, []);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<number>>(new Set());
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
   const [archiveBusy, setArchiveBusy] = useState(false);
@@ -555,7 +560,7 @@ export default function CrmClientsWorkspace() {
       setToast(`Wysłano wizytówkę na ${json.email || "e-mail klienta"}`);
       if (selectedId === clientId) void loadDetail(clientId);
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "Błąd wysyłki wizytówki.");
+      setToast(e instanceof Error ? e.message : "Błąd wysyłki wizytówki.", true);
     } finally {
       setCardBusyId(null);
       window.setTimeout(() => setToast(""), 4500);
@@ -586,7 +591,7 @@ export default function CrmClientsWorkspace() {
       setToast("Odpowiedź jest już przy ofercie w panelu klienta.");
       await loadDetail(detail.id, { silent: true });
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "Nie udało się wysłać odpowiedzi.");
+      setToast(error instanceof Error ? error.message : "Nie udało się wysłać odpowiedzi.", true);
     } finally {
       setBusy(false);
       window.setTimeout(() => setToast(""), 4500);
@@ -606,7 +611,7 @@ export default function CrmClientsWorkspace() {
       if (!res.ok) throw new Error(String(json?.error || "Nie udało się zamknąć zadania."));
       await loadDetail(detail.id, { silent: true });
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "Nie udało się zamknąć zadania.");
+      setToast(error instanceof Error ? error.message : "Nie udało się zamknąć zadania.", true);
     } finally {
       setBusy(false);
     }
@@ -784,7 +789,7 @@ export default function CrmClientsWorkspace() {
       await loadDetail(selectedId);
       return true;
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "Błąd zapisu asystenta.");
+      setToast(e instanceof Error ? e.message : "Błąd zapisu asystenta.", true);
       window.setTimeout(() => setToast(""), 3500);
       return false;
     } finally {
@@ -816,7 +821,7 @@ export default function CrmClientsWorkspace() {
       await loadDetail(selectedId);
       await loadClients();
     } catch (e) {
-      setToast(e instanceof Error ? e.message : "Błąd wysyłki.");
+      setToast(e instanceof Error ? e.message : "Błąd wysyłki.", true);
       window.setTimeout(() => setToast(""), 3500);
     } finally {
       setBusy(false);
@@ -1079,7 +1084,7 @@ export default function CrmClientsWorkspace() {
 
 
       {toast ? (
-        <p className="mb-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700">
+        <p className={`eos-sig-box mb-4 px-4 py-3 text-sm font-semibold ${toastBad ? "eos-sig--bad" : "eos-sig--ok"}`}>
           {toast}
         </p>
       ) : null}
@@ -1148,7 +1153,7 @@ export default function CrmClientsWorkspace() {
                 animate={{ rotate: 360 }}
                 transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
               >
-                <Radar className="size-10 text-emerald-500" />
+                <Radar className="size-10 text-[#a8844c]" />
               </motion.div>
               <p className="mt-4 break-words text-center text-sm font-semibold text-[var(--eos-text)]">{cl.scanningMatches}</p>
             </div>
@@ -1214,12 +1219,12 @@ export default function CrmClientsWorkspace() {
                           setWorkspaceLane(null);
                         }
                       }}
-                      className="mb-2 text-[11px] font-bold text-emerald-600"
+                      className="mb-2 text-[11px] font-bold text-[#7a5a26]"
                     >
                       ← Wróć
                     </button>
                   ) : null}
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#a8844c]">
                     {workspaceView === "project"
                       ? detail.type === "BUYER"
                         ? cl.buyerBadge
@@ -1232,7 +1237,7 @@ export default function CrmClientsWorkspace() {
                   </h3>
                   <p className="mt-1 text-sm font-semibold">
                     {relatedProjects.selling.length || detail.type === "SELLER" ? (
-                      <span className="text-emerald-600">Sprzedający</span>
+                      <span className="text-[#7a5a26]">Sprzedający</span>
                     ) : null}
                     {(relatedProjects.selling.length || detail.type === "SELLER") && (relatedProjects.buying.length || detail.type === "BUYER") ? (
                       <span className="text-[var(--eos-muted)]"> / </span>
@@ -1377,7 +1382,7 @@ export default function CrmClientsWorkspace() {
                               <div className="mb-2 flex gap-2">
                                 <img src={task.showing.imageUrl} alt="" className="h-14 w-16 rounded-lg object-cover" />
                                 {task.statusLabel ? (
-                                  <span className="self-start rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                                  <span className="self-start rounded-full bg-[#a8844c]/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#7a5a26]">
                                     {task.statusLabel}
                                   </span>
                                 ) : null}
@@ -1537,11 +1542,11 @@ export default function CrmClientsWorkspace() {
               <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[var(--eos-muted)]">Postęp obsługi klienta</p>
-                  <p className="text-sm font-black text-emerald-600">{detailAnalytics?.scorePct ?? 0}%</p>
+                  <p className="text-sm font-black text-[#7a5a26]">{detailAnalytics?.scorePct ?? 0}%</p>
                 </div>
                 <div className="mt-2 h-2 rounded-full bg-[var(--eos-border)]/70">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-[#c9a86a] to-[#a8844c] transition-all"
                     style={{ width: `${detailAnalytics?.scorePct ?? 0}%` }}
                   />
                 </div>
@@ -1552,7 +1557,7 @@ export default function CrmClientsWorkspace() {
                       <span className="text-[var(--eos-muted)]">{detail.nextStep.hint}</span>
                     </p>
                   ) : (
-                    <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+                    <span className="eos-sig eos-sig--ok">
                       Wszystkie kluczowe kroki wykonane
                     </span>
                   )}
@@ -1565,11 +1570,11 @@ export default function CrmClientsWorkspace() {
                   <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">{detail.pesel || "—"}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wider ${clientEmailVerified(detail) ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700"}`}>
+                  <span className={`eos-sig ${clientEmailVerified(detail) ? "eos-sig--ok" : "eos-sig--warn"}`}>
                     {clientEmailVerified(detail) ? <BadgeCheck className="size-3" /> : <ShieldAlert className="size-3" />}
                     E-mail {clientEmailVerified(detail) ? "zweryfikowany" : "do weryfikacji"}
                   </span>
-                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-wider ${clientPhoneVerified(detail) ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700"}`}>
+                  <span className={`eos-sig ${clientPhoneVerified(detail) ? "eos-sig--ok" : "eos-sig--warn"}`}>
                     {clientPhoneVerified(detail) ? <BadgeCheck className="size-3" /> : <ShieldAlert className="size-3" />}
                     Telefon {clientPhoneVerified(detail) ? "zweryfikowany" : "do weryfikacji"}
                   </span>
@@ -1591,7 +1596,7 @@ export default function CrmClientsWorkspace() {
                         const code = window.prompt("Wpisz kod e-mail klienta");
                         if (code) void clientAction("verify_email_code", { code });
                       }}
-                      className="rounded-full bg-emerald-500 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                      className="rounded-full bg-[#a8844c] px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                     >
                       Potwierdź e-mail
                     </button>
@@ -1614,7 +1619,7 @@ export default function CrmClientsWorkspace() {
                         const code = window.prompt("Wpisz kod SMS klienta");
                         if (code) void clientAction("verify_sms_code", { code });
                       }}
-                      className="rounded-full bg-emerald-500 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                      className="rounded-full bg-[#a8844c] px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                     >
                       Potwierdź telefon
                     </button>
@@ -1635,7 +1640,7 @@ export default function CrmClientsWorkspace() {
                     {detail.meeting.location ? (
                       <p className="mt-1 text-xs text-[var(--eos-muted)]">{detail.meeting.location}</p>
                     ) : null}
-                    <p className={`mt-1 text-xs font-black uppercase tracking-wider ${detail.meeting.status === "pending" ? "text-amber-700" : "text-emerald-700"}`}>
+                    <p className={`eos-sig mt-1.5 ${detail.meeting.status === "pending" ? "eos-sig--warn" : "eos-sig--ok"}`}>
                       {detail.meeting.status === "pending"
                         ? detail.meeting.reason || "Oczekuje na Twoją decyzję"
                         : "Potwierdzone"}
@@ -1645,7 +1650,7 @@ export default function CrmClientsWorkspace() {
                         type="button"
                         disabled={busy}
                         onClick={() => void clientAction("accept_schedule_change", { kind: "meeting" })}
-                        className="mt-2 rounded-full bg-emerald-500 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                        className="mt-2 rounded-full bg-[#a8844c] px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                       >
                         Akceptuj nowy termin
                       </button>
@@ -1661,7 +1666,7 @@ export default function CrmClientsWorkspace() {
                     <p className="mt-1 text-sm font-semibold text-[var(--eos-text)]">
                       {new Date(detail.presentation.startsAt).toLocaleString("pl-PL")}
                     </p>
-                    <p className={`mt-1 text-xs font-black uppercase tracking-wider ${detail.presentation.heldAt ? "text-emerald-700" : detail.presentation.status === "pending" ? "text-amber-700" : "text-emerald-700"}`}>
+                    <p className={`eos-sig mt-1.5 ${detail.presentation.status === "pending" && !detail.presentation.heldAt ? "eos-sig--warn" : "eos-sig--ok"}`}>
                       {detail.presentation.heldAt
                         ? "Odbyta"
                         : detail.presentation.status === "pending"
@@ -1673,7 +1678,7 @@ export default function CrmClientsWorkspace() {
                         type="button"
                         disabled={busy}
                         onClick={() => void clientAction("accept_schedule_change", { kind: "presentation" })}
-                        className="mt-2 rounded-full bg-emerald-500 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                        className="mt-2 rounded-full bg-[#a8844c] px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                       >
                         Akceptuj nowy termin pokazu
                       </button>
@@ -1741,7 +1746,7 @@ export default function CrmClientsWorkspace() {
                         onClick={() => setGuestAgencyMode((open) => !open)}
                         className={`w-full rounded-xl border px-3 py-2 text-left ${
                           guestAgencyMode
-                            ? "border-emerald-500/50 bg-emerald-500/10"
+                            ? "border-[#a8844c]/50 bg-[#a8844c]/10"
                             : "border-[var(--eos-border)] bg-[var(--eos-input)]"
                         }`}
                       >
@@ -1836,7 +1841,7 @@ export default function CrmClientsWorkspace() {
                           }
                         });
                       }}
-                      className="rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                      className="rounded-full bg-[#a8844c] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                     >
                       {guestAgencyMode ? "Wyślij termin właścicielowi i agencji gościa" : "Zaproponuj termin obu stronom"}
                     </button>
@@ -1913,7 +1918,7 @@ export default function CrmClientsWorkspace() {
                               m.intelligenceSent
                                 ? "eos-intel-frame"
                                 : selected
-                                  ? "border-emerald-500/40 bg-emerald-500/5"
+                                  ? "border-[#a8844c]/40 bg-[#a8844c]/5"
                                   : "border-[var(--eos-border)] bg-[var(--eos-input)]/40"
                             }`}
                           >
@@ -1924,20 +1929,20 @@ export default function CrmClientsWorkspace() {
                                 onClick={() => toggleOffer(m.offer.id, sent)}
                                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition ${
                                   sent
-                                    ? "cursor-default border-emerald-500/30 bg-emerald-500/10"
+                                    ? "cursor-default border-[#a8844c]/30 bg-[#a8844c]/10"
                                     : selected
-                                      ? "border-emerald-500 bg-emerald-500"
-                                      : "border-[var(--eos-border)] hover:border-emerald-500/40"
+                                      ? "border-[#a8844c] bg-[#a8844c]"
+                                      : "border-[var(--eos-border)] hover:border-[#a8844c]/40"
                                 }`}
                               >
-                                {(sent || selected) ? <Check className={`size-4 ${sent ? "text-emerald-600" : "text-black"}`} /> : null}
+                                {(sent || selected) ? <Check className={`size-4 ${sent ? "text-[#7a5a26]" : "text-black"}`} /> : null}
                               </button>
                               <OfferPhotoCascade offer={m.offer} />
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <Link
                                     href={offerHref(m.offer.id, detail.portalToken)}
-                                    className="break-words font-semibold text-[var(--eos-text)] hover:text-emerald-600"
+                                    className="break-words font-semibold text-[var(--eos-text)] hover:text-[#7a5a26]"
                                   >
                                     {m.offer.title}
                                   </Link>
@@ -1946,7 +1951,7 @@ export default function CrmClientsWorkspace() {
                                       Domysł EstateOS™ Intelligence
                                     </span>
                                   ) : sent ? (
-                                    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-600">
+                                    <span className="rounded-full bg-[#a8844c]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-[#7a5a26]">
                                       {cl.sentBadge}
                                     </span>
                                   ) : null}
@@ -1959,7 +1964,7 @@ export default function CrmClientsWorkspace() {
                                 <div className="mt-2 flex items-center gap-2">
                                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--eos-input)]">
                                     <div
-                                      className={`h-full rounded-full ${m.score >= 85 ? "bg-emerald-500" : m.score >= 70 ? "bg-lime-500" : m.score >= 55 ? "bg-amber-400" : "bg-rose-500"}`}
+                                      className="h-full rounded-full bg-gradient-to-r from-[#c9a86a] to-[#a8844c]"
                                       style={{ width: `${Math.max(8, Math.min(100, m.score))}%` }}
                                     />
                                   </div>
@@ -2035,7 +2040,7 @@ export default function CrmClientsWorkspace() {
                   <div className="space-y-4 rounded-2xl border border-[var(--eos-border)] p-5">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
-                        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
+                        <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#7a5a26]">
                           <Radar className="size-4" />
                           Radar zakupowy sprzedającego
                         </p>
@@ -2052,7 +2057,7 @@ export default function CrmClientsWorkspace() {
                             setSellerSearching(next);
                             void saveSellerRadar(next);
                           }}
-                          className="size-4 accent-emerald-500"
+                          className="size-4 accent-[#a8844c]"
                         />
                         Klient też szuka
                       </label>
@@ -2119,7 +2124,7 @@ export default function CrmClientsWorkspace() {
                                   m.intelligenceSent
                                     ? "eos-intel-frame"
                                     : selected
-                                      ? "border-emerald-500/40 bg-emerald-500/5"
+                                      ? "border-[#a8844c]/40 bg-[#a8844c]/5"
                                       : "border-[var(--eos-border)]"
                                 }`}
                               >
@@ -2129,14 +2134,14 @@ export default function CrmClientsWorkspace() {
                                     disabled={sent}
                                     onClick={() => toggleOffer(m.offer.id, sent)}
                                     className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-                                      sent || selected ? "border-emerald-500 bg-emerald-500" : "border-[var(--eos-border)]"
+                                      sent || selected ? "border-[#a8844c] bg-[#a8844c]" : "border-[var(--eos-border)]"
                                     }`}
                                   >
                                     {(sent || selected) ? <Check className="size-4 text-black" /> : null}
                                   </button>
                                   <OfferPhotoCascade offer={m.offer} thumbClassName="h-16 w-20 shrink-0 rounded-xl bg-[var(--eos-input)]" />
                                   <div className="min-w-0 flex-1">
-                                    <Link href={offerHref(m.offer.id, detail.portalToken)} className="font-semibold text-[var(--eos-text)] hover:text-emerald-600">
+                                    <Link href={offerHref(m.offer.id, detail.portalToken)} className="font-semibold text-[var(--eos-text)] hover:text-[#7a5a26]">
                                       {m.offer.title}
                                     </Link>
                                     {m.intelligenceSent ? (
@@ -2190,7 +2195,7 @@ export default function CrmClientsWorkspace() {
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <Link
                             href={`/oferta/${detail.linkedOfferId}`}
-                            className="inline-flex items-center gap-2 text-sm font-bold text-emerald-600"
+                            className="inline-flex items-center gap-2 text-sm font-bold text-[#7a5a26]"
                           >
                             #{detail.linkedOfferId}
                           </Link>
@@ -2225,7 +2230,7 @@ export default function CrmClientsWorkspace() {
                       <button
                         type="button"
                         onClick={() => void clientAction("create_offer_from_acquisition")}
-                        className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-black hover:bg-emerald-400"
+                        className="inline-flex items-center gap-2 rounded-full bg-[#a8844c] px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.14em] text-black hover:bg-[#b8945c]"
                       >
                         ⚡ Utwórz szkic oferty (niepubliczny)
                       </button>
@@ -2255,7 +2260,7 @@ export default function CrmClientsWorkspace() {
                   <div className="space-y-5">
                     {groupClientActivities(detail.activities || []).map((group) => (
                       <div key={group.label}>
-                        <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                        <p className="mb-2 text-[9px] font-black uppercase tracking-[0.18em] text-[#7a5a26] dark:text-[#cfae74]">
                           {group.label}
                         </p>
                         <div className="space-y-2">
@@ -2292,7 +2297,7 @@ export default function CrmClientsWorkspace() {
       {showOverview && report?.topMatches?.length ? (
         <div className="rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-card)]/75 p-6 shadow-[0_18px_48px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.05)]">
           <p className="mb-4 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-[var(--eos-muted)]">
-            <BarChart3 className="size-4 text-emerald-500" />
+            <BarChart3 className="size-4 text-[#a8844c]" />
             {cl.reportTopMatches}
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -2300,7 +2305,7 @@ export default function CrmClientsWorkspace() {
               <div key={`${m.offerId}-${m.clientName}`} className="rounded-2xl bg-[var(--eos-input)]/50 p-4">
                 <p className="font-semibold text-[var(--eos-text)]">{m.clientName}</p>
                 <p className="mt-1 text-sm text-[var(--eos-muted)]">{m.offerTitle}</p>
-                <p className="mt-2 text-xs font-bold text-emerald-500">{m.score}% dopasowania</p>
+                <p className="mt-2 text-xs font-bold text-[#a8844c]">{m.score}% dopasowania</p>
               </div>
             ))}
           </div>

@@ -90,11 +90,11 @@ function isCompletePhoneE164(raw: string): boolean {
 function FieldTrailIcon({ status }: { status: FieldStatus }) {
   if (status === "checking") {
     return (
-      <span className="size-3.5 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-500" />
+      <span className="size-3.5 animate-spin rounded-full border-2 border-[#a8844c]/30 border-t-[#a8844c]" />
     );
   }
   if (status === "available") {
-    return <Check className="size-4 text-emerald-500" strokeWidth={3} />;
+    return <Check className="eos-sig-text eos-sig--ok size-4" strokeWidth={3} />;
   }
   if (status === "taken" || status === "invalid") {
     return <X className="size-4 text-red-500" strokeWidth={3} />;
@@ -376,8 +376,8 @@ export default function AgencyClientFormModal({
     emailStatus === "taken" || emailStatus === "invalid"
       ? "border-red-500/55"
       : emailStatus === "available"
-        ? "border-emerald-500/55"
-        : "border-[var(--eos-border)] focus-within:border-emerald-500/60";
+        ? "border-[#a8844c]/55"
+        : "border-[var(--eos-border)] focus-within:border-[#a8844c]/60";
 
   return createPortal(
     <AnimatePresence>
@@ -406,9 +406,9 @@ export default function AgencyClientFormModal({
                 <motion.div
                   animate={{ rotate: 360 }}
                   transition={{ repeat: Infinity, duration: 2.5, ease: "linear" }}
-                  className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 shadow-[0_12px_40px_rgba(16,185,129,0.25)]"
+                  className="mb-6 flex h-20 w-20 items-center justify-center rounded-full border border-[#a8844c]/30 bg-[#a8844c]/10 shadow-[0_12px_40px_rgba(168,132,76,0.25)]"
                 >
-                  <Radar className="size-9 text-emerald-500" />
+                  <Radar className="size-9 text-[#a8844c]" />
                 </motion.div>
                 <p className="text-lg font-bold text-[var(--eos-text)] break-words">{cl.scanningTitle}</p>
                 <p className="mt-2 max-w-xs text-sm text-[var(--eos-muted)] break-words">{cl.scanningBody}</p>
@@ -417,7 +417,7 @@ export default function AgencyClientFormModal({
               <>
                 <div className="mb-6 flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#a8844c]">
                       {cl.formEyebrow} · krok {step}/{maxStep}
                     </p>
                     <h2 className="mt-1 text-xl font-bold text-[var(--eos-text)] break-words sm:text-2xl">
@@ -447,11 +447,11 @@ export default function AgencyClientFormModal({
                         onClick={() => setType(opt.key)}
                         className={`rounded-[1.5rem] border p-5 text-left shadow-[0_10px_30px_rgba(0,0,0,0.08)] transition ${
                           type === opt.key
-                            ? "border-emerald-500/50 bg-emerald-500/10 shadow-[0_14px_36px_rgba(16,185,129,0.18)]"
-                            : "border-[var(--eos-border)] hover:border-emerald-500/20"
+                            ? "border-[#a8844c]/50 bg-[#a8844c]/10 shadow-[0_14px_36px_rgba(168,132,76,0.18)]"
+                            : "border-[var(--eos-border)] hover:border-[#a8844c]/20"
                         }`}
                       >
-                        <opt.icon className="mb-3 size-6 text-emerald-500" />
+                        <opt.icon className="mb-3 size-6 text-[#a8844c]" />
                         <p className="font-bold text-[var(--eos-text)] break-words">{opt.title}</p>
                         <p className="mt-2 text-sm text-[var(--eos-muted)] break-words">{opt.body}</p>
                       </button>
@@ -504,7 +504,7 @@ export default function AgencyClientFormModal({
                         </div>
                       </div>
                       {emailStatus === "available" ? (
-                        <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-emerald-500">
+                        <p className="mt-2 text-[10px] font-bold uppercase tracking-widest text-[#a8844c]">
                           E-mail wolny w CRM
                         </p>
                       ) : null}
@@ -623,7 +623,7 @@ export default function AgencyClientFormModal({
                           <button
                             type="button"
                             onClick={() => openExisting(primaryMatch.id)}
-                            className={eosBtn("home", { className: "shadow-[0_10px_28px_rgba(16,185,129,0.28)]" })}
+                            className={eosBtn("home", { className: "shadow-[0_10px_28px_rgba(168,132,76,0.28)]" })}
                           >
                             Otwórz tego klienta
                           </button>
@@ -637,7 +637,7 @@ export default function AgencyClientFormModal({
                               type="checkbox"
                               checked={forceCreate}
                               onChange={(e) => setForceCreate(e.target.checked)}
-                              className="mt-0.5 size-4 accent-emerald-500"
+                              className="mt-0.5 size-4 accent-[#a8844c]"
                             />
                             To inna osoba — utwórz mimo to
                           </label>
@@ -661,7 +661,7 @@ export default function AgencyClientFormModal({
                       />
                       {form.pesel.length > 0 ? (
                         peselData ? (
-                          <p className="mt-2 text-xs font-semibold text-emerald-600 break-words">
+                          <p className="mt-2 text-xs font-semibold text-[#7a5a26] break-words">
                             PESEL poprawny · {peselData.gender === "M" ? "Mężczyzna" : "Kobieta"} ·{" "}
                             {peselData.birthDate}
                           </p>
@@ -750,7 +750,7 @@ export default function AgencyClientFormModal({
                           }}
                         />
                         {Number.isFinite(addressMeta.lat) && Number.isFinite(addressMeta.lng) ? (
-                          <p className="mt-2 text-xs font-bold text-emerald-500">
+                          <p className="mt-2 text-xs font-bold text-[#a8844c]">
                             Pinezka ustawiona — adres zweryfikowany
                           </p>
                         ) : (
@@ -777,7 +777,7 @@ export default function AgencyClientFormModal({
                           type="checkbox"
                           checked={meeting.enabled}
                           onChange={(e) => setMeeting((m) => ({ ...m, enabled: e.target.checked }))}
-                          className="size-4 accent-emerald-500"
+                          className="size-4 accent-[#a8844c]"
                         />
                         <span className="text-sm font-bold text-[var(--eos-text)] break-words">
                           Termin spotkania (klient dostanie e-mail z wizytówką i kalendarzem)
@@ -855,7 +855,7 @@ export default function AgencyClientFormModal({
                                           checked ? current.filter((id) => id !== item.id) : [...current, item.id],
                                         )
                                       }
-                                      className="mt-0.5 size-4 accent-emerald-500"
+                                      className="mt-0.5 size-4 accent-[#a8844c]"
                                     />
                                     <span className="leading-snug">{item.label}</span>
                                   </label>
@@ -896,7 +896,7 @@ export default function AgencyClientFormModal({
                           type="checkbox"
                           checked={alsoSearching}
                           onChange={(e) => setAlsoSearching(e.target.checked)}
-                          className="size-4 accent-emerald-500"
+                          className="size-4 accent-[#a8844c]"
                         />
                         <span className="text-sm font-bold text-[var(--eos-text)]">Klient też szuka nieruchomości</span>
                       </label>
@@ -924,7 +924,7 @@ export default function AgencyClientFormModal({
                       type="checkbox"
                       checked={forceCreate}
                       onChange={(e) => setForceCreate(e.target.checked)}
-                      className="mt-0.5 size-4 accent-emerald-500"
+                      className="mt-0.5 size-4 accent-[#a8844c]"
                     />
                     To inna osoba — utwórz drugi profil mimo tego samego e-maila lub telefonu
                   </label>
@@ -952,7 +952,7 @@ export default function AgencyClientFormModal({
                           emailStatus === "invalid" ||
                           phoneStatus === "invalid")
                       }
-                      className={eosBtn("home", { className: "ml-auto shadow-[0_12px_32px_rgba(16,185,129,0.25)]" })}
+                      className={eosBtn("home", { className: "ml-auto shadow-[0_12px_32px_rgba(168,132,76,0.25)]" })}
                     >
                       {cl.next}
                     </button>
@@ -967,7 +967,7 @@ export default function AgencyClientFormModal({
                         (lookupMatches.length > 0 && !forceCreate)
                       }
                       onClick={() => void submit()}
-                      className={eosBtn("home", { className: "ml-auto shadow-[0_12px_32px_rgba(16,185,129,0.25)]" })}
+                      className={eosBtn("home", { className: "ml-auto shadow-[0_12px_32px_rgba(168,132,76,0.25)]" })}
                     >
                       <Check className="size-4" />
                       {saving ? cl.saving : lookupMatches.length > 0 && forceCreate ? "Zapisz mimo to" : cl.saveClient}

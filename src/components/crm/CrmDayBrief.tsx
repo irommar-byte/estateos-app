@@ -58,15 +58,15 @@ export default function CrmDayBrief({ personName, onAddClient, onOpenClients, on
   const newMatches = data?.newMatches || 0;
 
   return (
-    <section className="mb-5 rounded-[1.75rem] border border-[var(--eos-border)] bg-gradient-to-br from-emerald-500/[0.08] via-[var(--eos-card)] to-[var(--eos-card)] p-4 sm:mb-6 sm:p-5">
+    <section className="mb-5 rounded-[1.75rem] border border-[var(--eos-border)] bg-gradient-to-br from-[#a8844c]/[0.08] via-[var(--eos-card)] to-[var(--eos-card)] p-4 sm:mb-6 sm:p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-emerald-600">Dziś w CRM</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#7a5a26]">Dziś w CRM</p>
           <h2 className="mt-1 text-xl font-black tracking-tight text-[var(--eos-text)] sm:text-2xl">
             Dzień dobry, {firstName}
           </h2>
           <p className="mt-1 flex items-center gap-2 text-sm capitalize text-[var(--eos-muted)]">
-            <CalendarDays size={14} className="text-emerald-500" />
+            <CalendarDays size={14} className="text-[#a8844c]" />
             {dateLabel}
           </p>
         </div>
@@ -89,10 +89,10 @@ export default function CrmDayBrief({ personName, onAddClient, onOpenClients, on
         <button
           type="button"
           onClick={onOpenClients}
-          className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3.5 text-left transition hover:border-emerald-500/35"
+          className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3.5 text-left transition hover:border-[#a8844c]/35"
         >
           <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
-            <Target size={12} className="text-emerald-500" /> Nowe dopasowania
+            <Target size={12} className="text-[#a8844c]" /> Nowe dopasowania
           </p>
           <p className="mt-2 text-2xl font-black text-[var(--eos-text)]">{newMatches}</p>
           <p className="mt-1 text-xs text-[var(--eos-muted)]">Oferty spełniające kryteria kupujących</p>
@@ -101,7 +101,7 @@ export default function CrmDayBrief({ personName, onAddClient, onOpenClients, on
         {items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-[var(--eos-border)] bg-[var(--eos-input)]/40 p-3.5 sm:col-span-1 lg:col-span-2">
             <p className="flex items-center gap-2 text-sm font-semibold text-[var(--eos-muted)]">
-              <Sparkles size={14} className="text-emerald-500" />
+              <Sparkles size={14} className="text-[#a8844c]" />
               Brak zaplanowanych spraw na dziś — dobry moment na follow-up klientów.
             </p>
           </div>
@@ -110,9 +110,9 @@ export default function CrmDayBrief({ personName, onAddClient, onOpenClients, on
             <Link
               key={item.id}
               href={item.href || '/moje-konto/crm?tab=planowanie'}
-              className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3.5 transition hover:border-emerald-500/35"
+              className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3.5 transition hover:border-[#a8844c]/35"
             >
-              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#7a5a26]">
                 {item.kind === 'acquisition' ? 'Pozyskanie' : item.kind === 'presentation' ? 'Prezentacja' : 'Termin'}
               </p>
               <p className="mt-1 line-clamp-1 text-sm font-black text-[var(--eos-text)]">{item.title}</p>

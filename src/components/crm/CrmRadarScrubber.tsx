@@ -21,7 +21,7 @@ export default function CrmRadarScrubber({
   step = 1,
   value,
   displayValue,
-  accentClass = "accent-emerald-500",
+  accentClass = "accent-[#a8844c]",
   trailing,
   onChange,
 }: Props) {
@@ -34,7 +34,7 @@ export default function CrmRadarScrubber({
         </span>
         <span className="flex items-center gap-2">
           {trailing}
-          <span className="text-sm font-black tabular-nums text-emerald-600">{displayValue}</span>
+          <span className="text-sm font-black tabular-nums text-[#7a5a26]">{displayValue}</span>
         </span>
       </div>
       <input

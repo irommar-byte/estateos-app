@@ -66,8 +66,8 @@ function choiceChip(active: boolean) {
   return [
     "rounded-xl border px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-all",
     active
-      ? "border-emerald-500 bg-emerald-500 text-black"
-      : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-emerald-500/35 hover:text-[var(--eos-text)]",
+      ? "border-[#a8844c] bg-[#a8844c] text-black"
+      : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-[#a8844c]/35 hover:text-[var(--eos-text)]",
   ].join(" ");
 }
 
@@ -75,8 +75,8 @@ function amenityChip(active: boolean) {
   return [
     "rounded-xl border px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all",
     active
-      ? "border-emerald-500 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-      : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-emerald-500/30",
+      ? "border-[#a8844c] bg-[#a8844c]/15 text-[#7a5a26] dark:text-[#cfae74]"
+      : "border-[var(--eos-border)] text-[var(--eos-muted)] hover:border-[#a8844c]/30",
   ].join(" ");
 }
 
@@ -200,8 +200,8 @@ export default function CrmRadarCalibrationModal({
             </button>
 
             <div className="relative z-10 mb-8 flex items-center gap-4 pr-10">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10">
-                <Radar className="text-emerald-500" size={22} />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#a8844c]/30 bg-[#a8844c]/10">
+                <Radar className="text-[#a8844c]" size={22} />
               </div>
               <div>
                 <h3 id="crm-radar-calibration-title" className="text-2xl font-black text-[var(--eos-text)]">Kalibracja radaru</h3>
@@ -214,7 +214,7 @@ export default function CrmRadarCalibrationModal({
             <form onSubmit={handleSubmit} className="relative z-10 max-h-[min(72vh,720px)] space-y-6 overflow-y-auto overscroll-y-contain pr-1">
               <div
                 className={`rounded-2xl border p-5 transition-colors ${
-                  radarAwake ? "border-emerald-500/30 bg-emerald-500/5" : "eos-modal-panel-soft"
+                  radarAwake ? "eos-sig-box eos-sig--ok" : "eos-modal-panel-soft"
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-4">
@@ -231,7 +231,7 @@ export default function CrmRadarCalibrationModal({
                     }
                     className={`flex items-center gap-2 rounded-full px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-all ${
                       radarAwake
-                        ? "bg-emerald-500 text-black"
+                        ? "bg-[#a8844c] text-black"
                         : "border border-[var(--eos-border)] bg-[var(--eos-input)] text-[var(--eos-muted)]"
                     }`}
                   >
@@ -267,7 +267,7 @@ export default function CrmRadarCalibrationModal({
                       onChange={(e) =>
                         setDraft((p) => ({ ...p, matchThreshold: Number(e.target.value) }))
                       }
-                      className="w-full accent-emerald-500"
+                      className="w-full accent-[#a8844c]"
                     />
                     <div className="mt-2 flex justify-between text-[10px] font-bold uppercase tracking-widest text-[var(--eos-subtle)]">
                       <span>50%</span>
@@ -276,8 +276,8 @@ export default function CrmRadarCalibrationModal({
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4">
-                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-400/90">
+                  <div className="rounded-2xl border border-[#a8844c]/25 bg-[#a8844c]/5 p-4">
+                    <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-[#7a5a26] dark:text-[#c9a86a]/90">
                       Lokalizacja · wybierz sposób
                     </p>
                     <LuxurySegmentSwitch
@@ -297,10 +297,10 @@ export default function CrmRadarCalibrationModal({
                       <button
                         type="button"
                         onClick={() => setAreaPickerOpen(true)}
-                        className="flex w-full items-center gap-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 text-left transition-all hover:border-emerald-500/60 hover:bg-emerald-500/15"
+                        className="flex w-full items-center gap-4 rounded-2xl border border-[#a8844c]/30 bg-[#a8844c]/10 p-5 text-left transition-all hover:border-[#a8844c]/60 hover:bg-[#a8844c]/15"
                       >
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-500/20">
-                          <MapPin className="text-emerald-600 dark:text-emerald-400" size={22} />
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#a8844c]/20">
+                          <MapPin className="text-[#7a5a26] dark:text-[#c9a86a]" size={22} />
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-bold text-[var(--eos-text)]">Wybierz obszar na mapie</p>
@@ -308,7 +308,7 @@ export default function CrmRadarCalibrationModal({
                             Przesuń mapę i ustaw promień — tak jak w aplikacji mobilnej.
                           </p>
                           {mapAreaLabel ? (
-                            <p className="mt-2 text-[11px] font-bold text-emerald-600 dark:text-emerald-400/90">{mapAreaLabel}</p>
+                            <p className="mt-2 text-[11px] font-bold text-[#7a5a26] dark:text-[#c9a86a]/90">{mapAreaLabel}</p>
                           ) : null}
                         </div>
                       </button>
@@ -486,7 +486,7 @@ export default function CrmRadarCalibrationModal({
                     draft.calibrationMode === "MAP" &&
                     (draft.lat == null || draft.lng == null || !draft.radiusKm))
                 }
-                className="group relative mt-2 w-full cursor-pointer overflow-hidden rounded-xl border border-emerald-300/50 bg-gradient-to-r from-emerald-500 to-emerald-400 py-5 font-black uppercase tracking-[0.2em] text-black shadow-[0_0_30px_rgba(16,185,129,0.5)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+                className="group relative mt-2 w-full cursor-pointer overflow-hidden rounded-xl border border-[#cfae74]/50 bg-gradient-to-r from-[#a8844c] to-[#c9a86a] py-5 font-black uppercase tracking-[0.2em] text-black shadow-[0_0_30px_rgba(168,132,76,0.5)] transition-all hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="relative z-10 flex items-center justify-center gap-3">
                   <Radar size={20} className={saving ? "animate-spin" : ""} />

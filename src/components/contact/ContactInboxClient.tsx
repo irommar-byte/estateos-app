@@ -125,7 +125,7 @@ function Avatar({ thread, size = 44 }: { thread: ContactThreadRow; size?: number
       </span>
       {online ? (
         <span
-          className="absolute bottom-0 right-0 size-3 rounded-full border-2 border-[var(--eos-card)] bg-[#23855a]"
+          className="eos-online absolute bottom-0 right-0 size-3 rounded-full border-2 border-[var(--eos-card)]"
           aria-label="Online"
         />
       ) : null}

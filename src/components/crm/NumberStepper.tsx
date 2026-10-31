@@ -61,7 +61,7 @@ export default function NumberStepper({
             disabled={disabled}
             value={value}
             onChange={(event) => onChange(event.target.value.replace(/[^\d.,\s]/g, ""))}
-            className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3.5 py-3 text-center text-sm font-semibold tabular-nums text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+            className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3.5 py-3 text-center text-sm font-semibold tabular-nums text-[var(--eos-text)] outline-none focus:border-[#a8844c]/50"
           />
           {suffix ? (
             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">

@@ -33,7 +33,7 @@ function stageOf(c: AgencyClientListItem): { label: string; tone: string } {
     if (s === 'IN_DEAL') return { label: 'W transakcji', tone: 'gold' };
     if (s === 'ACTIVE' || s === 'PUBLISHED') return { label: 'Oferta na rynku', tone: 'good' };
     if (c.acquisitionSigned) return { label: 'Umowa podpisana', tone: 'info' };
-    if (c.upcomingMeetingStartsAt) return { label: 'Spotkanie pozyskania', tone: 'warn' };
+    if (c.upcomingMeetingStartsAt) return { label: 'Spotkanie pozyskania', tone: 'info' };
     return { label: 'Pozyskanie', tone: '' };
   }
   if (c.dealClosed) return { label: 'Transakcja zamknięta', tone: 'good' };
@@ -214,7 +214,7 @@ export default function CrmClientsList({
                   ) : null}
                   {buyer && (buyer.sentCount || 0) > 0 ? <span className="crmx-chip">{buyer.sentCount} wysłanych</span> : null}
                   {meeting ? (
-                    <span className="crmx-chip crmx-chip--warn"><CalendarClock size={11} /> {meetingLabel(meeting)}</span>
+                    <span className="crmx-chip crmx-chip--info"><CalendarClock size={11} /> {meetingLabel(meeting)}</span>
                   ) : null}
                   {seller?.linkedOfferId ? (
                     <Link href={`/oferta/${seller.linkedOfferId}`} onClick={(e) => e.stopPropagation()} className="crmx-chip crmx-chip--gold">

@@ -59,14 +59,14 @@ export default function ProfileAgencyOfficeCard({ membership, personName }: Prop
   return (
     <Link
       href="/moje-konto/firma"
-      className="mb-6 flex items-center gap-4 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 p-4 transition hover:border-emerald-500/30 hover:bg-[var(--eos-surface)] sm:p-5"
+      className="mb-6 flex items-center gap-4 rounded-[1.75rem] border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 p-4 transition hover:border-[#a8844c]/30 hover:bg-[var(--eos-surface)] sm:p-5"
     >
       <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-white/5">
         {logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={logoUrl} alt="" className="h-full w-full object-cover" />
         ) : (
-          <Building2 className="h-7 w-7 text-emerald-400" />
+          <Building2 className="h-7 w-7 text-[#c9a86a]" />
         )}
       </div>
       <div className="min-w-0 flex-1">
@@ -77,7 +77,7 @@ export default function ProfileAgencyOfficeCard({ membership, personName }: Prop
           {companyName}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
-          <span className="rounded-lg bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-400">
+          <span className="rounded-lg bg-[#a8844c]/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#c9a86a]">
             {titleLabel}
           </span>
           {isAdmin ? (

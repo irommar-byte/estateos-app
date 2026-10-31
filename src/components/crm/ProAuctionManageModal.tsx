@@ -314,16 +314,16 @@ export default function ProAuctionManageModal({
                   <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>
                 ) : null}
                 {success ? (
-                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                  <div className="rounded-2xl border border-[#a8844c]/30 bg-[#a8844c]/10 px-4 py-3">
                     <div className="flex items-start gap-3">
-                      <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-400" />
+                      <CheckCircle2 size={18} className="eos-sig-text eos-sig--ok mt-0.5 shrink-0" />
                       <div className="space-y-2">
-                        <p className="text-sm font-semibold text-emerald-300">{copy.auctionPublishSuccessTitle}</p>
-                        <p className="text-sm text-emerald-400/90">{success}</p>
+                        <p className="eos-sig-text eos-sig--ok text-sm font-semibold">{copy.auctionPublishSuccessTitle}</p>
+                        <p className="text-sm">{success}</p>
                         {publishedOfferId ? (
                           <Link
                             href={`/oferta/${publishedOfferId}`}
-                            className="inline-flex items-center gap-1 text-[13px] font-semibold text-emerald-300 underline-offset-2 hover:underline"
+                            className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#cfae74] underline-offset-2 hover:underline"
                           >
                             {copy.auctionViewPublishedOffer}
                             <ExternalLink size={12} />

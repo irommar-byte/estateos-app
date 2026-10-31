@@ -271,7 +271,7 @@ export default function CrmMyOffersBoard(props: Props) {
                 title={label}
                 onClick={() => setViewPersist(id)}
                 className={`eos-lux-switch__seg relative z-[2] flex items-center gap-1.5 px-3 py-2 text-[9px] font-black uppercase tracking-[0.12em] sm:px-3.5 ${
-                  on ? "text-emerald-700" : "text-[var(--eos-muted)]"
+                  on ? "text-[#7a5a26]" : "text-[var(--eos-muted)]"
                 }`}
               >
                 {on ? (
@@ -435,7 +435,7 @@ export default function CrmMyOffersBoard(props: Props) {
                     <div className="eos-crm-offer-card__expiry">
                       <Clock
                         size={14}
-                        className={isPending || (daysLeft != null && daysLeft <= 5) ? "text-amber-600" : "text-emerald-600"}
+                        className={isPending || (daysLeft != null && daysLeft <= 5) ? "text-amber-600" : "text-[#7a5a26]"}
                       />
                       <div>
                         {isPending ? (
@@ -448,14 +448,14 @@ export default function CrmMyOffersBoard(props: Props) {
                             <p className="eos-crm-offer-card__meta-label">
                               {c.pubValidUntil} {new Date(expiresAtMs).toLocaleDateString("pl-PL")}
                             </p>
-                            <p className={`font-black ${daysLeft != null && daysLeft <= 5 ? "text-amber-700" : "text-emerald-700"}`}>
+                            <p className={`font-black ${daysLeft != null && daysLeft <= 5 ? "text-amber-700" : "text-[#7a5a26]"}`}>
                               {c.pubDaysLeft.replace("{n}", String(daysLeft ?? 0))}
                             </p>
                           </>
                         ) : (
                           <>
                             <p className="eos-crm-offer-card__meta-label">{c.pubLabel}</p>
-                            <p className="font-black text-emerald-700">{c.pubLive}</p>
+                            <p><span className="eos-sig eos-sig--ok">{c.pubLive}</span></p>
                           </>
                         )}
                       </div>
@@ -542,7 +542,7 @@ export default function CrmMyOffersBoard(props: Props) {
                       </button>
                     </div>
                     {saveMsg[id] ? (
-                      <p className={`mt-1 text-[10px] font-bold ${saveMsg[id] === "Zapisano" ? "text-emerald-700" : "text-amber-700"}`}>
+                      <p className={`eos-sig mt-1 ${saveMsg[id] === "Zapisano" ? "eos-sig--ok" : "eos-sig--warn"}`}>
                         {saveMsg[id]}
                         {saveMsg[id] === "Zapisano" ? ` · ${c.editHint}` : ""}
                       </p>
@@ -602,7 +602,7 @@ export default function CrmMyOffersBoard(props: Props) {
                           </span>
                         </div>
                         {!showInlineEdit ? (
-                          <p className={`mt-1.5 text-sm font-black tabular-nums ${isRent ? "text-sky-700" : "text-emerald-700"}`}>
+                          <p className={`mt-1.5 text-sm font-black tabular-nums ${isRent ? "text-sky-700" : "text-[#7a5a26]"}`}>
                             {formatPrice(offer.price)} PLN{isRent ? " / mies." : ""}
                           </p>
                         ) : null}
@@ -626,7 +626,7 @@ export default function CrmMyOffersBoard(props: Props) {
                           <Link href={`/oferta/${offer.id}`} className="eos-crm-offer-card__title line-clamp-2">
                             {offer.title}
                           </Link>
-                          <p className={`mt-1 text-lg font-black tabular-nums tracking-tight ${isRent ? "text-sky-700" : "text-emerald-700"}`}>
+                          <p className={`mt-1 text-lg font-black tabular-nums tracking-tight ${isRent ? "text-sky-700" : "text-[#7a5a26]"}`}>
                             {formatPrice(offer.price)} <span className="text-xs font-bold text-[var(--eos-muted)]">PLN{isRent ? "/mies." : ""}</span>
                           </p>
                         </div>
@@ -716,7 +716,7 @@ export default function CrmMyOffersBoard(props: Props) {
                           {isRent && !isArchived ? (
                             <div className="mt-2 space-y-0.5 text-[10px] font-bold uppercase tracking-wider text-[var(--eos-muted)]">
                               {offer.rentAdminFee ? <p>Czynsz adm: {formatPrice(offer.rentAdminFee)} PLN</p> : null}
-                              {offer.petsAllowed ? <p className="text-emerald-700">{c.petsAllowed}</p> : null}
+                              {offer.petsAllowed ? <p className="text-[#7a5a26]">{c.petsAllowed}</p> : null}
                             </div>
                           ) : null}
                         </div>

@@ -18,7 +18,7 @@ type Suggestion = {
 };
 
 const fieldClass =
-  "mt-1.5 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3.5 py-3 text-sm text-[var(--eos-text)] outline-none transition focus:border-emerald-500/50";
+  "mt-1.5 w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3.5 py-3 text-sm text-[var(--eos-text)] outline-none transition focus:border-[#a8844c]/50";
 
 export default function AddressSuggestInput({
   label,
@@ -101,7 +101,7 @@ export default function AddressSuggestInput({
     <label className="relative block min-w-0" ref={wrapRef}>
       <span className="text-[10px] font-black uppercase tracking-[0.13em] text-[var(--eos-muted)]">{label}</span>
       <div className="relative">
-        <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-emerald-500" />
+        <MapPin className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#a8844c]" />
         <input
           value={value}
           disabled={disabled}
@@ -113,7 +113,7 @@ export default function AddressSuggestInput({
           onFocus={() => items.length && setOpen(true)}
           className={`${fieldClass} pl-10`}
         />
-        {loading ? <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-emerald-500" /> : null}
+        {loading ? <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-[#a8844c]" /> : null}
       </div>
       {open && items.length > 0 ? (
         <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] shadow-[0_18px_40px_rgba(0,0,0,0.16)]">
@@ -121,7 +121,7 @@ export default function AddressSuggestInput({
             <button
               key={item.id}
               type="button"
-              className="block w-full px-3.5 py-2.5 text-left text-sm text-[var(--eos-text)] hover:bg-emerald-500/10"
+              className="block w-full px-3.5 py-2.5 text-left text-sm text-[var(--eos-text)] hover:bg-[#a8844c]/10"
               onClick={() => {
                 const next = item.address;
                 acceptedRef.current = next;

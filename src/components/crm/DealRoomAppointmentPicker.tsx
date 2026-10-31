@@ -73,15 +73,15 @@ export default function DealRoomAppointmentPicker({ onCancel, onSubmit, loading 
                 }}
                 className={`relative aspect-square rounded-2xl border flex flex-col items-center justify-center transition-all ${
                   selected
-                    ? 'bg-[#0a0a0a] border-2 border-emerald-500 shadow-[0_0_24px_rgba(16,185,129,0.25)] scale-[1.03]'
+                    ? 'bg-[#0a0a0a] border-2 border-[#a8844c] shadow-[0_0_24px_rgba(168,132,76,0.25)] scale-[1.03]'
                     : 'bg-[#111] border-white/10 hover:border-white/25'
                 }`}
               >
-                <span className={`text-[9px] font-black uppercase ${selected ? 'text-emerald-400' : 'text-white/40'}`}>
+                <span className={`text-[9px] font-black uppercase ${selected ? 'text-[#c9a86a]' : 'text-white/40'}`}>
                   {d.toLocaleDateString('pl-PL', { weekday: 'short' }).replace('.', '')}
                 </span>
-                <span className={`text-xl font-black ${selected ? 'text-emerald-400' : 'text-white'}`}>{d.getDate()}</span>
-                <span className={`text-[8px] font-bold uppercase ${selected ? 'text-emerald-400/80' : 'text-white/30'}`}>
+                <span className={`text-xl font-black ${selected ? 'text-[#c9a86a]' : 'text-white'}`}>{d.getDate()}</span>
+                <span className={`text-[8px] font-bold uppercase ${selected ? 'text-[#c9a86a]/80' : 'text-white/30'}`}>
                   {d.toLocaleDateString('pl-PL', { month: 'short' }).replace('.', '')}
                 </span>
               </button>
@@ -104,7 +104,7 @@ export default function DealRoomAppointmentPicker({ onCancel, onSubmit, loading 
                 }}
                 className={`py-3.5 rounded-xl border text-sm font-black tracking-widest transition-all ${
                   selected
-                    ? 'bg-[#0a0a0a] text-emerald-400 border-2 border-emerald-500 shadow-[0_0_24px_rgba(16,185,129,0.25)]'
+                    ? 'bg-[#0a0a0a] text-[#c9a86a] border-2 border-[#a8844c] shadow-[0_0_24px_rgba(168,132,76,0.25)]'
                     : 'bg-[#111] border-white/10 text-white/80 hover:border-white/25'
                 }`}
               >
@@ -117,9 +117,9 @@ export default function DealRoomAppointmentPicker({ onCancel, onSubmit, loading 
 
       {step === 3 ? (
         <div className="space-y-3">
-          <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-center">
+          <div className="rounded-2xl border border-[#a8844c]/25 bg-[#a8844c]/10 p-4 text-center">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/50 mb-1">Twój termin</p>
-            <p className="text-emerald-300 font-black text-lg">
+            <p className="text-[#cfae74] font-black text-lg">
               {new Date(buildFinalIso()).toLocaleString('pl-PL', {
                 day: '2-digit',
                 month: '2-digit',
@@ -132,13 +132,13 @@ export default function DealRoomAppointmentPicker({ onCancel, onSubmit, loading 
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="Opcjonalna wiadomość do drugiej strony…"
-            className="w-full min-h-[72px] rounded-xl border border-white/15 bg-black/40 px-4 py-3 text-white text-sm outline-none focus:border-emerald-500/40"
+            className="w-full min-h-[72px] rounded-xl border border-white/15 bg-black/40 px-4 py-3 text-white text-sm outline-none focus:border-[#a8844c]/40"
           />
           <button
             type="button"
             disabled={loading}
             onClick={() => void onSubmit(buildFinalIso(), note.trim())}
-            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-emerald-500/40 bg-[#0a0a0a] hover:bg-emerald-950/40 text-emerald-400 font-black uppercase tracking-[0.18em] text-xs disabled:opacity-40"
+            className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl border-2 border-[#a8844c]/40 bg-[#0a0a0a] hover:bg-[#3d2f19]/40 text-[#c9a86a] font-black uppercase tracking-[0.18em] text-xs disabled:opacity-40"
           >
             <ShieldCheck size={16} />
             Wyślij kontrofertę terminu

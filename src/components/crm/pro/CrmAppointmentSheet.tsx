@@ -76,8 +76,8 @@ export default function CrmAppointmentSheet({
   const statusChip = String(app.type || '').toUpperCase() === 'ACQUISITION'
     ? <span className="crmx-chip crmx-chip--info">Pozyskanie</span>
     : accepted ? <span className="crmx-chip crmx-chip--good"><Check size={11} /> Potwierdzony</span>
-    : e.needsMyResponse ? <span className="crmx-chip crmx-chip--bad">Czeka na Twoją decyzję</span>
-    : e.waitingOnOther ? <span className="crmx-chip crmx-chip--warn">Czeka na drugą stronę</span>
+    : e.needsMyResponse ? <span className="crmx-chip crmx-chip--warn">Czeka na Twoją decyzję</span>
+    : e.waitingOnOther ? <span className="crmx-chip crmx-chip--info">Czeka na drugą stronę</span>
     : <span className="crmx-chip">{status.toLowerCase()}</span>;
 
   const node = (

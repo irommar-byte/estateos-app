@@ -148,7 +148,7 @@ export default function CrmDealsPro({
                     <span className="crmx-row__title block">{buyerName(d)} · {d.offer.title}</span>
                     <span className="crmx-row__sub block">{d.offer.address}</span>
                   </span>
-                  <span className={`crmx-chip ${d.status === 'WON' ? 'crmx-chip--good' : d.archived?.action === 'pause' ? 'crmx-chip--warn' : ''}`}>
+                  <span className={`crmx-chip ${d.status === 'WON' ? 'crmx-chip--good' : d.archived?.action === 'pause' ? 'crmx-chip--warn' : d.archived ? 'crmx-chip--bad' : ''}`}>
                     {d.status === 'WON' ? 'Sprzedana' : d.archived ? (d.archived.action === 'pause' ? 'Wstrzymana · archiwum' : 'Zamknięta · archiwum') : 'Zamknięta'}
                   </span>
                 </button>

@@ -368,7 +368,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
     }
   };
 
-  if (loading) return <div className="w-full h-[600px] flex justify-center items-center"><Loader2 className="animate-spin text-emerald-500" size={32} /></div>;
+  if (loading) return <div className="w-full h-[600px] flex justify-center items-center"><Loader2 className="animate-spin text-[#a8844c]" size={32} /></div>;
   if (!deal) return <div className="theme-aware-dashboard text-center text-[var(--eos-subtle)] py-20 font-bold uppercase tracking-widest text-xs">Brak dostępu do pokoju.</div>;
 
   const otherParty = deal.buyerId === currentUserId ? deal.seller : deal.buyer;
@@ -492,7 +492,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
         return (
           <div key={`${kind}-${entry.msg?.id || idx}`} className="flex gap-3">
             <div className="flex flex-col items-center pt-1">
-              <div className={`w-2 h-2 rounded-full ${kind === 'APPOINTMENT' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+              <div className={`w-2 h-2 rounded-full ${kind === 'APPOINTMENT' ? 'bg-blue-400' : 'bg-[#c9a86a]'}`} />
               {!isLast ? <div className="w-px flex-1 min-h-[28px] bg-white/10 mt-1" /> : null}
             </div>
             <div className="pb-4 flex-1 min-w-0">
@@ -522,7 +522,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
           <div className="flex flex-col">
             <h3 className="text-[var(--eos-text)] font-black text-lg">{deal.offer?.title || 'Transakcja'}</h3>
             <div className="flex items-center gap-3 mt-1 text-[10px] uppercase tracking-widest font-bold">
-              <span className="text-emerald-500">{Number(String(deal.offer?.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</span>
+              <span className="text-[#a8844c]">{Number(String(deal.offer?.price || 0).replace(/\D/g, '')).toLocaleString('pl-PL')} PLN</span>
               <span className="w-1 h-1 rounded-full bg-white/20"></span>
               <span className="text-white/40">{isBuyer ? 'Kupujesz od:' : 'Sprzedajesz dla:'} <span className="text-white/80">{otherPartyHeadlines.primary}</span></span>
               {otherPartyHeadlines.secondary ? (
@@ -533,11 +533,11 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
           </div>
         </div>
         <div className="hidden md:flex flex-col items-end gap-2">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-            <ShieldCheck size={12} className="text-emerald-500" />
-            <span className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-500">Szyfrowanie E2E</span>
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#a8844c]/10 border border-[#a8844c]/20 rounded-full shadow-[0_0_15px_rgba(168,132,76,0.1)]">
+            <ShieldCheck size={12} className="text-[#a8844c]" />
+            <span className="text-[8px] font-black uppercase tracking-[0.2em] text-[#a8844c]">Szyfrowanie E2E</span>
           </div>
-          <span className={`px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border ${isFinalized ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : isFinalizationReady ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/15 text-white/50'}`}>
+          <span className={isFinalized ? 'eos-sig eos-sig--ok' : isFinalizationReady || ownerNeedsFinalDecision ? 'eos-sig eos-sig--warn' : 'px-2.5 py-1 rounded-full text-[8px] font-black uppercase tracking-[0.16em] border bg-white/5 border-white/15 text-white/50'}>
             {isFinalized ? 'Transakcja zamknięta' : isFinalizationReady ? 'Potwierdź finalizację sprzedaży' : ownerNeedsFinalDecision ? 'Oczekuje Twojej decyzji' : 'Negocjacje aktywne'}
           </span>
         </div>
@@ -545,9 +545,9 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
 
       <div ref={chatContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6 custom-scrollbar relative z-10 scroll-smooth">
         {isFinalized && (
-          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-            <p className="text-[10px] uppercase tracking-widest font-black text-emerald-300 mb-1">Transakcja zamknięta</p>
-            <p className="text-sm text-white/80">Negocjacje zostały zakończone. Status: <span className="font-black text-emerald-300">{String(deal?.status || 'FINALIZED')}</span>.</p>
+          <div className="eos-sig-box eos-sig--ok p-4">
+            <p className="eos-sig-text text-[10px] uppercase tracking-widest font-black mb-1">Transakcja zamknięta</p>
+            <p className="text-sm text-white/80">Negocjacje zostały zakończone. Status: <span className="eos-sig-text font-black">{String(deal?.status || 'FINALIZED')}</span>.</p>
           </div>
         )}
 
@@ -558,8 +558,8 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             onClick={() => setAppointmentExpanded((v) => !v)}
             className="w-full flex items-center gap-3 p-4 hover:bg-white/[0.03] transition-colors text-left"
           >
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${appointmentStatus === 'PENDING' ? 'border-amber-500/40 bg-amber-500/10' : appointmentStatus === 'ACCEPTED' ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
-              <CalendarClock size={16} className={appointmentStatus === 'PENDING' ? 'text-amber-400' : appointmentStatus === 'ACCEPTED' ? 'text-emerald-400' : 'text-white/40'} />
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${appointmentStatus === 'PENDING' ? 'eos-sig-box eos-sig--warn' : appointmentStatus === 'ACCEPTED' ? 'eos-sig-box eos-sig--ok' : 'border-white/10 bg-white/5'}`}>
+              <CalendarClock size={16} className={appointmentStatus === 'PENDING' ? 'eos-sig-text eos-sig--warn' : appointmentStatus === 'ACCEPTED' ? 'eos-sig-text eos-sig--ok' : 'text-white/40'} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-black uppercase tracking-widest text-white/45">Dział 1 — Prezentacje</p>
@@ -589,7 +589,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                         Decyzja: {new Date(app.proposedDate).toLocaleString('pl-PL')}
                       </p>
                       <div className="grid grid-cols-3 gap-2">
-                        <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase">Akceptuj</button>
+                        <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-[#a8844c]/15 border border-[#a8844c]/30 text-[#cfae74] text-[10px] font-black uppercase">Akceptuj</button>
                         <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'RESCHEDULE' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase">Kontroferta</button>
                         <button onClick={() => setAppointmentActionModal({ appointmentId: app.id, action: 'DECLINE' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase">Odrzuć</button>
                       </div>
@@ -607,8 +607,8 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             onClick={() => setPriceExpanded((v) => !v)}
             className="w-full flex items-center gap-3 p-4 hover:bg-white/[0.03] transition-colors text-left"
           >
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${priceStatus === 'PENDING' ? 'border-amber-500/40 bg-amber-500/10' : priceStatus === 'ACCEPTED' ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
-              <Banknote size={16} className={priceStatus === 'PENDING' ? 'text-amber-400' : priceStatus === 'ACCEPTED' ? 'text-emerald-400' : 'text-white/40'} />
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center border ${priceStatus === 'PENDING' ? 'eos-sig-box eos-sig--warn' : priceStatus === 'ACCEPTED' ? 'eos-sig-box eos-sig--ok' : 'border-white/10 bg-white/5'}`}>
+              <Banknote size={16} className={priceStatus === 'PENDING' ? 'eos-sig-text eos-sig--warn' : priceStatus === 'ACCEPTED' ? 'eos-sig-text eos-sig--ok' : 'text-white/40'} />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[10px] font-black uppercase tracking-widest text-white/45">Dział 2 — Propozycje cenowe</p>
@@ -654,7 +654,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                 </div>
               )}
               {!isFinalized && isFinalizationReady && acceptedBidId > 0 && (
-                <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+                <div className="mt-3 rounded-xl border border-[#a8844c]/40 bg-[#a8844c]/10 p-4">
                   <p className="text-sm text-white/80 mb-3">
                     Cena została uzgodniona. Kliknij poniżej, aby sfinalizować sprzedaż (oferta zniknie z rynku).
                   </p>
@@ -662,7 +662,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                     type="button"
                     disabled={!!actionLoading}
                     onClick={() => void finalizeDealSale()}
-                    className="w-full py-3 rounded-xl bg-emerald-500 text-black text-[10px] font-black uppercase tracking-widest disabled:opacity-40"
+                    className="w-full py-3 rounded-xl bg-[#a8844c] text-black text-[10px] font-black uppercase tracking-widest disabled:opacity-40"
                   >
                     Sfinalizuj sprzedaż
                   </button>
@@ -676,7 +676,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                         Decyzja: {Number(bid.amount || 0).toLocaleString('pl-PL')} PLN
                       </p>
                       <div className="grid grid-cols-3 gap-2">
-                        <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] font-black uppercase">Zgoda</button>
+                        <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'ACCEPT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-[#a8844c]/15 border border-[#a8844c]/30 text-[#cfae74] text-[10px] font-black uppercase">Zgoda</button>
                         <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'COUNTER' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 text-[10px] font-black uppercase">Kontroferta</button>
                         <button onClick={() => setBidActionModal({ bidId: bid.id, action: 'REJECT' })} disabled={!!actionLoading} className="py-2 rounded-lg bg-red-500/15 border border-red-500/30 text-red-300 text-[10px] font-black uppercase">Odrzuć</button>
                       </div>
@@ -691,12 +691,12 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
         {/* Dział 3 — Rozmowa (czat) */}
         <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.02] p-4 md:p-5">
           <div className="flex items-start gap-3 mb-4 pb-4 border-b border-white/5">
-            <MessageCircle size={18} className="text-emerald-400 shrink-0 mt-0.5" />
+            <MessageCircle size={18} className="text-[#c9a86a] shrink-0 mt-0.5" />
             <div>
               <p className="text-[10px] font-black uppercase tracking-widest text-white/45">Dział 3 — Rozmowa</p>
               <p className="text-sm font-bold text-white mt-0.5 flex items-center gap-2">
                 Czat szyfrowany E2E
-                <ShieldCheck size={14} className="text-emerald-500" />
+                <ShieldCheck size={14} className="text-[#a8844c]" />
               </p>
               <p className="text-xs text-white/50 mt-0.5">Wiadomości tekstowe i załączniki — bez mieszania z negocjacjami.</p>
             </div>
@@ -723,10 +723,10 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
                           <span className="text-[10px] font-black text-white/50">{otherParty?.name?.charAt(0) || '👤'}</span>
                         </div>
                       )}
-                      <div className={`px-6 py-4 shadow-xl ${isMe ? 'bg-gradient-to-b from-emerald-500 to-emerald-600 text-black rounded-[1.8rem] rounded-br-[0.5rem]' : 'bg-white/5 border border-white/10 text-white/90 rounded-[1.8rem] rounded-bl-[0.5rem] backdrop-blur-md'}`}>
+                      <div className={`px-6 py-4 shadow-xl ${isMe ? 'bg-gradient-to-b from-[#a8844c] to-[#7a5a26] text-black rounded-[1.8rem] rounded-br-[0.5rem]' : 'bg-white/5 border border-white/10 text-white/90 rounded-[1.8rem] rounded-bl-[0.5rem] backdrop-blur-md'}`}>
                         <p className={`text-[15px] leading-relaxed ${isMe ? 'font-semibold' : 'font-normal'}`}>{msgContent}</p>
                         {msg.attachment ? (
-                          <a href={msg.attachment} target="_blank" rel="noopener noreferrer" className={`mt-3 block text-[13px] font-bold underline ${isMe ? 'text-black/85' : 'text-emerald-400'}`}>
+                          <a href={msg.attachment} target="_blank" rel="noopener noreferrer" className={`mt-3 block text-[13px] font-bold underline ${isMe ? 'text-black/85' : 'text-[#c9a86a]'}`}>
                             📎 Załącznik
                           </a>
                         ) : null}
@@ -801,7 +801,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
             </div>
           </div>
         ) : (
-        <form onSubmit={sendMessage} className="relative max-w-4xl mx-auto flex items-center gap-2 md:gap-3 bg-[#111] border border-white/10 p-2 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-emerald-500/40 focus-within:shadow-[0_0_25px_rgba(16,185,129,0.15)] transition-all duration-500">
+        <form onSubmit={sendMessage} className="relative max-w-4xl mx-auto flex items-center gap-2 md:gap-3 bg-[#111] border border-white/10 p-2 rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.5)] focus-within:border-[#a8844c]/40 focus-within:shadow-[0_0_25px_rgba(168,132,76,0.15)] transition-all duration-500">
           <input
             ref={fileInputRef}
             type="file"
@@ -814,13 +814,13 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-10 h-10 shrink-0 rounded-[1.2rem] flex items-center justify-center text-white/50 hover:text-emerald-400 hover:bg-white/5 transition-colors cursor-pointer"
+            className="w-10 h-10 shrink-0 rounded-[1.2rem] flex items-center justify-center text-white/50 hover:text-[#c9a86a] hover:bg-white/5 transition-colors cursor-pointer"
             title="Dodaj załącznik"
           >
             <Paperclip size={18} />
           </button>
           {pendingFile ? (
-            <span className="flex items-center gap-1 px-2 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold max-w-[40%] truncate">
+            <span className="flex items-center gap-1 px-2 py-1 rounded-xl bg-[#a8844c]/15 border border-[#a8844c]/30 text-[#cfae74] text-[11px] font-bold max-w-[40%] truncate">
               {pendingFile.name}
               <button
                 type="button"
@@ -845,7 +845,7 @@ export default function DealRoom({ dealId, currentUserId }: { dealId: number, cu
           <button
             type="submit"
             disabled={(!inputText.trim() && !pendingFile) || isSending}
-            className="w-10 h-10 shrink-0 bg-gradient-to-b from-emerald-400 to-emerald-600 rounded-[1.2rem] flex items-center justify-center text-black hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:grayscale transition-all duration-300 shadow-[0_5px_15px_rgba(16,185,129,0.4)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-200"
+            className="w-10 h-10 shrink-0 bg-gradient-to-b from-[#c9a86a] to-[#7a5a26] rounded-[1.2rem] flex items-center justify-center text-black hover:scale-105 active:scale-95 disabled:opacity-30 disabled:hover:scale-100 disabled:grayscale transition-all duration-300 shadow-[0_5px_15px_rgba(168,132,76,0.4)] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e2cfa6]"
           >
             {isSending ? <Loader2 size={16} className="animate-spin text-white" /> : <Send size={16} className="ml-0.5 text-white drop-shadow-md" />}
           </button>

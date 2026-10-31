@@ -71,18 +71,18 @@ function OfferPreviewCard({ offer }: { offer: EnrichedLead["offer"] }) {
     <Link
       href={offer.href}
       target="_blank"
-      className="group flex gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 p-3 transition hover:border-emerald-500/30"
+      className="group flex gap-4 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 p-3 transition hover:border-[#a8844c]/30"
     >
       <div
         className="size-24 shrink-0 rounded-xl bg-cover bg-center sm:size-28"
         style={{ backgroundImage: `url(${offer.imageUrl || "/placeholder.jpg"})` }}
       />
       <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 text-base font-black text-[var(--eos-text)] group-hover:text-emerald-500">
+        <p className="line-clamp-2 text-base font-black text-[var(--eos-text)] group-hover:text-[#a8844c]">
           {offer.title}
         </p>
         <p className="mt-1 flex items-center gap-1.5 text-sm text-[var(--eos-muted)]">
-          <MapPin className="size-3.5 shrink-0 text-emerald-500" />
+          <MapPin className="size-3.5 shrink-0 text-[#a8844c]" />
           <span className="truncate">{offer.locationLabel}</span>
         </p>
         <p className="mt-2 text-lg font-black text-[var(--eos-text)]">{fmtPrice(offer.pricePln ?? offer.price)}</p>
@@ -91,7 +91,7 @@ function OfferPreviewCard({ offer }: { offer: EnrichedLead["offer"] }) {
           {offer.rooms ? <span>{offer.rooms} pok.</span> : null}
           <span>{offer.status}</span>
         </div>
-        <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-emerald-500">
+        <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-[#a8844c]">
           Podgląd ogłoszenia <ExternalLink className="size-3" />
         </span>
       </div>
@@ -111,8 +111,8 @@ function Stepper({ step }: { step: number }) {
             key={label}
             className={[
               "rounded-full px-3 py-1 text-[9px] font-black uppercase tracking-widest",
-              active ? "bg-emerald-500/15 text-emerald-500" : "bg-[var(--eos-input)] text-[var(--eos-subtle)]",
-              current ? "ring-1 ring-emerald-500/40" : "",
+              active ? "bg-[#a8844c]/15 text-[#a8844c]" : "bg-[var(--eos-input)] text-[var(--eos-subtle)]",
+              current ? "ring-1 ring-[#a8844c]/40" : "",
             ].join(" ")}
           >
             {idx}. {label}
@@ -243,7 +243,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
           </div>
           <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 px-4 py-3 text-xs text-[var(--eos-muted)]">
             <p className="flex items-center gap-2 font-bold text-[var(--eos-text)]">
-              <Shield className="size-4 text-emerald-500" />
+              <Shield className="size-4 text-[#a8844c]" />
               Jak to działa?
             </p>
             <ul className="mt-2 space-y-1.5 leading-relaxed">
@@ -272,7 +272,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                 <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">
                   Zapytanie #{lead.id} · {new Date(lead.createdAt).toLocaleDateString("pl-PL")}
                 </p>
-                <p className="mt-1 text-sm font-bold text-emerald-500">{lead.statusMeta.label}</p>
+                <p className="mt-1 text-sm font-bold text-[#a8844c]">{lead.statusMeta.label}</p>
                 <p className="eos-muted-copy mt-1 text-xs">{lead.statusMeta.hint}</p>
               </div>
               <div className="flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
@@ -288,7 +288,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
             <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/40 px-4 py-3">
               {isAgency ? (
                 <>
-                  <User className="size-4 text-emerald-500" />
+                  <User className="size-4 text-[#a8844c]" />
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">Właściciel</p>
                     <p className="font-bold text-[var(--eos-text)]">{lead.owner.name}</p>
@@ -301,7 +301,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                 </>
               ) : (
                 <>
-                  <Building2 className="size-4 text-emerald-500" />
+                  <Building2 className="size-4 text-[#a8844c]" />
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-widest text-[var(--eos-subtle)]">Agencja</p>
                     <p className="font-bold text-[var(--eos-text)]">{lead.agency.name}</p>
@@ -343,7 +343,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                         className={[
                           "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 text-sm transition",
                           checked
-                            ? "border-emerald-500/40 bg-emerald-500/10"
+                            ? "border-[#a8844c]/40 bg-[#a8844c]/10"
                             : "border-[var(--eos-border)] bg-[var(--eos-input)]/40",
                         ].join(" ")}
                       >
@@ -359,7 +359,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                               return { ...prev, [lead.id]: next };
                             });
                           }}
-                          className="mt-0.5 accent-emerald-500"
+                          className="mt-0.5 accent-[#a8844c]"
                         />
                         <span className="leading-snug text-[var(--eos-text)]">{item.label}</span>
                       </label>
@@ -378,7 +378,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                         }));
                         setTerms((p) => ({ ...p, [lead.id]: preset }));
                       }}
-                      className="rounded-full border border-[var(--eos-border)] px-3 py-1.5 text-left text-[10px] font-semibold text-[var(--eos-muted)] hover:border-emerald-500/30 hover:text-emerald-500"
+                      className="rounded-full border border-[var(--eos-border)] px-3 py-1.5 text-left text-[10px] font-semibold text-[var(--eos-muted)] hover:border-[#a8844c]/30 hover:text-[#a8844c]"
                     >
                       Zaznacz pełny pakiet
                     </button>
@@ -389,7 +389,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                     type="button"
                     disabled={busy === lead.id}
                     onClick={() => void proposeTerms(lead)}
-                    className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-full bg-[#a8844c] px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                   >
                     {busy === lead.id ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
                     Wyślij warunki do klienta
@@ -408,9 +408,9 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
             ) : (
               <div className="mt-5">
                 {lead.commissionRate != null ? (
-                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+                  <div className="rounded-2xl border border-[#a8844c]/20 bg-[#a8844c]/5 p-5">
                     <p className="flex items-center gap-2 text-sm font-bold text-[var(--eos-text)]">
-                      <Percent className="size-4 text-emerald-500" />
+                      <Percent className="size-4 text-[#a8844c]" />
                       Prowizja przy udanej transakcji: {lead.commissionRate}%
                     </p>
                     {(() => {
@@ -427,7 +427,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                                   key={c.id}
                                   className="flex gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 px-3 py-2.5 text-sm text-[var(--eos-text)]"
                                 >
-                                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-[10px] font-black text-emerald-600">
+                                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#a8844c]/15 text-[10px] font-black text-[#7a5a26]">
                                     {i + 1}
                                   </span>
                                   <span className="leading-relaxed">{c.label}</span>
@@ -474,7 +474,7 @@ export default function CrmLeadInbox({ leads, isAgency, currentUserId, onRefresh
                       type="button"
                       disabled={busy === lead.id}
                       onClick={() => void acceptTransfer(lead.id)}
-                      className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black"
+                      className="inline-flex items-center gap-2 rounded-full bg-[#a8844c] px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-black"
                     >
                       <CheckCircle2 className="size-4" />
                       Akceptuję powyższe warunki i przekazuję sprzedaż

@@ -115,8 +115,8 @@ export default function DealRoomPostSaleReview({
   };
 
   return (
-    <div className="rounded-[2rem] border border-emerald-500/25 bg-emerald-500/10 p-5 md:p-6">
-      <p className="text-[10px] uppercase tracking-[0.24em] font-black text-emerald-300">
+    <div className="rounded-[2rem] border border-[#a8844c]/25 bg-[#a8844c]/10 p-5 md:p-6">
+      <p className="text-[10px] uppercase tracking-[0.24em] font-black text-[#cfae74]">
         Transakcja zakończona
       </p>
       <p className="text-sm text-white/85 mt-2 leading-relaxed">
@@ -125,9 +125,9 @@ export default function DealRoomPostSaleReview({
       </p>
 
       {submitted ? (
-        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/35 bg-emerald-500/15 px-4 py-2">
-          <span className="text-emerald-300 font-black">✓</span>
-          <span className="text-sm font-bold text-emerald-200">Opinia została wystawiona</span>
+        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#a8844c]/35 bg-[#a8844c]/15 px-4 py-2">
+          <span className="eos-sig-text eos-sig--ok font-black">✓</span>
+          <span className="text-sm font-bold text-[#e2cfa6]">Opinia została wystawiona</span>
         </div>
       ) : (
         <div className="mt-5 space-y-4">
@@ -152,13 +152,13 @@ export default function DealRoomPostSaleReview({
             onChange={(e) => setComment(e.target.value)}
             placeholder="Opcjonalny komentarz o współpracy…"
             rows={3}
-            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-emerald-500/40 resize-none"
+            className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder:text-white/35 outline-none focus:border-[#a8844c]/40 resize-none"
           />
           <button
             type="button"
             onClick={() => void submitReview()}
             disabled={submitting || rating < 1}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-black uppercase tracking-widest text-black disabled:opacity-45"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#a8844c] px-5 py-3 text-sm font-black uppercase tracking-widest text-black disabled:opacity-45"
           >
             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
             Wyślij opinię

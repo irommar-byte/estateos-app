@@ -49,7 +49,7 @@ export default function DelegatedOffersPanel() {
   if (loading) {
     return (
       <div className="mb-8 flex justify-center py-8">
-        <Loader2 className="size-6 animate-spin text-emerald-500" />
+        <Loader2 className="size-6 animate-spin text-[#a8844c]" />
       </div>
     );
   }
@@ -77,7 +77,7 @@ export default function DelegatedOffersPanel() {
           </div>
           <div className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 px-4 py-3 text-xs text-[var(--eos-muted)]">
             <p className="flex items-center gap-2 font-bold text-[var(--eos-text)]">
-              <Shield className="size-4 text-emerald-500" />
+              <Shield className="size-4 text-[#a8844c]" />
               Tryb właściciela
             </p>
             <p className="mt-1.5 leading-relaxed">Podgląd i statystyki — bez edycji ogłoszenia.</p>
@@ -110,10 +110,10 @@ export default function DelegatedOffersPanel() {
                   </div>
                   <p className="mt-2 line-clamp-2 text-lg font-black text-[var(--eos-text)]">{o.title}</p>
                   <p className="mt-1 flex items-center gap-1.5 text-sm text-[var(--eos-muted)]">
-                    <MapPin className="size-3.5 shrink-0 text-emerald-500" />
+                    <MapPin className="size-3.5 shrink-0 text-[#a8844c]" />
                     {location || "—"}
                   </p>
-                  <p className="mt-2 text-xl font-black text-emerald-500">{fmtPrice(o.price)}</p>
+                  <p className="mt-2 text-xl font-black text-[#a8844c]">{fmtPrice(o.price)}</p>
                   <p className="mt-2 flex items-center gap-1.5 text-xs text-[var(--eos-muted)]">
                     <Building2 className="size-3.5 shrink-0" />
                     {o.agency.name || "Agencja"}
@@ -131,7 +131,7 @@ export default function DelegatedOffersPanel() {
                     <ol className="mt-3 space-y-1.5">
                       {parsed.conditions.map((c, i) => (
                         <li key={c.id} className="flex gap-2 text-sm text-[var(--eos-muted)]">
-                          <span className="font-black text-emerald-500">{i + 1}.</span>
+                          <span className="font-black text-[#a8844c]">{i + 1}.</span>
                           <span>{c.label}</span>
                         </li>
                       ))}

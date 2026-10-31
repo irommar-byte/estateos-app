@@ -214,7 +214,7 @@ export default function CrmRadarAreaPicker({
         >
           <div className="relative z-20 flex items-center justify-between border-b border-white/10 bg-black/80 px-5 py-4 backdrop-blur-md">
             <div className="flex items-center gap-3">
-              <Scan className="text-emerald-400" size={22} />
+              <Scan className="text-[#c9a86a]" size={22} />
               <div>
                 <p className="text-sm font-black text-white">{rc.areaPickerTitle}</p>
                 <p className="text-[10px] uppercase tracking-widest text-white/40">
@@ -239,11 +239,11 @@ export default function CrmRadarAreaPicker({
               </div>
             ) : null}
             <div
-              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-emerald-400/90 shadow-[0_0_40px_rgba(16,185,129,0.35)]"
+              className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[#c9a86a]/90 shadow-[0_0_40px_rgba(168,132,76,0.35)]"
               style={{
                 width: RADAR_AREA_RETICLE_PX,
                 height: RADAR_AREA_RETICLE_PX,
-                boxShadow: "inset 0 0 30px rgba(16,185,129,0.15)",
+                boxShadow: "inset 0 0 30px rgba(168,132,76,0.15)",
               }}
             />
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_26%,rgba(0,0,0,0.55)_70%)]" />
@@ -251,13 +251,13 @@ export default function CrmRadarAreaPicker({
 
           <div className="relative z-20 space-y-4 border-t border-white/10 bg-[#0a0a0a]/95 px-5 py-5 backdrop-blur-xl">
             <div className="flex items-start gap-2 text-xs text-white/60">
-              <MapPin size={16} className="mt-0.5 shrink-0 text-emerald-500" />
+              <MapPin size={16} className="mt-0.5 shrink-0 text-[#a8844c]" />
               <span>{resolving ? rc.resolvingLocation : addressLabel || "—"}</span>
             </div>
             <div>
               <div className="mb-2 flex justify-between text-[10px] font-bold uppercase tracking-widest text-white/40">
                 <span>{rc.radius}</span>
-                <span className="text-emerald-400">{radiusKm.toFixed(1)} km</span>
+                <span className="text-[#c9a86a]">{radiusKm.toFixed(1)} km</span>
               </div>
               <input
                 type="range"
@@ -266,7 +266,7 @@ export default function CrmRadarAreaPicker({
                 step={0.1}
                 value={radiusKm}
                 onChange={(e) => applyRadiusSlider(Number(e.target.value))}
-                className="w-full accent-emerald-500"
+                className="w-full accent-[#a8844c]"
               />
             </div>
             <div className="flex gap-3">
@@ -280,7 +280,7 @@ export default function CrmRadarAreaPicker({
               <button
                 type="button"
                 onClick={() => void handleApply()}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 py-4 text-[11px] font-black uppercase tracking-widest text-black"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#a8844c] py-4 text-[11px] font-black uppercase tracking-widest text-black"
               >
                 <Check size={18} />
                 {rc.applyArea}

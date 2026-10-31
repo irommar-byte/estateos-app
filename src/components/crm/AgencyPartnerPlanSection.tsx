@@ -137,12 +137,12 @@ export default function AgencyPartnerPlanSection({
     return (
       <section
         id={id}
-        className="overflow-hidden rounded-3xl border border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.08] to-[var(--eos-card)]"
+        className="overflow-hidden rounded-3xl border border-[#a8844c]/25 bg-gradient-to-br from-[#a8844c]/[0.08] to-[var(--eos-card)]"
       >
         <div className="flex flex-col gap-5 p-6 md:flex-row md:items-center md:justify-between md:p-8">
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-black">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#a8844c] px-3 py-1 text-[10px] font-black uppercase tracking-widest text-black">
                 <Check size={12} /> {pp.activePackage}
               </span>
               {isFreeDisplay ? (
@@ -181,7 +181,7 @@ export default function AgencyPartnerPlanSection({
                 {pp.creditsPoolLabel}
               </p>
               <p className="mt-1 flex items-center gap-2 text-xl font-black text-[var(--eos-text)]">
-                <Wallet size={16} className="text-emerald-500" />
+                <Wallet size={16} className="text-[#a8844c]" />
                 {partnerPlan.poolCredits}
               </p>
             </div>
@@ -190,7 +190,7 @@ export default function AgencyPartnerPlanSection({
                 {pp.teamLabel}
               </p>
               <p className="mt-1 flex items-center gap-2 text-xl font-black text-[var(--eos-text)]">
-                <Users size={16} className="text-emerald-500" />
+                <Users size={16} className="text-[#a8844c]" />
                 {agentsLimitLabel}
               </p>
             </div>
@@ -198,14 +198,14 @@ export default function AgencyPartnerPlanSection({
         </div>
 
         {upgradePlans.length > 0 ? (
-          <div className="border-t border-emerald-500/15 px-6 py-4 md:px-8">
+          <div className="border-t border-[#a8844c]/15 px-6 py-4 md:px-8">
             <button
               type="button"
               onClick={() => {
                 setShowUpgrade(true);
                 setSelectedId(upgradePlans[0]?.id ?? 'enterprise');
               }}
-              className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-400"
+              className="inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[#a8844c] hover:text-[#c9a86a]"
             >
               <Zap size={14} /> {pp.upgradePackage}
               <ChevronRight size={14} />
@@ -223,19 +223,19 @@ export default function AgencyPartnerPlanSection({
       id={id}
       className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)]"
     >
-      <div className="border-b border-[var(--eos-border)] bg-gradient-to-r from-emerald-500/[0.06] to-transparent p-6 md:p-8">
+      <div className="border-b border-[var(--eos-border)] bg-gradient-to-r from-[#a8844c]/[0.06] to-transparent p-6 md:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
             {hasActive && showUpgrade ? (
               <button
                 type="button"
                 onClick={() => setShowUpgrade(false)}
-                className="mb-3 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-emerald-500"
+                className="mb-3 text-[10px] font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-[#a8844c]"
               >
                 {pp.backToActive}
               </button>
             ) : null}
-            <p className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.28em] text-emerald-500">
+            <p className="mb-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.28em] text-[#a8844c]">
               <Sparkles size={14} /> {pp.agencyPackage}
             </p>
             <h2 className="text-2xl font-black text-[var(--eos-text)] md:text-3xl">
@@ -284,16 +284,16 @@ export default function AgencyPartnerPlanSection({
                   className={[
                     'relative rounded-2xl border p-5 text-left transition-all',
                     isSelected
-                      ? 'border-emerald-500/50 bg-emerald-500/[0.06] shadow-[0_0_0_1px_rgba(16,185,129,0.15)]'
-                      : 'border-[var(--eos-border)] bg-[var(--eos-surface)]/40 hover:border-emerald-500/25',
+                      ? 'border-[#a8844c]/50 bg-[#a8844c]/[0.06] shadow-[0_0_0_1px_rgba(168,132,76,0.15)]'
+                      : 'border-[var(--eos-border)] bg-[var(--eos-surface)]/40 hover:border-[#a8844c]/25',
                   ].join(' ')}
                 >
                   {plan.highlighted ? (
-                    <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-500">
+                    <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#a8844c]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-[#a8844c]">
                       <Crown size={10} /> {pp.recommended}
                     </span>
                   ) : null}
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#a8844c]">
                     {pp.planLabels[plan.id]}
                   </p>
                   <p className="mt-2 text-3xl font-black text-[var(--eos-text)]">
@@ -302,30 +302,30 @@ export default function AgencyPartnerPlanSection({
                   </p>
                   <ul className="mt-4 space-y-2 text-xs text-[var(--eos-muted)]">
                     <li className="flex gap-2">
-                      <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                      <Check size={14} className="mt-0.5 shrink-0 text-[#a8844c]" />
                       {pp.creditsOnPool(plan.creditsPerMonth)}
                     </li>
                     <li className="flex gap-2">
-                      <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                      <Check size={14} className="mt-0.5 shrink-0 text-[#a8844c]" />
                       {pp.agentsInTeam(agents)}
                     </li>
                     {plan.id === 'start' ? (
                       <li className="flex gap-2">
-                        <Check size={14} className="mt-0.5 shrink-0 text-emerald-500/50" />
+                        <Check size={14} className="mt-0.5 shrink-0 text-[#a8844c]/50" />
                         {pp.perkStartGap}
                       </li>
                     ) : (
                       <>
                         <li className="flex gap-2">
-                          <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                          <Check size={14} className="mt-0.5 shrink-0 text-[#a8844c]" />
                           {pp.perkOfficePro}
                         </li>
                         <li className="flex gap-2">
-                          <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                          <Check size={14} className="mt-0.5 shrink-0 text-[#a8844c]" />
                           {pp.perkReports}
                         </li>
                         <li className="flex gap-2">
-                          <Check size={14} className="mt-0.5 shrink-0 text-emerald-500" />
+                          <Check size={14} className="mt-0.5 shrink-0 text-[#a8844c]" />
                           {pp.perkMarket}
                         </li>
                       </>
@@ -345,7 +345,7 @@ export default function AgencyPartnerPlanSection({
                 <ul className="mt-3 space-y-2">
                   {changeLines.map((line) => (
                     <li key={line} className="flex gap-2 text-sm text-[var(--eos-muted)]">
-                      <ArrowRight size={16} className="mt-0.5 shrink-0 text-emerald-500" />
+                      <ArrowRight size={16} className="mt-0.5 shrink-0 text-[#a8844c]" />
                       <span>{line}</span>
                     </li>
                   ))}
@@ -354,7 +354,7 @@ export default function AgencyPartnerPlanSection({
 
               <div className="flex flex-col gap-3 lg:min-w-[16rem]">
                 {showProTrialCheckoutOffer ? (
-                  <p className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-center text-[11px] font-semibold leading-relaxed text-emerald-600">
+                  <p className="rounded-xl border border-[#a8844c]/25 bg-[#a8844c]/10 px-3 py-2 text-center text-[11px] font-semibold leading-relaxed text-[#7a5a26]">
                     {pp.trialCheckoutNote(proPlanPrice, PARTNER_PAID_PERIOD_DAYS)}
                   </p>
                 ) : null}
@@ -362,7 +362,7 @@ export default function AgencyPartnerPlanSection({
                   type="button"
                   disabled={Boolean(checkoutLoading)}
                   onClick={() => onCheckout(partnerStripePlanCodeFromId(selectedPlan.id))}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-6 py-4 text-sm font-black uppercase tracking-widest text-black shadow-[0_10px_30px_rgba(16,185,129,0.25)] transition hover:bg-emerald-400 disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#a8844c] px-6 py-4 text-sm font-black uppercase tracking-widest text-black shadow-[0_10px_30px_rgba(168,132,76,0.25)] transition hover:bg-[#c9a86a] disabled:opacity-60"
                 >
                   {checkoutLoading === partnerStripePlanCodeFromId(selectedPlan.id) ? (
                     <Loader2 size={18} className="animate-spin" />

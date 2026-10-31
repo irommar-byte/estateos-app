@@ -9,8 +9,8 @@ type Deal = ArchivedClientView['deals'][number];
 
 const STATE: Record<Deal['state'], { label: string; tone: string }> = {
   paused: { label: 'Wstrzymana', tone: 'warn' },
-  active: { label: 'Nadal w lejku', tone: 'good' },
-  closed: { label: 'Zamknięta', tone: '' },
+  active: { label: 'Nadal w lejku', tone: 'warn' },
+  closed: { label: 'Zamknięta', tone: 'bad' },
   finished: { label: 'Zakończona', tone: '' },
 };
 
@@ -130,7 +130,7 @@ export default function CrmArchivedClients({ rows }: { rows: ArchivedClientView[
                           title={c.offer.title}
                           sub={`Ogłoszenie #${c.offer.id}${c.offer.withdrawn ? ' · wycofane przy archiwizacji' : offerLive ? ' · nadal opublikowane' : ''}`}
                           chip={c.offer.statusLabel}
-                          tone={offerLive ? 'good' : ''}
+                          tone={offerLive ? 'good' : c.offer.withdrawn || c.offer.status === 'ARCHIVED' || c.offer.status === 'REJECTED' ? 'bad' : ''}
                         />
                       ) : null}
                       {live.map(dealRow)}

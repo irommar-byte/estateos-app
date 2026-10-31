@@ -66,7 +66,7 @@ export default function CrmEmailPreviewModal({
           >
             <div className="mb-6 flex items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#a8844c]">
                   {cl.emailPreviewEyebrow}
                 </p>
                 <h2 className="mt-1 text-xl font-bold text-[var(--eos-text)]">{cl.emailPreviewTitle}</h2>
@@ -139,7 +139,7 @@ export default function CrmEmailPreviewModal({
                     type="button"
                     disabled={confirming || !preview.clientEmail}
                     onClick={() => onConfirm(message)}
-                    className="ml-auto inline-flex items-center gap-2 rounded-full bg-emerald-500 px-6 py-3 text-[11px] font-black uppercase tracking-[0.14em] text-black disabled:opacity-50"
+                    className="ml-auto inline-flex items-center gap-2 rounded-full bg-[#a8844c] px-6 py-3 text-[11px] font-black uppercase tracking-[0.14em] text-black disabled:opacity-50"
                   >
                     {confirming ? (
                       <Mail className="size-4 animate-pulse" />

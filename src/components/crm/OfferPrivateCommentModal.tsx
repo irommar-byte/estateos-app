@@ -103,7 +103,7 @@ export default function OfferPrivateCommentModal({ open, offerId, offerTitle, on
       <div className="space-y-4">
         {loading ? (
           <div className="eos-inset-well flex items-center justify-center rounded-2xl p-6">
-            <Loader2 size={18} className="animate-spin text-emerald-500" />
+            <Loader2 size={18} className="animate-spin text-[#a8844c]" />
           </div>
         ) : null}
 

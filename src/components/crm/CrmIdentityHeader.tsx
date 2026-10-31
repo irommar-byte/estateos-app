@@ -77,7 +77,7 @@ export default function CrmIdentityHeader({
               // eslint-disable-next-line @next/next/no-img-element
               <img src={logoUrl} alt="" className="h-full w-full object-cover" />
             ) : (
-              <Building2 className="h-5 w-5 text-emerald-500" />
+              <Building2 className="h-5 w-5 text-[#a8844c]" />
             )}
           </div>
           <div className="min-w-0 flex-1">
@@ -111,7 +111,7 @@ export default function CrmIdentityHeader({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={avatarSrc} alt={`Awatar ${personName}`} className="h-full w-full object-cover" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-black text-emerald-500">
+                <div className="flex h-full w-full items-center justify-center text-sm font-black text-[#a8844c]">
                   {avatarInitial}
                 </div>
               )}
@@ -137,7 +137,7 @@ export default function CrmIdentityHeader({
                 {userId ? (
                   <span className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--eos-border)] bg-[var(--eos-input)] px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-[var(--eos-muted)]">
                     {verificationLabels.userIdLabel}
-                    <span className="text-emerald-600">{userId}</span>
+                    <span className="text-[#7a5a26]">{userId}</span>
                   </span>
                 ) : null}
                 {!reviewsLoading && reviewsData ? (
@@ -156,7 +156,7 @@ export default function CrmIdentityHeader({
                   </button>
                 ) : null}
                 {verificationStatus === 'verified' ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-emerald-600">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-[#a8844c]/30 bg-[#a8844c]/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-[#7a5a26]">
                     ✓ {verificationLabels.verifiedBadge}
                   </span>
                 ) : (

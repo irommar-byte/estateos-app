@@ -76,23 +76,23 @@ export default function CrmShowingComposer({
   return (
     <div id="crm-showing" className="space-y-3">
       {showing ? (
-        <article className="overflow-hidden rounded-2xl border border-emerald-500/40 bg-emerald-500/8">
+        <article className="overflow-hidden rounded-2xl border border-[#a8844c]/40 bg-[#a8844c]/8">
           <div className="flex gap-3 p-3">
             {showing.imageUrl ? (
               <img src={showing.imageUrl} alt="" className="h-24 w-28 shrink-0 rounded-xl object-cover" />
             ) : (
-              <div className="flex h-24 w-28 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15 text-xs font-black text-emerald-800">
+              <div className="flex h-24 w-28 shrink-0 items-center justify-center rounded-xl bg-[#a8844c]/15 text-xs font-black text-[#5c4626]">
                 #{showing.offerId}
               </div>
             )}
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <PortalSourceBadge badge={showing.badge} url={showing.sourceUrl} />
-                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#5c4626]">
                   {showing.kindLabel}
                 </span>
                 {statusLabel ? (
-                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-900">
+                  <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-[#3d2f19]">
                     {statusLabel}
                   </span>
                 ) : null}
@@ -112,7 +112,7 @@ export default function CrmShowingComposer({
               ) : null}
             </div>
           </div>
-          <div className="space-y-2 border-t border-emerald-500/20 px-3 py-3">
+          <div className="space-y-2 border-t border-[#a8844c]/20 px-3 py-3">
             {importKind && showing.sourcePhone ? (
               <p className="text-sm text-[var(--eos-text)]">
                 Telefon ze snapshotu: <strong>{showing.sourcePhone}</strong>
@@ -155,7 +155,7 @@ export default function CrmShowingComposer({
         <div className="rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] px-3 py-3">
           <p className="text-[10px] font-black uppercase tracking-wider text-[var(--eos-muted)]">Aktualny termin</p>
           <p className="mt-1 text-sm font-semibold">{new Date(presentation.startsAt).toLocaleString("pl-PL")}</p>
-          <p className="mt-1 text-xs font-black uppercase tracking-wider text-emerald-700">
+          <p className="mt-1 text-xs font-black uppercase tracking-wider text-[#7a5a26]">
             {presentation.status === "pending" ? presentation.reason || "Termin wysłany" : "Potwierdzona"}
           </p>
           <button type="button" disabled={busy} onClick={onMarkHeld} className={`mt-2 ${eosBtn("home", { size: "sm" })}`}>
@@ -203,7 +203,7 @@ export default function CrmShowingComposer({
         )}
       </div>
 
-      <button type="button" onClick={() => setOtherOpen((open) => !open)} className="text-[11px] font-black uppercase tracking-wider text-emerald-800">
+      <button type="button" onClick={() => setOtherOpen((open) => !open)} className="text-[11px] font-black uppercase tracking-wider text-[#5c4626]">
         {otherOpen ? "Ukryj inną nieruchomość" : "Inna nieruchomość"}
       </button>
       {otherOpen ? (

@@ -76,7 +76,7 @@ export default function PlanningPresentationCalendar({
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-6 border-b border-[var(--eos-border)] pb-5">
           <div>
             <h2 className="text-xl md:text-2xl font-black text-[var(--eos-text)] tracking-tighter flex items-center gap-2.5">
-              <Calendar className="text-emerald-500 w-6 h-6" /> Kalendarz Prezentacji
+              <Calendar className="text-[#a8844c] w-6 h-6" /> Kalendarz Prezentacji
             </h2>
             <p className="eos-portal-label mt-1">
               Podgląd rezerwacji i negocjacji
@@ -97,7 +97,7 @@ export default function PlanningPresentationCalendar({
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.6)]" />
+              <div className="w-2 h-2 rounded-full bg-[#a8844c] shadow-[0_0_10px_rgba(168,132,76,0.6)]" />
               <span className="eos-portal-label">
                 Zatwierdzone
               </span>
@@ -221,7 +221,7 @@ export default function PlanningPresentationCalendar({
                   )}
                   {hasAccepted && (
                     <span
-                      className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.55)]"
+                      className="w-2 h-2 rounded-full bg-[#a8844c] shadow-[0_0_6px_rgba(168,132,76,0.55)]"
                       title="Zatwierdzony termin"
                     />
                   )}
@@ -263,7 +263,7 @@ export default function PlanningPresentationCalendar({
               onClick={(e) => e.stopPropagation()}
               className="eos-lux-panel relative w-full max-w-2xl overflow-hidden rounded-[2rem]"
             >
-              <div className="p-5 md:p-7 border-b border-[var(--eos-border)] flex justify-between items-start gap-4 bg-gradient-to-r from-emerald-500/10 to-transparent">
+              <div className="p-5 md:p-7 border-b border-[var(--eos-border)] flex justify-between items-start gap-4 bg-gradient-to-r from-[#a8844c]/10 to-transparent">
                 <div>
                   <h3 className="text-xl md:text-2xl font-black text-[var(--eos-text)] tracking-tighter">Plan Dnia</h3>
                   <p className="eos-portal-label eos-portal-label--ok mt-1">
@@ -307,7 +307,7 @@ export default function PlanningPresentationCalendar({
                         className="eos-inset-well rounded-2xl p-4 flex flex-col gap-3"
                       >
                         <div className="flex flex-wrap items-center gap-2">
-                          <Clock size={14} className="text-emerald-500 shrink-0" />
+                          <Clock size={14} className="text-[#a8844c] shrink-0" />
                           <span className="font-black text-lg text-[var(--eos-text)]">{time}</span>
                           {app.needsMyResponse && (
                             <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-400 text-[8px] font-black uppercase tracking-widest rounded-full border border-yellow-500/35 animate-pulse">
@@ -320,7 +320,7 @@ export default function PlanningPresentationCalendar({
                             </span>
                           )}
                           {String(app.status).toUpperCase() === 'ACCEPTED' && app.type !== 'ACQUISITION' && (
-                            <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[8px] font-black uppercase tracking-widest rounded-full border border-emerald-500/30">
+                            <span className="px-2 py-0.5 bg-[#a8844c]/20 text-[#c9a86a] text-[8px] font-black uppercase tracking-widest rounded-full border border-[#a8844c]/30">
                               Zatwierdzone
                             </span>
                           )}
@@ -355,7 +355,7 @@ export default function PlanningPresentationCalendar({
                                 href={`/oferta/${app.offerId}`}
                                 target="_blank"
                                 onClick={(e) => e.stopPropagation()}
-                                className="inline-flex items-center gap-1 mt-2 text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-400"
+                                className="inline-flex items-center gap-1 mt-2 text-[10px] font-black uppercase tracking-widest text-[#a8844c] hover:text-[#c9a86a]"
                               >
                                 Oferta #{app.offerId} <ExternalLink size={10} />
                               </Link>
@@ -365,8 +365,8 @@ export default function PlanningPresentationCalendar({
 
                         <div className="flex items-center justify-between gap-3 pt-1 border-t border-[var(--eos-border)]">
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center shrink-0">
-                              <User size={14} className="text-emerald-500" />
+                            <div className="w-8 h-8 rounded-full bg-[#a8844c]/15 border border-[#a8844c]/25 flex items-center justify-center shrink-0">
+                              <User size={14} className="text-[#a8844c]" />
                             </div>
                             <div className="min-w-0">
                               <p className="text-[10px] text-[var(--eos-subtle)] uppercase tracking-widest font-black">

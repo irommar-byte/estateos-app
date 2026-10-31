@@ -681,7 +681,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <Loader2 className="animate-spin text-emerald-500" size={32} />
+        <Loader2 className="animate-spin text-[#a8844c]" size={32} />
       </div>
     );
   }
@@ -694,7 +694,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         <p className="eos-muted-copy mt-2 text-sm">
           Konto agenta nie jest powiązane z biurem. Załóż nową firmę lub dołącz do istniejącej przy rejestracji.
         </p>
-        <Link href="/rejestracja" className="mt-6 inline-block text-sm font-bold text-emerald-500 hover:underline">
+        <Link href="/rejestracja" className="mt-6 inline-block text-sm font-bold text-[#a8844c] hover:underline">
           Przejdź do rejestracji
         </Link>
       </div>
@@ -722,7 +722,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <Link href={`/oferta/${offer.id}`} className="font-bold text-[var(--eos-text)] hover:text-emerald-600">
+                  <Link href={`/oferta/${offer.id}`} className="font-bold text-[var(--eos-text)] hover:text-[#7a5a26]">
                     {offer.title || `Oferta #${offer.id}`}
                   </Link>
                   <p className="eos-muted-copy mt-1 text-xs">
@@ -740,7 +740,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     type="button"
                     disabled={queueBusyId === offer.id}
                     onClick={() => void handleOfficeReviewDecision(offer.id, 'approve')}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#a8844c] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                   >
                     {queueBusyId === offer.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                     {t.activateOffer}
@@ -797,7 +797,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
       <div className="rounded-3xl border border-red-500/30 bg-red-500/5 p-8 text-center sm:p-10">
         <h1 className="text-xl font-black text-[var(--eos-text)]">{t.noCompanyData}</h1>
         <p className="eos-muted-copy mt-2 text-sm">{t.noCompanyDataHint}</p>
-        <Link href="/moje-konto/crm" className="mt-6 inline-block text-sm font-bold text-emerald-500 hover:underline">
+        <Link href="/moje-konto/crm" className="mt-6 inline-block text-sm font-bold text-[#a8844c] hover:underline">
           {t.backToCrm}
         </Link>
       </div>
@@ -830,19 +830,19 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               // eslint-disable-next-line @next/next/no-img-element
               <img src={company.logoUrl} alt="" className="h-16 w-16 rounded-2xl object-cover" />
             ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#a8844c]/10 text-[#a8844c]">
                 <Building2 size={28} />
               </div>
             )}
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">{t.yourOffice}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#a8844c]">{t.yourOffice}</p>
               <h1 className="text-2xl font-black text-[var(--eos-text)]">{company.name}</h1>
               {company.address && <p className="eos-muted-copy mt-1 text-sm">{company.address}</p>}
             </div>
           </div>
         </header>
         <p className="eos-muted-copy text-sm">{t.employeeOnlyHint}</p>
-        <Link href="/moje-konto/crm" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-500 hover:underline">
+        <Link href="/moje-konto/crm" className="inline-flex items-center gap-2 text-sm font-bold text-[#a8844c] hover:underline">
           {t.goToCrm} <ExternalLink size={14} />
         </Link>
       </div>
@@ -858,12 +858,12 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               // eslint-disable-next-line @next/next/no-img-element
               <img src={company.logoUrl} alt="" className="h-16 w-16 rounded-2xl object-cover" />
             ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#a8844c]/10 text-[#a8844c]">
                 <Building2 size={28} />
               </div>
             )}
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-500">{t.yourOffice}</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#a8844c]">{t.yourOffice}</p>
               <h1 className="text-2xl font-black text-[var(--eos-text)]">{company.name}</h1>
               <span className="mt-2 inline-block rounded-full bg-sky-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-sky-600">
                 {t.manager}
@@ -873,7 +873,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         </header>
         <p className="eos-muted-copy text-sm">{t.managerPanelHint}</p>
         {isOfficeManager ? officeActivationQueueSection : null}
-        <Link href="/moje-konto/crm" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-500 hover:underline">
+        <Link href="/moje-konto/crm" className="inline-flex items-center gap-2 text-sm font-bold text-[#a8844c] hover:underline">
           {t.goToCrm} <ExternalLink size={14} />
         </Link>
       </div>
@@ -882,14 +882,14 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
 
   return (
     <div className="space-y-8">
-      <header className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-gradient-to-br from-[var(--eos-card)] to-emerald-500/5 p-8">
+      <header className="overflow-hidden rounded-3xl border border-[var(--eos-border)] bg-gradient-to-br from-[var(--eos-card)] to-[#a8844c]/5 p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-5">
             <div className="relative">
               <div className="h-20 w-20 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)] shadow-lg">
                 <ProfileMediaAvatar src={company.logoUrl} alt={company.name} iconSize={36} className="size-full object-cover" />
               </div>
-              <label className="absolute -bottom-2 -right-2 flex size-9 cursor-pointer items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-emerald-500 shadow-md hover:bg-emerald-500/10">
+              <label className="absolute -bottom-2 -right-2 flex size-9 cursor-pointer items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-[#a8844c] shadow-md hover:bg-[#a8844c]/10">
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
@@ -902,8 +902,8 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
             </div>
             <div>
               <div className="mb-1 flex items-center gap-2">
-                <ShieldCheck size={14} className="text-emerald-500" />
-                <span className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-500">{t.adminPanel}</span>
+                <ShieldCheck size={14} className="text-[#a8844c]" />
+                <span className="text-[10px] font-black uppercase tracking-[0.22em] text-[#a8844c]">{t.adminPanel}</span>
               </div>
               <h1 className="text-3xl font-black text-[var(--eos-text)]">{company.name}</h1>
               {company.address && <p className="eos-muted-copy mt-1 text-sm">{company.address}</p>}
@@ -911,12 +911,12 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                 {company.officePhone && <span>{company.officePhone}</span>}
                 {company.officeEmail && <span>{company.officeEmail}</span>}
                 {company.website && (
-                  <a href={company.website} target="_blank" rel="noreferrer" className="text-emerald-500 hover:underline">
+                  <a href={company.website} target="_blank" rel="noreferrer" className="text-[#a8844c] hover:underline">
                     {t.website}
                   </a>
                 )}
                 {company.slug ? (
-                  <Link href={`/firma/${company.slug}`} target="_blank" className="inline-flex items-center gap-1 text-emerald-500 hover:underline">
+                  <Link href={`/firma/${company.slug}`} target="_blank" className="inline-flex items-center gap-1 text-[#a8844c] hover:underline">
                     {t.publicOfficePage} <ExternalLink size={12} />
                   </Link>
                 ) : null}
@@ -931,7 +931,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               { label: t.creditsInPool, value: company.extraListings, icon: Wallet },
             ].map((kpi) => (
               <div key={kpi.label} className="rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/60 px-4 py-3">
-                <kpi.icon size={14} className="mb-2 text-emerald-500" />
+                <kpi.icon size={14} className="mb-2 text-[#a8844c]" />
                 <p className="text-2xl font-black text-[var(--eos-text)]">{kpi.value}</p>
                 <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--eos-muted)]">{kpi.label}</p>
               </div>
@@ -960,7 +960,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-black text-[var(--eos-text)]">
-              <Globe size={18} className="text-emerald-500" />
+              <Globe size={18} className="text-[#a8844c]" />
               Dane kontaktowe biura
             </h2>
             <p className="eos-muted-copy mt-1 text-xs">
@@ -971,7 +971,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
             <button
               type="button"
               onClick={() => setContactEditing(true)}
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-xs font-black uppercase tracking-widest text-emerald-500 hover:bg-emerald-500/10"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-4 py-2 text-xs font-black uppercase tracking-widest text-[#a8844c] hover:bg-[#a8844c]/10"
             >
               <Pencil size={14} /> Edytuj
             </button>
@@ -989,7 +989,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                 value={contactDraft.website}
                 onChange={(e) => setContactDraft((d) => ({ ...d, website: e.target.value }))}
                 placeholder="https://twoje-biuro.pl"
-                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-[#a8844c]/50"
               />
             </label>
             <label className="block">
@@ -1001,7 +1001,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                 value={contactDraft.officePhone}
                 onChange={(e) => setContactDraft((d) => ({ ...d, officePhone: e.target.value }))}
                 placeholder="+48 22 000 00 00"
-                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-[#a8844c]/50"
               />
             </label>
             <label className="block">
@@ -1013,7 +1013,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                 value={contactDraft.officeEmail}
                 onChange={(e) => setContactDraft((d) => ({ ...d, officeEmail: e.target.value }))}
                 placeholder="biuro@twoje-biuro.pl"
-                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-emerald-500/50"
+                className="w-full rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)] px-4 py-3 text-sm text-[var(--eos-text)] outline-none focus:border-[#a8844c]/50"
               />
             </label>
             <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -1021,7 +1021,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                 type="button"
                 disabled={contactBusy}
                 onClick={() => void handleContactSave()}
-                className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-full bg-[#a8844c] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
               >
                 {contactBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                 Zapisz
@@ -1046,9 +1046,9 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
         ) : (
           <div className="flex flex-col gap-3 text-sm text-[var(--eos-muted)]">
             <p className="flex items-center gap-2">
-              <Globe size={14} className="shrink-0 text-emerald-500" />
+              <Globe size={14} className="shrink-0 text-[#a8844c]" />
               {company.website ? (
-                <a href={company.website} target="_blank" rel="noreferrer" className="text-emerald-500 hover:underline">
+                <a href={company.website} target="_blank" rel="noreferrer" className="text-[#a8844c] hover:underline">
                   {company.website}
                 </a>
               ) : (
@@ -1056,11 +1056,11 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               )}
             </p>
             <p className="flex items-center gap-2">
-              <Phone size={14} className="shrink-0 text-emerald-500" />
+              <Phone size={14} className="shrink-0 text-[#a8844c]" />
               {company.officePhone || <span className="">Brak telefonu</span>}
             </p>
             <p className="flex items-center gap-2">
-              <Mail size={14} className="shrink-0 text-emerald-500" />
+              <Mail size={14} className="shrink-0 text-[#a8844c]" />
               {company.officeEmail || <span className="">Brak e-maila</span>}
             </p>
           </div>
@@ -1098,7 +1098,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     type="button"
                     disabled={actionId === m.id}
                     onClick={() => void handleMemberAction(m.id, 'ACTIVE')}
-                    className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
+                    className="inline-flex items-center gap-2 rounded-full bg-[#a8844c] px-4 py-2 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
                   >
                     {actionId === m.id ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
                     {t.approve}
@@ -1154,7 +1154,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                               className="size-full object-cover"
                             />
                           </div>
-                          <label className="absolute -bottom-1 -right-1 flex size-6 cursor-pointer items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-[10px] text-emerald-500">
+                          <label className="absolute -bottom-1 -right-1 flex size-6 cursor-pointer items-center justify-center rounded-full border border-[var(--eos-border)] bg-[var(--eos-card)] text-[10px] text-[#a8844c]">
                             <input
                               type="file"
                               accept="image/jpeg,image/png,image/webp,image/gif"
@@ -1169,7 +1169,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                           <p className="font-bold text-[var(--eos-text)]">{memberDisplayName(m)}</p>
                           <p className="eos-muted-copy text-xs">{m.user?.email || '—'}</p>
                           {m.role === 'ADMIN' && (
-                            <span className="mt-1 inline-block rounded-full bg-emerald-500/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-emerald-600">
+                            <span className="mt-1 inline-block rounded-full bg-[#a8844c]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-[#7a5a26]">
                               {t.administrator}
                             </span>
                           )}
@@ -1234,7 +1234,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                           <Link
                             href={`/profil/${m.user.id}`}
                             target="_blank"
-                            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)] transition hover:border-emerald-500/30 hover:text-emerald-600"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--eos-border)] bg-[var(--eos-surface)] px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-[var(--eos-text)] transition hover:border-[#a8844c]/30 hover:text-[#7a5a26]"
                           >
                             <UserRound size={12} />
                             {t.profile}
@@ -1330,7 +1330,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     type="button"
                     disabled={actionId === m.id}
                     onClick={() => void handleMemberAction(m.id, 'ACTIVE')}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#a8844c] px-4 py-2 text-[10px] font-black uppercase tracking-wider text-black disabled:opacity-50"
                   >
                     {actionId === m.id ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
                     {t.restore}
@@ -1368,7 +1368,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               return (
                 <div
                   key={offer.id}
-                  className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 transition hover:border-emerald-500/30"
+                  className="overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-surface)]/50 transition hover:border-[#a8844c]/30"
                 >
                   <Link href={`/oferta/${offer.id}`} className="flex gap-4 p-4">
                     <div className="relative size-24 shrink-0 overflow-hidden rounded-xl border border-[var(--eos-border)] bg-[var(--eos-input)]">
@@ -1384,7 +1384,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="line-clamp-2 font-bold text-[var(--eos-text)]">{offer.title}</p>
-                      <p className="mt-1 text-sm font-black text-emerald-500">{formatOfferPrice(offer.price, locale)}</p>
+                      <p className="mt-1 text-sm font-black text-[#a8844c]">{formatOfferPrice(offer.price, locale)}</p>
                       <p className="eos-muted-copy mt-1 text-xs">
                         {formatOfferLocation(offer.city, offer.district)}
                       </p>
@@ -1419,7 +1419,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
                         type="button"
                         disabled={assignBusyId === offer.id}
                         onClick={() => void handleAssignOffer(offer.id, offer.agentUserId)}
-                        className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black disabled:opacity-50"
+                        className="inline-flex items-center gap-2 rounded-full bg-[#a8844c] px-4 py-2 text-[10px] font-black uppercase tracking-widest text-black disabled:opacity-50"
                       >
                         {assignBusyId === offer.id ? (
                           <Loader2 size={12} className="animate-spin" />
@@ -1479,7 +1479,7 @@ export default function AgencyCompanyWorkspace({ pendingOnly = false }: { pendin
               type="button"
               disabled={creditBusy}
               onClick={() => void handleCreditTransfer()}
-              className="flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 py-3 text-sm font-black uppercase tracking-widest text-black disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-[#a8844c] py-3 text-sm font-black uppercase tracking-widest text-black disabled:opacity-50"
             >
               {creditBusy ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />}
               Przenieś kredyty

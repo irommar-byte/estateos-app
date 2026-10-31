@@ -6,11 +6,12 @@ import type { PartnerGrowthInsight } from '@/lib/partnerGrowth';
 
 const SEVERITY_STYLES = {
   info: {
-    border: 'border-emerald-500/25',
-    bg: 'from-emerald-500/[0.08] to-[var(--eos-card)]',
+    border: 'border-[#a8844c]/25',
+    bg: 'from-[#a8844c]/[0.08] to-[var(--eos-card)]',
     icon: Sparkles,
-    iconClass: 'text-emerald-500',
-    cta: 'bg-emerald-500 text-black hover:bg-emerald-400',
+    iconClass: 'text-[#a8844c]',
+    cta: 'bg-[#a8844c] text-black hover:bg-[#c9a86a]',
+    sig: '',
   },
   warning: {
     border: 'border-amber-500/30',
@@ -18,6 +19,7 @@ const SEVERITY_STYLES = {
     icon: TrendingUp,
     iconClass: 'text-amber-500',
     cta: 'bg-amber-500 text-black hover:bg-amber-400',
+    sig: 'eos-sig-glow eos-sig--warn',
   },
   urgent: {
     border: 'border-red-500/30',
@@ -25,6 +27,7 @@ const SEVERITY_STYLES = {
     icon: AlertTriangle,
     iconClass: 'text-red-500',
     cta: 'bg-red-500 text-white hover:bg-red-400',
+    sig: 'eos-sig-glow eos-sig--bad',
   },
 } as const;
 
@@ -42,7 +45,7 @@ export default function AgencyGrowthBanner({
     return (
       <Link
         href={insight.ctaHref}
-        className={`mb-4 flex items-center gap-3 rounded-2xl border ${style.border} bg-gradient-to-r ${style.bg} p-4 transition hover:opacity-95`}
+        className={`mb-4 flex items-center gap-3 rounded-2xl border ${style.border} ${style.sig} bg-gradient-to-r ${style.bg} p-4 transition hover:opacity-95`}
       >
         <Icon size={18} className={`shrink-0 ${style.iconClass}`} />
         <div className="min-w-0 flex-1">
@@ -56,7 +59,7 @@ export default function AgencyGrowthBanner({
 
   return (
     <section
-      className={`overflow-hidden rounded-3xl border ${style.border} bg-gradient-to-br ${style.bg}`}
+      className={`overflow-hidden rounded-3xl border ${style.border} ${style.sig} bg-gradient-to-br ${style.bg}`}
     >
       <div className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between md:p-8">
         <div className="min-w-0 flex-1">
@@ -69,7 +72,7 @@ export default function AgencyGrowthBanner({
           <h2 className="text-xl font-black text-[var(--eos-text)] md:text-2xl">{insight.title}</h2>
           <p className="eos-muted-copy mt-2 text-sm leading-relaxed">{insight.body}</p>
           {insight.savingsPln && insight.savingsPln > 0 ? (
-            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#a8844c]/20 bg-[#a8844c]/10 px-3 py-1 text-[11px] font-bold text-[#7a5a26] dark:text-[#c9a86a]">
               <Zap size={12} />
               Oszczędność ~{insight.savingsPln} zł/mies.
               {insight.savingsPercent ? ` (−${insight.savingsPercent}% vs detal)` : null}

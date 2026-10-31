@@ -231,7 +231,7 @@ export default function AgencyMemberDetailPanel({
               />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-500">
+              <p className="text-[10px] font-black uppercase tracking-widest text-[#a8844c]">
                 {formatAgentTitle(member.agentTitle)}
               </p>
               <h2 className="text-xl font-black text-[var(--eos-text)]">{member.user.name || member.user.email}</h2>
@@ -246,7 +246,7 @@ export default function AgencyMemberDetailPanel({
         <div className="flex-1 overflow-y-auto p-5">
           {loading ? (
             <div className="flex justify-center py-16">
-              <Loader2 className="animate-spin text-emerald-500" size={28} />
+              <Loader2 className="animate-spin text-[#a8844c]" size={28} />
             </div>
           ) : (
             <div className="space-y-6">
@@ -320,13 +320,13 @@ export default function AgencyMemberDetailPanel({
                     type="button"
                     disabled={cardBusy}
                     onClick={() => void handleSaveCard()}
-                    className="flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 py-2.5 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
+                    className="flex w-full items-center justify-center gap-2 rounded-full bg-[#a8844c] py-2.5 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
                   >
                     {cardBusy ? <Loader2 size={14} className="animate-spin" /> : null}
                     Zapisz wizytówkę
                   </button>
                   {cardSaved ? (
-                    <p className="text-center text-xs font-semibold text-emerald-600">Zapisano.</p>
+                    <p className="text-center"><span className="eos-sig eos-sig--ok">Zapisano</span></p>
                   ) : null}
                 </div>
               </section>
@@ -346,7 +346,7 @@ export default function AgencyMemberDetailPanel({
                     {member.user.averageRating != null ? member.user.averageRating.toFixed(1) : '—'} ({member.user.reviewsCount})
                   </strong>
                 </div>
-                <Link href={`/profil/${member.user.id}`} className="mt-3 inline-block text-xs font-bold text-emerald-500 hover:underline">
+                <Link href={`/profil/${member.user.id}`} className="mt-3 inline-block text-xs font-bold text-[#a8844c] hover:underline">
                   Publiczny profil agenta →
                 </Link>
               </div>
@@ -360,7 +360,7 @@ export default function AgencyMemberDetailPanel({
                     {transferableOffers.map((offer) => (
                       <label
                         key={offer.id}
-                        className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 hover:border-emerald-500/30"
+                        className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-3 hover:border-[#a8844c]/30"
                       >
                         <input
                           type="checkbox"
@@ -377,7 +377,7 @@ export default function AgencyMemberDetailPanel({
                         </div>
                         <Link
                           href={`/oferta/${offer.id}`}
-                          className="shrink-0 text-[10px] font-bold text-emerald-500"
+                          className="shrink-0 text-[10px] font-bold text-[#a8844c]"
                           onClick={(e) => e.stopPropagation()}
                         >
                           Podgląd
@@ -389,9 +389,9 @@ export default function AgencyMemberDetailPanel({
               </section>
 
               {selectedOfferIds.length > 0 && targets.length > 0 && (
-                <section className="rounded-2xl border border-emerald-500/25 bg-emerald-500/5 p-4">
+                <section className="rounded-2xl border border-[#a8844c]/25 bg-[#a8844c]/5 p-4">
                   <h3 className="mb-3 flex items-center gap-2 text-sm font-black text-[var(--eos-text)]">
-                    <ArrowRightLeft size={16} className="text-emerald-500" />
+                    <ArrowRightLeft size={16} className="text-[#a8844c]" />
                     Przenieś {selectedOfferIds.length} ogłoszeń
                   </h3>
                   <select
@@ -410,7 +410,7 @@ export default function AgencyMemberDetailPanel({
                     type="button"
                     disabled={transferBusy}
                     onClick={() => void handleTransfer()}
-                    className="flex w-full items-center justify-center gap-2 rounded-full bg-emerald-500 py-2.5 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
+                    className="flex w-full items-center justify-center gap-2 rounded-full bg-[#a8844c] py-2.5 text-xs font-black uppercase tracking-widest text-black disabled:opacity-50"
                   >
                     {transferBusy ? <Loader2 size={14} className="animate-spin" /> : <ArrowRightLeft size={14} />}
                     Przenieś ogłoszenia

@@ -52,7 +52,7 @@ export default function CrmClientPersonHub({
           Karty klienta
         </button>
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#7a5a26]">
             {isSell ? "Sprzedaje" : "Kupuje"}
           </p>
           <h4 className="mt-1 text-xl font-bold text-[var(--eos-text)]">
@@ -70,12 +70,12 @@ export default function CrmClientPersonHub({
               key={item.id}
               type="button"
               onClick={() => onOpenProject(item.id)}
-              className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 text-left transition hover:border-emerald-400/50"
+              className="flex w-full items-start justify-between gap-3 rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-4 text-left transition hover:border-[#c9a86a]/50"
             >
               <div className="min-w-0">
                 <p className="font-bold text-[var(--eos-text)]">{item.title}</p>
                 <p className="mt-1 text-sm text-[var(--eos-muted)]">{item.subtitle}</p>
-                <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-600">
+                <p className="mt-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#7a5a26]">
                   {item.statusLabel}
                   {item.portalUnreadCount ? ` · czat ${item.portalUnreadCount}` : ""}
                 </p>
@@ -130,15 +130,15 @@ export default function CrmClientPersonHub({
       <button
         type="button"
         onClick={() => onOpenLane("SELL")}
-        className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 text-left transition hover:border-emerald-400/40"
+        className="rounded-3xl border border-[var(--eos-border)] bg-[var(--eos-card)] p-5 text-left transition hover:border-[#c9a86a]/40"
       >
         <div className="flex items-center justify-between gap-3">
-          <span className="inline-flex size-11 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-600">
+          <span className="inline-flex size-11 items-center justify-center rounded-2xl bg-[#a8844c]/12 text-[#7a5a26]">
             <Building2 className="size-5" />
           </span>
           <ChevronRight className="size-4 text-[var(--eos-muted)]" />
         </div>
-        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">Sprzedaje</p>
+        <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-[#7a5a26]">Sprzedaje</p>
         <h4 className="mt-1 text-lg font-bold text-[var(--eos-text)]">
           {selling.length ? `${selling.length} ${selling.length === 1 ? "pozysk" : "pozyski"}` : "Brak pozysku"}
         </h4>

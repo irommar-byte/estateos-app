@@ -144,7 +144,7 @@ export default function ProToolBadge({
         {!comingSoon ? (
           <Sparkles
             size={16}
-            className="shrink-0 text-emerald-500/80 opacity-0 transition-opacity group-hover:opacity-100"
+            className="shrink-0 text-[#a8844c]/80 opacity-0 transition-opacity group-hover:opacity-100"
           />
         ) : null}
       </div>

@@ -258,7 +258,7 @@ export default function CrmListingsPro(props: Props) {
                             <div className="mt-1.5 flex flex-wrap gap-1">
                               {txChip(o)}
                               {o.propertyType ? <span className="crmx-chip">{PROPERTY_LABEL[String(o.propertyType)] || o.propertyType}</span> : null}
-                              {bidsN ? <span className="crmx-chip crmx-chip--bad">{bidsN} {bidsN === 1 ? 'oferta cenowa' : 'oferty cenowe'}</span> : null}
+                              {bidsN ? <span className="crmx-chip crmx-chip--warn">{bidsN} {bidsN === 1 ? 'oferta cenowa' : 'oferty cenowe'}</span> : null}
                               <span className="crmx-chip crmx-muted">#{id}</span>
                             </div>
                           </div>

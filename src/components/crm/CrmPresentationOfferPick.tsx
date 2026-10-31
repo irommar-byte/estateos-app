@@ -39,14 +39,14 @@ function OfferCard({
   return (
     <div
       className={`overflow-hidden rounded-2xl border ${
-        selected ? "border-emerald-500/60 bg-emerald-500/10" : "border-[var(--eos-border)] bg-[var(--eos-input)]"
+        selected ? "border-[#a8844c]/60 bg-[#a8844c]/10" : "border-[var(--eos-border)] bg-[var(--eos-input)]"
       }`}
     >
       <button type="button" onClick={onSelect} className="flex w-full items-stretch gap-3 p-2 text-left">
         {photos[0] ? (
           <img src={photos[0]} alt="" className="h-[4.5rem] w-[5.5rem] shrink-0 rounded-xl object-cover" />
         ) : (
-          <div className="flex h-[4.5rem] w-[5.5rem] shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-[11px] font-black text-emerald-700">
+          <div className="flex h-[4.5rem] w-[5.5rem] shrink-0 items-center justify-center rounded-xl bg-[#a8844c]/10 text-[11px] font-black text-[#7a5a26]">
             #{offer.id}
           </div>
         )}
@@ -62,7 +62,7 @@ function OfferCard({
       <button
         type="button"
         onClick={onToggle}
-        className="w-full border-t border-[var(--eos-border)]/70 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-emerald-700"
+        className="w-full border-t border-[var(--eos-border)]/70 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-[#7a5a26]"
       >
         {expanded ? "Zwiń podgląd" : "Rozwiń zdjęcia i szczegóły"}
       </button>

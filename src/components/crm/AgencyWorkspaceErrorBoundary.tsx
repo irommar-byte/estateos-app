@@ -33,13 +33,13 @@ export default class AgencyWorkspaceErrorBoundary extends Component<Props, State
             <button
               type="button"
               onClick={() => this.setState({ error: null })}
-              className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-black"
+              className="inline-flex items-center gap-2 rounded-full bg-[#a8844c] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-black"
             >
               <RefreshCw size={14} /> Spróbuj ponownie
             </button>
             <Link
               href="/moje-konto/crm"
-              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-emerald-500"
+              className="inline-flex items-center gap-2 rounded-full border border-[var(--eos-border)] px-5 py-2.5 text-xs font-black uppercase tracking-widest text-[var(--eos-muted)] hover:text-[#a8844c]"
             >
               Wróć do CRM
             </Link>

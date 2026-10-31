@@ -426,7 +426,7 @@ export default function CrmIntelligenceAssistant({
               ogrzewanie i resztę parametrów wykrytych w opisie portalu. Zmiany widać na ofercie i można cofnąć.
             </p>
           </div>
-          <span className="shrink-0 rounded-full border border-emerald-400/35 bg-emerald-500/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">
+          <span className="shrink-0 rounded-full border border-[#c9a86a]/35 bg-[#a8844c]/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#e2cfa6]">
             Zawsze włączone
           </span>
         </div>
