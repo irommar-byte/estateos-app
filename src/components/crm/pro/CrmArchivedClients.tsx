@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, ArrowUpRight, Building2, CalendarX, KeyRound, Mail, MessageCircle, PauseCircle, Phone, Search, Target, XCircle } from 'lucide-react';
+import { ArrowUpRight, Building2, CalendarX, Info, Mail, MessageCircle, Phone, Search, UserRound } from 'lucide-react';
 import type { ArchivedClientView } from '@/lib/crm/clientArchive';
 import { initials, stamp } from './format';
 
@@ -9,10 +9,13 @@ type Deal = ArchivedClientView['deals'][number];
 
 const STATE: Record<Deal['state'], { label: string; tone: string }> = {
   paused: { label: 'Wstrzymana', tone: 'warn' },
-  closed: { label: 'Zamknięta przy archiwizacji', tone: '' },
   active: { label: 'Nadal w lejku', tone: 'good' },
-  finished: { label: 'Zakończona wcześniej', tone: '' },
+  closed: { label: 'Zamknięta', tone: '' },
+  finished: { label: 'Zakończona', tone: '' },
 };
+
+/** Starsze archiwizacje zapisywały zawsze ten sam tekst — nie powtarzamy go na każdej karcie. */
+const LEGACY_NOTE = 'Spotkania i planowania zostały wyczyszczone';
 
 const funnelHref = (dealId: number) => `/moje-konto/crm?tab=transakcje&funnelDeal=${dealId}`;
 
@@ -31,22 +34,27 @@ export function useArchivedClients(reloadKey: number) {
   return rows;
 }
 
-function DealLine({ deal }: { deal: Deal }) {
-  const st = STATE[deal.state];
+function Row({ href, icon, title, sub, chip, tone }: { href: string; icon: React.ReactNode; title: string; sub: string; chip: string; tone: string }) {
   return (
-    <a href={funnelHref(deal.id)} className="crmx-archive__deal">
-      <span className="min-w-0 flex-1">
-        <span className="crmx-archive__deal-title">{deal.offerTitle}</span>
-        <span className="crmx-archive__deal-sub">
-          {deal.side === 'buyer' ? 'Kupował od' : 'Kupujący'}: {deal.counterpart} · etap: {deal.stageLabel}
-        </span>
+    <a href={href} className="crmx-archive__row">
+      <span className="crmx-archive__ico">{icon}</span>
+      <span className="crmx-archive__text">
+        <span className="crmx-archive__title">{title}</span>
+        <span className="crmx-archive__sub">{sub}</span>
       </span>
-      <span className={`crmx-chip ${st.tone ? `crmx-chip--${st.tone}` : ''}`}>
-        {deal.state === 'paused' ? <PauseCircle size={11} /> : deal.state === 'closed' ? <XCircle size={11} /> : null}
-        {st.label}
-      </span>
-      <ArrowUpRight size={14} className="crmx-archive__go" />
+      <span className={`crmx-chip ${tone ? `crmx-chip--${tone}` : ''}`}>{chip}</span>
+      <ArrowUpRight size={15} className="crmx-archive__go" />
     </a>
+  );
+}
+
+function dealRow(d: Deal) {
+  const st = STATE[d.state];
+  // Sprzedający: transakcję opisuje kupujący (ogłoszenie jest wyżej). Kupujący: nieruchomość, którą oglądał.
+  return d.side === 'seller' ? (
+    <Row key={d.id} href={funnelHref(d.id)} icon={<UserRound size={15} />} title={d.counterpart} sub={`Kupujący · etap: ${d.stageLabel}`} chip={st.label} tone={st.tone} />
+  ) : (
+    <Row key={d.id} href={funnelHref(d.id)} icon={<Building2 size={15} />} title={d.offerTitle} sub={`Właściciel: ${d.counterpart} · etap: ${d.stageLabel}`} chip={st.label} tone={st.tone} />
   );
 }
 
@@ -62,10 +70,16 @@ export default function CrmArchivedClients({ rows }: { rows: ArchivedClientView[
 
   return (
     <div className="space-y-3">
-      <label className="crmx-input">
-        <Search />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Szukaj w archiwum: imię, e-mail, telefon" />
-      </label>
+      <div className="crmx-archive__bar">
+        <label className="crmx-input" style={{ flex: '1 1 240px' }}>
+          <Search />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Szukaj w archiwum: imię, e-mail, telefon" />
+        </label>
+        <p className="crmx-archive__info">
+          <Info size={14} /> Panel klienta i dopasowania są wyłączone. Klienta przywraca administrator biura — wstrzymane transakcje wrócą wtedy do lejka.
+        </p>
+      </div>
+
       {list.length === 0 ? (
         <div className="crmx-card crmx-empty" style={{ padding: '44px 20px' }}>
           {rows.length ? 'Nikogo takiego w archiwum.' : 'Archiwum jest puste.'}
@@ -73,9 +87,11 @@ export default function CrmArchivedClients({ rows }: { rows: ArchivedClientView[
       ) : (
         list.map((c) => {
           const paused = c.deals.filter((d) => d.state === 'paused');
-          const closed = c.deals.filter((d) => d.state === 'closed');
-          const remaining = c.deals.filter((d) => d.state === 'active' || d.state === 'finished');
+          const live = c.deals.filter((d) => d.state === 'active');
+          const ended = c.deals.filter((d) => d.state === 'closed' || d.state === 'finished');
           const offerLive = c.offer && (c.offer.status === 'ACTIVE' || c.offer.status === 'PENDING');
+          const note = c.note && !c.note.startsWith(LEGACY_NOTE) ? c.note : null;
+          const empty = !c.offer && !c.deals.length;
           return (
             <article key={c.clientId} className="crmx-card crmx-archive">
               <header className="crmx-archive__head">
@@ -86,46 +102,59 @@ export default function CrmArchivedClients({ rows }: { rows: ArchivedClientView[
                     {c.type === 'SELLER' ? 'Sprzedający' : 'Kupujący'} · w archiwum od {c.archivedAt ? stamp(c.archivedAt) : '—'}
                   </p>
                 </div>
-                <span className="crmx-chip crmx-chip--gold"><Archive size={11} /> {c.stageLabel}</span>
+                <div className="crmx-archive__stage">
+                  <span>Etap przy archiwizacji</span>
+                  <b>{c.stageLabel}</b>
+                </div>
               </header>
 
-              {c.note ? <p className="crmx-archive__note">{c.note}</p> : null}
+              {note ? <p className="crmx-archive__note">{note}</p> : null}
 
-              <div className="crmx-archive__grid">
-                <section>
-                  <p className="crmx-eyebrow"><PauseCircle size={12} /> Wstrzymane · wrócą po przywróceniu</p>
-                  {paused.length ? paused.map((d) => <DealLine key={d.id} deal={d} />) : <p className="crmx-archive__none">Nic nie zostało wstrzymane.</p>}
-                </section>
-                <section>
-                  <p className="crmx-eyebrow"><KeyRound size={12} /> Co po nim zostało</p>
-                  {c.offer ? (
-                    <a href={`/oferta/${c.offer.id}`} className="crmx-archive__deal">
-                      <span className="min-w-0 flex-1">
-                        <span className="crmx-archive__deal-title"><Building2 size={12} /> {c.offer.title}</span>
-                        <span className="crmx-archive__deal-sub">
-                          Ogłoszenie #{c.offer.id} · {c.offer.withdrawn ? 'wycofane przy archiwizacji' : offerLive ? 'zostało na rynku' : c.offer.statusLabel.toLowerCase()}
-                        </span>
-                      </span>
-                      <span className={`crmx-chip ${offerLive ? 'crmx-chip--good' : ''}`}>{c.offer.statusLabel}</span>
-                      <ArrowUpRight size={14} className="crmx-archive__go" />
-                    </a>
+              {empty ? (
+                <p className="crmx-archive__empty">Bez ogłoszenia i transakcji — po kliencie nic nie zostało w toku.</p>
+              ) : (
+                <div className="crmx-archive__body">
+                  {paused.length ? (
+                    <section>
+                      <p className="crmx-archive__label">Wstrzymane · {paused.length}</p>
+                      {paused.map(dealRow)}
+                    </section>
                   ) : null}
-                  {remaining.map((d) => <DealLine key={d.id} deal={d} />)}
-                  {closed.map((d) => <DealLine key={d.id} deal={d} />)}
-                  {!c.offer && !remaining.length && !closed.length ? <p className="crmx-archive__none">Brak ogłoszeń i transakcji.</p> : null}
-                  {c.meetingsCleared ? (
-                    <p className="crmx-archive__none"><CalendarX size={12} /> Odwołane zaplanowane spotkania: {c.meetingsCleared}</p>
+                  {c.offer || live.length ? (
+                    <section>
+                      <p className="crmx-archive__label">Zostało po kliencie</p>
+                      {c.offer ? (
+                        <Row
+                          href={`/oferta/${c.offer.id}`}
+                          icon={<Building2 size={15} />}
+                          title={c.offer.title}
+                          sub={`Ogłoszenie #${c.offer.id}${c.offer.withdrawn ? ' · wycofane przy archiwizacji' : offerLive ? ' · nadal opublikowane' : ''}`}
+                          chip={c.offer.statusLabel}
+                          tone={offerLive ? 'good' : ''}
+                        />
+                      ) : null}
+                      {live.map(dealRow)}
+                    </section>
                   ) : null}
-                </section>
-              </div>
+                  {ended.length ? (
+                    <section>
+                      <p className="crmx-archive__label">Zakończone · {ended.length}</p>
+                      {ended.map(dealRow)}
+                    </section>
+                  ) : null}
+                </div>
+              )}
 
               <footer className="crmx-archive__foot">
+                {c.meetingsCleared ? (
+                  <span className="crmx-archive__meta"><CalendarX size={13} /> Odwołane spotkania: {c.meetingsCleared}</span>
+                ) : null}
+                <span className="flex-1" />
                 {c.phone ? <a href={`tel:${c.phone}`} className="crmx-btn crmx-btn--sm"><Phone size={13} /> {c.phone}</a> : null}
                 {c.email ? <a href={`mailto:${c.email}`} className="crmx-btn crmx-btn--sm"><Mail size={13} /> E-mail</a> : null}
                 {c.linkedUserId ? (
                   <a href={`/moje-konto/crm?tab=wiadomosci&peer=${c.linkedUserId}`} className="crmx-btn crmx-btn--sm"><MessageCircle size={13} /> Rozmowa</a>
                 ) : null}
-                <span className="crmx-archive__hint"><Target size={12} /> Panel klienta i dopasowania są wyłączone. Przywrócić może administrator biura.</span>
               </footer>
             </article>
           );
