@@ -1,8 +1,11 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 type Props = {
   count: number | null;
   loading?: boolean;
+  /** kursor nad monetą: złota rozkręca się, granatowa obraca się na rewers „BIURO” */
   spinning?: boolean;
   size?: "sm" | "md";
   /** gold — kredyty osobiste; office — granatowa moneta puli biura */
@@ -11,45 +14,158 @@ type Props = {
   alert?: boolean;
 };
 
-export default function EosCreditCoin({ count, loading, spinning, size = "sm", variant = "gold", alert = false }: Props) {
+/** Spoczynek: lekko obrócona na bok — widać rant i grubość, a liczba zostaje czytelna. */
+const REST_Y = -26;
+const REST_X = 9;
+const ACCEL = 300; // °/s² — rozkręcanie pod kursorem
+const MAX_SPEED = 1260; // °/s
+const SETTLE_MS = 900;
+const EDGE_LAYERS = 9;
+
+function setTransform(el: HTMLElement | null, angle: number) {
+  if (el) el.style.transform = `rotateX(${REST_X}deg) rotateY(${REST_Y + angle}deg)`;
+}
+
+/**
+ * Złota moneta: pod kursorem przyspiesza i kręci się bez końca, po zabraniu kursora
+ * płynnie hamuje dokładnie w pozycji spoczynku, po czym lekko rośnie i błyska połyskiem.
+ */
+function useGoldSpin(hovered: boolean, enabled: boolean) {
+  const coinRef = useRef<HTMLDivElement>(null);
+  const hoverRef = useRef(hovered);
+  const [settling, setSettling] = useState(false);
+  const state = useRef({ angle: 0, vel: 0, decel: 0, target: 0, raf: 0, last: 0, spun: false });
+
+  useEffect(() => {
+    hoverRef.current = hovered;
+    if (!enabled || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const s = state.current;
+    if (!hovered && s.vel === 0) return;
+    if (!hovered) {
+      // Hamowanie ze stałym opóźnieniem tak, by zatrzymać się na pełnym obrocie (liczbą do przodu).
+      if (s.vel > 0) {
+        const natural = (s.vel * s.vel) / (2 * 520);
+        s.target = Math.ceil((s.angle + natural) / 360) * 360;
+        s.decel = (s.vel * s.vel) / (2 * Math.max(1, s.target - s.angle));
+      }
+    }
+    if (s.raf) return;
+
+    const tick = (t: number) => {
+      const dt = s.last ? Math.min(0.05, (t - s.last) / 1000) : 0;
+      s.last = t;
+      if (hoverRef.current) {
+        s.vel = Math.min(MAX_SPEED, s.vel + ACCEL * dt);
+        s.angle += s.vel * dt;
+        s.spun = true;
+      } else if (s.vel > 0) {
+        s.vel = Math.max(0, s.vel - s.decel * dt);
+        s.angle = Math.min(s.target, s.angle + s.vel * dt);
+        if (s.vel === 0 || s.angle >= s.target) s.vel = 0;
+      }
+      setTransform(coinRef.current, s.angle % 360);
+      if (!hoverRef.current && s.vel === 0) {
+        s.angle = 0;
+        s.raf = 0;
+        s.last = 0;
+        setTransform(coinRef.current, 0);
+        if (s.spun) {
+          s.spun = false;
+          setSettling(true);
+        }
+        return;
+      }
+      s.raf = requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+  }, [hovered, enabled]);
+
+  useEffect(() => {
+    if (!settling) return;
+    const t = window.setTimeout(() => setSettling(false), SETTLE_MS);
+    return () => window.clearTimeout(t);
+  }, [settling]);
+
+  useEffect(() => {
+    const s = state.current;
+    return () => {
+      if (s.raf) cancelAnimationFrame(s.raf);
+    };
+  }, []);
+
+  return { coinRef, settling };
+}
+
+export default function EosCreditCoin({ count, loading, spinning = false, size = "sm", variant = "gold", alert = false }: Props) {
   const dim = size === "md" ? 44 : 36;
   const label = loading ? "…" : String(Math.max(0, count ?? 0));
+  const office = variant === "office";
+  const { coinRef, settling } = useGoldSpin(spinning, !office);
+  const thick = size === "md" ? 4.4 : 3.6;
 
   return (
     <div
-      className={`eos-coin-scene relative flex items-center justify-center ${variant === "office" ? "is-office" : ""} ${alert ? "is-alert" : ""}`}
-      style={{ width: dim, height: dim }}
+      className={`eos-coin-scene relative flex items-center justify-center ${office ? "is-office" : ""} ${alert ? "is-alert" : ""} ${settling ? "is-settling" : ""} ${office && spinning ? "is-flipped" : ""}`}
+      style={{ width: dim, height: dim, ["--coin-t" as string]: `${thick}px` }}
       aria-hidden
     >
-      <div className={`eos-coin ${spinning ? "eos-coin-spin" : "eos-coin-idle"}`}>
-        <div className="eos-coin-face eos-coin-front">
-          <span className="eos-coin-brand">EOS</span>
-          <span className="eos-coin-count">{label}</span>
+      <div className="eos-coin-float">
+        <div ref={coinRef} className="eos-coin">
+          {Array.from({ length: EDGE_LAYERS }, (_, i) => (
+            <span
+              key={i}
+              className="eos-coin-edge"
+              style={{ transform: `translateZ(calc(var(--coin-t) * ${(i / (EDGE_LAYERS - 1) - 0.5).toFixed(3)}))` }}
+            />
+          ))}
+          <div className="eos-coin-face eos-coin-front">
+            <span className="eos-coin-brand">EOS</span>
+            <span className="eos-coin-count">{label}</span>
+            <span className="eos-coin-gleam" />
+          </div>
+          <div className="eos-coin-face eos-coin-back">
+            <span className="eos-coin-brand">EOS</span>
+            <span className="eos-coin-sub">{office ? "BIURO" : "PLUS"}</span>
+          </div>
         </div>
-        <div className="eos-coin-face eos-coin-back">
-          <span className="eos-coin-brand">EOS</span>
-          <span className="eos-coin-sub">{variant === "office" ? "BIURO" : "PLUS"}</span>
-        </div>
-        <div className="eos-coin-rim" />
-        <div className="eos-coin-shine" />
       </div>
 
       <style jsx>{`
         .eos-coin-scene {
-          perspective: 480px;
+          perspective: 420px;
+        }
+        .eos-coin-float {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          transform-style: preserve-3d;
+          animation: eosCoinFloat 4.6s ease-in-out infinite;
+        }
+        .is-settling .eos-coin-float {
+          animation: eosCoinSettle ${SETTLE_MS}ms cubic-bezier(0.34, 1.4, 0.5, 1) both;
         }
         .eos-coin {
           position: relative;
           width: 100%;
           height: 100%;
           transform-style: preserve-3d;
+          transform: rotateX(${REST_X}deg) rotateY(${REST_Y}deg);
         }
-        .eos-coin-idle {
-          animation: eosCoinFloat 4.2s ease-in-out infinite;
+        .is-office .eos-coin {
+          transition: transform 0.75s cubic-bezier(0.45, 0.05, 0.2, 1);
         }
-        .eos-coin-spin {
-          animation: eosCoinSpin3d 1.4s cubic-bezier(0.45, 0.05, 0.25, 1) infinite;
+        .is-office.is-flipped .eos-coin {
+          transform: rotateX(${REST_X}deg) rotateY(${REST_Y + 180}deg);
         }
+
+        /* Rant: warstwy krążków tworzą pełną, metaliczną grubość */
+        .eos-coin-edge {
+          position: absolute;
+          inset: 0;
+          border-radius: 999px;
+          background: linear-gradient(100deg, #6b3a0c 0%, #b7791f 30%, #f6d68a 50%, #a16207 70%, #5c300a 100%);
+        }
+
         .eos-coin-face {
           position: absolute;
           inset: 0;
@@ -61,45 +177,50 @@ export default function EosCreditCoin({ count, loading, spinning, size = "sm", v
           justify-content: center;
           overflow: hidden;
           box-shadow:
-            inset 0 1px 2px rgba(255, 255, 255, 0.35),
-            inset 0 -2px 5px rgba(120, 53, 15, 0.28),
-            0 2px 6px rgba(0, 0, 0, 0.22);
+            inset 0 0 0 1.5px rgba(255, 236, 170, 0.55),
+            inset 0 0 0 2.5px rgba(146, 84, 14, 0.35),
+            inset 0 1px 2px rgba(255, 255, 255, 0.45),
+            inset 0 -2px 5px rgba(120, 53, 15, 0.32);
         }
         .eos-coin-front {
-          transform: translateZ(1.5px);
+          transform: translateZ(calc(var(--coin-t) / 2 + 0.2px));
           background:
-            radial-gradient(circle at 32% 28%, #fff9e6 0%, transparent 38%),
+            radial-gradient(circle at 30% 26%, #fffaeb 0%, transparent 40%),
             conic-gradient(from 210deg, #fde68a, #eab308, #fbbf24, #ca8a04, #fde68a);
-          border: 1px solid rgba(234, 179, 8, 0.55);
         }
         .eos-coin-back {
-          transform: rotateY(180deg) translateZ(1.5px);
+          transform: rotateY(180deg) translateZ(calc(var(--coin-t) / 2 + 0.2px));
           background:
             radial-gradient(circle at 35% 30%, #fef3c7 0%, transparent 38%),
             conic-gradient(from 30deg, #eab308, #ca8a04, #facc15, #a16207, #eab308);
-          border: 1px solid rgba(202, 138, 4, 0.5);
         }
-        .eos-coin-rim {
+        /* Cień pod monetą — podkreśla głębię */
+        .eos-coin-scene::before {
+          content: "";
           position: absolute;
-          inset: -0.5px;
+          left: 14%;
+          right: 14%;
+          bottom: -3px;
+          height: 5px;
           border-radius: 999px;
-          transform: translateZ(-0.5px);
-          background: linear-gradient(135deg, #92400e, #b45309 45%, #fcd34d 58%, #78350f);
-        }
-        .eos-coin-shine {
-          position: absolute;
-          inset: -30%;
-          border-radius: 999px;
-          background: linear-gradient(
-            115deg,
-            transparent 44%,
-            rgba(255, 255, 255, 0.28) 50%,
-            transparent 56%
-          );
-          transform: translateZ(2px);
-          animation: eosCoinShine 4.5s ease-in-out infinite;
+          background: radial-gradient(closest-side, rgba(0, 0, 0, 0.28), transparent);
+          filter: blur(1px);
           pointer-events: none;
         }
+
+        /* Połysk metaliczny po zatrzymaniu */
+        .eos-coin-gleam {
+          position: absolute;
+          inset: -40%;
+          background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.85) 50%, transparent 60%);
+          transform: translateX(-75%);
+          opacity: 0;
+          pointer-events: none;
+        }
+        .is-settling .eos-coin-gleam {
+          animation: eosCoinGleam ${SETTLE_MS}ms ease-out both;
+        }
+
         .eos-coin-brand {
           font-size: 6px;
           font-weight: 900;
@@ -114,6 +235,7 @@ export default function EosCreditCoin({ count, loading, spinning, size = "sm", v
           line-height: 1;
           color: #451a03;
           font-variant-numeric: tabular-nums;
+          text-shadow: 0 1px 0 rgba(255, 244, 205, 0.6);
         }
         .eos-coin-sub {
           margin-top: 1px;
@@ -122,31 +244,39 @@ export default function EosCreditCoin({ count, loading, spinning, size = "sm", v
           letter-spacing: 0.16em;
           color: #713f12;
         }
+
         /* Granatowa moneta biura */
+        .is-office .eos-coin-edge {
+          background: linear-gradient(100deg, #050f30 0%, #1d3a8a 30%, #b9c9f5 50%, #1a3170 70%, #040c28 100%);
+        }
         .is-office .eos-coin-face {
           box-shadow:
+            inset 0 0 0 1.5px rgba(205, 219, 255, 0.5),
+            inset 0 0 0 2.5px rgba(8, 20, 60, 0.4),
             inset 0 1px 2px rgba(255, 255, 255, 0.4),
-            inset 0 -2px 5px rgba(8, 20, 60, 0.45),
-            0 2px 6px rgba(0, 0, 0, 0.25);
+            inset 0 -2px 5px rgba(8, 20, 60, 0.45);
         }
         .is-office .eos-coin-front {
           background:
-            radial-gradient(circle at 32% 28%, #e8eeff 0%, transparent 38%),
+            radial-gradient(circle at 30% 26%, #e8eeff 0%, transparent 40%),
             conic-gradient(from 210deg, #a9bdf0, #22408f, #4a6cc4, #142b6b, #a9bdf0);
-          border-color: rgba(74, 108, 196, 0.6);
         }
         .is-office .eos-coin-back {
           background:
             radial-gradient(circle at 35% 30%, #dfe7ff 0%, transparent 38%),
             conic-gradient(from 30deg, #2c4ea6, #142b6b, #5b7bd0, #0c1d4f, #2c4ea6);
-          border-color: rgba(44, 78, 166, 0.55);
         }
-        .is-office .eos-coin-rim {
-          background: linear-gradient(135deg, #0a1a4a, #1d3a8a 45%, #b9c9f5 58%, #08153d);
+        .is-office .eos-coin-brand {
+          color: #dbe4ff;
         }
-        .is-office .eos-coin-brand { color: #dbe4ff; }
-        .is-office .eos-coin-count { color: #ffffff; text-shadow: 0 1px 1px rgba(8, 20, 60, 0.6); }
-        .is-office .eos-coin-sub { color: #dbe4ff; }
+        .is-office .eos-coin-count {
+          color: #ffffff;
+          text-shadow: 0 1px 1px rgba(8, 20, 60, 0.6);
+        }
+        .is-office .eos-coin-sub {
+          color: #dbe4ff;
+        }
+
         /* Mało kredytów: pomarańczowa poświata płynnie mruga */
         .is-alert::after {
           content: "";
@@ -158,38 +288,58 @@ export default function EosCreditCoin({ count, loading, spinning, size = "sm", v
           pointer-events: none;
         }
         @keyframes eosCoinAlert {
-          from { opacity: 1; }
-          to { opacity: 0.1; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .is-alert::after { animation: none; opacity: 0.8; }
+          from {
+            opacity: 1;
+          }
+          to {
+            opacity: 0.1;
+          }
         }
         @keyframes eosCoinFloat {
           0%,
           100% {
-            transform: translateY(0) rotateX(8deg) rotateY(-6deg);
+            transform: translateY(0) rotateY(-3deg);
           }
           50% {
-            transform: translateY(-1px) rotateX(9deg) rotateY(6deg);
+            transform: translateY(-1px) rotateY(3deg);
           }
         }
-        @keyframes eosCoinSpin3d {
+        @keyframes eosCoinSettle {
           0% {
-            transform: rotateX(10deg) rotateY(0deg);
+            transform: scale(1);
+          }
+          35% {
+            transform: scale(1.14);
           }
           100% {
-            transform: rotateX(10deg) rotateY(360deg);
+            transform: scale(1);
           }
         }
-        @keyframes eosCoinShine {
-          0%,
-          100% {
-            opacity: 0.08;
-            transform: translateZ(2px) translateX(-12%) rotate(0deg);
+        @keyframes eosCoinGleam {
+          0% {
+            opacity: 0;
+            transform: translateX(-75%);
           }
-          50% {
-            opacity: 0.35;
-            transform: translateZ(2px) translateX(12%) rotate(4deg);
+          15% {
+            opacity: 1;
+          }
+          70% {
+            opacity: 1;
+          }
+          100% {
+            opacity: 0;
+            transform: translateX(75%);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .eos-coin-float,
+          .is-settling .eos-coin-float,
+          .is-settling .eos-coin-gleam {
+            animation: none;
+          }
+          .is-alert::after {
+            animation: none;
+            opacity: 0.8;
           }
         }
       `}</style>
