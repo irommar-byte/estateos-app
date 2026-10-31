@@ -17,7 +17,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import type { AgencyClientListItem } from '@/lib/agencyClientShape';
-import { initials, pln, relative } from './format';
+import { initials, pln, relative, stamp } from './format';
 
 type Group = { key: string; primary: AgencyClientListItem; members: AgencyClientListItem[]; types: Array<'BUYER' | 'SELLER'>; ids: number[] };
 export type ClientTypeFilter = 'ALL' | 'BUYER' | 'SELLER';
@@ -210,7 +210,7 @@ export default function CrmClientsList({
                       <KeyRound size={11} /> Oferta #{seller.linkedOfferId}
                     </Link>
                   ) : null}
-                  {c.linkedUserId ? <span className={`crmx-chip ${online ? 'crmx-chip--good' : ''}`}>{online ? 'Online' : 'Ma konto'}</span> : null}
+                  {c.linkedUserId ? <span className={`crmx-chip ${online ? 'crmx-chip--good' : ''}`}>{online ? 'Online teraz' : c.linkedUserLastLoginAt ? `Ostatnio online: ${stamp(c.linkedUserLastLoginAt)}` : 'Ma konto'}</span> : null}
                   {c.portalUrl ? (
                     <a href={c.portalUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="crmx-chip crmx-chip--info">
                       Panel klienta <ExternalLink size={10} />

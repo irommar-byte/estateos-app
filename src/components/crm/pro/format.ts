@@ -34,14 +34,18 @@ export function dayLabel(iso: string): string {
   return d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+/** Data i godzina zdarzenia — zawsze z minutami, np. „31.10.2026, 00:56”. */
+export function stamp(iso: unknown): string {
+  const t = new Date(String(iso || ''));
+  if (!Number.isFinite(t.getTime())) return '';
+  const date = t.toLocaleDateString('pl-PL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const time = t.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+  return `${date}, ${time}`;
+}
+
+/** Kiedy coś się wydarzyło — w CRM zawsze konkretna data z godziną i minutą. */
 export function relative(iso: unknown): string {
-  const d = daysSince(iso);
-  if (d == null) return '';
-  if (d === 0) return 'dziś';
-  if (d === 1) return 'wczoraj';
-  if (d < 7) return `${d} dni temu`;
-  if (d < 30) return `${Math.floor(d / 7)} tyg. temu`;
-  return `${Math.floor(d / 30)} mies. temu`;
+  return stamp(iso);
 }
 
 export function initials(name: string): string {

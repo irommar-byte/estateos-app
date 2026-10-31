@@ -1461,7 +1461,7 @@ export default function CrmClientsWorkspace() {
                   </p>
                   <p className="mt-1 text-xs text-[var(--eos-muted)]">
                     {detail.linkedUserLastLoginAt
-                      ? `Ostatnie logowanie: ${new Date(detail.linkedUserLastLoginAt).toLocaleString("pl-PL")}`
+                      ? `Ostatnio online: ${new Date(detail.linkedUserLastLoginAt).toLocaleString("pl-PL", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
                       : "Brak danych logowania"}
                   </p>
                 </div>
