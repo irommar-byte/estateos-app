@@ -7,6 +7,7 @@ import {
   buildAppointmentUpdateEmailHtml,
   sendTransactionalEmail,
 } from '@/lib/email/transactional';
+import { logDealroomEvent, termLabel } from '@/lib/crm/teamLog';
 
 export const dynamic = 'force-dynamic';
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
@@ -211,6 +212,15 @@ async function handlePingPong(req: Request) {
       where: { id: appointment.dealId },
       select: { id: true, status: true, acceptedBidId: true, isActive: true, offerId: true },
     });
+    if (actorId > 0 && eventAction) {
+      void logDealroomEvent({
+        dealId: appointment.dealId,
+        userId: actorId,
+        kind: `CALENDAR_${eventAction}`,
+        title: eventAction === 'ACCEPTED' ? 'Potwierdził termin spotkania' : eventAction === 'COUNTERED' ? 'Zaproponował inny termin spotkania' : 'Odwołał spotkanie',
+        detail: eventAction === 'DECLINED' ? null : termLabel(finalDate),
+      });
+    }
     return NextResponse.json({ success: true, appointment: updatedAppt, deal: freshDeal });
   } catch (error: any) {
     return NextResponse.json({ error: 'Błąd serwera' }, { status: 500 });

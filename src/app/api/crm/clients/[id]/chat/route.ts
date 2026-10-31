@@ -9,6 +9,7 @@ import {
   sendPortalChat,
 } from '@/lib/crm/portalChat';
 import { prisma } from '@/lib/prisma';
+import { logTeamEvent } from '@/lib/crm/teamLog';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -61,6 +62,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
       clientName: `${client.firstName} ${client.lastName}`.trim(),
     });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+    void logTeamEvent({ userId: agencyUserId, kind: 'MESSAGE_PORTAL', title: 'Napisał do klienta w panelu', body: `${client.firstName} ${client.lastName}`.trim(), refType: 'client', refId: client.id });
     return NextResponse.json({ success: true, message: result.message });
   }
   return NextResponse.json({ error: 'Nieznana akcja czatu.' }, { status: 400 });

@@ -24,6 +24,7 @@ async function companyIdFor(userId: number): Promise<number | null> {
 export async function logTeamEvent(event: TeamEventInput): Promise<void> {
   try {
     const companyId = await companyIdFor(event.userId);
+    if (!companyId) return;
     await prisma.$executeRawUnsafe(
       `INSERT INTO AgencyTeamEvent (companyId, userId, kind, title, body, refType, refId) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       companyId,
@@ -37,6 +38,34 @@ export async function logTeamEvent(event: TeamEventInput): Promise<void> {
   } catch (error) {
     console.warn('[teamLog] skip', error instanceof Error ? error.message : error);
   }
+}
+
+/** Akcja na ogłoszeniu — tytuł ogłoszenia trafia do treści wpisu; bez podanego agenta wpis dostaje właściciel oferty. */
+export async function logOfferEvent(params: { offerId: number; userId?: number | null; kind: string; title: string }): Promise<void> {
+  try {
+    const offer = await prisma.offer.findUnique({ where: { id: params.offerId }, select: { userId: true, title: true } });
+    const userId = params.userId || offer?.userId;
+    if (!userId) return;
+    await logTeamEvent({ userId, kind: params.kind, title: params.title, body: offer?.title || null, refType: 'offer', refId: params.offerId });
+  } catch (error) {
+    console.warn('[teamLog] offer skip', error instanceof Error ? error.message : error);
+  }
+}
+
+/** Akcja w Dealroomie (termin, wiadomość) — wpis z tytułem oferty, której dotyczy transakcja. */
+export async function logDealroomEvent(params: { dealId: number; userId: number; kind: string; title: string; detail?: string | null }): Promise<void> {
+  try {
+    const deal = await prisma.deal.findUnique({ where: { id: params.dealId }, select: { offerId: true, offer: { select: { title: true } } } });
+    const body = [params.detail, deal?.offer?.title].filter(Boolean).join(' · ') || null;
+    await logTeamEvent({ userId: params.userId, kind: params.kind, title: params.title, body, refType: 'offer', refId: deal?.offerId ?? null });
+  } catch (error) {
+    console.warn('[teamLog] dealroom skip', error instanceof Error ? error.message : error);
+  }
+}
+
+/** Data i godzina terminu do treści wpisu. */
+export function termLabel(value: Date | string): string {
+  return new Date(value).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
 export type TeamDayEvent = {

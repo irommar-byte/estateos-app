@@ -2,6 +2,7 @@ import { encryptSession, decryptSession } from '@/lib/sessionUtils';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { cookies } from 'next/headers';
+import { logTeamEvent } from '@/lib/crm/teamLog';
 
 async function getUserId() {
   const cookieStore = await cookies();
@@ -42,11 +43,13 @@ export async function POST(req: Request) {
        return NextResponse.json({ success: true, deleted: true });
     }
     
+    const existing = await prisma.calendarNote.findUnique({ where: { userId_date: { userId, date } }, select: { id: true } });
     const note = await prisma.calendarNote.upsert({
       where: { userId_date: { userId, date } },
       update: { text },
       create: { userId, date, text }
     });
+    if (!existing) void logTeamEvent({ userId, kind: 'CALENDAR_NOTE', title: `Dodał notatkę w kalendarzu na ${String(date)}` });
     return NextResponse.json({ success: true, note });
   } catch (error) {
     return NextResponse.json({ error: 'Błąd zapisu' }, { status: 500 });

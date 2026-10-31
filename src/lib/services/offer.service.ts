@@ -43,6 +43,7 @@ import {
   parseOfferImagesField,
 } from '@/lib/upload/deleteOfferImageArtifacts';
 import { resolveFloorPlanAssetPatch } from '@/lib/offerFloorPlanPersist';
+import { logOfferEvent } from '@/lib/crm/teamLog';
 
 function resolveDuplexFlag(body: Record<string, unknown>): boolean {
   if (body.isDuplex !== undefined) return !!body.isDuplex;
@@ -163,7 +164,7 @@ function mapStatus(val?: string): OfferStatus {
 // =======================
 // CREATE
 // =======================
-export async function createOffer(body: any) {
+async function createOfferRecord(body: any) {
   const { userId, lat, lng } = body;
   await ensureOfferLegalColumns();
   await ensureOfferMoneyColumns();
@@ -393,7 +394,7 @@ export async function createOffer(body: any) {
 // =======================
 // UPDATE
 // =======================
-export async function updateOffer(body: any) {
+async function updateOfferRecord(body: any) {
   const { id, userId } = body;
   await ensureOfferLegalColumns();
   await ensureOfferMoneyColumns();
@@ -806,3 +807,19 @@ export async function updateOffer(body: any) {
   }
   return updatedOffer;
 }
+
+export async function createOffer(body: any) {
+  const created = await createOfferRecord(body);
+  const offerId = Number((created as { id?: number })?.id);
+  if (offerId > 0) void logOfferEvent({ offerId, kind: 'OFFER_CREATE', title: 'Dodał ogłoszenie' });
+  return created;
+}
+
+export async function updateOffer(body: any) {
+  const updated = await updateOfferRecord(body);
+  const offerId = Number((updated as { id?: number })?.id);
+  const archiving = String(body?.newStatus ?? body?.status ?? '').toUpperCase() === 'ARCHIVED';
+  if (offerId > 0 && !archiving) void logOfferEvent({ offerId, userId: Number(body?.userId) || null, kind: 'OFFER_EDIT', title: 'Edytował ogłoszenie' });
+  return updated;
+}
+

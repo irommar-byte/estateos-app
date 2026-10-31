@@ -61,6 +61,7 @@ import {
   deleteRemovedOfferImages,
   parseOfferImagesField,
 } from '@/lib/upload/deleteOfferImageArtifacts';
+import { logOfferEvent } from '@/lib/crm/teamLog';
 
 /** Pola używane przy edycji WWW — jawny select po `update` (bez implicit full-row / P2022). */
 const OFFER_WEB_PUT_SELECT = {
@@ -841,6 +842,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
     
+    void logOfferEvent({ offerId: Number(resolvedParams.id), userId: Number(actor.id), kind: 'OFFER_EDIT', title: 'Edytował ogłoszenie' });
     return NextResponse.json({
       success: true,
       offer: enrichOfferMoneyFields(updatedOffer as Record<string, unknown>),

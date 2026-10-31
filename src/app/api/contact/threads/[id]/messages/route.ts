@@ -4,6 +4,7 @@ import { resolveContactUserId } from '@/lib/contactRequestAuth';
 import { parseContactReactions } from '@/lib/contactMessageReactions';
 import { parseContactAttachmentMeta } from '@/lib/contactAttachment';
 import { sendContactThreadMessage } from '@/lib/contactSendMessage';
+import { logTeamEvent } from '@/lib/crm/teamLog';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -105,6 +106,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     }
 
+    void logTeamEvent({ userId, kind: 'MESSAGE_CONTACT', title: 'Odpisał na wiadomość', refType: 'thread', refId: threadId });
     return NextResponse.json({ success: true, message: result.message });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

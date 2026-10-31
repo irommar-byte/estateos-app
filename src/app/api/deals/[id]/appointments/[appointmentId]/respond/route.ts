@@ -10,6 +10,7 @@ import {
   buildAppointmentUpdateEmailHtml,
   sendTransactionalEmail,
 } from '@/lib/email/transactional';
+import { logDealroomEvent, termLabel } from '@/lib/crm/teamLog';
 
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
@@ -283,6 +284,15 @@ export async function POST(
       select: { id: true, status: true, acceptedBidId: true, isActive: true, offerId: true },
     });
 
+    if (userId) {
+      void logDealroomEvent({
+        dealId,
+        userId,
+        kind: `CALENDAR_${String(action)}`,
+        title: action === 'ACCEPT' ? 'Potwierdził termin spotkania' : action === 'RESCHEDULE' ? 'Zaproponował inny termin spotkania' : 'Odwołał spotkanie',
+        detail: action === 'RESCHEDULE' && proposedDate ? termLabel(proposedDate) : null,
+      });
+    }
     return NextResponse.json({
       success: true,
       message: `Akcja wykonana: ${action}`,

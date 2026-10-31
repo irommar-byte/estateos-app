@@ -12,6 +12,7 @@ import {
 } from '@/lib/upload/offerMediaUpload';
 import { getDealReviewVisibility, resolveFinalizedAtSafe } from '@/lib/dealroomReviews';
 import { shouldSkipDealroomMessagePush } from '@/lib/dealroomPushContent';
+import { logDealroomEvent } from '@/lib/crm/teamLog';
 
 const globalAny = globalThis as typeof globalThis & { sseClients?: Set<{ send: (payload: unknown) => void }> };
 
@@ -270,6 +271,7 @@ export async function POST(
       );
     }
 
+    void logDealroomEvent({ dealId, userId: senderId, kind: 'MESSAGE_DEALROOM', title: 'Napisał w Dealroomie' });
     return NextResponse.json({
       success: true,
       message: newMessage,

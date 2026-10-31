@@ -7,6 +7,7 @@ import {
   FINALIZED_DEAL_STATUSES,
   withdrawOwnPendingAppointments,
 } from '@/lib/dealBidNegotiation';
+import { logDealroomEvent, termLabel } from '@/lib/crm/teamLog';
 
 const EVENT_PREFIX = '[[DEAL_EVENT]]';
 
@@ -183,6 +184,7 @@ export async function POST(
       select: { id: true, status: true, acceptedBidId: true, isActive: true, offerId: true },
     });
 
+    if (userId) void logDealroomEvent({ dealId, userId, kind: 'CALENDAR_PROPOSED', title: 'Zaproponował termin spotkania', detail: termLabel(appointmentDate) });
     return NextResponse.json({
       success: true,
       appointment: result,

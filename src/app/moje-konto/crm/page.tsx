@@ -1593,7 +1593,7 @@ export default function CRMDashboard() {
           />
         )}
         {activeTab === "smart" && <CrmSmartAgentBoard onOpenClient={openClientFromAnywhere} />}
-        {activeTab === "zespol" && <CrmTeamLog onOpenClient={openClientFromAnywhere} />}
+        {activeTab === "zespol" && <CrmTeamLog onOpenClient={openClientFromAnywhere} onOpenOffer={openOfferFromAnywhere} />}
         {/* --- TRANSAKCJE / DEAL ROOMY --- */}
         {activeTab === 'transakcje' && !selectedDealId && (
           <div className="mb-8">

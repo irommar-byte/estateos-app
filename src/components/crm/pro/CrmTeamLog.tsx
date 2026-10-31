@@ -13,7 +13,7 @@ function isoDay(d: Date): string {
 }
 
 /** Dziennik zespołu: co który agent danego dnia zrobił — z godziną i minutą. */
-export default function CrmTeamLog({ onOpenClient }: { onOpenClient: (clientId: number) => void }) {
+export default function CrmTeamLog({ onOpenClient, onOpenOffer }: { onOpenClient: (clientId: number) => void; onOpenOffer: (offerId: number) => void }) {
   const [day, setDay] = useState(() => new Date());
   const [data, setData] = useState<{ isManager: boolean; agents: Agent[]; events: Ev[] } | null>(null);
   const [agent, setAgent] = useState<number | 'all'>('all');
@@ -97,8 +97,15 @@ export default function CrmTeamLog({ onOpenClient }: { onOpenClient: (clientId: 
                         <span className="min-w-0">
                           <span className="block text-[13px] font-semibold">{e.title}</span>
                           {e.body ? (
-                            e.refType === 'client' && e.refId ? (
-                              <button type="button" className="crmx-teamlog__ref" onClick={() => onOpenClient(Number(e.refId))} title={e.body}>{e.body}</button>
+                            (e.refType === 'client' || e.refType === 'offer') && e.refId ? (
+                              <button
+                                type="button"
+                                className="crmx-teamlog__ref"
+                                onClick={() => (e.refType === 'offer' ? onOpenOffer(Number(e.refId)) : onOpenClient(Number(e.refId)))}
+                                title={e.body}
+                              >
+                                {e.body}
+                              </button>
                             ) : (
                               <span className="crmx-teamlog__body crmx-muted">{e.body}</span>
                             )

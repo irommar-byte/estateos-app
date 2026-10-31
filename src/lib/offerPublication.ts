@@ -9,6 +9,7 @@ import {
 } from '@/lib/offerPendingPublication';
 import { tryRecoverImportOfferPendingPublication, tryReserveWelcomeCouponPublication } from '@/lib/otodomImportPublication';
 import { isAgentOrAgencySeller } from '@/lib/sellerDisplay';
+import { logOfferEvent } from '@/lib/crm/teamLog';
 
 /**
  * Publikacja jest bezterminowa: oferta jest na rynku, dopóki się nie sprzeda albo właściciel jej nie wycofa.
@@ -427,7 +428,7 @@ async function writePendingPublicationInTx(
  * Rezerwuje płatność / kredyt i zapisuje oczekującą publikację.
  * Oferta pozostaje PENDING do akceptacji w panelu admina (wtedy activateOfferPublication).
  */
-export async function submitOfferActivation(params: {
+async function submitOfferActivationRecord(params: {
   userId: number;
   offerId: number;
   kind: PublicationKind;
@@ -723,6 +724,20 @@ export async function activateOfferPublication(params: {
   return result;
 }
 
+/** Publikacja ogłoszenia + wpis w dzienniku zespołu (publikacja albo wysłanie do weryfikacji). */
+export async function submitOfferActivation(params: Parameters<typeof submitOfferActivationRecord>[0]) {
+  const result = await submitOfferActivationRecord(params);
+  if (!result.alreadyActive) {
+    void logOfferEvent({
+      offerId: params.offerId,
+      userId: params.userId,
+      kind: 'OFFER_PUBLISH',
+      title: result.awaitingModeration ? 'Wysłał ogłoszenie do publikacji (weryfikacja)' : 'Opublikował ogłoszenie',
+    });
+  }
+  return result;
+}
+
 export async function endOfferPublication(params: {
   offerId: number;
   endReason: PublicationEndReason;
@@ -733,9 +748,11 @@ export async function endOfferPublication(params: {
   const db = asDb(params.db);
   await ensureOfferPublicationSchema();
 
-  return db.$transaction(async (tx: any) => {
+  const result = await db.$transaction(async (tx: any) => {
     return endOfferPublicationInTx(tx, params);
   }, PUBLICATION_TX_OPTIONS);
+  if (params.endReason === 'MANUAL_ARCHIVE') void logOfferEvent({ offerId: params.offerId, kind: 'OFFER_ARCHIVE', title: 'Wycofał ogłoszenie z rynku' });
+  return result;
 }
 
 export async function endOfferPublicationInTx(
