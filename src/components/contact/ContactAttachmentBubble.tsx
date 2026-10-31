@@ -17,8 +17,8 @@ export default function ContactAttachmentBubble({ attachment, isMe }: Props) {
   const kind = contactAttachmentKind(attachment);
   const displayName = formatContactAttachmentName(attachment.name);
   const linkClass = isMe
-    ? "text-black/80 hover:text-black"
-    : "text-[#a8844c] hover:text-emerald-300";
+    ? "text-current/80 hover:text-current"
+    : "text-[#a8844c] hover:text-[#7a5f33]";
 
   if (kind === "image") {
     return (
@@ -34,7 +34,7 @@ export default function ContactAttachmentBubble({ attachment, isMe }: Props) {
           className="max-h-64 w-full max-w-[min(100%,280px)] object-cover"
           loading="lazy"
         />
-        <p className={`px-3 py-2 text-[11px] font-medium ${isMe ? "text-black/70" : "text-[var(--eos-muted)]"}`}>
+        <p className={`px-3 py-2 text-[11px] font-medium ${isMe ? "text-current/70" : "text-[var(--eos-muted)]"}`}>
           {displayName}
           {attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ""}
         </p>
@@ -80,7 +80,7 @@ export default function ContactAttachmentBubble({ attachment, isMe }: Props) {
     return (
       <div className="mt-2 overflow-hidden rounded-2xl border border-[var(--eos-border)] bg-[var(--eos-input)]">
         <video controls preload="metadata" className="max-h-64 w-full max-w-[min(100%,320px)] bg-black" src={attachment.url} />
-        <p className={`truncate px-3 py-2 text-[11px] ${isMe ? "text-black/70" : "text-[var(--eos-muted)]"}`}>{displayName}</p>
+        <p className={`truncate px-3 py-2 text-[11px] ${isMe ? "text-current/70" : "text-[var(--eos-muted)]"}`}>{displayName}</p>
       </div>
     );
   }
@@ -93,22 +93,22 @@ export default function ContactAttachmentBubble({ attachment, isMe }: Props) {
         rel="noopener noreferrer"
         className={`mt-2 flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${
           isMe
-            ? "border-black/15 bg-black/10 hover:bg-black/15"
+            ? "border-current/15 bg-current/10 hover:bg-current/15"
             : "border-[var(--eos-border)] bg-[var(--eos-input)] hover:bg-[var(--eos-input)]"
         }`}
       >
         <div
           className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
-            isMe ? "bg-black/15 text-black" : "bg-red-500/15 text-red-400"
+            isMe ? "bg-current/15 text-current" : "bg-red-500/15 text-red-400"
           }`}
         >
           <FileText className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className={`truncate text-sm font-semibold ${isMe ? "text-black" : "text-[var(--eos-text)]"}`}>
+          <p className={`truncate text-sm font-semibold ${isMe ? "text-current" : "text-[var(--eos-text)]"}`}>
             {displayName}
           </p>
-          <p className={`text-[11px] ${isMe ? "text-black/60" : "text-[var(--eos-muted)]"}`}>
+          <p className={`text-[11px] ${isMe ? "text-current/60" : "text-[var(--eos-muted)]"}`}>
             PDF{attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ""}
           </p>
         </div>
@@ -123,22 +123,22 @@ export default function ContactAttachmentBubble({ attachment, isMe }: Props) {
       rel="noopener noreferrer"
       className={`mt-2 flex items-center gap-3 rounded-2xl border px-4 py-3 transition ${
         isMe
-          ? "border-black/15 bg-black/10 hover:bg-black/15"
+          ? "border-current/15 bg-current/10 hover:bg-current/15"
           : "border-[var(--eos-border)] bg-[var(--eos-input)] hover:bg-[var(--eos-input)]"
       }`}
     >
       <div
         className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
-          isMe ? "bg-black/15 text-black" : "bg-[var(--eos-input)] text-[var(--eos-muted)]"
+          isMe ? "bg-current/15 text-current" : "bg-[var(--eos-input)] text-[var(--eos-muted)]"
         }`}
       >
         {kind === "file" ? <FileText className="size-5" /> : <Film className="size-5" />}
       </div>
       <div className="min-w-0">
-        <p className={`truncate text-sm font-semibold ${isMe ? "text-black" : "text-[var(--eos-text)]"}`}>
+        <p className={`truncate text-sm font-semibold ${isMe ? "text-current" : "text-[var(--eos-text)]"}`}>
           {displayName}
         </p>
-        <p className={`text-[11px] ${isMe ? "text-black/60" : "text-[var(--eos-muted)]"}`}>
+        <p className={`text-[11px] ${isMe ? "text-current/60" : "text-[var(--eos-muted)]"}`}>
           Plik{attachment.size > 0 ? ` · ${formatContactBytes(attachment.size)}` : ""}
         </p>
       </div>
