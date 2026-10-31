@@ -4544,6 +4544,7 @@ html.dark .eos-reason--bad, [data-theme="dark"] .eos-reason--bad { color: #fda4a
   padding: 3px 10px; border-radius: 99px;
   font-size: 11px; font-weight: 700; line-height: 1.4; white-space: nowrap;
   color: var(--sig); background: color-mix(in srgb, var(--sig) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sig) 42%, transparent);
 }
 .eos-sig::before, .eos-sig-dot { content: ""; width: 6px; height: 6px; border-radius: 99px; background: var(--sig); flex-shrink: 0; display: inline-block; }
 .eos-sig--ok { --sig: #1f7a55; }
@@ -4556,18 +4557,18 @@ html.dark .eos-sig--bad, html[data-theme="dark"] .eos-sig--bad { --sig: #f08a9b;
 .eos-sig--ok::before, .eos-sig-dot.eos-sig--ok { animation: eos-sig-breathe-dot 6s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
 .eos-sig.eos-sig--warn { animation: eos-sig-warn-halo 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
 .eos-sig--warn::before, .eos-sig-dot.eos-sig--warn { animation: eos-sig-blink 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
-.eos-sig.eos-sig--bad { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig) 32%, transparent), 0 0 18px 0 color-mix(in srgb, var(--sig) 42%, transparent), 0 0 4px 0 color-mix(in srgb, var(--sig) 30%, transparent); }
+.eos-sig.eos-sig--bad { box-shadow: 0 0 18px 0 color-mix(in srgb, var(--sig) 42%, transparent), 0 0 4px 0 color-mix(in srgb, var(--sig) 30%, transparent); }
 .eos-sig--bad::before, .eos-sig-dot.eos-sig--bad { box-shadow: 0 0 4px 1px color-mix(in srgb, var(--sig) 90%, transparent), 0 0 10px 3px color-mix(in srgb, var(--sig) 45%, transparent); }
 /* Większe komunikaty (paski, ramki) — ta sama zasada, spokojniej */
-.eos-sig-box { border: 1px solid color-mix(in srgb, var(--sig) 30%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--sig) 10%, transparent), color-mix(in srgb, var(--sig) 5%, transparent)); color: var(--eos-text); border-radius: 16px; }
+.eos-sig-box { border: 1px solid color-mix(in srgb, var(--sig) 42%, transparent); background: linear-gradient(180deg, color-mix(in srgb, var(--sig) 10%, transparent), color-mix(in srgb, var(--sig) 5%, transparent)); color: var(--eos-text); border-radius: 16px; }
 .eos-sig-box.eos-sig--ok { animation: eos-sig-breathe 6s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
 .eos-sig-box.eos-sig--warn { animation: eos-sig-warn-halo 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
-.eos-sig-box.eos-sig--bad { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig) 18%, transparent), 0 0 28px -4px color-mix(in srgb, var(--sig) 45%, transparent); }
+.eos-sig-box.eos-sig--bad { box-shadow: 0 0 28px -4px color-mix(in srgb, var(--sig) 45%, transparent); }
 .eos-sig-text { color: var(--sig); }
 /* Sama poświata na istniejącym bloku (pasek, karta), bez zmiany jego tła */
 .eos-sig-glow.eos-sig--ok { animation: eos-sig-breathe 6s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
 .eos-sig-glow.eos-sig--warn { animation: eos-sig-warn-halo 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
-.eos-sig-glow.eos-sig--bad { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig) 16%, transparent), 0 10px 30px -10px color-mix(in srgb, var(--sig) 50%, transparent), 0 0 24px -6px color-mix(in srgb, var(--sig) 40%, transparent); }
+.eos-sig-glow.eos-sig--bad { box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--sig) 50%, transparent), 0 0 24px -6px color-mix(in srgb, var(--sig) 40%, transparent); }
 
 /* Zielony: spokojny, ledwie widoczny oddech — długi cykl, miękka poświata */
 @keyframes eos-sig-breathe {
@@ -4584,8 +4585,8 @@ html.dark .eos-sig--bad, html[data-theme="dark"] .eos-sig--bad { --sig: #f08a9b;
   50% { opacity: 0.22; box-shadow: 0 0 6px 1px color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
 }
 @keyframes eos-sig-warn-halo {
-  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig, currentColor) 22%, transparent), 0 0 12px -3px color-mix(in srgb, var(--sig, currentColor) 45%, transparent); }
-  50% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sig, currentColor) 6%, transparent), 0 0 12px -3px color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
+  0%, 100% { box-shadow: 0 0 12px -2px color-mix(in srgb, var(--sig, currentColor) 50%, transparent); }
+  50% { box-shadow: 0 0 12px -2px color-mix(in srgb, var(--sig, currentColor) 0%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
   .eos-sig, .eos-sig::before, .eos-sig-dot, .eos-sig-box, .eos-sig-glow,

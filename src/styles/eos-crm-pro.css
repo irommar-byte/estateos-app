@@ -226,9 +226,9 @@ button.crmx-kpi:hover { transform: translateY(-2px); box-shadow: var(--x-shadow-
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5) inset;
 }
 .crmx-chip--gold { color: var(--x-gold-ink); background: var(--x-gold-soft); border-color: transparent; }
-.crmx-chip--good { color: var(--x-good); background: var(--x-good-soft); border-color: transparent; }
-.crmx-chip--warn { color: var(--x-warn); background: var(--x-warn-soft); border-color: transparent; }
-.crmx-chip--bad { color: var(--x-bad); background: var(--x-bad-soft); border-color: transparent; }
+.crmx-chip--good { color: var(--x-good); background: var(--x-good-soft); border-color: color-mix(in srgb, var(--x-good) 42%, transparent); }
+.crmx-chip--warn { color: var(--x-warn); background: var(--x-warn-soft); border-color: color-mix(in srgb, var(--x-warn) 42%, transparent); }
+.crmx-chip--bad { color: var(--x-bad); background: var(--x-bad-soft); border-color: color-mix(in srgb, var(--x-bad) 42%, transparent); }
 /* Sygnały statusu: każdy zielony/żółty/czerwony znaczek dostaje kropkę i swój rytm (definicja w eos-components.css → .eos-sig) */
 .crmx-chip--good, .crmx-chip--warn, .crmx-chip--bad { --sig: currentColor; }
 .crmx-chip--good:not(:has(.crmx-dot))::before,
@@ -238,7 +238,7 @@ button.crmx-kpi:hover { transform: translateY(-2px); box-shadow: var(--x-shadow-
 .crmx-chip--good::before, .crmx-chip--good .crmx-dot { animation: eos-sig-breathe-dot 6s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
 .crmx-chip--warn::before, .crmx-chip--warn .crmx-dot { animation: eos-sig-blink 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
 .crmx-chip--warn { animation: eos-sig-warn-halo 2s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
-.crmx-chip--bad { box-shadow: 0 0 0 1px color-mix(in srgb, currentColor 32%, transparent), 0 0 18px 0 color-mix(in srgb, currentColor 40%, transparent), 0 0 4px 0 color-mix(in srgb, currentColor 30%, transparent); }
+.crmx-chip--bad { box-shadow: 0 0 18px 0 color-mix(in srgb, currentColor 40%, transparent), 0 0 4px 0 color-mix(in srgb, currentColor 30%, transparent); }
 .crmx-chip--bad::before, .crmx-chip--bad .crmx-dot { box-shadow: 0 0 4px 1px color-mix(in srgb, currentColor 90%, transparent), 0 0 10px 3px color-mix(in srgb, currentColor 45%, transparent); }
 .crmx-chip--info { color: var(--x-info); background: var(--x-info-soft); border-color: transparent; }
 .crmx-dot { width: 7px; height: 7px; border-radius: 99px; background: currentColor; flex-shrink: 0; }
